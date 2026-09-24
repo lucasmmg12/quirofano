@@ -3115,7 +3115,7 @@ function buildTriageSummary(
     const tramite = intentMap[intent] || 'Consulta General de Atención';
     const age = calculatedAge || (data.fecha_nacimiento ? calculateAgeFromBirthDate(data.fecha_nacimiento) : data.edad) || null;
 
-    let docName = doctorRecord?.profesional_nombre || data.medico_o_especialidad || null;
+    let docName = doctorRecord?.profesional_nombre || (intent !== 'autorizacion' ? data.medico_o_especialidad : null);
     if (docName && docName.includes('(')) docName = docName.split('(')[0].trim();
 
     return {

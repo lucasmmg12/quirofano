@@ -4243,88 +4243,133 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         )}
 
                                         {/* 3. DOCTOR DETECTADO & PARÁMETROS DE ATENCIÓN */}
-                                        {aiSummaryData.prestador_matched ? (
-                                            <div style={{
-                                                background: ccTheme.isDark ? '#064E3B' : '#F0FDF4', 
-                                                padding: '10px', borderRadius: '8px',
-                                                border: `1.5px solid ${ccTheme.isDark ? '#047857' : '#86EFAC'}`
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#15803D', textTransform: 'uppercase' }}>
-                                                        👨‍⚕️ Prestador Detectado
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setActiveDetailTab('prestadores');
-                                                            setDoctorQuery(aiSummaryData.prestador_matched.profesional_nombre);
-                                                        }}
-                                                        style={{
-                                                            background: 'none', border: 'none', 
-                                                            color: ccTheme.isDark ? '#6EE7B7' : '#166534',
-                                                            fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', padding: 0,
-                                                            textDecoration: 'underline'
-                                                        }}
-                                                    >
-                                                        Ver en Prestadores ↗
-                                                    </button>
-                                                </div>
+                                        {(() => {
+                                            // Validar si el médico proviene exclusivamente del sello/orden médica (solicitante) y no del texto del paciente
+                                            const isDoctorFromOrderSolicitante = (docName) => {
+                                                if (!docName || !selectedChat?.messages) return false;
+                                                const cleanDoc = docName.replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '').trim().toLowerCase();
+                                                const docWords = cleanDoc.split(/\s+/).filter(w => w.length >= 3);
+                                                if (docWords.length === 0) return false;
 
-                                                <div style={{ fontWeight: 800, fontSize: '0.84rem', color: ccTheme.isDark ? '#F0FDF4' : '#0F172A' }}>
-                                                    {aiSummaryData.prestador_matched.profesional_nombre}
-                                                </div>
-                                                <div style={{ fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>
-                                                    {aiSummaryData.prestador_matched.especialidad || 'Consulta Médica'}
-                                                </div>
-                                                {aiSummaryData.prestador_matched.consultorio_actual && (
-                                                    <div style={{ fontSize: '0.72rem', color: ccTheme.isDark ? '#34D399' : '#059669', fontWeight: 700, marginTop: '2px' }}>
-                                                        📍 {aiSummaryData.prestador_matched.consultorio_actual}
-                                                    </div>
-                                                )}
+                                                const orderSolicitantes = [];
+                                                selectedChat.messages.forEach(m => {
+                                                    const sol = m.orderAnalysis?.solicitante || m.raw_payload?.order_analysis?.solicitante || m.order_analysis?.solicitante;
+                                                    if (sol && typeof sol === 'string') {
+                                                        orderSolicitantes.push(sol.replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '').trim().toLowerCase());
+                                                    }
+                                                });
 
-                                                {aiSummaryData.prestador_matched.condiciones_consulta && (
+                                                if (orderSolicitantes.length === 0) return false;
+                                                const matchesSol = orderSolicitantes.some(sol => docWords.some(w => sol.includes(w)));
+                                                if (!matchesSol) return false;
+
+                                                const patientText = selectedChat.messages
+                                                    .filter(m => (m.sender === 'patient' || m.direction === 'incoming') && (m.text || m.content) && !(m.text || m.content).startsWith('['))
+                                                    .map(m => (m.text || m.content).toLowerCase())
+                                                    .join(' ');
+
+                                                const mentionedInText = docWords.some(w => patientText.includes(w));
+                                                return !mentionedInText;
+                                            };
+
+                                            const effectivePrestadorMatched = aiSummaryData.prestador_matched && !isDoctorFromOrderSolicitante(aiSummaryData.prestador_matched.profesional_nombre)
+                                                ? aiSummaryData.prestador_matched
+                                                : null;
+                                            const effectiveDoctorDetectado = aiSummaryData.doctor_detectado?.nombre_aproximado && !isDoctorFromOrderSolicitante(aiSummaryData.doctor_detectado.nombre_aproximado)
+                                                ? aiSummaryData.doctor_detectado
+                                                : null;
+
+                                            if (effectivePrestadorMatched) {
+                                                return (
                                                     <div style={{
-                                                        marginTop: '8px', padding: '8px', 
-                                                        background: ccTheme.isDark ? '#022C22' : '#FFFFFF',
-                                                        borderRadius: '6px', 
-                                                        border: `1px solid ${ccTheme.isDark ? '#065F46' : '#BBF7D0'}`,
-                                                        fontSize: '0.72rem', 
-                                                        color: ccTheme.isDark ? '#E2E8F0' : '#334155', 
-                                                        lineHeight: 1.45,
-                                                        whiteSpace: 'pre-line', maxHeight: '160px', overflowY: 'auto'
+                                                        background: ccTheme.isDark ? '#064E3B' : '#F0FDF4', 
+                                                        padding: '10px', borderRadius: '8px',
+                                                        border: `1.5px solid ${ccTheme.isDark ? '#047857' : '#86EFAC'}`
                                                     }}>
-                                                        <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#166534', fontSize: '0.68rem', marginBottom: '4px' }}>
-                                                            📋 CONDICIONES Y PARÁMETROS:
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#15803D', textTransform: 'uppercase' }}>
+                                                                👨‍⚕️ Prestador Detectado
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setActiveDetailTab('prestadores');
+                                                                    setDoctorQuery(effectivePrestadorMatched.profesional_nombre);
+                                                                }}
+                                                                style={{
+                                                                    background: 'none', border: 'none', 
+                                                                    color: ccTheme.isDark ? '#6EE7B7' : '#166534',
+                                                                    fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', padding: 0,
+                                                                    textDecoration: 'underline'
+                                                                }}
+                                                            >
+                                                                Ver en Prestadores ↗
+                                                            </button>
                                                         </div>
-                                                        {aiSummaryData.prestador_matched.condiciones_consulta}
+
+                                                        <div style={{ fontWeight: 800, fontSize: '0.84rem', color: ccTheme.isDark ? '#F0FDF4' : '#0F172A' }}>
+                                                            {effectivePrestadorMatched.profesional_nombre}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>
+                                                            {effectivePrestadorMatched.especialidad || 'Consulta Médica'}
+                                                        </div>
+                                                        {effectivePrestadorMatched.consultorio_actual && (
+                                                            <div style={{ fontSize: '0.72rem', color: ccTheme.isDark ? '#34D399' : '#059669', fontWeight: 700, marginTop: '2px' }}>
+                                                                📍 {effectivePrestadorMatched.consultorio_actual}
+                                                            </div>
+                                                        )}
+
+                                                        {effectivePrestadorMatched.condiciones_consulta && (
+                                                            <div style={{
+                                                                marginTop: '8px', padding: '8px', 
+                                                                background: ccTheme.isDark ? '#022C22' : '#FFFFFF',
+                                                                borderRadius: '6px', 
+                                                                border: `1px solid ${ccTheme.isDark ? '#065F46' : '#BBF7D0'}`,
+                                                                fontSize: '0.72rem', 
+                                                                color: ccTheme.isDark ? '#E2E8F0' : '#334155', 
+                                                                lineHeight: 1.45,
+                                                                whiteSpace: 'pre-line', maxHeight: '160px', overflowY: 'auto'
+                                                            }}>
+                                                                <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#166534', fontSize: '0.68rem', marginBottom: '4px' }}>
+                                                                    📋 CONDICIONES Y PARÁMETROS:
+                                                                </div>
+                                                                {effectivePrestadorMatched.condiciones_consulta}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
-                                        ) : aiSummaryData.doctor_detectado?.nombre_aproximado ? (
-                                            <div style={{
-                                                background: ccTheme.isDark ? '#451A03' : '#FFFBEB', 
-                                                padding: '10px', borderRadius: '8px',
-                                                border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`, 
-                                                fontSize: '0.74rem'
-                                            }}>
-                                                <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#FDE68A' : '#B45309', marginBottom: '2px' }}>
-                                                    ⚠️ Doctor mencionado: {aiSummaryData.doctor_detectado.nombre_aproximado}
+                                                );
+                                            }
+
+                                            if (effectiveDoctorDetectado) {
+                                                return (
+                                                    <div style={{
+                                                        background: ccTheme.isDark ? '#451A03' : '#FFFBEB', 
+                                                        padding: '10px', borderRadius: '8px',
+                                                        border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`, 
+                                                        fontSize: '0.74rem'
+                                                    }}>
+                                                        <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#FDE68A' : '#B45309', marginBottom: '2px' }}>
+                                                            ⚠️ Doctor mencionado: {effectiveDoctorDetectado.nombre_aproximado}
+                                                        </div>
+                                                        <div style={{ color: ccTheme.isDark ? '#FCD34D' : '#92400E', fontSize: '0.7rem' }}>
+                                                            No se encontró coincidencia exacta en SALUS. Puedes buscarlo por nombre parcial en la pestaña "Prestadores".
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div style={{
+                                                    padding: '8px 10px', 
+                                                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                                    borderRadius: '6px',
+                                                    border: `1px solid ${rightCardBorder}`, 
+                                                    fontSize: '0.7rem', color: themeCardSubtext
+                                                }}>
+                                                    ℹ️ La IA no detectó un médico específico en la conversación. Puedes consultar la cartilla en la pestaña "Prestadores".
                                                 </div>
-                                                <div style={{ color: ccTheme.isDark ? '#FCD34D' : '#92400E', fontSize: '0.7rem' }}>
-                                                    No se encontró coincidencia exacta en SALUS. Puedes buscarlo por nombre parcial en la pestaña "Prestadores".
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div style={{
-                                                padding: '8px 10px', 
-                                                background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                                borderRadius: '6px',
-                                                border: `1px solid ${rightCardBorder}`, 
-                                                fontSize: '0.7rem', color: themeCardSubtext
-                                            }}>
-                                                ℹ️ La IA no detectó un médico específico en la conversación. Puedes consultar la cartilla en la pestaña "Prestadores".
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
                                     </div>
                                 ) : (
                                     <div style={{

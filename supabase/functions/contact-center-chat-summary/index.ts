@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
             let text = m.content || `[${m.media_type || 'archivo'}]`;
             const analysis = m.raw_payload?.order_analysis || m.order_analysis;
             if (analysis) {
-                text += `\n[FOTO DE ORDEN MÉDICA ANALIZADA:\nEstudio: ${analysis.estudio || ''}\nSolicitante: ${analysis.solicitante || ''}\nMatrícula: ${analysis.matricula || ''}\nDiagnóstico: ${analysis.diagnostico || ''}\nFecha: ${analysis.fecha_solicitud || ''}]`;
+                text += `\n[FOTO DE ORDEN MÉDICA ANALIZADA:\nEstudio solicitado en la orden: ${analysis.estudio || ''}\nMédico Solicitante (profesional que prescribió la orden en papel, NO es el prestador a consultar): ${analysis.solicitante || ''}\nMatrícula Solicitante: ${analysis.matricula || ''}\nDiagnóstico: ${analysis.diagnostico || ''}\nFecha: ${analysis.fecha_solicitud || ''}]`;
             }
             return `${role}: ${text}`;
         }).join('\n\n');
@@ -167,6 +167,11 @@ REGLAS CRÍTICAS DE EXTRACCIÓN:
    - "doctor_detectado.estudio_solicitado": "Programa Prevenir (Ginecología + Mamografía OSP)"
    - "resumen_solicitud": "El paciente solicita coordinar turno para el Programa Prevenir de Obra Social Provincia (OSP)."
 6. Si el paciente confirma o informa su obra social o prepaga y su plan (ej: "sigo con sancor salud plan 1500" o "tengo osde 210"), extrae la entidad en "obra_social" y el plan específico en "plan_obra_social".
+7. REGLA ESTRICTA SOBRE ÓRDENES MÉDICAS Y MÉDICO SOLICITANTE:
+   En las fotos de órdenes médicas o prescripciones analizadas, el profesional médico que firma o figura como "Solicitante" o "Médico Solicitante" (ej: "Dra. Paola G. García") es quien prescribió el estudio, NO es el prestador solicitado por el paciente.
+   NUNCA coloques al médico solicitante de la orden médica en "doctor_detectado.nombre_aproximado".
+   El campo "doctor_detectado.nombre_aproximado" DEBE SER ÚNICA Y EXCLUSIVAMENTE el profesional médico o especialista por el cual el PACIENTE pregunte o solicite turno explícitamente en el texto de sus mensajes en el chat (por ejemplo, si el paciente escribe "quiero turno con el Dr. Correa" o "con la Dra. Gómez").
+   Si el paciente solo envió la orden médica para autorizar o coordinar un turno del estudio prescripto y NO pidió expresamente a ningún médico en sus mensajes de texto, "doctor_detectado.nombre_aproximado" DEBE SER estrictamente null.
 
 Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta:
 {
@@ -183,7 +188,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
     "es_paciente_existente": true/false/null
   },
   "doctor_detectado": {
-    "nombre_aproximado": "Nombre o apellido del médico mencionado por el paciente (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez') o null si no se menciona ningún doctor",
+    "nombre_aproximado": "Nombre o apellido del médico mencionado explícitamente por el paciente en el texto del chat (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez') o null si no se menciona ningún doctor",
     "especialidad_mencionada": "Especialidad médica mencionada (ej: Medicina Familiar, Cardiología, Ecografía, Pediatría) o null",
     "estudio_solicitado": "Nombre de la práctica o estudio solicitada (ej: Programa Prevenir, Chequeo Preventivo de Salud, Consulta médica, Ecodoppler, etc.) o null"
   }
@@ -214,7 +219,28 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         const rawContent = aiJson.choices?.[0]?.message?.content || '{}';
         const parsed = JSON.parse(rawContent);
 
-        // 4. Búsqueda automática de parámetros del prestador si se detectó médico
+        // 4. Recopilar médicos solicitantes de órdenes médicas adjuntas en el chat
+        const orderSolicitantes: string[] = [];
+        for (const m of messages) {
+            const analysis = m.raw_payload?.order_analysis || m.order_analysis;
+            if (analysis?.solicitante && typeof analysis.solicitante === 'string') {
+                const solClean = analysis.solicitante
+                    .replace(/\b(dr|dra|doctor|doctora|m\.?p\.?|\d+)\b\.?/gi, '')
+                    .trim()
+                    .toLowerCase();
+                if (solClean.length >= 3) {
+                    orderSolicitantes.push(solClean);
+                }
+            }
+        }
+
+        // Recopilar texto explícito enviado por el paciente (para validar si nombró al médico en el chat)
+        const patientTextMessages = messages
+            .filter(m => m.direction === 'incoming' && m.content && !['[image]', '[audio]', '[document]', '[archivo]'].includes(m.content.trim()))
+            .map(m => m.content.toLowerCase())
+            .join(' ');
+
+        // Búsqueda automática de parámetros del prestador si se detectó médico
         let matchedDoctor = null;
         let detectedDoctorName = parsed.doctor_detectado?.nombre_aproximado;
         if (!detectedDoctorName && conv?.medico_o_especialidad && !conv.medico_o_especialidad.includes('Circuito') && !conv.medico_o_especialidad.includes('Programa')) {
@@ -225,6 +251,21 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         if (detectedDoctorName && BLOCKED_NAMES.some(b => detectedDoctorName.toLowerCase().includes(b))) {
             detectedDoctorName = null;
             if (parsed.doctor_detectado) parsed.doctor_detectado.nombre_aproximado = null;
+        }
+
+        // VALIDACIÓN ESTRICTA: El médico solicitante de la orden médica NUNCA debe ser el prestador detectado
+        // a menos que el paciente lo haya solicitado explícitamente en el texto del chat
+        if (detectedDoctorName && orderSolicitantes.length > 0) {
+            const cleanCheck = detectedDoctorName.replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '').trim().toLowerCase();
+            const docWords = cleanCheck.split(/\s+/).filter((w: string) => w.length >= 3);
+            const isMatchSolicitante = orderSolicitantes.some(sol => docWords.some((w: string) => sol.includes(w)));
+            const isMentionedInChatText = docWords.some((w: string) => patientTextMessages.includes(w));
+
+            if (isMatchSolicitante && !isMentionedInChatText) {
+                console.log(`[chat-summary] Descartando prestador '${detectedDoctorName}' porque es el médico solicitante de la orden médica y no fue consultado en el texto del chat.`);
+                detectedDoctorName = null;
+                if (parsed.doctor_detectado) parsed.doctor_detectado.nombre_aproximado = null;
+            }
         }
 
         if (detectedDoctorName && detectedDoctorName.length >= 3) {
@@ -361,6 +402,18 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         }
         if (matchedDoctor?.profesional_nombre && !conv?.medico_o_especialidad) {
             updates.medico_o_especialidad = matchedDoctor.profesional_nombre;
+        }
+
+        // Si la conversación tenía previamente registrado a un médico que en realidad era el solicitante de la orden, limpiarlo
+        if (conv?.medico_o_especialidad && orderSolicitantes.length > 0) {
+            const cleanConvDoc = conv.medico_o_especialidad.replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '').trim().toLowerCase();
+            const convWords = cleanConvDoc.split(/\s+/).filter((w: string) => w.length >= 3);
+            const convIsSolicitante = orderSolicitantes.some(sol => convWords.some((w: string) => sol.includes(w)));
+            const convInText = convWords.some((w: string) => patientTextMessages.includes(w));
+            if (convIsSolicitante && !convInText) {
+                console.log(`[chat-summary] Limpiando medico_o_especialidad previo (${conv.medico_o_especialidad}) porque correspondía al médico solicitante de la orden.`);
+                updates.medico_o_especialidad = null;
+            }
         }
 
         await supabase
