@@ -1190,10 +1190,12 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
     // 0.5 CONSULTAR TURNO O VISITA PRÓXIMA POR TEXTO LIBRE (PROPIO O DE OTRO PACIENTE)
     const isConsultarTurno = 
-        /\b(consultar|averiguar|ver|saber|recordar|buscar|revisar|fijarte|fijarse|conocer|informaci[oó]n)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
-        /\b(?:necesito|quiero|quisiera|podr[ií]a|podr[ií]as)\s+(?:consultar|averiguar|saber|ver|preguntar|buscar)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        /\b(consultar|averiguar|ver|saber|recordar|buscar|revisar|fijarte|fijarse|conocer|informaci[oó]n|acordar|acordarme)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        /\b(?:necesito|quiero|quisiera|podr[ií]a|podr[ií]as)\s+(?:consultar|averiguar|saber|ver|preguntar|buscar|recordar)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
         /\b(?:turnos?|citas?|visitas?)\s+(?:de|para|sobre)\s+(?:otro\s+paciente|otra\s+persona|un\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|alguien\s+m[aá]s)\b/i.test(clean) ||
         /\b(?:averiguar|consultar|saber)\s+(?:sobre\s+)?turnos?\s+de\s+(?:otros?\s+pacientes?|otra\s+persona)\b/i.test(clean) ||
+        /\b(?:no\s+recuerdo|no\s+me\s+acuerdo|cu[aá]ndo|a\s+qu[eé]\s+hora|qu[eé]\s+d[ií]a)\s+(?:es|tengo|ped[ií]|saqu[eé]|era|ten[ií]a)?\s*(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        /\b(?:no\s+recuerdo|no\s+me\s+acuerdo)\s+(?:cu[aá]ndo|qu[eé]\s+d[ií]a|a\s+qu[eé]\s+hora|si\s+tengo)\b/i.test(clean) ||
         /\b(cu[aá]ndo\s+tengo\s+(?:el\s+|mi\s+)?turno|tengo\s+turno|a\s+qu[eé]\s+hora\s+tengo\s+turno|pr[oó]ximo\s+turno|pr[oó]xima\s+visita|visita\s+agendada)\b/i.test(clean) ||
         /\b(consultar\s+turno|averiguar\s+turno|ver\s+turno|saber\s+turno)\b/i.test(clean);
     if (isConsultarTurno) {
@@ -2562,13 +2564,12 @@ async function handleChatbotTriage(
             updates.bot_active = true;
             nextStage = 'esperando_dni_turno';
             updates.motivo_consulta = 'Turno para otro paciente (esperando DNI)';
-        } else if (alreadyAskedTurno) {
-            console.log(`[triage-bot] Chat ${phone}: Ya se enviaron pautas de turno previamente. Bot en silencio.`);
-            replyText = '';
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+        } else if (turnosActivosProximos && turnosActivosProximos.length > 0) {
+            replyText = formatTurnosActivosReply(turnosActivosProximos, fullName, false, resolvedDni || undefined);
+            updates.motivo_consulta = `Consulta Turno: ${turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad} (${turnosActivosProximos[0].fecha})`;
+            updates.medico_o_especialidad = turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad;
+            updates.bot_active = true;
+            nextStage = 'turno_consultado';
         } else if (turnoOnlineProximo) {
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
                 `📅 *Tenés un turno online agendado:*\n` +
@@ -2576,12 +2577,21 @@ async function handleChatbotTriage(
                 `• *Fecha y Hora:* ${turnoOnlineProximo.fecha} a las ${turnoOnlineProximo.hora} hs\n` +
                 `• *Agenda:* ${turnoOnlineProximo.agenda}\n\n` +
                 `¿Deseás confirmar, reprogramar o cancelar tu turno?\n\n` +
-                `💡 *¿Deseás averiguar sobre el turno de otro paciente o familiar?* Indícanos su número de *DNI*.`;
+                `💡 *¿Deseás averiguar sobre el turno de otro paciente o familiar?* Indícanos su número de *DNI*.\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
             updates.motivo_consulta = `Turno Online: ${turnoOnlineProximo.profesional} (${turnoOnlineProximo.fecha} ${turnoOnlineProximo.hora} hs)`;
             updates.medico_o_especialidad = turnoOnlineProximo.profesional;
             updates.bot_active = true;
             nextStage = 'esperando_confirmacion_turno';
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
+        } else if (lastBotContent.includes('te ayudamos a coordinar tu turno') || lastBotContent.includes('¿el turno es para vos')) {
+            replyText = `¡Hola *${fullName}*! 🏥 Ya registramos tu consulta para coordinar tu turno.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         } else if (isExistingPatient) {
             const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
 
@@ -2713,7 +2723,7 @@ async function handleChatbotTriage(
     // =============================================
     // FLUJO: DERIVACIÓN DIRECTA A AGENTE HUMANO
     // =============================================
-    else if (analysis.intent === 'derivacion_agente_legacy') {
+    else if ((analysis.intent as any) === 'derivacion_agente_legacy') {
         updates.motivo_consulta = 'Solicitud de Atención con Asesor Humano';
         if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥 Te pido sinceras disculpas por cualquier inconveniente.\n\n` +
