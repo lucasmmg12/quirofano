@@ -1284,21 +1284,31 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
     // 0.4 RECONOCER INTENCIÓN EXPLÍCITA DE NUEVO TURNO (PARA NO CONFUNDIR CON CONSULTA DE TURNO EXISTENTE)
     const isExplicitNewTurnoPhrases = 
-        /\b(nuevo\s+turno|turno\s+nuevo|otro\s+turno|nueva\s+cita|cita\s+nueva|otra\s+cita|nuevo|otra)\b/i.test(clean) ||
-        /\b(sacar|pedir|solicitar|agendar|conseguir|darme|sacarme|dar|reservar)\s+(?:un\s+|el\s+)?(?:nuevo\s+)?(?:turno|cita)\b/i.test(clean) ||
+        /\b(nuevo\s+turno|turno\s+nuevo|otra\s+cita|cita\s+nueva)\b/i.test(clean) ||
+        /\b(sacar|pedir|solicitar|agendar|conseguir|darme|sacarme|reservar)\s+(?:un\s+|el\s+)?(?:nuevo\s+)?(?:turno|cita)\b/i.test(clean) ||
         /\b(?:quiero|quisiera|necesito|podr[ií]a|podr[ií]as|deseo)\s+(?:sacar|pedir|solicitar|agendar|reservar)\s+(?:un\s+|el\s+)?(?:nuevo\s+)?(?:turno|cita)\b/i.test(clean) ||
-        /\b(?:quiero|quisiera|necesito|deseo)\s+(?:un\s+)?(?:turno\s+nuevo|nuevo\s+turno|otro\s+turno)\b/i.test(clean);
+        /\b(?:quiero|quisiera|necesito|deseo)\s+(?:un\s+)?(?:turno\s+nuevo|nuevo\s+turno)\b/i.test(clean);
 
     // 0.5 CONSULTAR TURNO O VISITA PRÓXIMA POR TEXTO LIBRE (PROPIO O DE OTRO PACIENTE)
     const isConsultarTurno = !isExplicitNewTurnoPhrases && (
-        /\b(consultar|averiguar|ver|saber|recordar|buscar|revisar|fijarte|fijarse|conocer|informaci[oó]n|acordar|acordarme)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        // 1. Preguntar si tiene turno o cita agendada (propio o en general)
+        /\b(?:tengo|ten[ií]a|hay)\s+(?:un\s+|el\s+|alg[uú]n\s+|mis?\s+)?turnos?\b/i.test(clean) ||
+        /\b(?:turnos?|citas?|visitas?)\s+(?:pr[oó]xim[oa]s?|agendad[oa]s?|pendientes?)\b/i.test(clean) ||
+        /\bpr[oó]xim[oa]s?\s+(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        /\bmis\s+(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        /\bturnos?\s+(?:a\s+mi\s+nombre|para\s+m[ií])\b/i.test(clean) ||
+        // 2. Olvido de fecha/hora o pregunta por cuándo era
+        /\b(?:me\s+)?olvid[eé]\s+(?:cu[aá]ndo|qu[eé]\s+d[ií]a|a\s+qu[eé]\s+hora|la\s+fecha|el\s+horario|de\s+mi\s+turno|cuando)\b/i.test(clean) ||
+        /\b(?:no\s+recuerdo|no\s+me\s+acuerdo)\s+(?:cu[aá]ndo|qu[eé]\s+d[ií]a|a\s+qu[eé]\s+hora|la\s+fecha|el\s+horario|si\s+tengo)\b/i.test(clean) ||
+        /\b(?:cu[aá]ndo|qu[eé]\s+d[ií]a|a\s+qu[eé]\s+hora)\s+(?:es|era|ten[ií]a|tengo|qued[oó])\s+(?:el\s+|mi\s+|el\s+d[ií]a\s+de\s+|el\s+horario\s+de\s+)?(?:mi\s+)?(?:turnos?|citas?)\b/i.test(clean) ||
+        // 3. Verbos de consulta + turno/cita
+        /\b(consultar|averiguar|ver|saber|recordar|buscar|revisar|fijarte|fijarse|conocer|informaci[oó]n|acordar|acordarme|preguntar)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
         /\b(?:necesito|quiero|quisiera|podr[ií]a|podr[ií]as)\s+(?:consultar|averiguar|saber|ver|preguntar|buscar|recordar)\s+(?:por\s+|sobre\s+)?(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
+        // 4. Turnos de terceros o familiares
         /\b(?:turnos?|citas?|visitas?)\s+(?:de|para|sobre)\s+(?:otro\s+paciente|otra\s+persona|un\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|alguien\s+m[aá]s)\b/i.test(clean) ||
         /\b(?:averiguar|consultar|saber)\s+(?:sobre\s+)?turnos?\s+de\s+(?:otros?\s+pacientes?|otra\s+persona)\b/i.test(clean) ||
-        /\b(?:no\s+recuerdo|no\s+me\s+acuerdo|cu[aá]ndo|a\s+qu[eé]\s+hora|qu[eé]\s+d[ií]a)\s+(?:es|tengo|ped[ií]|saqu[eé]|era|ten[ií]a)?\s*(?:el\s+|un\s+|mi\s+|los?\s+|mis\s+)?(?:turnos?|citas?|visitas?)\b/i.test(clean) ||
-        /\b(?:no\s+recuerdo|no\s+me\s+acuerdo)\s+(?:cu[aá]ndo|qu[eé]\s+d[ií]a|a\s+qu[eé]\s+hora|si\s+tengo)\b/i.test(clean) ||
-        /\b(cu[aá]ndo\s+tengo\s+(?:el\s+|mi\s+)?turno|tengo\s+turno|a\s+qu[eé]\s+hora\s+tengo\s+turno|pr[oó]ximo\s+turno|pr[oó]xima\s+visita|visita\s+agendada)\b/i.test(clean) ||
-        /\b(consultar\s+turno|averiguar\s+turno|ver\s+turno|saber\s+turno)\b/i.test(clean)
+        // 5. Expresiones directas
+        /\b(consultar\s+turno|averiguar\s+turno|ver\s+turno|saber\s+turno|turno\s+agendado|visita\s+agendada)\b/i.test(clean)
     );
     if (isConsultarTurno) {
         return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
@@ -1725,67 +1735,111 @@ async function handleChatbotTriage(
         updates.medico_o_especialidad = null;
     }
 
+    // 1. Identificar al TITULAR legítimo de la línea telefónica en SALUS (hospital_pacientes)
+    // El titular del teléfono es la persona dueña de la línea de WhatsApp (ej: Lucas Marinero)
+    const cleanLocalPhone = phone.replace(/\D/g, '').replace(/^(?:549|54)/, '');
+    let titularPaciente: any = null;
+
+    if (cleanLocalPhone.length >= 8) {
+        try {
+            const { data: pByPhone, error: phoneErr } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .ilike('telefono', `%${cleanLocalPhone}%`)
+                .order('id_paciente', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (!phoneErr && pByPhone) {
+                titularPaciente = pByPhone;
+                console.log(`[triage-bot] Titular de la línea ${phone} (${cleanLocalPhone}) identificado en SALUS: ${titularPaciente.nombre} (DNI: ${titularPaciente.dni})`);
+            }
+        } catch (e) {
+            console.warn('[triage-bot] Error consultando titular por teléfono:', e);
+        }
+    }
+
+    // Detectar si el usuario está preguntando expresamente por sí mismo (titular)
+    const isExplicitlyForSelf = /\b(para\s+m[ií]|a\s+mi\s+nombre|mis\s+turnos?|yo\s+tengo|tengo\s+yo|para\s+mi\s+persona|el\s+m[ií]o|los\s+m[ií]os)\b/i.test(cleanText);
+
+    // Detectar si el usuario está consultando o refiriéndose a un tercero / familiar
+    const isExplicitlyOther = !isExplicitlyForSelf && (
+        /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+pareja|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText) ||
+        currentStage === 'esperando_dni_turno' ||
+        (currentStage === 'turno_consultado' && Boolean(cleanText.match(/\b\d{7,8}\b/))) ||
+        (currentStage === 'esperando_confirmacion_turno' && Boolean(cleanText.match(/\b\d{7,8}\b/)))
+    );
+
     // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
     const normalizedText = cleanText.replace(/\./g, '');
     const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
-    const candidateDni = dniMatch ? dniMatch[0] : (conv?.dni || null);
+    const dniInMessage = dniMatch ? dniMatch[0] : null;
 
-    // Búsqueda en el padrón maestro de SALUS (hospital_pacientes)
-    // REGLA INSTITUCIONAL: El mapeo del paciente se realiza únicamente a partir del DNI provisto por el usuario
-    let paciente: any = null;
+    let paciente: any = titularPaciente || null;
     let pacienteConsultado: any = null;
 
-    if (candidateDni) {
+    if (dniInMessage) {
         try {
             const { data: pByDni, error: pacError } = await supabase
                 .from('hospital_pacientes')
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .eq('dni', candidateDni)
+                .eq('dni', dniInMessage)
                 .limit(1)
                 .maybeSingle();
 
             if (pByDni) {
-                const isExplicitlyOther = /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|alguien\s+m[aá]s)\b/i.test(cleanText) ||
-                    conv?.bot_stage === 'esperando_dni_turno';
+                // ¿El DNI provisto es de un tercero o del titular?
+                const isThirdParty = isExplicitlyOther || (titularPaciente && String(titularPaciente.dni) !== String(dniInMessage) && !isExplicitlyForSelf);
 
-                if (!conv?.dni || !isExplicitlyOther) {
-                    paciente = pByDni;
-                    console.log(`[triage-bot] Titular identificado en SALUS por DNI provisto ${candidateDni}: ${paciente.nombre} (HC: ${paciente.nhc})`);
-                } else {
+                if (isThirdParty) {
                     pacienteConsultado = pByDni;
-                    console.log(`[triage-bot] Paciente consultado (familiar/tercero) DNI ${candidateDni}: ${pacienteConsultado.nombre} (Titular se mantiene: ${paciente?.nombre || conv?.nombre_completo})`);
+                    console.log(`[triage-bot] Paciente consultado (familiar/tercero) DNI ${dniInMessage}: ${pacienteConsultado.nombre} (Titular se preserva: ${paciente?.nombre || conv?.nombre_completo})`);
+                } else {
+                    paciente = pByDni;
+                    titularPaciente = pByDni;
+                    console.log(`[triage-bot] Titular identificado en SALUS por DNI provisto ${dniInMessage}: ${paciente.nombre} (HC: ${paciente.nhc})`);
                 }
             } else {
-                console.log(`[triage-bot] DNI provisto ${candidateDni} no figura en padrón maestro de SALUS`);
+                console.log(`[triage-bot] DNI provisto ${dniInMessage} no figura en padrón maestro de SALUS`);
             }
         } catch (e) {
             console.warn('[triage-bot] Error consultando paciente por DNI:', e);
         }
+    } else if (!paciente && conv?.dni) {
+        try {
+            const { data: pConv } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .eq('dni', conv.dni)
+                .limit(1)
+                .maybeSingle();
+            if (pConv) paciente = pConv;
+        } catch (e) {
+            console.warn('[triage-bot] Error recuperando paciente titular previo:', e);
+        }
     }
 
-    // REGLA DE ORO: Preservar SIEMPRE el nombre original del titular del chat
-    // 1. Si paciente fue hallado por teléfono en SALUS, su nombre oficial.
-    // 2. Si conv?.nombre_completo ya existía y no es genérico, preservar el nombre del chat.
-    // 3. senderName de WhatsApp.
+    // REGLA DE ORO: Preservar SIEMPRE el nombre y DNI original del titular del chat
+    // NUNCA sobreescribir el titular con el DNI o nombre de un paciente consultado (familiar/tercero)
     const rawFullName = (
         (paciente?.nombre && !paciente.nombre.toLowerCase().startsWith('paciente')) ? paciente.nombre :
-        (conv?.nombre_completo && !conv.nombre_completo.toLowerCase().startsWith('paciente') && !conv.nombre_completo.toLowerCase().startsWith('familiar') ? conv.nombre_completo : null) ||
+        (conv?.nombre_completo && !conv.nombre_completo.toLowerCase().startsWith('paciente') && !conv.nombre_completo.toLowerCase().startsWith('familiar') && (!pacienteConsultado || conv.nombre_completo !== pacienteConsultado.nombre) ? conv.nombre_completo : null) ||
         senderName ||
         'Paciente'
     ).trim();
 
     let displayName = rawFullName;
     if (rawFullName.includes(',')) {
-        const parts = rawFullName.split(',').map(p => p.trim()).filter(Boolean);
+        const parts = rawFullName.split(',').map((p: string) => p.trim()).filter(Boolean);
         if (parts.length === 2) {
             displayName = `${parts[1]} ${parts[0]}`;
         }
     }
     const fullName = displayName;
-    const os = (paciente?.coseguro || conv?.obra_social || 'Particular / A confirmar').trim();
-    const dniTitular = paciente?.dni || (conv?.dni && conv.dni !== pacienteConsultado?.dni ? conv.dni : (pacienteConsultado ? null : candidateDni));
+    const os = (paciente?.coseguro || (conv?.obra_social && (!pacienteConsultado || conv.obra_social !== pacienteConsultado.coseguro) ? conv.obra_social : null) || 'Particular / A confirmar').trim();
+    const dniTitular = paciente?.dni || (conv?.dni && conv.dni !== pacienteConsultado?.dni ? conv.dni : null);
 
-    const isExistingPatient = !!(paciente || conv?.dni);
+    const isExistingPatient = !!(paciente || dniTitular);
 
     if (isExistingPatient || paciente) {
         updates = {
@@ -2063,7 +2117,7 @@ async function handleChatbotTriage(
         currentStage === 'esperando_dni_turno' ||
         ((currentStage === 'turno_consultado' || currentStage === 'esperando_confirmacion_turno') && cleanText.replace(/\./g, '').match(/\b\d{7,8}\b/)))
     ) {
-        const isAskingForOtherPatient = /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText);
+        const isAskingForOtherPatient = !isExplicitlyForSelf && /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText);
 
         // Detectar si en el mensaje actual vino un DNI explícito (sin considerar la memoria del usuario que envió el chat)
         const explicitDniMatch = cleanText.replace(/\./g, '').match(/\b\d{7,8}\b/);
@@ -2081,18 +2135,18 @@ async function handleChatbotTriage(
             nextStage = 'esperando_dni_turno';
             updates.motivo_consulta = 'Consulta de Turno de otro paciente (esperando DNI)';
         } else {
-            let dniToSearch: string | null = dniInCurrentMsg;
-            let isConsultingOther = isAskingForOtherPatient || currentStage === 'esperando_dni_turno' || (dniInCurrentMsg && dniTitular && dniInCurrentMsg !== dniTitular) || Boolean(pacienteConsultado);
+            let dniToSearch: string | null = (isExplicitlyForSelf ? null : dniInCurrentMsg);
+            let isConsultingOther = !isExplicitlyForSelf && (isAskingForOtherPatient || currentStage === 'esperando_dni_turno' || (dniInCurrentMsg && dniTitular && dniInCurrentMsg !== dniTitular) || Boolean(pacienteConsultado));
 
-            if (!dniToSearch) {
-                if (currentStage === 'esperando_dni_turno') {
+            if (!dniToSearch || isExplicitlyForSelf) {
+                if (currentStage === 'esperando_dni_turno' && !isExplicitlyForSelf) {
                     replyText = `Por favor, indícanos el número de *DNI del paciente* (solo números, sin puntos ni espacios) para poder buscar su turno agendado en el sistema:` +
                         `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                     updates.bot_stage = 'esperando_dni_turno';
                     updates.bot_active = true;
                     nextStage = 'esperando_dni_turno';
                 } else {
-                    // Consulta propia o general (ej: "consultar mi turno" o presionó opción 1)
+                    // Consulta propia o general (ej: "consultar mi turno", "tengo un turno para mi?", o presionó opción 1)
                     if (turnosActivosProximos && turnosActivosProximos.length > 0) {
                         replyText = formatTurnosActivosReply(turnosActivosProximos, fullName, false, resolvedDni || undefined);
                         updates.motivo_consulta = `Consulta de Turno Propio: ${turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad} (${turnosActivosProximos[0].fecha})`;
@@ -2103,13 +2157,14 @@ async function handleChatbotTriage(
                         dniToSearch = resolvedDni;
                         isConsultingOther = false;
                     } else {
-                        replyText = `¡Con gusto te ayudo a consultar citas agendadas! 🏥\n\n` +
-                            `Por favor, indícanos el número de *DNI del paciente* (solo números, sin puntos ni espacios):` +
+                        const firstName = (fullName || '').includes(',') ? fullName.split(',')[1].trim().split(' ')[0] : fullName.split(' ')[0];
+                        replyText = `¡Hola${firstName && firstName !== 'Paciente' ? ` *${firstName}*` : ''}! 🏥\n\n` +
+                            `Para verificar si tenés citas o turnos próximos agendados a tu nombre en Sanatorio Argentino, por favor indícanos tu número de *DNI* (solo números, sin puntos ni espacios):` +
                             `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                         updates.bot_stage = 'esperando_dni_turno';
                         updates.bot_active = true;
                         nextStage = 'esperando_dni_turno';
-                        updates.motivo_consulta = 'Consulta de Turno (esperando DNI)';
+                        updates.motivo_consulta = 'Consulta de Turno Propio (esperando DNI)';
                     }
                 }
             }
@@ -2135,7 +2190,9 @@ async function handleChatbotTriage(
 
                 if (turnosDni && turnosDni.length > 0) {
                     replyText = formatTurnosActivosReply(turnosDni, nombreFinal, isConsultingOther, dniToSearch);
-                    updates.motivo_consulta = `Consulta Turno DNI ${dniToSearch}: ${turnosDni[0].medico || turnosDni[0].especialidad} (${turnosDni[0].fecha})`;
+                    updates.motivo_consulta = isConsultingOther
+                        ? `Consulta Turno DNI ${dniToSearch}: ${turnosDni[0].medico || turnosDni[0].especialidad} (${turnosDni[0].fecha})`
+                        : `Consulta de Turno Propio: ${turnosDni[0].medico || turnosDni[0].especialidad} (${turnosDni[0].fecha})`;
                     updates.medico_o_especialidad = turnosDni[0].medico || turnosDni[0].especialidad;
                     updates.bot_active = true;
                     nextStage = 'turno_consultado';
