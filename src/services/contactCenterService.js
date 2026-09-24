@@ -1836,7 +1836,8 @@ export async function fetchChatbotConfig() {
                     'contact_center_bot_name',
                     'contact_center_handoff_normal',
                     'contact_center_handoff_delay',
-                    'contact_center_delay_threshold'
+                    'contact_center_delay_threshold',
+                    'contact_center_bot_tree'
                 ]),
             supabase
                 .from('contact_center_conversations')
@@ -1859,14 +1860,24 @@ export async function fetchChatbotConfig() {
             }
         });
 
+        let parsedBotTree = null;
+        if (map['contact_center_bot_tree']) {
+            try {
+                parsedBotTree = JSON.parse(map['contact_center_bot_tree']);
+            } catch (e) {
+                console.warn('[contactCenterService] Error parsing bot tree JSON:', e);
+            }
+        }
+
         return {
             systemPrompt: map['contact_center_system_prompt'] || DEFAULT_CHATBOT_SYSTEM_PROMPT,
-            model: map['contact_center_ai_model'] || 'gpt-4o',
+            model: map['contact_center_ai_model'] || 'gpt-5.5',
             temperature: map['contact_center_ai_temperature'] || '0.3',
             botName: map['contact_center_bot_name'] || 'Dora',
             handoffNormal: map['contact_center_handoff_normal'] || DEFAULT_HANDOFF_NORMAL,
             handoffDelay: map['contact_center_handoff_delay'] || DEFAULT_HANDOFF_DELAY,
             delayThreshold: map['contact_center_delay_threshold'] ? parseInt(map['contact_center_delay_threshold'], 10) : 5,
+            botTree: parsedBotTree,
             unassignedQueueCount,
             updatedAt: latestUpdate,
             updatedBy: lastUser
@@ -1875,12 +1886,13 @@ export async function fetchChatbotConfig() {
         console.error('[contactCenterService] Exception fetching chatbot config:', err);
         return {
             systemPrompt: DEFAULT_CHATBOT_SYSTEM_PROMPT,
-            model: 'gpt-4o',
+            model: 'gpt-5.5',
             temperature: '0.3',
             botName: 'Dora',
             handoffNormal: DEFAULT_HANDOFF_NORMAL,
             handoffDelay: DEFAULT_HANDOFF_DELAY,
             delayThreshold: 5,
+            botTree: null,
             unassignedQueueCount: 0,
             updatedAt: null,
             updatedBy: null
@@ -1893,12 +1905,13 @@ export async function fetchChatbotConfig() {
  */
 export async function saveChatbotConfig({
     systemPrompt,
-    model = 'gpt-4o',
+    model = 'gpt-5.5',
     temperature = '0.3',
     botName = 'Dora',
     handoffNormal = DEFAULT_HANDOFF_NORMAL,
     handoffDelay = DEFAULT_HANDOFF_DELAY,
     delayThreshold = 5,
+    botTree = null,
     user = 'admin'
 }) {
     const now = new Date().toISOString();
@@ -1961,6 +1974,17 @@ export async function saveChatbotConfig({
         }
     ];
 
+    if (botTree) {
+        rows.push({
+            key: 'contact_center_bot_tree',
+            value: typeof botTree === 'string' ? botTree : JSON.stringify(botTree),
+            label: 'Estructura y Respuestas del Árbol Conversacional',
+            category: 'contact_center',
+            updated_at: now,
+            updated_by: user
+        });
+    }
+
     const { data, error } = await supabase
         .from('app_config')
         .upsert(rows, { onConflict: 'key' })
@@ -1968,6 +1992,33 @@ export async function saveChatbotConfig({
 
     if (error) {
         console.error('[contactCenterService] Error saving chatbot config:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+/**
+ * Guarda exclusivamente el árbol conversacional en app_config
+ */
+export async function saveBotTreeConfig(botTree, user = 'admin') {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+        .from('app_config')
+        .upsert([
+            {
+                key: 'contact_center_bot_tree',
+                value: typeof botTree === 'string' ? botTree : JSON.stringify(botTree),
+                label: 'Estructura y Respuestas del Árbol Conversacional',
+                category: 'contact_center',
+                updated_at: now,
+                updated_by: user
+            }
+        ], { onConflict: 'key' })
+        .select();
+
+    if (error) {
+        console.error('[contactCenterService] Error saving bot tree config:', error);
         throw error;
     }
 

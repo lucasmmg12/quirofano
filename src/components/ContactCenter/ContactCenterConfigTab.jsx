@@ -3,7 +3,8 @@ import {
     Bot, Save, RotateCcw, Copy, Check, Sparkles, Sliders, Shield, 
     AlertCircle, Info, RefreshCw, Eye, EyeOff, Terminal, CheckCircle2,
     Cpu, Activity, Zap, Users, MessageSquare, Clock, AlertTriangle,
-    Send, Trash2, Search, UserCheck, UserX, CornerDownLeft, Play, ArrowRight
+    Send, Trash2, Search, UserCheck, UserX, CornerDownLeft, Play, ArrowRight,
+    GitBranch, Layers
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -13,6 +14,8 @@ import {
     DEFAULT_HANDOFF_NORMAL,
     DEFAULT_HANDOFF_DELAY
 } from '../../services/contactCenterService';
+import ContactCenterBotTree from './ContactCenterBotTree';
+import { DEFAULT_BOT_TREE_NODES, generatePromptDirectivesFromTree } from './botTreeData';
 
 const VARIABLE_TAGS = [
     { tag: '{nombre}', label: 'Nombre Paciente', desc: 'Nombre completo o de pila detectado' },
@@ -27,6 +30,8 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const [saving, setSaving] = useState(false);
     const [copied, setCopied] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
+    const [activeSubTab, setActiveSubTab] = useState('tree'); // 'tree' | 'editor' | 'simulator'
+    const [botTreeNodes, setBotTreeNodes] = useState(DEFAULT_BOT_TREE_NODES);
 
     // Form state - AI Bot
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
@@ -67,6 +72,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const textareaRef = useRef(null);
 
     // Cargar configuración activa
+    // Cargar configuración activa
     const loadConfig = async () => {
         setLoading(true);
         try {
@@ -79,6 +85,9 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
             setHandoffDelay(cfg.handoffDelay || DEFAULT_HANDOFF_DELAY);
             setDelayThreshold(cfg.delayThreshold ?? 5);
             setUnassignedQueueCount(cfg.unassignedQueueCount || 0);
+            if (cfg.botTree && Array.isArray(cfg.botTree) && cfg.botTree.length > 0) {
+                setBotTreeNodes(cfg.botTree);
+            }
             setLastUpdated(cfg.updatedAt);
             setLastUser(cfg.updatedBy);
         } catch (err) {
@@ -110,7 +119,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
         }, 50);
     };
 
-    // Guardar cambios
+    // Guardar cambios globales
     const handleSave = async () => {
         if (!systemPrompt.trim()) {
             addToast?.('El System Prompt no puede estar vacío', 'warning');
@@ -128,17 +137,72 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                 handoffNormal,
                 handoffDelay,
                 delayThreshold: parseInt(delayThreshold, 10) || 5,
+                botTree: botTreeNodes,
                 user: userIdentifier
             });
             setLastUpdated(new Date().toISOString());
             setLastUser(userIdentifier);
-            addToast?.('¡Configuración del Chatbot y Derivaciones actualizada exitosamente!', 'success');
+            addToast?.('¡Configuración del Chatbot, Árbol y Derivaciones guardada exitosamente!', 'success');
         } catch (err) {
             console.error('Error guardando config:', err);
             addToast?.('Error al guardar la configuración en la base de datos', 'error');
         } finally {
             setSaving(false);
         }
+    };
+
+    // Guardar árbol conversacional específicamente
+    const handleSaveTree = async (updatedNodes) => {
+        setSaving(true);
+        try {
+            const userIdentifier = currentUser?.usuario || currentUser?.nombre || 'supervisor';
+            setBotTreeNodes(updatedNodes);
+            await saveChatbotConfig({
+                systemPrompt,
+                model,
+                temperature,
+                botName,
+                handoffNormal,
+                handoffDelay,
+                delayThreshold: parseInt(delayThreshold, 10) || 5,
+                botTree: updatedNodes,
+                user: userIdentifier
+            });
+            setLastUpdated(new Date().toISOString());
+            setLastUser(userIdentifier);
+            addToast?.('¡Árbol conversacional y respuestas predeterminadas guardadas exitosamente!', 'success');
+        } catch (err) {
+            console.error('Error guardando árbol conversacional:', err);
+            addToast?.('Error al guardar el árbol conversacional', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Sincronizar directivas del árbol con el System Prompt
+    const handleSyncPromptWithTree = (nodesToSync) => {
+        const directives = generatePromptDirectivesFromTree(nodesToSync);
+        const marker = '### ESTRUCTURA DEL ÁRBOL CONVERSACIONAL (FLUJOGRAMA DE DECISIÓN):';
+        let newPrompt = systemPrompt;
+        if (newPrompt.includes(marker)) {
+            const idx = newPrompt.indexOf(marker);
+            newPrompt = newPrompt.substring(0, idx).trim() + '\n\n' + directives;
+        } else {
+            newPrompt = newPrompt.trim() + '\n\n' + directives;
+        }
+        setSystemPrompt(newPrompt);
+        addToast?.('System Prompt actualizado con las respuestas y bifurcaciones del árbol.', 'success');
+    };
+
+    // Probar paso del árbol directamente en el Simulador Sandbox
+    const handleTestNodeInSimulator = ({ message, nodeId, nodeTitle, patientType }) => {
+        setActiveSubTab('simulator');
+        setPresetPatient(patientType || 'registrado');
+        setSimMode('chat');
+        addToast?.(`Cargando paso: "${nodeTitle}" en el Simulador...`, 'info');
+        setTimeout(() => {
+            handleSendSimMessage(message);
+        }, 300);
     };
 
     // Restablecer al prompt de fábrica
@@ -442,6 +506,114 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                 </div>
             </div>
 
+            {/* Selector de Sub-Pestañas: Árbol Conversacional vs Parámetros & Prompt vs Simulador Sandbox */}
+            <div style={{
+                display: 'flex',
+                gap: '8px',
+                background: '#FFFFFF',
+                padding: '6px',
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+            }}>
+                <button
+                    type="button"
+                    onClick={() => setActiveSubTab('tree')}
+                    style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: activeSubTab === 'tree' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : 'transparent',
+                        color: activeSubTab === 'tree' ? '#FFFFFF' : '#475569',
+                        fontWeight: 800,
+                        fontSize: '0.84rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: activeSubTab === 'tree' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <GitBranch size={16} />
+                    🌳 Flujograma Conversacional (Árbol del Bot)
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => {
+                        setActiveSubTab('editor');
+                        setShowPreview(false);
+                    }}
+                    style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: activeSubTab === 'editor' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : 'transparent',
+                        color: activeSubTab === 'editor' ? '#FFFFFF' : '#475569',
+                        fontWeight: 800,
+                        fontSize: '0.84rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: activeSubTab === 'editor' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <Sliders size={16} />
+                    ⚙️ Parámetros & System Prompt ({model})
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => {
+                        setActiveSubTab('simulator');
+                        setShowPreview(true);
+                    }}
+                    style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: activeSubTab === 'simulator' ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' : 'transparent',
+                        color: activeSubTab === 'simulator' ? '#FFFFFF' : '#475569',
+                        fontWeight: 800,
+                        fontSize: '0.84rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: activeSubTab === 'simulator' ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <Play size={16} />
+                    🧪 Simulador Sandbox de Paciente (IA en Vivo)
+                </button>
+            </div>
+
+            {/* VISTA 1: ÁRBOL CONVERSACIONAL */}
+            {activeSubTab === 'tree' && (
+                <ContactCenterBotTree
+                    botTreeNodes={botTreeNodes}
+                    onSaveTree={handleSaveTree}
+                    onSyncPromptWithTree={handleSyncPromptWithTree}
+                    onTestNodeInSimulator={handleTestNodeInSimulator}
+                    botName={botName}
+                    saving={saving}
+                    addToast={addToast}
+                />
+            )}
+
+            {/* VISTA 2 y 3: EDITOR DE SYSTEM PROMPT & SIMULADOR */}
+            {activeSubTab !== 'tree' && (
+                <>
             {/* Grid 2 Columnas: Parámetros del Modelo y System Prompt */}
             <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
                 
@@ -1585,6 +1757,8 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
 
                 </div>
             </div>
+            </>
+            )}
 
         </div>
     );
