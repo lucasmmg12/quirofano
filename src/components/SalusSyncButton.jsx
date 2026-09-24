@@ -5,7 +5,7 @@
  * - Si está offline: botón que descarga el launcher .bat para que el usuario lo ejecute
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle, Clock } from 'lucide-react';
+import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle, Clock, RefreshCw } from 'lucide-react';
 import { checkSalusHealth } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
 import { supabase } from '../lib/supabase';
@@ -80,6 +80,7 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
     });
     const [, setTick] = useState(0);
     const [showDownloadHelp, setShowDownloadHelp] = useState(false);
+    const [checking, setChecking] = useState(false);
 
     const currentUser = getCurrentUser();
     const isFrojo = currentUser?.usuario === 'frojo';
@@ -136,23 +137,47 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
         return () => clearInterval(interval);
     }, [fetchLatestUpdate]);
 
-    // Verificar disponibilidad (máximo 2 intentos si está offline para evitar spam de ERR_CONNECTION_REFUSED en consola)
+    // Verificar disponibilidad de SALUS
+    const verifyHealth = useCallback(async () => {
+        const h = await checkSalusHealth();
+        setSalusAvailable(h.available);
+        if (h.available) {
+            setShowDownloadHelp(false);
+        }
+        return h.available;
+    }, []);
+
+    // Polling adaptativo: cada 8s normalmente, y cada 30s si está offline continuado
     useEffect(() => {
         let attempts = 0;
         let intervalId = null;
-        const check = () => checkSalusHealth().then(h => {
-            setSalusAvailable(h.available);
-            if (!h.available) {
+
+        const check = async () => {
+            const isAvail = await verifyHealth();
+            if (!isAvail) {
                 attempts++;
-                if (attempts >= 2 && intervalId) {
+                if (attempts === 3 && intervalId) {
                     clearInterval(intervalId);
+                    intervalId = setInterval(check, 30000);
                 }
+            } else {
+                attempts = 0;
             }
-        });
+        };
+
         check();
-        intervalId = setInterval(check, 10000);
+        intervalId = setInterval(check, 8000);
         return () => { if (intervalId) clearInterval(intervalId); };
-    }, []);
+    }, [verifyHealth]);
+
+    // Cuando el modal de activación está abierto, verificar con mayor frecuencia (cada 3s)
+    useEffect(() => {
+        if (!showDownloadHelp) return;
+        const interval = setInterval(() => {
+            verifyHealth();
+        }, 3000);
+        return () => clearInterval(interval);
+    }, [showDownloadHelp, verifyHealth]);
 
     const handleSync = async (isFast = true) => {
         setSyncing(true);
@@ -229,6 +254,29 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
                 >
                     <Download size={14} />
                     Activar SALUS
+                </button>
+
+                <button
+                    onClick={() => {
+                        setChecking(true);
+                        verifyHealth().finally(() => setChecking(false));
+                    }}
+                    disabled={checking}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '8px 11px', borderRadius: '10px',
+                        background: '#F1F5F9', color: '#475569',
+                        border: '1px solid #CBD5E1',
+                        fontSize: '0.75rem', fontWeight: 600,
+                        cursor: checking ? 'wait' : 'pointer',
+                        transition: 'all 0.2s',
+                    }}
+                    onMouseOver={e => { if (!checking) e.currentTarget.style.background = '#E2E8F0'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = '#F1F5F9'; }}
+                    title="Comprobar si el sync-server ya está iniciado en esta PC"
+                >
+                    <RefreshCw size={13} style={checking ? { animation: 'spin 1s linear infinite' } : {}} />
+                    {checking ? 'Probando...' : 'Reintentar'}
                 </button>
 
                 {showTimestamp && formattedSync && (
@@ -328,7 +376,15 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
                                         </div>
                                     </div>
                                     <div style={{
-                                        marginTop: '24px', padding: '12px',
+                                        marginTop: '16px', padding: '10px 14px',
+                                        background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px',
+                                        fontSize: '0.8rem', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '10px'
+                                    }}>
+                                        <Loader2 size={16} style={{ animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
+                                        <span>Buscando servidor en <strong>127.0.0.1:3456</strong>... Se cerrará al detectar conexión.</span>
+                                    </div>
+                                    <div style={{
+                                        marginTop: '12px', padding: '12px',
                                         background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: '12px',
                                         fontSize: '0.8rem', color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: '8px'
                                     }}>

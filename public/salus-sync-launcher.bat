@@ -41,33 +41,28 @@ if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 cd /d "%INSTALL_DIR%"
 
 echo [2/4] Descargando componentes del servidor desde GitHub...
-echo      - index.js
-curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/index.js" -o "%INSTALL_DIR%\index.js"
-if %ERRORLEVEL% NEQ 0 (
-    if not exist "%INSTALL_DIR%\index.js" (
-        echo  ERROR: No se pudo descargar index.js y no hay version local previa.
-        echo  Verifique su conexion a Internet.
-        pause
-        exit /b 1
-    )
-    echo      (Usando version local previa de index.js)
+set MODULES=index.js package.json sync_censo_camas.mjs sync_diagnosticos.mjs sync_kinesiologia_uci.mjs sync_pacientes.mjs sync_turnos_online.mjs sync_doctor_parameters.mjs sync_turnos_activos.mjs sync_ocupacion.mjs daily_sync_job.mjs sync_uci.js
+
+for %%F in (%MODULES%) do (
+    echo      - %%F
+    curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/%%F" -o "%INSTALL_DIR%\%%F"
 )
 
-echo      - sync_censo_camas.mjs
-curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/sync_censo_camas.mjs" -o "%INSTALL_DIR%\sync_censo_camas.mjs"
-
-echo      - sync_diagnosticos.mjs
-curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/sync_diagnosticos.mjs" -o "%INSTALL_DIR%\sync_diagnosticos.mjs"
-
-echo      - sync_kinesiologia_uci.mjs
-curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/sync_kinesiologia_uci.mjs" -o "%INSTALL_DIR%\sync_kinesiologia_uci.mjs"
-
-echo      - package.json
-curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/package.json" -o "%INSTALL_DIR%\package.json"
+if not exist "%INSTALL_DIR%\index.js" (
+    echo  ERROR: No se pudo descargar index.js y no hay version local previa.
+    echo  Verifique su conexion a Internet.
+    pause
+    exit /b 1
+)
 
 :: Generar .env local seguro
 echo VITE_SUPABASE_URL=https://hakysnqiryimxbwdslwe.supabase.co > "%INSTALL_DIR%\.env"
 echo SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDA0MjI3NCwiZXhwIjoyMDg1NjE4Mjc0fQ.v0Zw7yFjGKJX8xsMCZJPwRyhr2eNd1gjASsI7qSK0YM >> "%INSTALL_DIR%\.env"
+echo SALUS_DB_SERVER=128.223.16.29 >> "%INSTALL_DIR%\.env"
+echo SALUS_DB_PORT=2450 >> "%INSTALL_DIR%\.env"
+echo SALUS_DB_USER=SalusConsulta >> "%INSTALL_DIR%\.env"
+echo SALUS_DB_PASSWORD=ConsultaSALUS1234 >> "%INSTALL_DIR%\.env"
+echo SALUS_DB_NAME=SALUS >> "%INSTALL_DIR%\.env"
 
 :: 4. Verificar dependencias
 if not exist "%INSTALL_DIR%\node_modules\express" (

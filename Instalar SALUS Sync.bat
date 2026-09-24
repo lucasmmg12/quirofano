@@ -42,6 +42,9 @@ if %ERRORLEVEL% EQU 0 (
 
 :: 3. Iniciar ahora
 echo [3/3] Iniciando sync-server ahora...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr :3456 ^| findstr LISTENING 2^>nul') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
 cd /d "%SCRIPT_DIR%"
 start /min "SALUS Sync" node index.js
 
