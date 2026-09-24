@@ -36,15 +36,29 @@ Deno.serve(async (req) => {
     }
 
     try {
-        // Detectar línea desde query param ?line=line_a|line_b
+        // Detectar línea desde query param ?line=line_a|line_b o payload
         const url = new URL(req.url);
-        const lineId = url.searchParams.get('line') || null;
+        let lineId = url.searchParams.get('line') || null;
 
         const payload = await req.json();
         const { eventName, data } = payload;
 
+        // Auto-resolver lineId por projectId si no vino en el query param del URL
+        if (!lineId) {
+            const incomingProjectId = payload.projectId || data?.projectId;
+            if (incomingProjectId === 'c3fd918b-b736-40dc-a841-cbb73d3b2a8d') lineId = 'contact_center';
+            else if (incomingProjectId === '2bf4fc78-5564-4b9c-9d7b-26e328db06c7') lineId = 'line_b';
+            else if (incomingProjectId === 'f6c7b99b-88ec-46c4-bcd2-6a3457a36ca3') lineId = 'line_c';
+            else if (incomingProjectId === 'c42aa354-f1a3-44a6-b95b-5ccb24562254') lineId = 'line_a';
+            else if (incomingProjectId === 'e03a7adc-28de-4be3-99b9-fee02de099e0') lineId = 'line_recepciones';
+            else {
+                // Fallback por defecto a contact_center para asegurar que el chatbot nunca quede inactivo por falta de parámetro
+                lineId = 'contact_center';
+            }
+        }
+
         // Log completo del payload para debug (ver estructura de media)
-        console.log(`[webhook] Evento: ${eventName}`, JSON.stringify(payload, null, 2));
+        console.log(`[webhook] Evento: ${eventName} | Line: ${lineId}`, JSON.stringify(payload, null, 2));
 
         // =============================================
         // MANEJO DE EVENTOS DE STATUS (conexión/desconexión del bot)
@@ -347,10 +361,13 @@ Deno.serve(async (req) => {
         // NUNCA ejecutar en line_a, line_b, line_c (Cirugías / Admisión) ni line_recepciones
         // =============================================
         let triageResult: any = null;
-        if (direction === 'incoming' && phone && lineId === 'contact_center') {
+        const nonContactCenterLines = ['line_a', 'line_b', 'line_c', 'line_recepciones', 'line_meta'];
+        const isTargetContactCenter = lineId === 'contact_center' || (!nonContactCenterLines.includes(lineId || ''));
+
+        if (direction === 'incoming' && phone && isTargetContactCenter) {
             try {
                 const textToTriage = content || (mediaUrl ? `[${finalMediaType}]` : '');
-                triageResult = await handleChatbotTriage(supabase, phone, textToTriage, senderName, lineId, finalMediaType, mediaUrl);
+                triageResult = await handleChatbotTriage(supabase, phone, textToTriage, senderName, lineId || 'contact_center', finalMediaType, mediaUrl);
             } catch (triageError: any) {
                 console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
                 triageResult = { error: triageError?.message || String(triageError) };
@@ -1564,17 +1581,33 @@ async function handleChatbotTriage(
         }
     }
 
-    // Si la conversación NO estaba cerrada ni reseteada por timeout, y ya está asignada a un agente humano en vivo
-    // O si el bot fue silenciado/pausado manualmente o ya está esperando a un asesor, NO responder
-    if (conv && !wasClosed && !wasResetByTimeout) {
-        if (conv.assigned_agent_id || conv.bot_active === false || conv.bot_stage === 'esperando_agente') {
-            console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}, bot_active=false o bot_stage=${conv.bot_stage}. Bot en silencio.`);
-            
+    // 1.1 Si la conversación está asignada a un agente humano en vivo: el bot se mantiene en silencio absoluto
+    if (conv && !wasClosed && conv.assigned_agent_id) {
+        console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}. Bot en silencio.`);
+        const silentUpdates: Record<string, any> = {
+            last_message_text: cleanText,
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            bot_active: false
+        };
+        const candidateDni = cleanText.match(/\b\d{7,8}\b/)?.[0];
+        if (candidateDni && !conv.dni) {
+            silentUpdates.dni = candidateDni;
+        }
+        await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
+        return;
+    }
+
+    // 1.2 Si el bot fue silenciado o está esperando agente, verificar si el paciente envía un saludo o reinicio ("hola", "menu", "inicio")
+    const isExplicitGreetingOrMenu = /^(hola|buenas|buen\s+dia|buenas\s+tardes|buenas\s+noches|menu|menú|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/i.test(cleanText);
+
+    if (conv && !wasClosed && (conv.bot_active === false || conv.bot_stage === 'esperando_agente')) {
+        if (!isExplicitGreetingOrMenu) {
+            console.log(`[triage-bot] Chat ${phone} en espera de asesor (bot_active=false o bot_stage=${conv.bot_stage}). Bot en silencio.`);
             const silentUpdates: Record<string, any> = {
                 last_message_text: cleanText,
                 last_message_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                bot_active: false // asegurar que permanezca en silencio
+                updated_at: new Date().toISOString()
             };
             const candidateDni = cleanText.match(/\b\d{7,8}\b/)?.[0];
             if (candidateDni && !conv.dni) {
@@ -1582,6 +1615,10 @@ async function handleChatbotTriage(
             }
             await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
             return;
+        } else {
+            console.log(`[triage-bot] Chat ${phone} reactivado por saludo o solicitud de menú ("${cleanText}").`);
+            conv.bot_active = true;
+            conv.bot_stage = 'inicio';
         }
     }
 
