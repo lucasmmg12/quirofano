@@ -736,6 +736,7 @@ interface IntentDetectionResult {
     doctorRecord: any | null;
     isExplicitNumberOption: string | null;
     sectorKey?: string | null;
+    specialtyCandidate?: string | null;
 }
 
 interface ConversationContext {
@@ -766,6 +767,45 @@ const STOPWORDS_MEDICOS = new Set([
     'prevenir', 'prevencion', 'prevención', 'guardia', 'guardias', 'vacuna', 'vacunas', 'registro',
     'presupuesto', 'presupuestos', 'informe', 'informes', 'reclamo', 'reclamos'
 ]);
+
+const SPECIALTY_MAP: [RegExp, string][] = [
+    [/\b(cl[ií]nic[ao]s?|m[eé]dic[ao]\s+cl[ií]nic[ao]|cl[ií]nica\s+m[eé]dica|medicina\s+interna)\b/i, 'Clínica Médica'],
+    [/\b(pediatr[ií]a|pediatras?)\b/i, 'Pediatría'],
+    [/\b(ginecolog[ií]a|ginec[oó]log[ao]s?|obstetricia|obstetras?|tocoginecolog[ií]a)\b/i, 'Ginecología y Obstetricia'],
+    [/\b(cardiolog[ií]a|cardi[oó]log[ao]s?)\b/i, 'Cardiología'],
+    [/\b(traumatolog[ií]a|traumat[oó]log[ao]s?|ortopedia)\b/i, 'Traumatología'],
+    [/\b(dermatolog[ií]a|dermat[oó]log[ao]s?)\b/i, 'Dermatología'],
+    [/\b(neurolog[ií]a|neur[oó]log[ao]s?)\b/i, 'Neurología'],
+    [/\b(urolog[ií]a|ur[oó]log[ao]s?)\b/i, 'Urología'],
+    [/\b(oftalmolog[ií]a|oftalm[oó]log[ao]s?|oculistas?)\b/i, 'Oftalmología'],
+    [/\b(otorrino|otorrinolaringolog[ií]a|otorrinolaring[oó]log[ao]s?)\b/i, 'Otorrinolaringología'],
+    [/\b(gastroenterolog[ií]a|gastroenter[oó]log[ao]s?|gastro)\b/i, 'Gastroenterología'],
+    [/\b(endocrinolog[ií]a|endocrin[oó]log[ao]s?)\b/i, 'Endocrinología'],
+    [/\b(reumatolog[ií]a|reumat[oó]log[ao]s?)\b/i, 'Reumatología'],
+    [/\b(neumonolog[ií]a|neumon[oó]log[ao]s?|neumolog[ií]a|pulmonar)\b/i, 'Neumonología'],
+    [/\b(nefrolog[ií]a|nefr[oó]log[ao]s?)\b/i, 'Nefrología'],
+    [/\b(hematolog[ií]a|hemat[oó]log[ao]s?)\b/i, 'Hematología'],
+    [/\b(infectolog[ií]a|infect[oó]log[ao]s?)\b/i, 'Infectología'],
+    [/\b(nutrici[oó]n|nutricionistas?)\b/i, 'Nutrición'],
+    [/\b(kinesiolog[ií]a|kinesi[oó]log[ao]s?|fisioterapia)\b/i, 'Kinesiología'],
+    [/\b(psicolog[ií]a|psic[oó]log[ao]s?)\b/i, 'Psicología'],
+    [/\b(psiquiatr[ií]a|psiquiatras?)\b/i, 'Psiquiatría'],
+    [/\b(cirug[ií]a|cirujan[ao]s?)\b/i, 'Cirugía General'],
+    [/\b(flebolog[ií]a|fleb[oó]log[ao]s?)\b/i, 'Flebología'],
+    [/\b(alergia|alergistas?|inmunolog[ií]a)\b/i, 'Alergia e Inmunología'],
+    [/\b(mastolog[ií]a|mast[oó]log[ao]s?)\b/i, 'Mastología'],
+    [/\b(fertilidad|reproducci[oó]n\s+asistida)\b/i, 'Medicina Reproductiva / Fertilidad'],
+    [/\b(ecograf[ií]a|ecograf[ií]as|ecografistas?)\b/i, 'Ecografía'],
+    [/\b(radiograf[ií]a|rayos\s*x)\b/i, 'Radiografía']
+];
+
+function detectSpecialty(text: string): string | null {
+    if (!text) return null;
+    for (const [regex, name] of SPECIALTY_MAP) {
+        if (regex.test(text)) return name;
+    }
+    return null;
+}
 
 /**
  * Verifica si el Contact Center se encuentra dentro del horario de atención:
@@ -1152,10 +1192,41 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     if (/^[l|l️⃣]$/i.test(clean) || /^opci[oó]n\s*l$/i.test(clean)) {
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: 'L' };
     }
+    const isWaitingForUserData = 
+        context?.botStage === 'esperando_datos_turno' ||
+        context?.botStage === 'esperando_dni_turno' ||
+        context?.botStage === 'esperando_dni' ||
+        context?.botStage === 'esperando_datos_nuevo' ||
+        context?.botStage === 'esperando_orden_foto';
+
+    // GUARDA ESTRICTA DE CONTEXTO: Si el bot está esperando datos específicos del paciente,
+    // los dígitos aislados NO son opciones del menú principal.
+    if (context?.botStage === 'esperando_datos_turno') {
+        const specialtyFromText = detectSpecialty(clean);
+        return { 
+            intent: 'turno', 
+            doctorCandidate: null, 
+            doctorRecord: null, 
+            isExplicitNumberOption: null, 
+            specialtyCandidate: specialtyFromText 
+        };
+    }
+
+    if (context?.botStage === 'esperando_dni_turno') {
+        return { 
+            intent: 'consultar_turno', 
+            doctorCandidate: null, 
+            doctorRecord: null, 
+            isExplicitNumberOption: null 
+        };
+    }
+
     const isLastBotWelcomeMenu = 
-        context?.botStage === 'menu_bienvenida' ||
-        lastBotContent.includes('consultar mi próximo turno') || 
-        lastBotContent.includes('en qué podemos ayudarte hoy');
+        !isWaitingForUserData && (
+            context?.botStage === 'menu_bienvenida' ||
+            context?.botStage === 'inicio' ||
+            (!context?.botStage && (lastBotContent.includes('consultar mi próximo turno') || lastBotContent.includes('en qué podemos ayudarte hoy')))
+        );
 
     const isLastBotImageMenu = lastBotContent.includes('recibimos tu imagen') || lastBotContent.includes('presupuesto o aranceles particulares');
     const isLastBotGreetingMenu = 
@@ -1172,6 +1243,9 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         if (isLastBotGreetingMenu) {
             return { intent: 'gestion_propia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
+        if (isLastBotImageMenu) {
+            return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+        }
         return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
     }
     if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean)) {
@@ -1181,7 +1255,10 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         if (isLastBotGreetingMenu) {
             return { intent: 'gestion_familiar', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
         }
-        return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        if (isLastBotImageMenu) {
+            return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        }
+        return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
     }
     if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
         if (isLastBotWelcomeMenu) {
@@ -1190,7 +1267,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         if (isLastBotImageMenu) {
             return { intent: 'administracion_presupuestos', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
         }
-        return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
+        return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
     }
     if (/^[4|4️⃣]$/.test(clean) || /^opci[oó]n\s*4$/i.test(clean)) {
         if (isLastBotWelcomeMenu) {
@@ -1199,7 +1276,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         if (isLastBotImageMenu) {
             return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
         }
-        return { intent: 'guardia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
+        return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
     }
     if (/^[5|5️⃣]$/.test(clean) || /^opci[oó]n\s*5$/i.test(clean) || /^[0|0️⃣]$/.test(clean) || /^opci[oó]n\s*0$/i.test(clean)) {
         return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: clean.includes('0') ? '0' : '5' };
@@ -1337,8 +1414,9 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
 
-    // 15. DETECCIÓN DE TURNO / DOCTOR / AUTORIZACIÓN
-    const isTurno = /\b(turno|turnos|cita|citas|reprogramar|reprogramacion|atencion|consulta|consultar|agendar|doctor|doctora|dr\b|dra\b|medico|medica|especialista|clinico|cardiolog|pediatr|ginecolog|traumatolog|dermatolog|neurolog|urolog|oftalmolog)\b/i.test(clean);
+    // 15. DETECCIÓN DE TURNO / DOCTOR / AUTORIZACIÓN / ESPECIALIDAD
+    const specialtyCandidate = detectSpecialty(clean);
+    const isTurno = Boolean(specialtyCandidate) || /\b(turno|turnos|cita|citas|reprogramar|reprogramacion|atencion|consulta|consultar|agendar|doctor|doctora|dr\b|dra\b|medico|medica|especialista|clinico|cardiolog|pediatr|ginecolog|traumatolog|dermatolog|neurolog|urolog|oftalmolog)\b/i.test(clean);
     const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria)\b/i.test(clean);
     const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|web|portal|precios?|particular|cartilla|servicios)\b/i.test(clean);
 
@@ -1508,7 +1586,8 @@ Devuelve un JSON con:
         intent,
         doctorCandidate,
         doctorRecord,
-        isExplicitNumberOption: null
+        isExplicitNumberOption: null,
+        specialtyCandidate
     };
 }
 
@@ -1906,6 +1985,77 @@ async function handleChatbotTriage(
         updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
     }
     // =============================================
+    // FLUJO 0C: PACIENTE RESPONDIENDO DATOS O PREFERENCIAS DE NUEVO TURNO (PRIORIDAD DE CONTEXTO)
+    // =============================================
+    else if (
+        currentStage === 'esperando_datos_turno' && 
+        analysis.intent !== 'derivacion_agente' && 
+        analysis.intent !== 'volver_atras' && 
+        analysis.intent !== 'cancelar_turno_online'
+    ) {
+        // 1. Si el paciente incluyó DNI en la respuesta, mapearlo en SALUS
+        if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
+            const { data: pFound } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .eq('dni', candidateDni)
+                .limit(1)
+                .maybeSingle();
+            if (pFound) {
+                paciente = pFound;
+                updates.dni = paciente.dni;
+                updates.nombre_completo = paciente.nombre;
+                updates.obra_social = paciente.coseguro || updates.obra_social;
+                updates.nhc = paciente.nhc;
+                updates.es_paciente_existente = true;
+                console.log(`[triage-bot] Paciente mapeado exitosamente en FLUJO 0C por DNI ${candidateDni}: ${paciente.nombre}`);
+            } else {
+                updates.dni = candidateDni;
+            }
+        }
+
+        // 2. Extraer o preservar especialidad o doctor
+        const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
+        const effectiveDocOrSpec = 
+            doctorDisplay || 
+            specialtyFromMsg || 
+            updates.medico_o_especialidad || 
+            conv?.medico_o_especialidad || 
+            null;
+
+        if (effectiveDocOrSpec) {
+            updates.medico_o_especialidad = effectiveDocOrSpec;
+        }
+
+        // 3. Extraer preferencias de horario si se mencionan
+        let preferenciaHoraria = '';
+        if (/\b(ma[nñ]ana|ma[nñ]anas|temprano)\b/i.test(cleanText)) {
+            preferenciaHoraria = 'Turno Mañana';
+        } else if (/\b(tarde|tardes|siesta)\b/i.test(cleanText)) {
+            preferenciaHoraria = 'Turno Tarde';
+        }
+
+        const mappedName = paciente?.nombre || fullName;
+        let cleanName = mappedName;
+        if (mappedName && mappedName.includes(',')) {
+            const parts = mappedName.split(',').map((p: string) => p.trim());
+            cleanName = `${parts[1]} ${parts[0]}`;
+        }
+        const docMsg = updates.medico_o_especialidad 
+            ? ` para *${updates.medico_o_especialidad}*` 
+            : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
+
+        replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
+            `Un asesor del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
+            `${getAgentHandoffNotice()}\n\n` +
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+        updates.status = 'sin_asignar';
+        updates.bot_active = false;
+        nextStage = 'esperando_agente';
+        updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+        updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+    }
+    // =============================================
     // FLUJO 0B: CONSULTA DE PRÓXIMO TURNO O VISITA AGENDADA
     // =============================================
     else if (
@@ -2014,56 +2164,6 @@ async function handleChatbotTriage(
                 }
             }
         }
-    }
-    // =============================================
-    // FLUJO 0C: PACIENTE RESPONDIENDO DATOS O PREFERENCIAS DE NUEVO TURNO
-    // =============================================
-    else if (
-        currentStage === 'esperando_datos_turno' && 
-        analysis.intent !== 'derivacion_agente' && 
-        analysis.intent !== 'volver_atras' && 
-        analysis.intent !== 'cancelar_turno_online'
-    ) {
-        // Si el paciente incluyó DNI en la respuesta, mapearlo en SALUS
-        if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
-            const { data: pFound } = await supabase
-                .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .eq('dni', candidateDni)
-                .limit(1)
-                .maybeSingle();
-            if (pFound) {
-                paciente = pFound;
-                updates.dni = paciente.dni;
-                updates.nombre_completo = paciente.nombre;
-                updates.obra_social = paciente.coseguro || updates.obra_social;
-                updates.nhc = paciente.nhc;
-                updates.es_paciente_existente = true;
-                console.log(`[triage-bot] Paciente mapeado exitosamente en FLUJO 0C por DNI ${candidateDni}: ${paciente.nombre}`);
-            } else {
-                updates.dni = candidateDni;
-            }
-        }
-
-        const mappedName = paciente?.nombre || fullName;
-        let cleanName = mappedName;
-        if (mappedName && mappedName.includes(',')) {
-            const parts = mappedName.split(',').map((p: string) => p.trim());
-            cleanName = `${parts[1]} ${parts[0]}`;
-        }
-        const docMsg = updates.medico_o_especialidad 
-            ? ` con *${updates.medico_o_especialidad}*` 
-            : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
-
-        replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-            `Un asesor del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
-            `${getAgentHandoffNotice()}\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        nextStage = 'esperando_agente';
-        updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${docMsg || 'A coordinar'}`;
-        updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
     }
     // =============================================
     // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
@@ -2564,10 +2664,15 @@ async function handleChatbotTriage(
     // =============================================
     else if (analysis.intent === 'turno') {
         let doctorNoteMsg = '';
+        const effectiveSpecialty = analysis.specialtyCandidate || detectSpecialty(cleanText) || null;
         if (doctorDisplay) {
             doctorNoteMsg = ` con el *${doctorDisplay}*${doctorSpecialty}`;
             updates.medico_o_especialidad = analysis.doctorRecord?.profesional_nombre || doctorDisplay;
             updates.motivo_consulta = `Solicitud de Turno: ${doctorDisplay}`;
+        } else if (effectiveSpecialty) {
+            doctorNoteMsg = ` para *${effectiveSpecialty}*`;
+            updates.medico_o_especialidad = effectiveSpecialty;
+            updates.motivo_consulta = `Solicitud de Turno: ${effectiveSpecialty}`;
         } else {
             updates.motivo_consulta = 'Solicitud de Turno / Consulta';
         }
@@ -2581,6 +2686,7 @@ async function handleChatbotTriage(
             currentStage === 'esperando_confirmacion_turno' ||
             currentStage === 'esperando_datos_turno' ||
             Boolean(doctorDisplay) ||
+            Boolean(effectiveSpecialty) ||
             Boolean(analysis.doctorRecord) ||
             Boolean(analysis.doctorCandidate) ||
             /\b(nuevo\s+turno|turno\s+nuevo|otro\s+turno|nueva\s+cita|cita\s+nueva|otra\s+cita|nuevo|otra)\b/i.test(cleanText) ||
@@ -2630,19 +2736,23 @@ async function handleChatbotTriage(
 
             const osTurnoInfo = getRegisteredOsInfo(paciente?.coseguro || conv?.obra_social);
             const osTurnoBullet = osTurnoInfo.hasRegisteredOs
-                ? `5️⃣ *Obra Social y Plan:* En tu ficha figura *${osTurnoInfo.cleanOsName}*. Confirmános si seguís teniendo cobertura allí y qué *plan* tenés (o si es otra/particular).`
-                : `5️⃣ *Obra Social / Prepaga* y plan (o si tu atención será Particular)`;
+                ? `• *Obra Social y Plan:* En tu ficha figura *${osTurnoInfo.cleanOsName}*. Confirmános si seguís teniendo cobertura allí y qué *plan* tenés (o si es otra/particular).`
+                : `• *Obra Social / Prepaga* y plan (o si tu atención será Particular)`;
 
             const dniPrompt = paciente?.dni 
                 ? `• *DNI:* En tu ficha figura *${paciente.dni}* (si el turno es para otra persona, indícanos su DNI y Nombre Completo)\n` 
-                : `1️⃣ Número de *DNI del paciente* (sin puntos ni espacios)\n`;
+                : `• Número de *DNI del paciente* (sin puntos ni espacios)\n`;
+
+            const specOrDocLine = (doctorDisplay || effectiveSpecialty)
+                ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
+                : `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`;
 
             replyText = `¡Hola${paciente ? ` *${fullName}*` : ''}! 🏥 Te ayudamos a coordinar tu nuevo turno médico${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
                 `Por favor indícanos:\n` +
                 `${dniPrompt}` +
-                (doctorDisplay ? '' : `2️⃣ ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`) +
-                `3️⃣ ¿El turno es para vos o para un familiar / otra persona?\n` +
-                `4️⃣ Preferencia de *días y horarios* (mañana o tarde)\n` +
+                `${specOrDocLine}` +
+                `• ¿El turno es para vos o para un familiar / otra persona?\n` +
+                `• Preferencia de *días y horarios* (mañana o tarde)\n` +
                 `${osTurnoBullet}\n\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
             updates.status = 'bot';
