@@ -1803,9 +1803,9 @@ async function handleChatbotTriage(
     );
 
     // Si el chat estaba cerrado:
-    // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio'
+    // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVO USUARIO
     if (wasClosed) {
-        console.log(`[triage-bot] Chat ${phone} estaba cerrado. REACTIVANDO TODO A CERO para nueva atención.`);
+        console.log(`[triage-bot] Chat ${phone} estaba cerrado. REACTIVANDO TODO A CERO como NUEVO USUARIO.`);
         await supabase
             .from('contact_center_conversations')
             .update({
@@ -1821,6 +1821,13 @@ async function handleChatbotTriage(
                 bot_stage: 'inicio',
                 motivo_consulta: null,
                 medico_o_especialidad: null,
+                dni: null,
+                nombre_completo: null,
+                obra_social: null,
+                nhc: null,
+                fecha_nacimiento: null,
+                email: null,
+                es_paciente_existente: false,
                 updated_at: new Date().toISOString()
             })
             .eq('phone', phone);
@@ -1836,6 +1843,11 @@ async function handleChatbotTriage(
             conv.status = 'bot';
             conv.bot_active = true;
             conv.bot_stage = 'inicio';
+            conv.dni = null;
+            conv.nombre_completo = null;
+            conv.obra_social = null;
+            conv.nhc = null;
+            conv.es_paciente_existente = false;
         }
     }
 
@@ -1891,9 +1903,14 @@ async function handleChatbotTriage(
             await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
             return;
         } else {
-            console.log(`[triage-bot] Chat ${phone} reactivado por saludo o solicitud de menú ("${cleanText}").`);
+            console.log(`[triage-bot] Chat ${phone} reactivado por saludo o solicitud de menú ("${cleanText}"). Tratando como nuevo usuario.`);
             conv.bot_active = true;
             conv.bot_stage = 'inicio';
+            conv.dni = null;
+            conv.nombre_completo = null;
+            conv.obra_social = null;
+            conv.nhc = null;
+            conv.es_paciente_existente = false;
         }
     }
 
@@ -1906,7 +1923,7 @@ async function handleChatbotTriage(
         updated_at: new Date().toISOString()
     };
 
-    if (wasClosed) {
+    if (wasClosed || isExplicitGreetingOrMenu) {
         updates.closed_at = null;
         updates.resolution_reason = null;
         updates.closed_by_agent_id = null;
@@ -1919,11 +1936,18 @@ async function handleChatbotTriage(
         updates.bot_stage = 'inicio';
         updates.motivo_consulta = null;
         updates.medico_o_especialidad = null;
+        updates.dni = null;
+        updates.nombre_completo = null;
+        updates.obra_social = null;
+        updates.nhc = null;
+        updates.fecha_nacimiento = null;
+        updates.email = null;
+        updates.es_paciente_existente = false;
     }
 
-    // 1. Identificar al paciente EXCLUSIVAMENTE por DNI (nunca por teléfono)
-    // Se elimina la vinculación por teléfono para evitar confusiones de identidad cuando múltiples familiares comparten la misma línea.
-    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos o solo números)
+    // 1. Identificar al paciente EXCLUSIVAMENTE por DNI en el mensaje actual (nunca pre-mapear por teléfono)
+    // Se elimina la vinculación histórica por teléfono para que todos los contactos nuevos o existentes
+    // sean tratados como nuevos usuarios hasta que proporcionen expresamente un DNI.
     const normalizedText = cleanText.replace(/\./g, '');
     const rawDigits = cleanText.replace(/\D/g, '');
     const isOnlyDigits = rawDigits.length >= 7 && rawDigits.length <= 9;
@@ -1946,30 +1970,18 @@ async function handleChatbotTriage(
                 paciente = pByDni;
                 console.log(`[triage-bot] Paciente identificado en SALUS por DNI provisto ${dniInMessage}: ${paciente.nombre} (HC: ${paciente.nhc})`);
             } else {
-                console.log(`[triage-bot] DNI provisto ${dniInMessage} no figura en padrón maestro de SALUS`);
+                console.log(`[triage-bot] DNI provisto ${dniInMessage} no figura en padrón maestro de SALUS (usuario nuevo)`);
             }
         } catch (e) {
             console.warn('[triage-bot] Error consultando paciente por DNI:', e);
         }
-    } else if (conv?.dni) {
-        try {
-            const { data: pConv } = await supabase
-                .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .eq('dni', conv.dni)
-                .limit(1)
-                .maybeSingle();
-            if (pConv) paciente = pConv;
-        } catch (e) {
-            console.warn('[triage-bot] Error recuperando paciente por DNI previo:', e);
-        }
     }
 
-    // Nombre a mostrar: Si tenemos paciente validado por DNI, usar su nombre.
-    // Si no, usar el nombre de contacto de WhatsApp o 'Paciente'. NUNCA inferir un titular de SALUS sin DNI.
+    // Nombre a mostrar: Si el usuario proveyó un DNI y se validó en SALUS, usar su nombre.
+    // Si no, usar el nombre de contacto de WhatsApp (PushName) si existe o 'Paciente'.
+    // NUNCA asumir o pre-mapear un paciente sin DNI actual.
     const rawFullName = (
         (paciente?.nombre && !paciente.nombre.toLowerCase().startsWith('paciente')) ? paciente.nombre :
-        (conv?.nombre_completo && conv?.dni && !conv.nombre_completo.toLowerCase().startsWith('paciente') ? conv.nombre_completo : null) ||
         senderName ||
         'Paciente'
     ).trim();
@@ -1982,28 +1994,35 @@ async function handleChatbotTriage(
         }
     }
     const fullName = displayName;
-    const os = (paciente?.coseguro || (conv?.dni && conv?.obra_social ? conv.obra_social : null) || 'Particular / A confirmar').trim();
-    const dniTitular = paciente?.dni || conv?.dni || null;
+    const os = (paciente?.coseguro || 'Particular / A confirmar').trim();
+    const dniTitular = paciente?.dni || dniInMessage || null;
 
-    const isExistingPatient = !!(paciente || dniTitular);
+    const isExistingPatient = Boolean(paciente);
 
-    if (isExistingPatient || paciente) {
+    if (paciente) {
         updates = {
             ...updates,
             dni: dniTitular,
             nombre_completo: fullName,
             obra_social: os,
-            nhc: paciente?.nhc || conv?.nhc || null,
-            fecha_nacimiento: paciente?.fecha_nacimiento || updates.fecha_nacimiento || conv?.fecha_nacimiento || null,
-            email: paciente?.email || updates.email || conv?.email || null,
+            nhc: paciente?.nhc || null,
+            fecha_nacimiento: paciente?.fecha_nacimiento || null,
+            email: paciente?.email || null,
             telefono_contacto: phone,
-            departamento: paciente?.centro || updates.departamento || conv?.departamento || 'San Juan',
+            departamento: paciente?.centro || 'San Juan',
             es_paciente_existente: true
+        };
+    } else if (dniInMessage) {
+        updates = {
+            ...updates,
+            dni: dniInMessage,
+            nombre_completo: fullName,
+            es_paciente_existente: false
         };
     }
 
-    // 2. VINCULAR TURNOS Y VISITAS PRÓXIMAS (SALUS + ONLINE) EXCLUSIVAMENTE POR DNI
-    const resolvedDni = dniTitular || conv?.dni || null;
+    // 2. VINCULAR TURNOS Y VISITAS PRÓXIMAS (SALUS + ONLINE) EXCLUSIVAMENTE POR DNI EXPLÍCITO
+    const resolvedDni = dniTitular || null;
     let turnosActivosProximos: any[] = [];
     let turnoOnlineProximo: any = null;
 

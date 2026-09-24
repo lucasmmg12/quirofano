@@ -676,18 +676,7 @@ export async function fetchLiveAndDemoChats() {
                 );
             };
 
-            // A. Extraer nombre saludado por el bot en el historial (ej: "¡Hola *PILAR MARTINEZ AGUILERA*!")
-            let botGreetingName = null;
-            for (const m of messages) {
-                const text = m.content || '';
-                const match = text.match(/¡Hola\s+\*([^*]+)\*!/i);
-                if (match && match[1] && !isGenericName(match[1])) {
-                    botGreetingName = match[1].trim();
-                    break;
-                }
-            }
-
-            // B. Remitente de mensajes entrantes de WhatsApp (pushName de la persona)
+            // A. Remitente de mensajes entrantes de WhatsApp (pushName de la persona)
             const incomingWithName = messages.find(m => 
                 m.direction === 'incoming' && 
                 m.sender_name && 
@@ -695,12 +684,12 @@ export async function fetchLiveAndDemoChats() {
             );
             const incomingSenderName = incomingWithName?.sender_name || null;
 
-            // C. Determinar nombre de contacto final prioritario
+            // B. Determinar nombre de contacto:
+            // Solo si en la conversación actual se identificó expresamente al paciente se usa conv.nombre_completo.
+            // Si no, se usa el pushName de WhatsApp o el número de teléfono (tratado como nuevo usuario).
             let resolvedContactName = null;
             if (conv?.nombre_completo && !isGenericName(conv.nombre_completo)) {
                 resolvedContactName = conv.nombre_completo.trim();
-            } else if (botGreetingName) {
-                resolvedContactName = botGreetingName;
             } else if (incomingSenderName) {
                 resolvedContactName = incomingSenderName.trim();
             } else {
@@ -708,19 +697,19 @@ export async function fetchLiveAndDemoChats() {
             }
 
             const patientFields = {
-                dni: conv?.dni || 'A verificar',
+                dni: conv?.dni || null,
                 nhc: conv?.nhc || null,
-                pacienteNombre: resolvedContactName,
-                obraSocial: conv?.obra_social || 'A consultar',
+                pacienteNombre: conv?.nombre_completo || resolvedContactName,
+                obraSocial: conv?.obra_social || null,
                 fechaNacimiento: formatBirthDate(conv?.fecha_nacimiento),
-                email: conv?.email || 'No informado',
+                email: conv?.email || null,
                 pacienteContacto: conv?.telefono_contacto || phone,
                 departamento: conv?.departamento || 'San Juan',
-                esPacienteExistente: conv?.es_paciente_existente ?? null,
+                esPacienteExistente: Boolean(conv?.es_paciente_existente),
                 motivoConsulta: conv?.motivo_consulta || (messages.find(m => m.direction === 'incoming')?.content || 'Consulta general'),
-                medicoOEspecialidad: conv?.medico_o_especialidad || 'A convenir',
+                medicoOEspecialidad: conv?.medico_o_especialidad || null,
                 botActive: conv?.bot_active ?? false,
-                botStage: conv?.bot_stage || 'saludo_dni',
+                botStage: conv?.bot_stage || 'inicio',
                 pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
             };
 
