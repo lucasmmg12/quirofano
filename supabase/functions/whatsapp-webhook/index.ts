@@ -1698,9 +1698,26 @@ async function handleChatbotTriage(
                 last_message_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
-            const candidateDni = cleanText.match(/\b\d{7,8}\b/)?.[0];
-            if (candidateDni && !conv.dni) {
-                silentUpdates.dni = candidateDni;
+            const extractedDni = cleanText.match(/\b\d{7,8}\b/)?.[0] || (cleanText.replace(/\D/g, '').length >= 7 && cleanText.replace(/\D/g, '').length <= 9 ? cleanText.replace(/\D/g, '') : null);
+            if (extractedDni) {
+                silentUpdates.dni = extractedDni;
+                try {
+                    const { data: pFound } = await supabase
+                        .from('hospital_pacientes')
+                        .select('dni, nombre, coseguro, nhc')
+                        .eq('dni', extractedDni)
+                        .limit(1)
+                        .maybeSingle();
+                    if (pFound) {
+                        silentUpdates.nombre_completo = pFound.nombre;
+                        silentUpdates.obra_social = pFound.coseguro || conv?.obra_social;
+                        silentUpdates.nhc = pFound.nhc || conv?.nhc;
+                        silentUpdates.es_paciente_existente = true;
+                        await sendBotWhatsAppReply(supabase, phone, `¡Recibido! 🏥 Registramos tu DNI *${extractedDni}* (${pFound.nombre}). En breve un asesor continuará con tu atención.`, lineId);
+                    } else {
+                        await sendBotWhatsAppReply(supabase, phone, `¡Recibido! 🏥 Registramos tu DNI *${extractedDni}*. En breve un asesor continuará con tu atención.`, lineId);
+                    }
+                } catch (_) {}
             }
             await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
             return;
@@ -1737,10 +1754,13 @@ async function handleChatbotTriage(
 
     // 1. Identificar al paciente EXCLUSIVAMENTE por DNI (nunca por teléfono)
     // Se elimina la vinculación por teléfono para evitar confusiones de identidad cuando múltiples familiares comparten la misma línea.
-    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos)
+    // Helper de extracción de DNI rápido por expresión regular (7 u 8 dígitos o solo números)
     const normalizedText = cleanText.replace(/\./g, '');
+    const rawDigits = cleanText.replace(/\D/g, '');
+    const isOnlyDigits = rawDigits.length >= 7 && rawDigits.length <= 9;
     const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
-    const dniInMessage = dniMatch ? dniMatch[0] : null;
+    const candidateDni: string | null = dniMatch ? dniMatch[0] : (isOnlyDigits ? rawDigits : null);
+    const dniInMessage = candidateDni;
 
     let paciente: any = null;
 
@@ -2052,19 +2072,44 @@ async function handleChatbotTriage(
             const parts = mappedName.split(',').map((p: string) => p.trim());
             cleanName = `${parts[1]} ${parts[0]}`;
         }
-        const docMsg = updates.medico_o_especialidad 
-            ? ` para *${updates.medico_o_especialidad}*` 
-            : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
+        if (candidateDni && !effectiveDocOrSpec) {
+            const firstName = cleanName !== 'Paciente' ? (cleanName.includes(' ') ? cleanName.split(' ')[0] : cleanName) : '';
+            const pGreeting = firstName ? ` *${firstName}*` : '';
+            const osInfo = (paciente?.coseguro || updates.obra_social) ? ` (${paciente?.coseguro || updates.obra_social})` : '';
+            replyText = `¡Muchas gracias${pGreeting}! 🏥 Registramos tu DNI *${candidateDni}*${osInfo}.\n\n` +
+                `Por favor indícanos:\n` +
+                `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_turno';
+            updates.motivo_consulta = `Solicitud de Turno: DNI ${candidateDni} (esperando especialidad)`;
+        } else if (!candidateDni && !paciente?.dni && !conv?.dni && !effectiveDocOrSpec) {
+            replyText = `¡Entendido! 🏥 Para poder coordinar tu turno, por favor indícanos:\n\n` +
+                `• Número de *DNI del paciente* (solo números, sin puntos ni espacios)\n` +
+                `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            nextStage = 'esperando_datos_turno';
+            updates.motivo_consulta = 'Solicitud de Turno (esperando DNI y especialidad)';
+        } else {
+            const docMsg = updates.medico_o_especialidad 
+                ? ` para *${updates.medico_o_especialidad}*` 
+                : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
 
-        replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-            `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
-            `${getAgentHandoffNotice()}\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        nextStage = 'esperando_agente';
-        updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
-        updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+            replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
+                `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+        }
     }
     // =============================================
     // FLUJO 0B: CONSULTA DE PRÓXIMO TURNO O VISITA AGENDADA
