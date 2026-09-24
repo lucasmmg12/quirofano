@@ -31,7 +31,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     // Form state - AI Bot
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
     const [botName, setBotName] = useState('Dora');
-    const [model, setModel] = useState('gpt-4o');
+    const [model, setModel] = useState('gpt-5.5');
     const [temperature, setTemperature] = useState('0.3');
     const [lastUpdated, setLastUpdated] = useState(null);
     const [lastUser, setLastUser] = useState(null);
@@ -73,7 +73,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
             const cfg = await fetchChatbotConfig();
             setSystemPrompt(cfg.systemPrompt || DEFAULT_CHATBOT_SYSTEM_PROMPT);
             setBotName(cfg.botName || 'Dora');
-            setModel(cfg.model || 'gpt-4o');
+            setModel(cfg.model || 'gpt-5.5');
             setTemperature(cfg.temperature || '0.3');
             setHandoffNormal(cfg.handoffNormal || DEFAULT_HANDOFF_NORMAL);
             setHandoffDelay(cfg.handoffDelay || DEFAULT_HANDOFF_DELAY);
@@ -145,7 +145,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const handleResetDefault = () => {
         if (window.confirm('¿Estás seguro de restablecer los valores al texto predeterminado de fábrica? Perderás los cambios no guardados.')) {
             setSystemPrompt(DEFAULT_CHATBOT_SYSTEM_PROMPT);
-            setModel('gpt-4o');
+            setModel('gpt-5.5');
             setTemperature('0.3');
             setBotName('Dora');
             setHandoffNormal(DEFAULT_HANDOFF_NORMAL);
@@ -492,7 +492,19 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                     <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
                                         Modelo OpenAI
                                     </label>
-                                    {(model.startsWith('o1') || model.startsWith('o3')) && (
+                                    {model.startsWith('gpt-5') ? (
+                                        <span style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 800,
+                                            padding: '1px 6px',
+                                            borderRadius: '6px',
+                                            background: '#ECFDF5',
+                                            color: '#059669',
+                                            border: '1px solid #A7F3D0'
+                                        }}>
+                                            🌟 Nueva Generación {model}
+                                        </span>
+                                    ) : (model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4')) ? (
                                         <span style={{
                                             fontSize: '0.65rem',
                                             fontWeight: 800,
@@ -504,7 +516,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                         }}>
                                             🧠 Motor de Razonamiento
                                         </span>
-                                    )}
+                                    ) : null}
                                 </div>
                                 <select
                                     value={model}
@@ -520,60 +532,74 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <optgroup label="🚀 Nueva Generación de Modelos (Flagship y Razonamiento)">
-                                        <option value="gpt-4.5-preview">gpt-4.5-preview (Nuevo Flagship - Máxima inteligencia y empatía conversacional)</option>
-                                        <option value="chatgpt-4o-latest">chatgpt-4o-latest (Versión continua dinámica más reciente)</option>
-                                        <option value="o3-mini">o3-mini (Nuevo Motor de Razonamiento - Ultra veloz con lógica y triage clínico)</option>
-                                        <option value="o1">o1 (Razonamiento profundo para análisis médico complejo)</option>
+                                    <optgroup label="🌟 Serie GPT-5 (Última Generación de OpenAI)">
+                                        <option value="gpt-5.5">gpt-5.5 (Recomendado - Nueva Generación Flagship GPT-5.5)</option>
+                                        <option value="gpt-5.4">gpt-5.4 (GPT-5.4 - Alto rendimiento y precisión)</option>
+                                        <option value="gpt-5.4-mini">gpt-5.4-mini (GPT-5.4 Ultra rápido)</option>
+                                        <option value="gpt-5">gpt-5 (Motor Base GPT-5)</option>
+                                        <option value="gpt-5-mini">gpt-5-mini (GPT-5 versión liviana)</option>
                                     </optgroup>
-                                    <optgroup label="⚡ Modelos Establecidos de Alta Velocidad">
-                                        <option value="gpt-4o">gpt-4o (Recomendado - Excelente balance clínico, calidez y costo)</option>
-                                        <option value="gpt-4o-mini">gpt-4o-mini (Ultra rápido - Menor latencia y costo de tokens)</option>
+                                    <optgroup label="🧠 Modelos de Razonamiento Clínico">
+                                        <option value="o3-mini">o3-mini (Razonamiento lógico y triage clínico ultra veloz)</option>
+                                        <option value="o1">o1 (Razonamiento profundo para análisis médico)</option>
+                                    </optgroup>
+                                    <optgroup label="⚡ Modelos Anteriores (Serie 4)">
+                                        <option value="gpt-4.5-preview">gpt-4.5-preview (Modelo transicional 4.5)</option>
+                                        <option value="chatgpt-4o-latest">chatgpt-4o-latest (Versión continua GPT-4o)</option>
+                                        <option value="gpt-4o">gpt-4o (Omni balanceado anterior)</option>
+                                        <option value="gpt-4o-mini">gpt-4o-mini (Mini anterior ultra rápido)</option>
                                     </optgroup>
                                 </select>
                             </div>
 
                             {/* Temperatura */}
                             <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                    <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
-                                        Temperatura: <strong style={{ color: (model.startsWith('o1') || model.startsWith('o3')) ? '#7E22CE' : '#0284C7' }}>
-                                            {(model.startsWith('o1') || model.startsWith('o3')) ? 'Auto (Razonamiento)' : temperature}
-                                        </strong>
-                                    </label>
-                                    <span style={{ fontSize: '0.68rem', color: (model.startsWith('o1') || model.startsWith('o3')) ? '#7E22CE' : '#64748B' }}>
-                                        {(model.startsWith('o1') || model.startsWith('o3'))
-                                            ? 'Optimizada por OpenAI'
-                                            : (parseFloat(temperature) <= 0.3 ? 'Preciso / Clínico' : 'Conversacional / Creativo')}
-                                    </span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0.0"
-                                    max="1.0"
-                                    step="0.05"
-                                    value={temperature}
-                                    disabled={model.startsWith('o1') || model.startsWith('o3')}
-                                    onChange={(e) => setTemperature(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        cursor: (model.startsWith('o1') || model.startsWith('o3')) ? 'not-allowed' : 'pointer',
-                                        opacity: (model.startsWith('o1') || model.startsWith('o3')) ? 0.35 : 1
-                                    }}
-                                />
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94A3B8', marginTop: '2px' }}>
-                                    {(model.startsWith('o1') || model.startsWith('o3')) ? (
-                                        <span style={{ color: '#7E22CE', fontStyle: 'italic' }}>
-                                            * Los modelos de la serie 'o' autogestionan el razonamiento interno sin requerir ajuste manual de temperatura.
-                                        </span>
-                                    ) : (
+                                {(() => {
+                                    const isAutoTemp = model.startsWith('o1') || model.startsWith('o3') || model.includes('5.5') || model.includes('5.4');
+                                    return (
                                         <>
-                                            <span>0.0 (Estricto)</span>
-                                            <span>0.3 (Recomendado)</span>
-                                            <span>1.0 (Creativo)</span>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569' }}>
+                                                    Temperatura: <strong style={{ color: isAutoTemp ? '#059669' : '#0284C7' }}>
+                                                        {isAutoTemp ? 'Auto (Última Generación)' : temperature}
+                                                    </strong>
+                                                </label>
+                                                <span style={{ fontSize: '0.68rem', color: isAutoTemp ? '#059669' : '#64748B' }}>
+                                                    {isAutoTemp
+                                                        ? 'Calibrada por OpenAI'
+                                                        : (parseFloat(temperature) <= 0.3 ? 'Preciso / Clínico' : 'Conversacional / Creativo')}
+                                                </span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="0.0"
+                                                max="1.0"
+                                                step="0.05"
+                                                value={temperature}
+                                                disabled={isAutoTemp}
+                                                onChange={(e) => setTemperature(e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    cursor: isAutoTemp ? 'not-allowed' : 'pointer',
+                                                    opacity: isAutoTemp ? 0.35 : 1
+                                                }}
+                                            />
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94A3B8', marginTop: '2px' }}>
+                                                {isAutoTemp ? (
+                                                    <span style={{ color: '#059669', fontStyle: 'italic' }}>
+                                                        * Los modelos GPT-5.5 / GPT-5.4 y la serie 'o' calibran internamente su nivel de razonamiento sin requerir temperatura manual.
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        <span>0.0 (Estricto)</span>
+                                                        <span>0.3 (Recomendado)</span>
+                                                        <span>1.0 (Creativo)</span>
+                                                    </>
+                                                )}
+                                            </div>
                                         </>
-                                    )}
-                                </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>

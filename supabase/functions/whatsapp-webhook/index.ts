@@ -167,7 +167,8 @@ Deno.serve(async (req) => {
 
             if (openAiKey) {
                 try {
-                    const isReasoningModel = activeModel.startsWith('o1') || activeModel.startsWith('o3');
+                    const isGpt5Series = activeModel.startsWith('gpt-5');
+                    const isReasoningModel = activeModel.startsWith('o1') || activeModel.startsWith('o3') || activeModel.startsWith('o4');
                     const messagesPayload: any[] = [
                         { role: isReasoningModel ? 'developer' : 'system', content: compiledPrompt }
                     ];
@@ -189,11 +190,14 @@ Deno.serve(async (req) => {
                         messages: messagesPayload
                     };
 
-                    if (!isReasoningModel) {
+                    if (isGpt5Series || isReasoningModel) {
+                        requestPayload.max_completion_tokens = 800;
+                        if (!isReasoningModel && !activeModel.includes('5.5') && !activeModel.includes('5.4')) {
+                            requestPayload.temperature = activeTemp;
+                        }
+                    } else {
                         requestPayload.temperature = activeTemp;
                         requestPayload.max_tokens = 800;
-                    } else {
-                        requestPayload.max_completion_tokens = 1000;
                     }
 
                     const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1378,9 +1382,10 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 }`;
         }
 
-        const selectedModel = dynamicConfig.model || 'gpt-4o';
+        const selectedModel = dynamicConfig.model || 'gpt-5.5';
         const selectedTemp = Number.isFinite(dynamicConfig.temperature) ? dynamicConfig.temperature : 0.3;
-        const isReasoningModel = selectedModel.startsWith('o1') || selectedModel.startsWith('o3');
+        const isGpt5Series = selectedModel.startsWith('gpt-5');
+        const isReasoningModel = selectedModel.startsWith('o1') || selectedModel.startsWith('o3') || selectedModel.startsWith('o4');
 
         console.log(`[conversational-bot] Invocando OpenAI con System Prompt dinámico (Modelo: ${selectedModel}, Temp: ${selectedTemp}, Caracteres: ${finalSystemPrompt.length})`);
 
@@ -1393,11 +1398,14 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
             ]
         };
 
-        if (!isReasoningModel) {
+        if (isGpt5Series || isReasoningModel) {
+            requestPayload.max_completion_tokens = 600;
+            if (!isReasoningModel && !selectedModel.includes('5.5') && !selectedModel.includes('5.4')) {
+                requestPayload.temperature = selectedTemp;
+            }
+        } else {
             requestPayload.temperature = selectedTemp;
             requestPayload.max_tokens = 450;
-        } else {
-            requestPayload.max_completion_tokens = 800;
         }
 
         const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
