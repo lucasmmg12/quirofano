@@ -832,14 +832,14 @@ function isContactCenterOpen(now: Date = new Date()): boolean {
 }
 
 /**
- * Mensaje institucional cuando el bot se frena y transfiere a las asesoras humanas
+ * Mensaje institucional cuando el bot se frena y transfiere a los agentes de atención
  */
 function getAgentHandoffNotice(): string {
     const open = isContactCenterOpen();
     if (open) {
-        return `👩‍⚕️ Un asesor te responderá a la brevedad. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
+        return `👩‍⚕️ Un agente te responderá a la brevedad. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
     } else {
-        return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un asesor te responderá al inicio del próximo día hábil.\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
+        return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un agente te responderá al inicio del próximo día hábil.\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
     }
 }
 
@@ -892,7 +892,7 @@ function getWelcomeMenuMessage(pacienteNombre?: string): string {
         `2️⃣ *Consultar mi próximo turno o visita agendada* 📅\n` +
         `3️⃣ *Autorizaciones y órdenes médicas* 📋\n` +
         `4️⃣ *Guardia médica 24 horas y urgencias* 🚨\n` +
-        `5️⃣ *Hablar con un asesor* 👤 _(Lun a Vie 7:30 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
+        `5️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:30 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
         `Podés responder con el número (*1*, *2*, *3*, *4* o *5*) o escribirnos tu consulta.\n` +
         `💡 _Si en cualquier momento deseás volver, escribí *\"Menú\"* o *\"Atrás\"*._`;
 }
@@ -910,13 +910,13 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
     if (!turnos || turnos.length === 0) {
         if (isOtherPatient) {
             return `No registramos turnos o visitas próximas agendadas para el paciente *${pacienteNombre || 'solicitado'}*${pacienteDni ? ` (DNI: *${pacienteDni}*)` : ''} en nuestro sistema.\n\n` +
-                `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís hablar con un asesor?\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís hablar con un agente?\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
         }
         return `¡Hola *${firstName}*! 🏥\n\n` +
             `No registramos turnos o visitas próximas pendientes a tu nombre en nuestro sistema.\n\n` +
-            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís hablar con un asesor?\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís hablar con un agente?\n\n` +
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
     }
 
     const formatFechaAmigable = (fStr: string) => {
@@ -956,7 +956,7 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
     reply += isOtherPatient
         ? `💡 *¿Deseás averiguar sobre el turno de otro paciente?* Podés escribir directamente su número de DNI.`
         : `💡 *¿Consultás por el turno de otro paciente o familiar?* Indícanos su número de *DNI*.`;
-    reply += `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+    reply += `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
 
     return reply;
 }
@@ -1001,7 +1001,7 @@ async function generateChatGptConversationalResponse(
         const thread = (context?.history || []).slice(-8).map((m: any) => {
             const role = m.direction === 'incoming' 
                 ? (pName || 'Paciente') 
-                : (m.sender_name === 'Bot Sanatorio' || m.raw_payload?.bot ? 'Asistente_Virtual' : `Asesor_Humano (${m.sender_name || 'Agente'})`);
+                : (m.sender_name === 'Bot Sanatorio' || m.raw_payload?.bot ? 'Asistente_Virtual' : `Agente_Humano (${m.sender_name || 'Agente'})`);
             return `${role}: ${m.content}`;
         }).join('\n');
 
@@ -1026,11 +1026,11 @@ DIRECTIVAS PRINCIPALES:
 3. CONSULTA DE TURNOS EXISTENTES:
    - Si el paciente pregunta por un turno ya agendado y NO tenemos su DNI, pídeselo amablemente ("Por favor indícanos el número de DNI del paciente, sin puntos ni espacios").
    - Si ya figuran turnos en sus datos arriba, confírmale los detalles (día, hora, profesional, sede).
-4. PEDIDO DE ASESOR HUMANO O HORARIOS DE ATENCIÓN (MÁXIMA PRIORIDAD):
-   - Horario de atención de asesores humanos (Contact Center): Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+4. PEDIDO DE AGENTE O HORARIOS DE ATENCIÓN (MÁXIMA PRIORIDAD):
+   - Horario de atención de agentes (Contact Center): Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
    - Guardias 24 hs: Sede 01 (San Luis 432 Oeste) activa para urgencias.
-   - Si el paciente pide que lo atienda una persona, un asesor, un humano, un operador, o manifiesta que el bot no le sirve o no comprende:
-     - Confirma con calidez y amabilidad que lo estás comunicando con una asesora humana del equipo de atención e informa el horario de atención.
+   - Si el paciente pide que lo atienda una persona, un agente, un operador, o manifiesta que el bot no le sirve o no comprende:
+     - Confirma con calidez y amabilidad que lo estás comunicando con un agente del equipo de atención e informa el horario de atención.
      - Establece obligatoriamente "transferToAgent": true y "intent": "derivacion_agente".
 5. SOLICITUD DE NUEVOS TURNOS MÉDICOS:
    - Para agendar un nuevo turno, consulta qué especialidad o profesional busca, su cobertura/obra social y su preferencia horaria.
@@ -1042,7 +1042,7 @@ DIRECTIVAS PRINCIPALES:
    - Obras Sociales: Atendemos OSP, OSDE, Swiss Medical, Galeno, Medifé, Jerárquicos y la gran mayoría de prepagas y obras sociales, y atención Particular.
 7. VOLVER ATRÁS O MENÚ PRINCIPAL:
    - Si el paciente manifiesta que se equivocó, desea cambiar de opción o volver, o si le das opciones informativas, recuérdale que puede escribir "Menú" o "Atrás" para regresar al inicio.
-8. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺). Al final de respuestas orientativas puedes agregar: "\n\n🔙 *Volver:* Escribí *\"Menú\"* | 👤 *Asesor:* Escribí *\"Asesor\"*".
+8. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺). Al final de respuestas orientativas puedes agregar: "\n\n🔙 *Volver:* Escribí *\"Menú\"* | 👤 *Agente:* Escribí *\"Agente\"*".
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -1088,10 +1088,10 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
     }
 
     // Fallback defensivo
-    const isHumanRequest = /\b(persona|humano|asesor|asesora|operador|operadora|alguien)\b/i.test(userText);
+    const isHumanRequest = /\b(persona|humano|agente|asesor|asesora|operador|operadora|alguien)\b/i.test(userText);
     if (isHumanRequest) {
         return {
-            replyText: `¡Hola *${pName}*! 🏥 Te pido sinceras disculpas por la molestia.\n\nYa mismo te comunico con una de nuestras asesoras humanas del equipo de atención para que continúe asistiéndote personalmente.\n\n📌 *Por favor aguardá unos instantes.*`,
+            replyText: `¡Hola *${pName}*! 🏥 Te pido sinceras disculpas por la molestia.\n\nYa mismo te comunico con un agente de nuestro equipo de atención para que continúe asistiéndote personalmente.\n\n📌 *Por favor aguardá unos instantes.*`,
             intent: 'derivacion_agente',
             transferToAgent: true,
             summary: 'Solicitud de atención humana'
@@ -1099,7 +1099,7 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
     }
 
     return {
-        replyText: `¡Hola *${pName}*! 🏥 ¿En qué podemos orientarte hoy en *Sanatorio Argentino*? Podés consultarnos por turnos, autorizaciones, guardias 24hs o pedir hablar con un asesor.`,
+        replyText: `¡Hola *${pName}*! 🏥 ¿En qué podemos orientarte hoy en *Sanatorio Argentino*? Podés consultarnos por turnos, autorizaciones, guardias 24hs o pedir hablar con un agente.`,
         intent: 'general',
         transferToAgent: false,
         summary: 'Consulta general'
@@ -1932,7 +1932,7 @@ async function handleChatbotTriage(
                 `1️⃣ *Solicitar un turno* para el estudio o práctica médica\n` +
                 `2️⃣ *Autorización de orden médica* (para presentar a tu obra social o coseguro)\n` +
                 `3️⃣ *Presupuesto o aranceles particulares*\n` +
-                `4️⃣ *Hablar con un asesor humano*\n\n` +
+                `4️⃣ *Hablar con un agente*\n\n` +
                 `Podés responder directamente con el número *1*, *2*, *3* o *4*, o detallarnos tu consulta por escrito.`;
         } else {
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*. Recibimos tu imagen / orden médica.\n\n` +
@@ -1940,7 +1940,7 @@ async function handleChatbotTriage(
                 `1️⃣ *Solicitar un turno* para el estudio o práctica médica\n` +
                 `2️⃣ *Autorización de orden médica* (para presentar a tu obra social o cobertura)\n` +
                 `3️⃣ *Presupuesto o aranceles particulares*\n` +
-                `4️⃣ *Hablar con un asesor humano*\n\n` +
+                `4️⃣ *Hablar con un agente*\n\n` +
                 `Podés responder directamente con el número *1*, *2*, *3* o *4*, o escribirnos tu consulta junto a tu *Nombre completo* y *DNI*.`;
         }
     }
@@ -1965,17 +1965,17 @@ async function handleChatbotTriage(
         updates.motivo_consulta = 'Menú Principal (solicitado por usuario)';
     }
     // =============================================
-    // FLUJO 0A-3: DERIVACIÓN DIRECTA A ASESOR HUMANO (ALTA PRIORIDAD)
+    // FLUJO 0A-3: DERIVACIÓN DIRECTA A AGENTE HUMANO (ALTA PRIORIDAD)
     // =============================================
     else if (analysis.intent === 'derivacion_agente') {
-        updates.motivo_consulta = 'Solicitud de Atención con Asesor Humano';
+        updates.motivo_consulta = 'Solicitud de Atención con Agente';
         if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
-                `Ya mismo te comunico con una de nuestras asesoras humanas del equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
+                `Ya mismo te comunico con un agente de nuestro equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
                 `${getAgentHandoffNotice()}`;
         } else {
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
-                `Ya mismo te comunicamos con una asesora humana de nuestro equipo de atención.\n` +
+                `Ya mismo te comunicamos con un agente de nuestro equipo de atención.\n` +
                 `💡 _(Si deseás agilizar tu atención, podés dejarnos tu Nombre completo y DNI mientras aguardás)._\n\n` +
                 `${getAgentHandoffNotice()}`;
         }
@@ -2046,7 +2046,7 @@ async function handleChatbotTriage(
             : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
 
         replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-            `Un asesor del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
+            `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
             `${getAgentHandoffNotice()}\n\n` +
             `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
         updates.status = 'sin_asignar';
@@ -2075,7 +2075,7 @@ async function handleChatbotTriage(
         if (isAskingForOtherPatient && !dniInCurrentMsg) {
             replyText = `¡Con gusto te ayudo a consultar el turno del paciente! 🏥\n\n` +
                 `Por favor, indícanos su número de *DNI* (solo números, sin puntos ni espacios) para que busquemos su cita agendada en el sistema:` +
-                `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
             updates.bot_stage = 'esperando_dni_turno';
             updates.bot_active = true;
             nextStage = 'esperando_dni_turno';
@@ -2087,7 +2087,7 @@ async function handleChatbotTriage(
             if (!dniToSearch) {
                 if (currentStage === 'esperando_dni_turno') {
                     replyText = `Por favor, indícanos el número de *DNI del paciente* (solo números, sin puntos ni espacios) para poder buscar su turno agendado en el sistema:` +
-                        `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                        `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                     updates.bot_stage = 'esperando_dni_turno';
                     updates.bot_active = true;
                     nextStage = 'esperando_dni_turno';
@@ -2105,7 +2105,7 @@ async function handleChatbotTriage(
                     } else {
                         replyText = `¡Con gusto te ayudo a consultar citas agendadas! 🏥\n\n` +
                             `Por favor, indícanos el número de *DNI del paciente* (solo números, sin puntos ni espacios):` +
-                            `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                            `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                         updates.bot_stage = 'esperando_dni_turno';
                         updates.bot_active = true;
                         nextStage = 'esperando_dni_turno';
@@ -2143,22 +2143,22 @@ async function handleChatbotTriage(
                     const pFirstName = (pacInfo.nombre || '').includes(',') ? pacInfo.nombre.split(',')[1].trim().split(' ')[0] : pacInfo.nombre.split(' ')[0];
                     if (isConsultingOther) {
                         replyText = `Encontramos la ficha de *${pacInfo.nombre}* (DNI: *${dniToSearch}*) en Sanatorio Argentino, pero actualmente *no registra turnos ni visitas próximas agendadas* en el sistema.\n\n` +
-                            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* para este paciente o preferís comunicarte con un asesor?\n\n` +
+                            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* para este paciente o preferís comunicarte con un agente?\n\n` +
                             `💡 *¿Querés averiguar sobre otro paciente?* Podés escribir directamente su número de DNI.` +
-                            `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                            `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                     } else {
                         replyText = `¡Hola *${pFirstName}*! 🏥 Encontramos tu ficha en Sanatorio Argentino, pero actualmente *no registrás visitas ni turnos próximos pendientes* en el sistema.\n\n` +
-                            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís comunicarte con un asesor?\n\n` +
+                            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís comunicarte con un agente?\n\n` +
                             `💡 *¿Consultás por otro paciente o familiar?* Indícanos su número de *DNI*.` +
-                            `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                            `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                     }
                     updates.bot_active = true;
                     nextStage = 'turno_consultado';
                 } else {
                     replyText = `No registramos visitas ni turnos próximos agendados para el DNI *${dniToSearch}*.\n\n` +
-                        `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís comunicarte con un asesor?\n\n` +
+                        `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís comunicarte con un agente?\n\n` +
                         `💡 *¿Querés averiguar sobre otro paciente?* Podés escribir directamente su número de DNI.` +
-                        `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                        `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                     updates.bot_active = true;
                     nextStage = 'turno_consultado';
                 }
@@ -2234,7 +2234,7 @@ async function handleChatbotTriage(
             `• *Cirugía General* (Guardia pasiva especializada)\n` +
             `• *Urología* (Guardia pasiva especializada)\n\n` +
             `🌐 Para más información institucional podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -2318,7 +2318,7 @@ async function handleChatbotTriage(
                 `• Se realiza de manera integrada en *Sede Santa Fe* (Santa Fe 263 Este).\n\n` +
                 `👉 Más información: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
                 `💬 *¿Deseas solicitar turno para el Programa Prevenir?*\n` +
-                `Escribinos *'Quiero turno para Prevenir'* para que una asesora te coordine la fecha.`;
+                `Escribinos *'Quiero turno para Prevenir'* para que un agente te coordine la fecha.`;
 
             updates.bot_active = true;
             nextStage = 'informacion_respondida';
@@ -2490,7 +2490,7 @@ async function handleChatbotTriage(
         if (patientSentImageRecently) {
             updates.motivo_consulta = 'Presupuesto de Estudio / Práctica Médica';
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con el *presupuesto y aranceles* de tu estudio.\n\n` +
-                `Un asesor revisará la orden médica que nos enviaste y te informará los valores y cobertura de tu obra social a la brevedad.\n\n` +
+                `Un agente revisará la orden médica que nos enviaste y te informará los valores y cobertura de tu obra social a la brevedad.\n\n` +
                 `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
@@ -2567,7 +2567,7 @@ async function handleChatbotTriage(
                 `• Diagnóstico por Imágenes: https://wa.link/dcx4bz\n` +
                 `• Chequeo Preventivo: https://wa.link/mvuq3g\n\n` +
                 `🌐 Web oficial: https://www.sanatorioargentino.com.ar/\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
         }
         nextStage = 'informacion_respondida';
     }
@@ -2588,7 +2588,7 @@ async function handleChatbotTriage(
             `• Curso para Embarazadas: https://forms.gle/1h55LBQxvjUA442X9\n\n` +
             `📧 *Canal formal para comentarios o reclamos:* calidad@sanatorioargentino.com.ar\n\n` +
             `🌐 Para más información ingresá a: https://www.sanatorioargentino.com.ar/\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -2603,7 +2603,7 @@ async function handleChatbotTriage(
             `🗓️ *Conocer actividades:* https://fundacion.sanatorioargentino.com.ar\n` +
             `📲 *WhatsApp directo con un asistente de la Fundación:* https://wa.me/5492644867318\n\n` +
             `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -2625,7 +2625,7 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'cancelar_turno_online') {
         const doc = turnoOnlineProximo?.profesional || turnosActivosProximos?.[0]?.medico || 'tu profesional';
         const f = turnoOnlineProximo?.fecha || turnosActivosProximos?.[0]?.fecha || '';
-        replyText = `Registramos tu solicitud para *cancelar* el turno con ${doc}${f ? ` del ${f}` : ''}. Un asesor gestionará la baja en el sistema.\n\n${getAgentHandoffNotice()}`;
+        replyText = `Registramos tu solicitud para *cancelar* el turno con ${doc}${f ? ` del ${f}` : ''}. Un agente gestionará la baja en el sistema.\n\n${getAgentHandoffNotice()}`;
         updates.motivo_consulta = `Solicita Cancelar Turno: ${doc}`;
         updates.status = 'sin_asignar';
         updates.bot_active = false;
@@ -2647,7 +2647,7 @@ async function handleChatbotTriage(
     // =============================================
     else if (analysis.intent === 'seguimiento_asesor') {
         replyText = `¡Muchas gracias *${fullName}*! Registramos tu respuesta en el chat para que el equipo continúe tu atención.\n\n${getAgentHandoffNotice()}`;
-        updates.motivo_consulta = `Seguimiento de conversación con asesor`;
+        updates.motivo_consulta = `Seguimiento de conversación con agente`;
         updates.status = 'sin_asignar';
         updates.bot_active = false;
         nextStage = 'esperando_agente';
@@ -2715,7 +2715,7 @@ async function handleChatbotTriage(
                 `• *Agenda:* ${turnoOnlineProximo.agenda}\n\n` +
                 `¿Deseás confirmar, reprogramar o cancelar tu turno?\n\n` +
                 `💡 *¿Deseás averiguar sobre el turno de otro paciente o familiar?* Indícanos su número de *DNI*.\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
             updates.motivo_consulta = `Turno Online: ${turnoOnlineProximo.profesional} (${turnoOnlineProximo.fecha} ${turnoOnlineProximo.hora} hs)`;
             updates.medico_o_especialidad = turnoOnlineProximo.profesional;
             updates.bot_active = true;
@@ -2724,7 +2724,7 @@ async function handleChatbotTriage(
         } else if (lastBotContent.includes('te ayudamos a coordinar tu turno') || lastBotContent.includes('¿el turno es para vos') || currentStage === 'esperando_datos_turno') {
             const docMsg = updates.medico_o_especialidad ? ` con *${updates.medico_o_especialidad}*` : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
             replyText = `¡Muchas gracias *${fullName}*! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-                `Un asesor del equipo de Sanatorio Argentino agendará tu turno en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
+                `Un agente del equipo de Sanatorio Argentino agendará tu turno en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
                 `${getAgentHandoffNotice()}\n\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
             updates.status = 'sin_asignar';
@@ -2754,7 +2754,7 @@ async function handleChatbotTriage(
                 `• ¿El turno es para vos o para un familiar / otra persona?\n` +
                 `• Preferencia de *días y horarios* (mañana o tarde)\n` +
                 `${osTurnoBullet}\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Asesor:* Escribí *"Asesor"*`;
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
             updates.status = 'bot';
             updates.bot_active = true;
             nextStage = 'esperando_datos_turno';
@@ -2769,7 +2769,7 @@ async function handleChatbotTriage(
 
         const alreadyAskedAutorizacion = lastBotMessage?.content?.includes('Te ayudamos con la *autorización* de tu orden médica');
         if (alreadyAskedAutorizacion) {
-            console.log(`[triage-bot] Chat ${phone}: Ya se enviaron pautas de autorización previamente. Bot en silencio esperando al asesor.`);
+            console.log(`[triage-bot] Chat ${phone}: Ya se enviaron pautas de autorización previamente. Bot en silencio esperando al agente.`);
             replyText = '';
             updates.status = 'sin_asignar';
             updates.bot_active = false;
@@ -2857,17 +2857,17 @@ async function handleChatbotTriage(
     // FLUJO: DERIVACIÓN DIRECTA A AGENTE HUMANO
     // =============================================
     else if ((analysis.intent as any) === 'derivacion_agente_legacy') {
-        updates.motivo_consulta = 'Solicitud de Atención con Asesor Humano';
+        updates.motivo_consulta = 'Solicitud de Atención con Agente';
         if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥 Te pido sinceras disculpas por cualquier inconveniente.\n\n` +
-                `Ya mismo te comunico con una de nuestras asesoras humanas del equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
+                `Ya mismo te comunico con un agente de nuestro equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
                 `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
             updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            const intro = `¡Hola! 👋 Te pido disculpas por la molestia. Ya mismo te comunicamos con una asesora humana de *Sanatorio Argentino*.`;
+            const intro = `¡Hola! 👋 Te pido disculpas por la molestia. Ya mismo te comunicamos con un agente de *Sanatorio Argentino*.`;
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -2914,7 +2914,7 @@ async function handleChatbotTriage(
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
-            updates.motivo_consulta = convResult.summary || 'Solicitud de atención con asesor humano';
+            updates.motivo_consulta = convResult.summary || 'Solicitud de atención con agente';
             updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         } else {
             updates.bot_active = true;
@@ -3081,7 +3081,7 @@ function buildMissingFieldsPrompt(patientName: string | null, missing: string[],
         intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n`;
     }
 
-    intro += `Para poder abrir tu ficha digital de admisión y que el asesor cuente con toda tu información, por favor indícanos:\n\n`;
+    intro += `Para poder abrir tu ficha digital de admisión y que el agente cuente con toda tu información, por favor indícanos:\n\n`;
 
     const bulletList = missing.map(m => labelsMap[m] || `• *${m}*`).join('\n');
     const footer = `\n\nPodés responder con los datos en un solo mensaje. Una vez recibidos, te comunicaremos de inmediato con el equipo de atención.`;
@@ -3107,7 +3107,7 @@ function buildTriageSummary(
         guardia: 'Consulta por Guardia 24hs',
         informes_laboratorio: 'Resultados de Laboratorio',
         informes_imagenes: 'Informes de Diagnóstico por Imágenes',
-        derivacion_agente: 'Solicitud de Asesor Humano',
+        derivacion_agente: 'Solicitud de Agente',
         gestion_familiar: 'Gestión para Tercero / Familiar (Turno o Autorización)',
         gestion_propia: 'Gestión Propia (Turno o Autorización)'
     };
@@ -3224,7 +3224,7 @@ async function handleNewPatientIntake(
             `• *Nacimiento:* ${updates.fecha_nacimiento || '—'}${ageNote}\n` +
             `• *Departamento:* ${updates.departamento}\n` +
             `• *Contacto:* ${updates.telefono_contacto}${docNote}\n\n` +
-            `Tu ficha ya está disponible en la pantalla del equipo de atención. Un asesor tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
+            `Tu ficha ya está disponible en la pantalla del equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
             `${getAgentHandoffNotice()}`;
 
         return { nextStage, replyText: reply };
