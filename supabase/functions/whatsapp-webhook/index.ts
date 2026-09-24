@@ -1784,6 +1784,9 @@ async function handleChatbotTriage(
     const cleanText = (incomingText || '').trim();
     const isIncomingMedia = (mediaType === 'image' || mediaType === 'document' || cleanText === '[image]' || cleanText === '[document]' || Boolean(mediaUrl));
 
+    // Guardar referencia del cliente de Supabase para helpers internos
+    (globalThis as any)._lastSupabaseClient = supabase;
+
     // Refrescar cola de espera y configuración de avisos de demora en caliente
     await refreshQueueAndHandoffConfig(supabase);
 
@@ -2212,7 +2215,7 @@ async function handleChatbotTriage(
         analysis.intent !== 'volver_atras' && 
         analysis.intent !== 'cancelar_turno_online'
     ) {
-        // 1. Si el paciente incluyó DNI en la respuesta, mapearlo en SALUS
+        // 1. Si el paciente incluyó DNI en la respuesta, verificar en SALUS (Bifurcación de los Dos Caminos)
         if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
             const { data: pFound } = await supabase
                 .from('hospital_pacientes')
@@ -2220,83 +2223,126 @@ async function handleChatbotTriage(
                 .eq('dni', candidateDni)
                 .limit(1)
                 .maybeSingle();
+
             if (pFound) {
+                // CAMINO 1: PACIENTE REGISTRADO EN SALUS
                 paciente = pFound;
                 updates.dni = paciente.dni;
                 updates.nombre_completo = paciente.nombre;
-                updates.obra_social = paciente.coseguro || updates.obra_social;
                 updates.nhc = paciente.nhc;
+                updates.fecha_nacimiento = paciente.fecha_nacimiento;
                 updates.es_paciente_existente = true;
-                console.log(`[triage-bot] Paciente mapeado exitosamente en FLUJO 0C por DNI ${candidateDni}: ${paciente.nombre}`);
+                console.log(`[triage-bot] ✅ CAMINO 1 (Registrado en SALUS) para DNI ${candidateDni}: ${paciente.nombre}`);
             } else {
+                // CAMINO 2: PACIENTE NO REGISTRADO EN SALUS
                 updates.dni = candidateDni;
+                updates.es_paciente_existente = false;
+                console.log(`[triage-bot] ⚠️ CAMINO 2 (No registrado en SALUS) para DNI ${candidateDni}`);
             }
         }
 
-        // 2. Extraer o preservar especialidad o doctor
-        const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
-        const effectiveDocOrSpec = 
-            doctorDisplay || 
-            specialtyFromMsg || 
-            updates.medico_o_especialidad || 
-            conv?.medico_o_especialidad || 
-            null;
-
-        if (effectiveDocOrSpec) {
-            updates.medico_o_especialidad = effectiveDocOrSpec;
-        }
-
-        // 3. Extraer preferencias de horario si se mencionan
-        let preferenciaHoraria = '';
-        if (/\b(ma[nñ]ana|ma[nñ]anas|temprano)\b/i.test(cleanText)) {
-            preferenciaHoraria = 'Turno Mañana';
-        } else if (/\b(tarde|tardes|siesta)\b/i.test(cleanText)) {
-            preferenciaHoraria = 'Turno Tarde';
-        }
-
-        const mappedName = paciente?.nombre || fullName;
-        let cleanName = mappedName;
-        if (mappedName && mappedName.includes(',')) {
-            const parts = mappedName.split(',').map((p: string) => p.trim());
-            cleanName = `${parts[1]} ${parts[0]}`;
-        }
-        if (candidateDni && !effectiveDocOrSpec) {
-            const firstName = cleanName !== 'Paciente' ? (cleanName.includes(' ') ? cleanName.split(' ')[0] : cleanName) : '';
-            const pGreeting = firstName ? ` *${firstName}*` : '';
-            const osInfo = (paciente?.coseguro || updates.obra_social) ? ` (${paciente?.coseguro || updates.obra_social})` : '';
-            replyText = `¡Muchas gracias${pGreeting}! 🏥 Registramos tu DNI *${candidateDni}*${osInfo}.\n\n` +
-                `Por favor indícanos:\n` +
-                `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
-                `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-            updates.status = 'bot';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_turno';
-            updates.motivo_consulta = `Solicitud de Turno: DNI ${candidateDni} (esperando especialidad)`;
-        } else if (!candidateDni && !paciente?.dni && !conv?.dni && !effectiveDocOrSpec) {
-            replyText = `¡Entendido! 🏥 Para poder coordinar tu turno, por favor indícanos:\n\n` +
-                `• Número de *DNI del paciente* (solo números, sin puntos ni espacios)\n` +
-                `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
-                `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-            updates.status = 'bot';
-            updates.bot_active = true;
-            nextStage = 'esperando_datos_turno';
-            updates.motivo_consulta = 'Solicitud de Turno (esperando DNI y especialidad)';
+        // Si se detectó que es un paciente NO registrado en SALUS y aportó DNI:
+        // Se activa inmediatamente la recolección de los datos obligatorios para el alta en SALUS
+        if (candidateDni && !paciente) {
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                'turno',
+                analysis.doctorRecord,
+                doctorDisplay
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
         } else {
-            const docMsg = updates.medico_o_especialidad 
-                ? ` para *${updates.medico_o_especialidad}*` 
-                : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
+            // 2. Extraer o preservar especialidad o doctor
+            const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
+            const effectiveDocOrSpec = 
+                doctorDisplay || 
+                specialtyFromMsg || 
+                updates.medico_o_especialidad || 
+                conv?.medico_o_especialidad || 
+                null;
 
-            replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-                `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
-                `${getAgentHandoffNotice()}\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-            updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
-            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+            if (effectiveDocOrSpec) {
+                updates.medico_o_especialidad = effectiveDocOrSpec;
+            }
+
+            // 3. Extraer obra social y plan si vino en el texto
+            const extractedOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
+            if (extractedOs && !extractedOs.toLowerCase().includes('a confirmar')) {
+                updates.obra_social = extractedOs;
+            }
+
+            // Extraer preferencias de horario si se mencionan
+            let preferenciaHoraria = '';
+            if (/\b(ma[nñ]ana|ma[nñ]anas|temprano)\b/i.test(cleanText)) {
+                preferenciaHoraria = 'Turno Mañana';
+            } else if (/\b(tarde|tardes|siesta)\b/i.test(cleanText)) {
+                preferenciaHoraria = 'Turno Tarde';
+            }
+
+            const mappedName = paciente?.nombre || fullName;
+            let cleanName = mappedName;
+            if (mappedName && mappedName.includes(',')) {
+                const parts = mappedName.split(',').map((p: string) => p.trim());
+                cleanName = `${parts[1]} ${parts[0]}`;
+            }
+
+            // Si es paciente registrado pero aún no confirmó su Obra Social y Plan:
+            const hasValidOsAndPlan = updates.obra_social && 
+                !updates.obra_social.toLowerCase().includes('a confirmar') && 
+                !updates.obra_social.toLowerCase().includes('a consultar');
+
+            if (paciente && candidateDni && !hasValidOsAndPlan) {
+                const pGreeting = cleanName !== 'Paciente' ? ` *${cleanName}*` : '';
+                replyText = `¡Muchas gracias${pGreeting}! 🏥 Encontramos tu historia clínica en Sanatorio Argentino (DNI: *${candidateDni}*).\n\n` +
+                    `📋 Para verificar tu cobertura en SALUS y registrar tu solicitud correctamente, por favor indícanos o confírmanos tu *Obra Social / Prepaga y Plan actual* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_obra_social_paciente';
+                updates.bot_stage = 'esperando_obra_social_paciente';
+            } else if (candidateDni && !effectiveDocOrSpec) {
+                const pGreeting = cleanName !== 'Paciente' ? ` *${cleanName}*` : '';
+                const osInfo = (updates.obra_social || paciente?.coseguro) ? ` (${updates.obra_social || paciente?.coseguro})` : '';
+                replyText = `¡Muchas gracias${pGreeting}! 🏥 Registramos tu DNI *${candidateDni}*${osInfo}.\n\n` +
+                    `Por favor indícanos:\n` +
+                    `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                    `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_turno';
+                updates.motivo_consulta = `Solicitud de Turno: DNI ${candidateDni} (esperando especialidad)`;
+            } else if (!candidateDni && !paciente?.dni && !effectiveDocOrSpec) {
+                replyText = `¡Entendido! 🏥 Para poder verificar tu historia clínica en Sanatorio Argentino o darte de alta en SALUS, por favor indícanos:\n\n` +
+                    `• Número de *DNI del paciente* (solo números, sin puntos ni espacios)\n` +
+                    `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                    `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_turno';
+                updates.motivo_consulta = 'Solicitud de Turno (esperando DNI y especialidad)';
+            } else {
+                const docMsg = updates.medico_o_especialidad 
+                    ? ` para *${updates.medico_o_especialidad}*` 
+                    : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
+
+                const osMsg = updates.obra_social ? `\n• *Cobertura informada:* ${updates.obra_social}` : '';
+
+                replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}\n\n` +
+                    `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
+                    `${getAgentHandoffNotice()}\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                nextStage = 'esperando_agente';
+                updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+                updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+            }
         }
     }
     // =============================================
@@ -2413,43 +2459,96 @@ async function handleChatbotTriage(
         }
     }
     // =============================================
-    // FLUJO 1: PACIENTE RESPONDIENDO DNI O DATOS DESDE NÚMERO NUEVO/NO REGISTRADO
+    // FLUJO 1: PACIENTE RESPONDIENDO DNI, OBRA SOCIAL O DATOS OBLIGATORIOS DE ADMISIÓN
     // =============================================
-    else if (currentStage === 'esperando_dni' || currentStage === 'esperando_datos_nuevo') {
-        // ¿El DNI provisto coincide con un paciente existente en SALUS?
-        if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
+    else if (
+        currentStage === 'esperando_dni' || 
+        currentStage === 'esperando_datos_nuevo' || 
+        currentStage === 'esperando_obra_social_paciente'
+    ) {
+        // CASO 1A: Paciente respondiendo su Obra Social y Plan (Camino 1: Paciente Registrado)
+        if (currentStage === 'esperando_obra_social_paciente') {
+            const osPlanText = cleanText.trim();
+            updates.obra_social = osPlanText;
+            console.log(`[triage-bot] Obra Social y Plan registrado para paciente en SALUS: ${osPlanText}`);
+
+            // Extraer o verificar si también aportó especialidad o doctor
+            const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
+            const effectiveDocOrSpec = doctorDisplay || specialtyFromMsg || updates.medico_o_especialidad || conv?.medico_o_especialidad || null;
+
+            if (effectiveDocOrSpec) {
+                updates.medico_o_especialidad = effectiveDocOrSpec;
+                replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*) y tu solicitud para *${effectiveDocOrSpec}*.\n\n` +
+                    `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
+                    `${getAgentHandoffNotice()}`;
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                nextStage = 'esperando_agente';
+                updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
+            } else {
+                replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*).\n\n` +
+                    `Por favor indícanos:\n` +
+                    `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                    `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_turno';
+                updates.bot_stage = 'esperando_datos_turno';
+            }
+        }
+        // CASO 1B: Paciente respondiendo DNI (Bifurcación Camino 1 vs Camino 2)
+        else if (candidateDni) {
             const { data: pFound } = await supabase
                 .from('hospital_pacientes')
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
                 .eq('dni', candidateDni)
                 .limit(1)
                 .maybeSingle();
+
             if (pFound) {
+                // CAMINO 1: Paciente Registrado en SALUS
                 paciente = pFound;
-                console.log(`[triage-bot] Paciente encontrado en SALUS por DNI provisto: ${paciente.nombre}`);
+                updates.dni = paciente.dni;
+                updates.nombre_completo = paciente.nombre;
+                updates.nhc = paciente.nhc;
+                updates.es_paciente_existente = true;
+
+                // Extraer si en el mismo mensaje ya informó su obra social y plan
+                const extractedOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
+                if (extractedOs && !extractedOs.toLowerCase().includes('a confirmar')) {
+                    updates.obra_social = extractedOs;
+                    replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Encontramos tu historia clínica en Sanatorio Argentino (DNI: *${candidateDni}*) con cobertura *${extractedOs}*.\n\n` +
+                        `${getAgentHandoffNotice()}`;
+                    updates.status = 'sin_asignar';
+                    updates.bot_active = false;
+                    nextStage = 'esperando_agente';
+                    updates.ai_summary = buildTriageSummary(updates, analysis.intent, analysis.doctorRecord, true, paciente.edad);
+                } else {
+                    replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Encontramos tu historia clínica en Sanatorio Argentino (DNI: *${candidateDni}*).\n\n` +
+                        `📋 Para verificar tu cobertura en SALUS y registrar tu solicitud correctamente, por favor indícanos tu *Obra Social / Prepaga y Plan actual* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    nextStage = 'esperando_obra_social_paciente';
+                    updates.bot_stage = 'esperando_obra_social_paciente';
+                }
+            } else {
+                // CAMINO 2: Paciente No Registrado en SALUS -> Pedir datos obligatorios
+                const res = await handleNewPatientIntake(
+                    cleanText,
+                    candidateDni,
+                    conv,
+                    phone,
+                    updates,
+                    analysis.intent,
+                    analysis.doctorRecord,
+                    doctorDisplay
+                );
+                nextStage = res.nextStage;
+                replyText = res.replyText;
             }
-        }
-
-        if (paciente) {
-            updates = {
-                ...updates,
-                dni: paciente.dni || candidateDni,
-                nombre_completo: paciente.nombre,
-                obra_social: paciente.coseguro || 'Particular / A confirmar',
-                nhc: paciente.nhc || null,
-                email: paciente.email || updates.email || null,
-                telefono_contacto: paciente.telefono || phone,
-                departamento: paciente.centro || 'San Juan',
-                es_paciente_existente: true,
-                status: 'sin_asignar',
-                bot_active: false
-            };
-            nextStage = 'esperando_agente';
-            updates.ai_summary = buildTriageSummary(updates, analysis.intent, analysis.doctorRecord, true, paciente.edad);
-
-            replyText = `¡Muchas gracias *${paciente.nombre}*! ✅ Encontramos tu historia clínica en Sanatorio Argentino.\n\n${getAgentHandoffNotice()}`;
         } else {
-            // Paciente no registrado en SALUS -> Onboarding express de los 6 datos obligatorios
+            // CASO 1C: Paciente continuando con la carga de datos obligatorios para el alta
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -3307,32 +3406,34 @@ function getMissingPatientFields(data: Record<string, any>): string[] {
 }
 
 /**
- * Genera el mensaje amigable de repregunta solicitando ÚNICAMENTE los campos que faltan
+ * Genera el mensaje amigable de repregunta solicitando ÚNICAMENTE los campos que faltan para el alta en SALUS
  */
 function buildMissingFieldsPrompt(patientName: string | null, missing: string[], currentData: Record<string, any>): string {
     const labelsMap: Record<string, string> = {
-        nombre_completo: '• *Nombre y Apellido completo*',
-        dni: '• *Número de DNI* (sin puntos ni letras)',
-        fecha_nacimiento_edad: '• *Fecha de Nacimiento* (DD/MM/AAAA) o *Edad*',
-        obra_social: '• *Obra Social o Prepaga* (si no posees cobertura, indicanos "Particular")',
-        departamento: '• *Departamento de residencia* (ej: Capital, Rivadavia, Rawson, Santa Lucía, Chimbas, Pocito, Caucete, etc.)'
+        nombre_completo: '1️⃣ *Nombre y Apellido completo* (tal como figura en tu DNI)',
+        dni: '2️⃣ *Número de DNI* (solo números, sin puntos ni espacios)',
+        fecha_nacimiento_edad: '3️⃣ *Fecha de Nacimiento* (DD/MM/AAAA) o *Edad*',
+        obra_social: '4️⃣ *Obra Social / Prepaga y Plan* (o aclará "Particular" si no poseés cobertura médica)',
+        departamento: '5️⃣ *Departamento / Localidad de residencia en San Juan* (ej: Capital, Rivadavia, Rawson, Santa Lucía, Chimbas, Pocito, Caucete, etc.)'
     };
 
     let intro = '';
     const cleanName = (patientName && !patientName.toLowerCase().startsWith('paciente')) ? patientName : null;
 
     if (cleanName) {
-        intro = `¡Muchas gracias *${cleanName}*! 🏥\n\n`;
+        intro = `¡Muchas gracias *${cleanName}*! 🏥\n\n` +
+            `Constatamos que *no registrás una ficha previa de paciente en Sanatorio Argentino*.\n\n` +
+            `Para poder abrir tu ficha de paciente en el sistema SALUS y coordinar tu atención, necesitamos los siguientes datos obligatorios de admisión:\n\n`;
     } else if (currentData.dni) {
-        intro = `¡Muchas gracias! 🏥 Registramos tu DNI (${currentData.dni}).\n\n`;
+        intro = `¡Hola! 🏥 Verificamos el DNI *${currentData.dni}* y constatamos que *no registrás una ficha previa de paciente en Sanatorio Argentino*.\n\n` +
+            `Para poder abrir tu ficha de paciente en el sistema SALUS y coordinar tu atención, necesitamos los siguientes datos obligatorios de admisión:\n\n`;
     } else {
-        intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n`;
+        intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
+            `Para poder abrir tu ficha de paciente en el sistema SALUS y coordinar tu atención, necesitamos los siguientes datos obligatorios de admisión:\n\n`;
     }
 
-    intro += `Para poder abrir tu ficha digital de admisión y que el agente cuente con toda tu información, por favor indícanos:\n\n`;
-
     const bulletList = missing.map(m => labelsMap[m] || `• *${m}*`).join('\n');
-    const footer = `\n\nPodés responder con los datos en un solo mensaje. Una vez recibidos, te comunicaremos de inmediato con el equipo de atención.`;
+    const footer = `\n\n_Podés responder con los datos en un solo mensaje o por partes._ Una vez recibidos, te comunicaremos de inmediato con el equipo de atención.`;
 
     return intro + bulletList + footer;
 }
@@ -3461,18 +3562,41 @@ async function handleNewPatientIntake(
         updates.bot_stage = 'esperando_agente';
         const nextStage = 'esperando_agente';
 
+        // Pre-registrar en hospital_pacientes para que quede dado de alta en el padrón de SALUS
+        if (updates.dni && updates.nombre_completo) {
+            try {
+                const supabaseClient = (globalThis as any)._lastSupabaseClient;
+                if (supabaseClient) {
+                    await supabaseClient.from('hospital_pacientes').upsert({
+                        dni: String(updates.dni).trim(),
+                        nombre: updates.nombre_completo.toUpperCase().trim(),
+                        coseguro: updates.obra_social || 'Particular',
+                        fecha_nacimiento: updates.fecha_nacimiento || null,
+                        centro: updates.departamento || 'San Juan',
+                        telefono: phone,
+                        manual: true,
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'dni' });
+                    console.log(`[triage-bot] ✅ Paciente nuevo pre-registrado en hospital_pacientes para SALUS: ${updates.nombre_completo} (DNI ${updates.dni})`);
+                }
+            } catch (err) {
+                console.warn('[triage-bot] Advertencia pre-registrando en hospital_pacientes:', err);
+            }
+        }
+
         updates.ai_summary = buildTriageSummary(updates, intent, doctorRecord, false, mergedPatientData.edad);
 
         const ageNote = mergedPatientData.edad ? ` (${mergedPatientData.edad} años)` : '';
         const docNote = doctorDisplay ? `\n• *Profesional solicitado:* ${doctorDisplay}` : '';
-        const reply = `¡Excelente *${resolvedName}*! ✅ Registramos todos tus datos de admisión:\n\n` +
-            `📋 *Ficha de Admisión Digital:*\n` +
+        const reply = `¡Excelente *${resolvedName}*! ✅ Registramos todos tus datos para tu alta en SALUS:\n\n` +
+            `📋 *Ficha de Admisión Digital (SALUS):*\n` +
             `• *DNI:* ${updates.dni}\n` +
-            `• *Obra Social / Prepaga:* ${updates.obra_social}\n` +
+            `• *Paciente:* ${updates.nombre_completo}\n` +
+            `• *Obra Social y Plan:* ${updates.obra_social}\n` +
             `• *Nacimiento:* ${updates.fecha_nacimiento || '—'}${ageNote}\n` +
             `• *Departamento:* ${updates.departamento}\n` +
             `• *Contacto:* ${updates.telefono_contacto}${docNote}\n\n` +
-            `Tu ficha ya está disponible en la pantalla del equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
+            `Tu ficha ya fue cargada para el equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
             `${getAgentHandoffNotice()}`;
 
         return { nextStage, replyText: reply };
@@ -3522,14 +3646,21 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
         }
     }
 
-    // Obras Sociales frecuentes en San Juan
+    // Obras Sociales frecuentes en San Juan y Plan
     const commonOs = [
         'OSP', 'Obra Social Provincia', 'OSDE', 'Swiss Medical', 'DAMSUP', 'PAMI',
-        'Medifé', 'Galeno', 'Sancor Salud', 'OMINT', 'Jerárquicos', 'Particular'
+        'Medifé', 'Galeno', 'Sancor Salud', 'OMINT', 'Jerárquicos', 'Particular',
+        'Poder Judicial', 'Prevención Salud', 'Andar', 'Bramed', 'Osdepym', 'Unión Personal', 'Accord'
     ];
     for (const o of commonOs) {
         if (new RegExp(`\\b${o}\\b`, 'i').test(text)) {
-            vars.obra_social = o === 'Obra Social Provincia' ? 'OSP' : o;
+            let matched = o === 'Obra Social Provincia' ? 'OSP' : o;
+            // Buscar si en el texto especifica plan (ej: "plan 210", "plan tradicional", "plan plata")
+            const planMatch = text.match(new RegExp(`${o}\\s+(?:plan\\s+)?([a-zA-Z0-9]+)`, 'i')) || text.match(/\bplan\s+([a-zA-Z0-9]+)\b/i);
+            if (planMatch && planMatch[1] && !['medico', 'salud', 'de', 'para'].includes(planMatch[1].toLowerCase())) {
+                matched += ` (Plan ${planMatch[1]})`;
+            }
+            vars.obra_social = matched;
             break;
         }
     }
@@ -3562,7 +3693,7 @@ Extrae del mensaje del paciente un JSON con los siguientes campos:
 - dni: Número de DNI (solo 7 u 8 dígitos numéricos) o null.
 - fecha_nacimiento: Fecha de nacimiento en formato DD/MM/AAAA o null.
 - edad: Edad del paciente en años como número entero o null. Si menciona fecha de nacimiento, calcula también la edad actual.
-- obra_social: Nombre de la obra social, prepaga o si es Particular (ej: OSP, OSDE, Swiss Medical, DAMSUP, Particular) o null.
+- obra_social: Nombre de la obra social, prepaga y plan (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, Particular) o null.
 - departamento: Localidad o departamento de San Juan donde reside (ej: Capital, Rawson, Rivadavia, Santa Lucía, Chimbas, Pocito, Caucete, etc.) o null.
 - telefono_contacto: Número de teléfono alternativo o null.
 - motivo_consulta: Breve síntesis de lo que necesita o null.
