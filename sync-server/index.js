@@ -421,6 +421,48 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
         return da > db ? 1 : -1;
     });
 
+    // Background async persist a Supabase salus_visitas (para disponibilidad universal en cualquier dispositivo)
+    if (consultas.length > 0 && (resolvedNhc || resolvedDni)) {
+        (async () => {
+            try {
+                const rowsToUpsert = consultas.map(c => {
+                    let fVisita = null;
+                    if (c.fecha_visita) {
+                        if (c.fecha_visita.includes('/')) {
+                            const [d, m, y] = c.fecha_visita.split('/');
+                            fVisita = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                        } else {
+                            fVisita = String(c.fecha_visita).slice(0, 10);
+                        }
+                    }
+                    return {
+                        id_visita: c.id_visita,
+                        paciente: c.paciente || null,
+                        nhc: String(c.nhc || resolvedNhc || ''),
+                        nif: resolvedDni ? String(resolvedDni) : null,
+                        fecha_visita: fVisita,
+                        hora_inicio: c.hora_visita || null,
+                        tipo_visita: c.tipo_visita || null,
+                        responsable: c.medico || null,
+                        cliente: c.cliente || null,
+                        centro: c.centro || null,
+                        grupo_agenda: c.agenda || null,
+                        asistencia: c.asistencia || 'Presente',
+                        motivo_visita: c.motivo || null,
+                        synced_at: new Date().toISOString()
+                    };
+                }).filter(r => r.id_visita);
+
+                for (let i = 0; i < rowsToUpsert.length; i += 50) {
+                    const chunk = rowsToUpsert.slice(i, i + 50);
+                    await supabase.from('salus_visitas').upsert(chunk, { onConflict: 'id_visita' });
+                }
+            } catch (ePersist) {
+                console.warn('⚠️ [Historial Clinico] Error persistiendo a Supabase salus_visitas:', ePersist.message);
+            }
+        })();
+    }
+
     return {
         elapsedMs: Date.now() - startTime,
         nhc: resolvedNhc,

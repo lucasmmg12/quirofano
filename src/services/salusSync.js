@@ -5,7 +5,33 @@
  * Este servicio solo verifica disponibilidad y dispara la sincronización.
  */
 
-const SYNC_BASE_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
+/**
+ * Resuelve dinámicamente la URL base del sync-server de SALUS para que funcione en cualquier dispositivo
+ * (localhost, terminales en red LAN como la máquina de Sergio Femenia, o dispositivos remotos).
+ */
+export function getSalusSyncBaseUrl() {
+    if (typeof window === 'undefined') return 'http://localhost:3456';
+    if (import.meta.env.VITE_SALUS_SYNC_URL) {
+        return import.meta.env.VITE_SALUS_SYNC_URL.replace(/\/api\/salus\/?$/, '');
+    }
+    const host = window.location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    // Si estamos en Vite dev server (puerto 5173), Vite proxea /api/salus de forma transparente
+    if (window.location.port === '5173') {
+        return window.location.origin;
+    }
+    if (isLocal) {
+        return 'http://localhost:3456';
+    }
+    // Si el usuario está navegando desde la red LAN interna del Sanatorio (128.223.x.x o 192.168.x.x)
+    if (/^(128\.223\.|192\.168\.|10\.)/.test(host)) {
+        return `http://${host}:3456`;
+    }
+    // IP fija del servidor de Sync en Sanatorio Argentino (intranet)
+    return 'http://128.223.17.60:3456';
+}
+
+const SYNC_BASE_URL = `${getSalusSyncBaseUrl()}/api/salus`;
 
 /**
  * Verifica si el sync-server está corriendo y conectado a SALUS

@@ -135,7 +135,7 @@ import ContactCenterThemeModal from './ContactCenterThemeModal';
 // 🧪 [MODO PRUEBA TEMPORAL] INDICADOR DE AUTO-REINICIO CADA 3 MINUTOS
 // Para quitar o desactivar: cambiar a false
 // =========================================================================
-const TEST_BOT_RESET_INDICATOR_ENABLED = true;
+const TEST_BOT_RESET_INDICATOR_ENABLED = false;
 
 export default function ContactCenterChatConsole({ 
     chats = [], 

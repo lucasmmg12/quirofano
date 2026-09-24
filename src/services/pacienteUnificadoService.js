@@ -4,6 +4,7 @@
  * Usa hospital_pacientes como tabla maestra y cruza en tiempo real.
  */
 import { supabase } from '../lib/supabase';
+import { getSalusSyncBaseUrl } from './salusSync';
 
 const TABLE = 'hospital_pacientes';
 
@@ -212,7 +213,7 @@ export async function fetchPacienteDetalle(paciente) {
             let consultasData = [];
             let turnosProximosData = [];
 
-            // Intentar primero endpoint en tiempo real de SALUS (sync-server)
+            // 4.1 Intentar primero endpoint en tiempo real de SALUS (sync-server) con resolución dinámica de URL
             try {
                 const params = new URLSearchParams();
                 if (dni) params.append('dni', dni);
@@ -221,9 +222,10 @@ export async function fetchPacienteDetalle(paciente) {
                 if (nombre) params.append('nombre', nombre);
 
                 const ctrl = new AbortController();
-                const timeoutId = setTimeout(() => ctrl.abort(), 2800);
+                const timeoutId = setTimeout(() => ctrl.abort(), 3500);
 
-                const res = await fetch(`http://localhost:3456/api/salus/paciente-historial-clinico?${params.toString()}`, {
+                const syncBase = getSalusSyncBaseUrl();
+                const res = await fetch(`${syncBase}/api/salus/paciente-historial-clinico?${params.toString()}`, {
                     signal: ctrl.signal
                 });
                 clearTimeout(timeoutId);
@@ -236,77 +238,179 @@ export async function fetchPacienteDetalle(paciente) {
                     }
                 }
             } catch (err) {
-                // Fallback silencioso a base Supabase si sync-server no responde
+                // Fallback silencioso a base Supabase para dispositivos en red o clientes remotos
             }
 
-            // Si no obtuvimos consultas de SALUS, recurrir a Supabase consultas_guardia y cruzar con calidad_pacientes_diagnosticos
+            // 4.2 Si no obtuvimos consultas de SALUS vía sync-server, recurrir a las tablas globales de Supabase
             if (consultasData.length === 0) {
-                if (nhc) {
-                    const { data: byNhc } = await supabase
-                        .from('consultas_guardia')
-                        .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
-                        .eq('nhc', parseInt(nhc, 10))
-                        .order('fecha_visita', { ascending: false })
-                        .limit(30);
-                    consultasData = byNhc || [];
-                }
-                if (consultasData.length === 0 && dni) {
-                    const { data: byDni } = await supabase
-                        .from('consultas_guardia')
-                        .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
-                        .eq('nif', dni)
-                        .order('fecha_visita', { ascending: false })
-                        .limit(30);
-                    consultasData = byDni || [];
-                }
-                if (consultasData.length === 0 && !dni && !nhc && nombre) {
-                    const tokens = getNameTokens(nombre);
-                    if (tokens.length >= 2) {
-                        let q = supabase
-                            .from('consultas_guardia')
-                            .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif');
-                        tokens.forEach(tok => {
-                            q = q.ilike('paciente', `%${tok}%`);
-                        });
-                        const { data: byNom } = await q.order('fecha_visita', { ascending: false }).limit(30);
-                        consultasData = byNom || [];
+                // A. Buscar en salus_visitas (historial unificado de consultas médicas en Supabase)
+                try {
+                    let qVis = supabase
+                        .from('salus_visitas')
+                        .select('id_visita, paciente, cliente, tipo_visita, especialidad, grupo_agenda, fecha_visita, hora_inicio, asistencia, nhc, nif, motivo_visita, responsable, centro');
+
+                    if (nhc && dni) {
+                        qVis = qVis.or(`nhc.eq.${nhc},nif.eq.${dni}`);
+                    } else if (nhc) {
+                        qVis = qVis.eq('nhc', String(nhc));
+                    } else if (dni) {
+                        qVis = qVis.eq('nif', String(dni));
+                    } else if (nombre) {
+                        const tokens = getNameTokens(nombre);
+                        if (tokens.length >= 2) {
+                            tokens.forEach(tok => { qVis = qVis.ilike('paciente', `%${tok}%`); });
+                        }
                     }
+
+                    const { data: svVisitas } = await qVis.order('fecha_visita', { ascending: false }).limit(50);
+                    if (svVisitas && svVisitas.length > 0) {
+                        svVisitas.forEach(v => {
+                            consultasData.push({
+                                id_visita: v.id_visita,
+                                fecha_visita: v.fecha_visita,
+                                hora_visita: v.hora_inicio || '',
+                                agenda: v.grupo_agenda || v.especialidad || 'Consulta Médica',
+                                medico: v.responsable || 'Profesional Asignado',
+                                tipo_visita: v.tipo_visita || 'Consulta Médica',
+                                asistencia: v.asistencia || 'Presente',
+                                cliente: v.cliente || 'Sanatorio Argentino',
+                                centro: v.centro || 'Sanatorio Argentino',
+                                paciente: v.paciente || nombre,
+                                nhc: v.nhc,
+                                diagnostico: null,
+                                motivo: v.motivo_visita,
+                                origen: 'salus_presencial'
+                            });
+                        });
+                    }
+                } catch (eSv) {
+                    console.warn('[pacienteUnificado] error consultando salus_visitas en Supabase:', eSv);
                 }
 
-                // Cruzar con diagnósticos, síntomas y formularios médicos de calidad_pacientes_diagnosticos
+                // B. Consultar consultas_guardia
+                try {
+                    let cgData = [];
+                    if (nhc) {
+                        const { data: byNhc } = await supabase
+                            .from('consultas_guardia')
+                            .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
+                            .eq('nhc', parseInt(nhc, 10))
+                            .order('fecha_visita', { ascending: false })
+                            .limit(30);
+                        cgData = byNhc || [];
+                    }
+                    if (cgData.length === 0 && dni) {
+                        const { data: byDni } = await supabase
+                            .from('consultas_guardia')
+                            .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif')
+                            .eq('nif', dni)
+                            .order('fecha_visita', { ascending: false })
+                            .limit(30);
+                        cgData = byDni || [];
+                    }
+                    if (cgData.length === 0 && !dni && !nhc && nombre) {
+                        const tokens = getNameTokens(nombre);
+                        if (tokens.length >= 2) {
+                            let q = supabase
+                                .from('consultas_guardia')
+                                .select('id_visita, paciente, cliente, visita_especialidad, agenda, tipo_visita, fecha_visita, hora_visita, asistencia, nhc, nif');
+                            tokens.forEach(tok => {
+                                q = q.ilike('paciente', `%${tok}%`);
+                            });
+                            const { data: byNom } = await q.order('fecha_visita', { ascending: false }).limit(30);
+                            cgData = byNom || [];
+                        }
+                    }
+
+                    cgData.forEach(cg => {
+                        if (!consultasData.some(c => String(c.id_visita) === String(cg.id_visita))) {
+                            consultasData.push({
+                                id_visita: cg.id_visita,
+                                fecha_visita: cg.fecha_visita,
+                                hora_visita: cg.hora_visita || '',
+                                agenda: cg.agenda || cg.visita_especialidad || 'Guardia Médica',
+                                medico: cg.medico || 'Médico de Guardia',
+                                tipo_visita: cg.tipo_visita || 'Visita Guardia',
+                                asistencia: cg.asistencia || 'Presente',
+                                cliente: cg.cliente || 'Sanatorio Argentino',
+                                centro: cg.centro || 'Sanatorio Argentino',
+                                paciente: cg.paciente || nombre,
+                                nhc: cg.nhc,
+                                diagnostico: null,
+                                motivo: null,
+                                origen: 'guardia'
+                            });
+                        }
+                    });
+                } catch (eCg) {
+                    console.warn('[pacienteUnificado] error consultando consultas_guardia:', eCg);
+                }
+
+                // C. Cruzar con diagnósticos, síntomas y formularios médicos de calidad_pacientes_diagnosticos
                 try {
                     let diagData = [];
                     const idVisitas = consultasData.map(c => c.id_visita).filter(Boolean);
                     if (idVisitas.length > 0) {
                         const { data: dVis } = await supabase
                             .from('calidad_pacientes_diagnosticos')
-                            .select('id_visita, diagnostico, motivo, formulario, centro, nhc, dni')
+                            .select('id_visita, diagnostico, motivo, formulario, centro, nhc, dni, fecha_visita')
                             .in('id_visita', idVisitas);
                         diagData = dVis || [];
                     }
 
-                    if (diagData.length === 0 && (nhc || dni)) {
+                    if (nhc || dni) {
                         let qD = supabase.from('calidad_pacientes_diagnosticos').select('id_visita, diagnostico, motivo, formulario, centro, nhc, dni, fecha_visita');
-                        if (nhc) qD = qD.eq('nhc', String(nhc));
+                        if (nhc && dni) qD = qD.or(`nhc.eq.${nhc},dni.eq.${dni}`);
+                        else if (nhc) qD = qD.eq('nhc', String(nhc));
                         else if (dni) qD = qD.eq('dni', String(dni));
                         const { data: dFallback } = await qD.limit(30);
-                        diagData = dFallback || [];
+                        if (dFallback && dFallback.length > 0) {
+                            dFallback.forEach(df => {
+                                if (!diagData.some(d => String(d.id_visita) === String(df.id_visita) && d.diagnostico === df.diagnostico)) {
+                                    diagData.push(df);
+                                }
+                            });
+                        }
                     }
 
                     const diagMap = new Map();
                     diagData.forEach(d => {
-                        if (d.id_visita) diagMap.set(d.id_visita, d);
+                        if (d.id_visita) diagMap.set(String(d.id_visita), d);
                     });
 
+                    // Enriquecer las consultas existentes
                     consultasData = consultasData.map(c => {
-                        const d = diagMap.get(c.id_visita);
+                        const d = diagMap.get(String(c.id_visita));
                         return {
                             ...c,
-                            diagnostico: d?.diagnostico || null,
-                            motivo: d?.motivo || null,
-                            formulario: d?.formulario || null,
+                            diagnostico: d?.diagnostico || c.diagnostico || null,
+                            motivo: d?.motivo || c.motivo || null,
+                            formulario: d?.formulario || c.formulario || null,
                             centro: d?.centro || c.centro || null
                         };
+                    });
+
+                    // IMPORTANTE: Si calidad_pacientes_diagnosticos tiene registros clínicos que no estaban en consultasData, agregarlos
+                    diagData.forEach(d => {
+                        if (!consultasData.some(c => String(c.id_visita) === String(d.id_visita))) {
+                            consultasData.push({
+                                id_visita: d.id_visita,
+                                fecha_visita: d.fecha_visita ? String(d.fecha_visita).split('T')[0] : 'Consulta Registrada',
+                                hora_visita: '',
+                                agenda: d.formulario || 'Consulta Médica',
+                                medico: 'Profesional Sanatorio',
+                                tipo_visita: d.formulario || 'Diagnóstico Clínico',
+                                asistencia: 'Presente',
+                                cliente: 'Sanatorio Argentino',
+                                centro: d.centro || 'Sanatorio Argentino',
+                                paciente: d.paciente || nombre,
+                                nhc: d.nhc || nhc,
+                                diagnostico: d.diagnostico,
+                                motivo: d.motivo,
+                                formulario: d.formulario,
+                                origen: 'salus_presencial'
+                            });
+                        }
                     });
                 } catch (eDiag) {
                     console.warn('[pacienteUnificado] error cruzando calidad_pacientes_diagnosticos:', eDiag);

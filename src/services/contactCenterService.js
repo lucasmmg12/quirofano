@@ -12,6 +12,7 @@
 import { supabase } from '../lib/supabase';
 import { getConfigValue, updateConfig } from './configService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from './builderbotApi';
+import { getSalusSyncBaseUrl } from './salusSync';
 
 const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
 const CONFIG_KEY = 'contact_center_allowed_users';
@@ -1159,7 +1160,8 @@ export async function fetchFamilyMembersByPhone(phone) {
         const cleanDigits = String(phone).replace(/\D/g, '');
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2500);
-        const res = await fetch(`http://localhost:3456/api/salus/familiares/${cleanDigits}`, {
+        const baseUrl = getSalusSyncBaseUrl();
+        const res = await fetch(`${baseUrl}/api/salus/familiares/${cleanDigits}`, {
             signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -1268,7 +1270,8 @@ export async function lookupPatientFromSalus(query) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`http://localhost:3456/api/salus/paciente/${clean}`, {
+            const baseUrl = getSalusSyncBaseUrl();
+            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
