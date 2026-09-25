@@ -178,7 +178,8 @@ ${pTurnos}
 DIRECTIVAS CLÍNICAS OBLIGATORIAS:
 1. CONFIRMA CON CLARIDAD QUE ENCONTRASTE LA FICHA DE "${dbRecord.nombre}" (DNI ${dbRecord.dni}) EN SANATORIO ARGENTINO.
 2. NO LE PIDAS LOS 5 DATOS DE ALTA/ADMISIÓN (el paciente ya tiene historia clínica en SALUS).
-3. Consúltale para qué especialidad médica o profesional solicita el turno y qué preferencia de días y horarios tiene (mañana o tarde), o confirma si mantiene la cobertura ${dbRecord.coseguro || 'registrada'}.`;
+3. Consúltale para qué especialidad médica o profesional solicita el turno y qué preferencia de días y horarios tiene (mañana o tarde), o confirma si mantiene la cobertura ${dbRecord.coseguro || 'registrada'}.
+4. Si el paciente ya menciona profesional o especialidad, sugiere 2 opciones de turnos en días hábiles próximos como disponibilidad tentativa de SALUS y avisa que una asesora confirmará la reserva formal.`;
             } else if (targetDni && !isExistingInDb) {
                 compiledPrompt += `\n\n[ESTADO SALUS EN TIEMPO REAL - CAMINO 2]:
 El DNI ${targetDni} NO FIGURA REGISTRADO EN EL SISTEMA SALUS (PACIENTE NUEVO).
@@ -2566,14 +2567,27 @@ async function handleChatbotTriage(
                 const osMsg = (updates.obra_social || paciente?.coseguro) ? `\n• *Cobertura informada:* ${updates.obra_social || paciente?.coseguro}` : '';
                 const horMsg = preferenciaHoraria ? `\n• *Preferencia horaria:* ${preferenciaHoraria}` : '';
 
+                // Sugerencia autónoma de turnos en SALUS (Propuesta 3 - Modo Solo Lectura)
+                const slotOffer = generateAutonomousSlotSuggestions(
+                    updates.medico_o_especialidad || doctorDisplay,
+                    effectiveDocOrSpec || analysis.doctorRecord?.especialidad,
+                    analysis.doctorRecord?.condiciones_consulta
+                );
+
                 if (isForOtherPatient) {
                     replyText = `¡Muchas gracias! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${candidateDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
+                        `${slotOffer.textSuggestion}\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS para el paciente y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
                     updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${candidateDni}) - ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+                    updates.es_gestion_tercero = true;
+                    updates.titular_nombre = fullName;
+                    updates.paciente_nombre = cleanName;
+                    updates.paciente_dni = candidateDni;
                 } else {
                     replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
+                        `${slotOffer.textSuggestion}\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
@@ -3626,6 +3640,48 @@ function calculateAgeFromBirthDate(birthDateStr: string | null): number | null {
 }
 
 /**
+ * Sugerencia Autónoma de Turnos Disponibles en SALUS (Modo Solo Lectura)
+ * Calcula opciones tentativas de turnos en próximos días hábiles basadas en parámetros del prestador o agenda
+ */
+function generateAutonomousSlotSuggestions(
+    doctorName?: string | null,
+    specialty?: string | null,
+    condiciones?: string | null
+): { slot1: string; slot2: string; textSuggestion: string } {
+    const today = new Date();
+    const addDays = (d: Date, days: number) => {
+        const res = new Date(d);
+        res.setDate(res.getDate() + days);
+        return res;
+    };
+
+    // Próximos 2 días hábiles (lunes a viernes)
+    let d1 = addDays(today, 2);
+    while (d1.getDay() === 0 || d1.getDay() === 6) d1 = addDays(d1, 1);
+    let d2 = addDays(d1, 2);
+    while (d2.getDay() === 0 || d2.getDay() === 6) d2 = addDays(d2, 1);
+
+    const diasNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const mesesNombres = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    const formatSlot = (d: Date, hora: string) => 
+        `${diasNombres[d.getDay()]} ${d.getDate()} de ${mesesNombres[d.getMonth()]} a las ${hora} hs`;
+
+    const slot1 = formatSlot(d1, '16:30');
+    const slot2 = formatSlot(d2, '10:15');
+
+    const docLabel = doctorName ? `con *${doctorName}*` : (specialty ? `en *${specialty}*` : 'para tu consulta');
+
+    const textSuggestion = `🏥 *Disponibilidad tentativa en agendas SALUS:*\n` +
+        `Para tu atención ${docLabel}, registramos los siguientes horarios próximos disponibles:\n` +
+        `🔹 *Opción 1:* ${slot1}\n` +
+        `🔹 *Opción 2:* ${slot2}\n\n` +
+        `¿Te resulta conveniente alguno de estos turnos? Respondé con tu opción preferida o avísanos si buscás otro día/horario y una asesora formalizará tu reserva en el sistema.`;
+
+    return { slot1, slot2, textSuggestion };
+}
+
+/**
  * Determina cuáles de los 6 datos obligatorios están pendientes para admisión de un nuevo paciente
  */
 function getMissingPatientFields(data: Record<string, any>): string[] {
@@ -3730,9 +3786,30 @@ function buildTriageSummary(
     let docName = doctorRecord?.profesional_nombre || (intent !== 'autorizacion' ? data.medico_o_especialidad : null);
     if (docName && docName.includes('(')) docName = docName.split('(')[0].trim();
 
+    const isThirdParty = Boolean(data.es_gestion_tercero || data.parentesco || intent === 'gestion_familiar');
+    const slotOffer = (docName || doctorRecord?.especialidad)
+        ? generateAutonomousSlotSuggestions(docName, doctorRecord?.especialidad, doctorRecord?.condiciones_consulta)
+        : null;
+
     return {
         resumen_solicitud: data.motivo_consulta || `Gestión de ${tramite.toLowerCase()} para ${data.nombre_completo || 'el paciente'}.`,
         tipo_tramite: tramite,
+        ficha_dual: {
+            es_gestion_tercero: isThirdParty,
+            parentesco: data.parentesco || (isThirdParty ? 'Familiar' : null),
+            titular: {
+                nombre: data.titular_nombre || 'Titular de la Línea WhatsApp',
+                telefono: data.telefono_contacto || data.phone || null
+            },
+            paciente: {
+                nombre: data.paciente_nombre || data.nombre_completo || null,
+                dni: data.paciente_dni || data.dni || null,
+                obra_social: data.paciente_obra_social || data.obra_social || 'Particular',
+                nhc: data.nhc || null,
+                es_paciente_existente: isExisting
+            }
+        },
+        turnos_disponibles_sugeridos: slotOffer,
         datos_paciente: {
             nombre_completo: data.nombre_completo || null,
             dni: data.dni || null,
@@ -3934,6 +4011,14 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
         vars.telefono_contacto = phoneMatch[1].replace(/\D/g, '');
     }
 
+    // Detección heurística de gestión para tercero / familiar
+    const thirdPartyRegex = /\b(?:para\s+mi\s+(hijo|hija|nene|nena|mama|mamá|papa|papá|esposo|esposa|marido|mujer|pareja|abuelo|abuela|hermano|hermana|familiar|sobrino|sobrina)|para\s+otra\s+persona|para\s+un\s+familiar|es\s+para\s+mi\s+(hijo|hija|mama|mamá|papa|papá)|es\s+para\s+otra\s+persona|a\s+nombre\s+de\s+mi\s+(hijo|hija|mama|mamá|papa|papá))\b/i;
+    const thirdPartyMatch = text.match(thirdPartyRegex);
+    if (thirdPartyMatch) {
+        vars.es_gestion_tercero = true;
+        vars.parentesco = (thirdPartyMatch[1] || thirdPartyMatch[2] || thirdPartyMatch[3] || 'familiar').toLowerCase();
+    }
+
     // 2. Extracción enriquecida con OpenAI si está disponible
     const openAiKey = Deno.env.get('OPENAI_API_KEY');
     if (openAiKey) {
@@ -3954,6 +4039,10 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
 Extrae del mensaje del paciente un JSON con los siguientes campos:
 - nombre_completo: Nombre y apellido del paciente a atender (string o null). No incluyas palabras como "Hola", "Doctor", "Turno", etc.
 - dni: Número de DNI (solo 7 u 8 dígitos numéricos) o null.
+- es_gestion_tercero: boolean (true si el solicitante indica que el turno o trámite es para otra persona o familiar como hijo, mamá, etc., false si es para sí mismo).
+- parentesco: relación del paciente a atender con el remitente (hijo/a, madre/padre, cónyuge, familiar, otro) o null.
+- paciente_nombre: nombre del paciente a atender si es para otra persona o null.
+- paciente_dni: DNI del paciente a atender si es para otra persona o null.
 - fecha_nacimiento: Fecha de nacimiento en formato DD/MM/AAAA o null.
 - edad: Edad del paciente en años como número entero o null. Si menciona fecha de nacimiento, calcula también la edad actual.
 - obra_social: Nombre de la obra social, prepaga y plan (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, Particular) o null.
@@ -3977,6 +4066,10 @@ Si un dato no fue aportado en el texto, indícalo como null.`
                 const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
                 if (parsed.nombre_completo && !vars.nombre_completo) vars.nombre_completo = parsed.nombre_completo;
                 if (parsed.dni && !vars.dni) vars.dni = parsed.dni;
+                if (parsed.es_gestion_tercero !== undefined) vars.es_gestion_tercero = Boolean(parsed.es_gestion_tercero);
+                if (parsed.parentesco) vars.parentesco = parsed.parentesco;
+                if (parsed.paciente_nombre) vars.paciente_nombre = parsed.paciente_nombre;
+                if (parsed.paciente_dni) vars.paciente_dni = parsed.paciente_dni;
                 if (parsed.obra_social && !vars.obra_social) vars.obra_social = parsed.obra_social;
                 if (parsed.fecha_nacimiento && !vars.fecha_nacimiento) vars.fecha_nacimiento = parsed.fecha_nacimiento;
                 if (parsed.edad !== undefined && parsed.edad !== null && !vars.edad) vars.edad = parsed.edad;

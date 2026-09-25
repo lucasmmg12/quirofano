@@ -132,13 +132,63 @@ Reglas estrictas:
         const rawContent = aiJson.choices?.[0]?.message?.content || '{}';
         const parsedAnalysis = JSON.parse(rawContent);
 
-        // 3. Formatear la descripción concisa requerida para el operador
+        // 3. Cálculo de vigencia de 30 días para auditoría de Obras Sociales
+        let vigenciaEstado: 'vigente' | 'vencida' | 'desconocida' = 'desconocida';
+        let diasTranscurridos: number | null = null;
+        let diasRestantes: number | null = null;
+        let alertaVigencia = 'Fecha de emisión no detectada o ilegible';
+
+        if (parsedAnalysis.fecha_solicitud && parsedAnalysis.fecha_solicitud !== 'No especificado' && parsedAnalysis.fecha_solicitud !== 'Ilegible') {
+            const rawFecha = String(parsedAnalysis.fecha_solicitud).trim();
+            // Intentar matchear DD/MM/AAAA o AAAA-MM-DD
+            const dmyMatch = rawFecha.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+            const ymdMatch = rawFecha.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+
+            let emisionDate: Date | null = null;
+            if (dmyMatch) {
+                const day = parseInt(dmyMatch[1], 10);
+                const month = parseInt(dmyMatch[2], 10) - 1;
+                let year = parseInt(dmyMatch[3], 10);
+                if (year < 100) year += 2000;
+                emisionDate = new Date(year, month, day);
+            } else if (ymdMatch) {
+                const year = parseInt(ymdMatch[1], 10);
+                const month = parseInt(ymdMatch[2], 10) - 1;
+                const day = parseInt(ymdMatch[3], 10);
+                emisionDate = new Date(year, month, day);
+            }
+
+            if (emisionDate && !isNaN(emisionDate.getTime())) {
+                const today = new Date();
+                const diffTime = today.getTime() - emisionDate.getTime();
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                diasTranscurridos = Math.max(0, diffDays);
+
+                if (diasTranscurridos <= 30) {
+                    vigenciaEstado = 'vigente';
+                    diasRestantes = 30 - diasTranscurridos;
+                    alertaVigencia = `✅ Orden Vigente: Emitida hace ${diasTranscurridos} día${diasTranscurridos === 1 ? '' : 's'} (restan ${diasRestantes} días de vigencia)`;
+                } else {
+                    vigenciaEstado = 'vencida';
+                    diasRestantes = 0;
+                    alertaVigencia = `⚠️ Orden Vencida: Emitida hace ${diasTranscurridos} días (supera el límite de 30 días de Obras Sociales)`;
+                }
+            }
+        }
+
+        parsedAnalysis.vigencia_estado = vigenciaEstado;
+        parsedAnalysis.dias_transcurridos = diasTranscurridos;
+        parsedAnalysis.dias_restantes = diasRestantes;
+        parsedAnalysis.alerta_vigencia = alertaVigencia;
+
+        // 4. Formatear la descripción concisa requerida para el operador
         const formattedSummary = [
             `Estudio a autorizar: ${parsedAnalysis.estudio || 'No especificado'}`,
             `Solicitante: ${parsedAnalysis.solicitante || 'No especificado'}`,
             `Matricula: ${parsedAnalysis.matricula || 'No especificada'}`,
             `Diagnostico: ${parsedAnalysis.diagnostico || 'No especificado'}`,
             `Fecha de solicitud: ${parsedAnalysis.fecha_solicitud || 'No especificada'}`,
+            `Vigencia (30 días): ${alertaVigencia}`,
         ].join('\n');
 
         const finalPayload = {

@@ -696,6 +696,14 @@ export async function fetchLiveAndDemoChats() {
                 resolvedContactName = `+${phone.replace(/\D/g, '')}`;
             }
 
+            const aiDual = conv?.ai_summary?.ficha_dual || null;
+            const isThirdParty = Boolean(
+                aiDual?.es_gestion_tercero || 
+                conv?.ai_summary?.tipo_tramite?.includes('Familiar') || 
+                conv?.ai_summary?.tipo_tramite?.includes('Tercero') ||
+                (conv?.motivo_consulta && (conv.motivo_consulta.toLowerCase().includes('familiar') || conv.motivo_consulta.toLowerCase().includes('tercero')))
+            );
+
             const patientFields = {
                 dni: conv?.dni || null,
                 nhc: conv?.nhc || null,
@@ -710,7 +718,17 @@ export async function fetchLiveAndDemoChats() {
                 medicoOEspecialidad: conv?.medico_o_especialidad || null,
                 botActive: conv?.bot_active ?? false,
                 botStage: conv?.bot_stage || 'inicio',
-                pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado'
+                pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado',
+                fichaDual: {
+                    esGestionTercero: isThirdParty,
+                    parentesco: aiDual?.parentesco || 'Familiar',
+                    titularNombre: aiDual?.titular?.nombre || incomingSenderName || resolvedContactName,
+                    titularTelefono: phone,
+                    pacienteNombre: aiDual?.paciente?.nombre || conv?.nombre_completo || resolvedContactName,
+                    pacienteDni: aiDual?.paciente?.dni || conv?.dni || null,
+                    pacienteObraSocial: aiDual?.paciente?.obra_social || conv?.obra_social || null,
+                    pacienteNhc: aiDual?.paciente?.nhc || conv?.nhc || null
+                }
             };
 
             realChats.push({
@@ -1091,19 +1109,59 @@ export async function fetchDoctorParameters(query = '') {
 /**
  * Guarda y persiste la Ficha CRM del Paciente vinculada a la conversación y al módulo CRM
  */
-export async function saveCrmPatientCard({ phone, dni, nombreCompleto, obraSocial, fechaNacimiento, email, departamento, notas, motivoConsulta }) {
+export async function saveCrmPatientCard({ 
+    phone, dni, nombreCompleto, obraSocial, fechaNacimiento, email, departamento, notas, motivoConsulta,
+    esGestionTercero, titularNombre, parentesco, pacienteNombre, pacienteDni, pacienteObraSocial
+}) {
     if (!phone) throw new Error('Teléfono requerido');
     const norm = normalizeArgentinePhone(phone);
 
+    // Si es gestión a tercero / familiar, enriquecer ai_summary con ficha_dual
+    let extraSummaryUpdate = {};
+    if (esGestionTercero) {
+        try {
+            const { data: currentConv } = await supabase
+                .from('contact_center_conversations')
+                .select('ai_summary')
+                .eq('phone', norm)
+                .maybeSingle();
+
+            const prevAi = currentConv?.ai_summary || {};
+            extraSummaryUpdate.ai_summary = {
+                ...prevAi,
+                ficha_dual: {
+                    es_gestion_tercero: true,
+                    parentesco: parentesco || 'Familiar',
+                    titular: {
+                        nombre: titularNombre || 'Titular de la Línea',
+                        telefono: norm
+                    },
+                    paciente: {
+                        nombre: pacienteNombre || nombreCompleto,
+                        dni: pacienteDni || dni,
+                        obra_social: pacienteObraSocial || obraSocial
+                    }
+                }
+            };
+        } catch (dualErr) {
+            console.warn('Advertencia actualizando ai_summary para ficha dual:', dualErr);
+        }
+    }
+
+    const effectiveDni = (pacienteDni || dni) ? String(pacienteDni || dni).trim() : null;
+    const effectiveNombre = (pacienteNombre || nombreCompleto) ? String(pacienteNombre || nombreCompleto).trim() : null;
+    const effectiveOs = (pacienteObraSocial || obraSocial) ? String(pacienteObraSocial || obraSocial).trim() : null;
+
     const convPayload = {
-        dni: dni ? String(dni).trim() : null,
-        nombre_completo: nombreCompleto ? String(nombreCompleto).trim() : null,
-        obra_social: obraSocial ? String(obraSocial).trim() : null,
+        dni: effectiveDni,
+        nombre_completo: effectiveNombre,
+        obra_social: effectiveOs,
         fecha_nacimiento: fechaNacimiento ? String(fechaNacimiento).trim() : null,
         email: email ? String(email).trim() : null,
         departamento: departamento ? String(departamento).trim() : null,
         motivo_consulta: motivoConsulta ? String(motivoConsulta).trim() : null,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        ...extraSummaryUpdate
     };
 
     // 1. Persistir en contact_center_conversations

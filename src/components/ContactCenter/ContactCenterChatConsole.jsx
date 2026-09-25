@@ -461,6 +461,7 @@ export default function ContactCenterChatConsole({
     const [isSearchingSalus, setIsSearchingSalus] = useState(false);
     const [isSearchingThirdParty, setIsSearchingThirdParty] = useState(false);
     const [thirdPartyDniInput, setThirdPartyDniInput] = useState('');
+    const [activeDualTab, setActiveDualTab] = useState('paciente'); // 'paciente' | 'titular'
 
     // Estados Historial Clínico 360°
     const [patientHistory, setPatientHistory] = useState(null);
@@ -728,6 +729,8 @@ export default function ContactCenterChatConsole({
                 const birth = found.fecha_nacimiento || '';
                 const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
 
+                const currentTitularName = selectedChat.customFields?.fichaDual?.titularNombre || selectedChat.contactName || `+${selectedChat.phone}`;
+
                 setCrmForm(prev => ({
                     ...prev,
                     dni: found.dni || prev.dni,
@@ -736,7 +739,7 @@ export default function ContactCenterChatConsole({
                     fechaNacimiento: formattedBirth || prev.fechaNacimiento,
                     email: found.email || prev.email,
                     departamento: found.centro || prev.departamento,
-                    notas: (prev.notas ? prev.notas + '\n' : '') + `[Gestión a nombre de otro paciente] Paciente: ${found.nombre} (DNI ${found.dni}) - Solicitado vía WhatsApp +${selectedChat.phone}`
+                    notas: (prev.notas ? prev.notas + '\n' : '') + `[Gestión para Tercero] Titular WhatsApp: ${currentTitularName} | Paciente a atender: ${found.nombre} (DNI ${found.dni})`
                 }));
 
                 if (selectedChat?.customFields) {
@@ -747,8 +750,17 @@ export default function ContactCenterChatConsole({
                     selectedChat.customFields.fechaNacimiento = formattedBirth || selectedChat.customFields.fechaNacimiento;
                     selectedChat.customFields.email = found.email || selectedChat.customFields.email;
                     selectedChat.customFields.esPacienteExistente = true;
+                    selectedChat.customFields.fichaDual = {
+                        esGestionTercero: true,
+                        parentesco: 'Familiar',
+                        titularNombre: currentTitularName,
+                        titularTelefono: selectedChat.phone,
+                        pacienteNombre: found.nombre,
+                        pacienteDni: found.dni,
+                        pacienteObraSocial: found.coseguro,
+                        pacienteNhc: found.nhc
+                    };
                 }
-                selectedChat.contactName = found.nombre;
 
                 await saveCrmPatientCard({
                     phone: selectedChat.phone,
@@ -758,12 +770,19 @@ export default function ContactCenterChatConsole({
                     fechaNacimiento: formattedBirth,
                     email: found.email,
                     departamento: found.centro || 'San Juan',
-                    motivoConsulta: crmForm.motivoConsulta
+                    motivoConsulta: crmForm.motivoConsulta,
+                    esGestionTercero: true,
+                    titularNombre: currentTitularName,
+                    parentesco: 'Familiar',
+                    pacienteNombre: found.nombre,
+                    pacienteDni: found.dni,
+                    pacienteObraSocial: found.coseguro
                 });
 
-                showToast(`Ficha vinculada exitosamente a ${found.nombre} (DNI ${found.dni})`, 'success');
+                showToast(`Ficha Dual vinculada: Titular ${currentTitularName} ➔ Paciente ${found.nombre} (DNI ${found.dni})`, 'success');
                 setIsSearchingThirdParty(false);
                 setThirdPartyDniInput('');
+                setActiveDualTab('paciente');
 
                 if (typeof onReloadChats === 'function') {
                     onReloadChats();
@@ -3302,6 +3321,45 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                                         <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Matricula:</span> {msg.orderAnalysis.matricula || 'No especificada'}</div>
                                                                         <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Diagnostico:</span> {msg.orderAnalysis.diagnostico || 'No especificado'}</div>
                                                                         <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Fecha de solicitud:</span> {msg.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
+                                                                        {/* CONTROL DE VIGENCIA DE 30 DÍAS */}
+                                                                        {msg.orderAnalysis.vigencia_estado && (
+                                                                            <div style={{
+                                                                                marginTop: '5px',
+                                                                                padding: '6px 8px',
+                                                                                borderRadius: '6px',
+                                                                                background: msg.orderAnalysis.vigencia_estado === 'vencida' ? '#FEF2F2' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#ECFDF5' : '#F8FAFC'),
+                                                                                border: `1px solid ${msg.orderAnalysis.vigencia_estado === 'vencida' ? '#FCA5A5' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#86EFAC' : '#E2E8F0')}`,
+                                                                                color: msg.orderAnalysis.vigencia_estado === 'vencida' ? '#B91C1C' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#15803D' : '#64748B'),
+                                                                                fontWeight: 700,
+                                                                                fontSize: '0.72rem',
+                                                                                display: 'flex',
+                                                                                flexDirection: 'column',
+                                                                                gap: '4px'
+                                                                            }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                                                    <span>{msg.orderAnalysis.alerta_vigencia}</span>
+                                                                                    {msg.orderAnalysis.vigencia_estado === 'vencida' && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                const aviso = `Estimado/a paciente, verificamos su orden médica para "${msg.orderAnalysis.estudio || 'la práctica solicitada'}" pero observamos que fue emitida el ${msg.orderAnalysis.fecha_solicitud} (hace ${msg.orderAnalysis.dias_transcurridos || '>30'} días). Por normativa de las obras sociales, las órdenes médicas poseen una vigencia máxima de 30 días corridos para su autorización. Por favor solicite a su médico tratante la renovación o revalidación de la orden. ¡Muchas gracias!`;
+                                                                                                navigator.clipboard.writeText(aviso);
+                                                                                                alert('Aviso de orden vencida copiado al portapapeles. Podés pegarlo directamente en el chat.');
+                                                                                            }}
+                                                                                            style={{
+                                                                                                background: '#DC2626', color: '#FFFFFF', border: 'none',
+                                                                                                borderRadius: '4px', padding: '2px 6px', fontSize: '0.64rem',
+                                                                                                fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap'
+                                                                                            }}
+                                                                                            title="Copiar respuesta modelo de orden vencida para el paciente"
+                                                                                        >
+                                                                                            Copiar aviso
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             ) : (
@@ -4351,8 +4409,137 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             )}
 
-                            {/* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA DEL PACIENTE (SOLO LECTURA SALUS) */}
+                            {/* SELECTOR FICHA DUAL: TITULAR VS PACIENTE (PROPUESTA 1 APROBADA) */}
+                            {selectedChat.customFields?.fichaDual?.esGestionTercero && (
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '4px',
+                                    background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
+                                    padding: '3px',
+                                    borderRadius: '8px',
+                                    border: `1px solid ${rightCardBorder}`
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveDualTab('paciente')}
+                                        style={{
+                                            flex: 1,
+                                            padding: '6px 8px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: activeDualTab === 'paciente' ? (ccTheme.accentColor || '#0284C7') : 'transparent',
+                                            color: activeDualTab === 'paciente' ? '#FFFFFF' : themeCardSubtext,
+                                            fontWeight: 800,
+                                            fontSize: '0.68rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '4px',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <span>👤 Paciente:</span>
+                                        <span style={{ maxWidth: '95px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {selectedChat.customFields.fichaDual.pacienteNombre || crmForm.pacienteNombre || 'Paciente'}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveDualTab('titular')}
+                                        style={{
+                                            flex: 1,
+                                            padding: '6px 8px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: activeDualTab === 'titular' ? (ccTheme.accentColor || '#0284C7') : 'transparent',
+                                            color: activeDualTab === 'titular' ? '#FFFFFF' : themeCardSubtext,
+                                            fontWeight: 800,
+                                            fontSize: '0.68rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '4px',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <span>📱 Titular:</span>
+                                        <span style={{ maxWidth: '95px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName || 'Titular'}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* VISTA SI SE SELECCIONA FICHA TITULAR */}
+                            {selectedChat.customFields?.fichaDual?.esGestionTercero && activeDualTab === 'titular' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{
+                                        background: ccTheme.isDark ? '#1E293B' : '#EFF6FF',
+                                        border: `1.5px solid ${ccTheme.isDark ? '#3B82F6' : '#93C5FD'}`,
+                                        borderRadius: '8px',
+                                        padding: '10px 12px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '6px'
+                                    }}>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#93C5FD' : '#1E40AF', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                            <span>📱 Titular de la Línea Telefónica</span>
+                                        </div>
+                                        <div style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
+                                            Esta persona es quien escribe desde WhatsApp gestionando en nombre del paciente.
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NOMBRE DEL TITULAR</div>
+                                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: themeCardText }}>
+                                            {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NÚMERO DE WHATSAPP</div>
+                                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
+                                            +{selectedChat.phone}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>RELACIÓN / PARENTESCO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
+                                            {selectedChat.customFields.fichaDual.parentesco || 'Familiar'}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
+                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>PACIENTE VINCULADO</div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
+                                            👤 {selectedChat.customFields.fichaDual.pacienteNombre || crmForm.pacienteNombre} (DNI {selectedChat.customFields.fichaDual.pacienteDni || crmForm.dni})
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                            /* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA DEL PACIENTE (SOLO LECTURA SALUS) */
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {selectedChat.customFields?.fichaDual?.esGestionTercero && (
+                                        <div style={{
+                                            background: ccTheme.isDark ? '#064E3B22' : '#F0FDF4',
+                                            border: `1px solid ${ccTheme.isDark ? '#059669' : '#86EFAC'}`,
+                                            borderRadius: '6px',
+                                            padding: '6px 10px',
+                                            fontSize: '0.68rem',
+                                            color: ccTheme.isDark ? '#86EFAC' : '#166534',
+                                            fontWeight: 700,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}>
+                                            <span>👥 Gestión por tercero: Titular {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName}</span>
+                                        </div>
+                                    )}
+
                                     {/* ALERTA ACCESO RÁPIDO: TURNOS PRÓXIMOS & ONLINE DEL PACIENTE */}
                                     {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 && (
                                         <div style={{
@@ -4499,6 +4686,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     )}
                                 </div>
+                            )}
                         </>
                     )}
 
@@ -5730,6 +5918,38 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                                         <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Fecha de la Orden</div>
                                         <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
                                     </div>
+                                    {viewerImage.orderAnalysis.vigencia_estado && (
+                                        <div style={{
+                                            padding: '8px 10px',
+                                            borderRadius: '6px',
+                                            background: viewerImage.orderAnalysis.vigencia_estado === 'vencida' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                                            border: `1px solid ${viewerImage.orderAnalysis.vigencia_estado === 'vencida' ? '#EF4444' : '#22C55E'}`,
+                                            color: viewerImage.orderAnalysis.vigencia_estado === 'vencida' ? '#FCA5A5' : '#86EFAC',
+                                            fontSize: '0.72rem',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '6px'
+                                        }}>
+                                            <div style={{ fontWeight: 800 }}>{viewerImage.orderAnalysis.alerta_vigencia}</div>
+                                            {viewerImage.orderAnalysis.vigencia_estado === 'vencida' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const aviso = `Estimado/a paciente, verificamos su orden médica para "${viewerImage.orderAnalysis.estudio || 'la práctica solicitada'}" pero observamos que fue emitida el ${viewerImage.orderAnalysis.fecha_solicitud} (hace ${viewerImage.orderAnalysis.dias_transcurridos || '>30'} días). Por normativa de las obras sociales, las órdenes médicas poseen una vigencia máxima de 30 días corridos para su autorización. Por favor solicite a su médico tratante la renovación o revalidación de la orden. ¡Muchas gracias!`;
+                                                        navigator.clipboard.writeText(aviso);
+                                                        alert('Aviso de orden vencida copiado al portapapeles. Podés pegarlo directamente en el chat.');
+                                                    }}
+                                                    style={{
+                                                        background: '#EF4444', color: '#FFFFFF', border: 'none',
+                                                        borderRadius: '4px', padding: '4px 8px', fontSize: '0.68rem',
+                                                        fontWeight: 800, cursor: 'pointer', alignSelf: 'flex-start'
+                                                    }}
+                                                >
+                                                    📋 Copiar aviso para el paciente
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div style={{ marginTop: 'auto', padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(2, 132, 199, 0.1)', border: '1px solid rgba(2, 132, 199, 0.2)', fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.5 }}>

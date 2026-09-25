@@ -98,7 +98,21 @@ export default function ContactCenterMetricsTab({ addToast }) {
         resolutionTimeAvgMin: 0,
         dayOfWeekDelays: [],
         highestDelayDay: null,
-        highestDelayValue: 0
+        highestDelayValue: 0,
+        slaStats: {
+            optimo: 0,
+            aceptable: 0,
+            demorado: 0,
+            totalCasos: 0,
+            cumplimientoPct: 100
+        },
+        queueAging: {
+            menos15m: 0,
+            de15ma1h: 0,
+            de1ha4h: 0,
+            mas4h: 0,
+            totalActivas: 0
+        }
     });
 
     // Carga y cómputo de métricas desde Supabase
@@ -543,13 +557,45 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         if (cnt > maxH) { maxH = cnt; maxHIdx = idx; }
                     });
 
+                    const withinSla = a.responseTimesMin.filter(x => x <= 15).length;
+                    const agentSlaPct = a.responseTimesMin.length > 0 ? Math.round((withinSla / a.responseTimesMin.length) * 100) : 100;
+
                     return {
                         ...a,
                         avgResponseTimeMin: avgTime,
-                        peakHour: `${maxHIdx.toString().padStart(2, '0')}:00 hs`
+                        peakHour: `${maxHIdx.toString().padStart(2, '0')}:00 hs`,
+                        slaCumplimientoPct: agentSlaPct,
+                        totalAtendidos: a.responseTimesMin.length
                     };
                 })
                 .sort((a, b) => b.count - a.count);
+
+            // ── C2. Cómputo de Niveles de SLA & Distribución de Demoras ──
+            let slaOptimo = 0;
+            let slaAceptable = 0;
+            let slaDemorado = 0;
+            allHumanResponseTimes.forEach(t => {
+                if (t <= 15) slaOptimo++;
+                else if (t <= 60) slaAceptable++;
+                else slaDemorado++;
+            });
+            const totalSlaCases = allHumanResponseTimes.length;
+            const slaCumplimientoPct = totalSlaCases > 0 ? Math.round((slaOptimo / totalSlaCases) * 100) : 100;
+
+            // Envejecimiento de la cola de chats activos (Queue Aging)
+            const currentTimeMs = Date.now();
+            const queueAging = { menos15m: 0, de15ma1h: 0, de1ha4h: 0, mas4h: 0, totalActivas: 0 };
+            filteredConvs.forEach(c => {
+                if (!isClosedOrArchived(c)) {
+                    queueAging.totalActivas++;
+                    const lastActivity = new Date(c.updated_at || c.created_at).getTime();
+                    const waitMin = Math.max(0, (currentTimeMs - lastActivity) / 60000);
+                    if (waitMin <= 15) queueAging.menos15m++;
+                    else if (waitMin <= 60) queueAging.de15ma1h++;
+                    else if (waitMin <= 240) queueAging.de1ha4h++;
+                    else queueAging.mas4h++;
+                }
+            });
 
             setMetrics({
                 totalOutgoing: totalOut,
@@ -572,7 +618,15 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 resolutionTimeAvgMin: resolutionAvg,
                 dayOfWeekDelays,
                 highestDelayDay: maxDelayDayName,
-                highestDelayValue: maxDelayValue
+                highestDelayValue: maxDelayValue,
+                slaStats: {
+                    optimo: slaOptimo,
+                    aceptable: slaAceptable,
+                    demorado: slaDemorado,
+                    totalCasos: totalSlaCases,
+                    cumplimientoPct: slaCumplimientoPct
+                },
+                queueAging
             });
 
         } catch (err) {
@@ -1124,6 +1178,236 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 3.B TABLERO DE SLA & TIEMPOS DE RESPUESTA (PROPUESTA 10 APROBADA)  */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
+                padding: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '18px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '36px', height: '36px', borderRadius: '10px',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                        }}>
+                            <ShieldCheck size={20} />
+                        </div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Tablero de SLA y Tiempos de Respuesta Institucionales
+                                </h3>
+                                <span style={{
+                                    fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
+                                    background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0'
+                                }}>
+                                    Meta: &lt; 15 min
+                                </span>
+                            </div>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                Auditoría de Acuerdos de Nivel de Servicio (SLA), envejecimiento de cola activa y resolución integral
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '8px 14px', borderRadius: '10px',
+                        background: metrics.slaStats?.cumplimientoPct >= 85 ? '#F0FDF4' : '#FFFBEB',
+                        border: `1px solid ${metrics.slaStats?.cumplimientoPct >= 85 ? '#86EFAC' : '#FDE68A'}`
+                    }}>
+                        {metrics.slaStats?.cumplimientoPct >= 85 ? (
+                            <CheckCircle2 size={16} color="#059669" />
+                        ) : (
+                            <AlertTriangle size={16} color="#D97706" />
+                        )}
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: metrics.slaStats?.cumplimientoPct >= 85 ? '#166534' : '#92400E' }}>
+                            {metrics.slaStats?.cumplimientoPct || 0}% Cumplimiento de SLA Objetivo
+                        </span>
+                    </div>
+                </div>
+
+                {/* TARJETAS KPI DE SLA Y RESOLUCIÓN */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+                    {/* KPI 1: % Cumplimiento SLA */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
+                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                                Cumplimiento SLA (&lt; 15 min)
+                            </span>
+                            <Award size={15} color="#0284C7" />
+                        </div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0F2942' }}>
+                            {loading ? '...' : `${metrics.slaStats?.cumplimientoPct || 0}%`}
+                        </div>
+                        <div style={{ width: '100%', height: '6px', background: '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{
+                                width: `${Math.min(100, metrics.slaStats?.cumplimientoPct || 0)}%`,
+                                height: '100%',
+                                background: metrics.slaStats?.cumplimientoPct >= 85 ? '#059669' : '#D97706',
+                                borderRadius: '3px', transition: 'width 0.4s ease'
+                            }} />
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                            {metrics.slaStats?.optimo || 0} de {metrics.slaStats?.totalCasos || 0} respuestas humanas a tiempo
+                        </div>
+                    </div>
+
+                    {/* KPI 2: TME (Tiempo Medio de Espera / 1ra Respuesta Humana) */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
+                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                                TME (1ra Respuesta Asesora)
+                            </span>
+                            <Clock size={15} color="#0284C7" />
+                        </div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0284C7' }}>
+                            {loading ? '...' : (metrics.agentFirstResponseAvgMin === 0 ? '&lt; 1 min' : `${metrics.agentFirstResponseAvgMin} min`)}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                            Demora promedio desde mensaje del paciente hasta contestación de asesora
+                        </div>
+                    </div>
+
+                    {/* KPI 3: TMR (Tiempo Medio de Resolución) */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
+                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                                TMR (Tiempo Medio de Resolución)
+                            </span>
+                            <Activity size={15} color="#8B5CF6" />
+                        </div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#8B5CF6' }}>
+                            {loading ? '...' : (metrics.resolutionTimeAvgMin === 0 ? '&lt; 5 min' : `${metrics.resolutionTimeAvgMin} min`)}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                            Duración promedio desde inicio hasta cierre de trámite o turno
+                        </div>
+                    </div>
+
+                    {/* KPI 4: Segmentación de Respuesta */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
+                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+                    }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                            Desglose de Tiempos
+                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                                <span style={{ color: '#047857', fontWeight: 700 }}>🟢 &lt; 15 min (Óptimo):</span>
+                                <span style={{ fontWeight: 800 }}>{metrics.slaStats?.optimo || 0}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                                <span style={{ color: '#B45309', fontWeight: 700 }}>🟡 15 - 60 min (Aceptable):</span>
+                                <span style={{ fontWeight: 800 }}>{metrics.slaStats?.aceptable || 0}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                                <span style={{ color: '#B91C1C', fontWeight: 700 }}>🔴 &gt; 60 min (Fuera de SLA):</span>
+                                <span style={{ fontWeight: 800 }}>{metrics.slaStats?.demorado || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ENVEJECIMIENTO DE COLA ACTIVA (QUEUE AGING EN TIEMPO REAL) */}
+                <div style={{
+                    background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0',
+                    padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Zap size={14} color="#0284C7" />
+                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F2942' }}>
+                                Envejecimiento de la Cola Activa ({metrics.queueAging?.totalActivas || 0} conversaciones abiertas)
+                            </span>
+                        </div>
+                        <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                            Tiempos de inactividad de chats no archivados
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                        <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#047857' }}>&lt; 15 min</div>
+                            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#065F46' }}>{metrics.queueAging?.menos15m || 0}</div>
+                            <div style={{ fontSize: '0.62rem', color: '#047857' }}>Al día</div>
+                        </div>
+                        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#1D4ED8' }}>15 a 60 min</div>
+                            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1E40AF' }}>{metrics.queueAging?.de15ma1h || 0}</div>
+                            <div style={{ fontSize: '0.62rem', color: '#1D4ED8' }}>En curso</div>
+                        </div>
+                        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#B45309' }}>1 a 4 horas</div>
+                            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#92400E' }}>{metrics.queueAging?.de1ha4h || 0}</div>
+                            <div style={{ fontSize: '0.62rem', color: '#B45309' }}>Atención requerida</div>
+                        </div>
+                        <div style={{ background: metrics.queueAging?.mas4h > 0 ? '#FEF2F2' : '#F8FAFC', border: `1px solid ${metrics.queueAging?.mas4h > 0 ? '#FECACA' : '#E2E8F0'}`, borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: metrics.queueAging?.mas4h > 0 ? '#DC2626' : '#64748B' }}>&gt; 4 horas</div>
+                            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: metrics.queueAging?.mas4h > 0 ? '#991B1B' : '#64748B' }}>{metrics.queueAging?.mas4h || 0}</div>
+                            <div style={{ fontSize: '0.62rem', color: metrics.queueAging?.mas4h > 0 ? '#DC2626' : '#64748B' }}>Demorado</div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* CUMPLIMIENTO DE SLA POR ASESORA */}
+                {metrics.byAgentList && metrics.byAgentList.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                            Cumplimiento de SLA (&lt; 15 min) por Asesora
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '8px' }}>
+                            {metrics.byAgentList.map(ag => (
+                                <div key={ag.id} style={{
+                                    background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px',
+                                    padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{
+                                            width: '28px', height: '28px', borderRadius: '50%',
+                                            background: '#EFF6FF', color: '#0284C7', fontWeight: 800, fontSize: '0.72rem',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            {ag.name.substring(0, 2).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F2942' }}>{ag.name}</div>
+                                            <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                {ag.avgResponseTimeMin > 0 ? `Promedio: ${ag.avgResponseTimeMin}m` : 'Respuesta inmediata'} • {ag.totalAtendidos || 0} casos
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <span style={{
+                                            fontSize: '0.74rem', fontWeight: 800,
+                                            color: (ag.slaCumplimientoPct || 100) >= 85 ? '#059669' : '#D97706',
+                                            background: (ag.slaCumplimientoPct || 100) >= 85 ? '#ECFDF5' : '#FFFBEB',
+                                            padding: '2px 8px', borderRadius: '6px',
+                                            border: `1px solid ${(ag.slaCumplimientoPct || 100) >= 85 ? '#A7F3D0' : '#FDE68A'}`
+                                        }}>
+                                            {ag.slaCumplimientoPct || 100}% SLA
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
