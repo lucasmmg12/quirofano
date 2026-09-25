@@ -2601,6 +2601,7 @@ async function handleChatbotTriage(
         currentStage === 'esperando_dni_turno' ||
         ((currentStage === 'turno_consultado' || currentStage === 'esperando_confirmacion_turno') && cleanText.replace(/\./g, '').match(/\b\d{7,8}\b/)))
     ) {
+        const isExplicitlyForSelf = /\b(para\s+m[ií]|a\s+mi\s+nombre|mis\s+turnos?|yo\s+tengo|tengo\s+yo|para\s+mi\s+persona|el\s+m[ií]o|los\s+m[ií]os|mi\s+turno|mi\s+cita)\b/i.test(cleanText) || cleanText.trim() === '2' || cleanText.trim() === 'consultar mi próximo turno o visita agendada';
         const isAskingForOtherPatient = !isExplicitlyForSelf && /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText);
 
         // Detectar si en el mensaje actual vino un DNI explícito (sin considerar la memoria del usuario que envió el chat)
@@ -2620,7 +2621,7 @@ async function handleChatbotTriage(
             updates.motivo_consulta = 'Consulta de Turno de otro paciente (esperando DNI)';
         } else {
             let dniToSearch: string | null = (isExplicitlyForSelf ? null : dniInCurrentMsg);
-            let isConsultingOther = !isExplicitlyForSelf && (isAskingForOtherPatient || currentStage === 'esperando_dni_turno' || (dniInCurrentMsg && dniTitular && dniInCurrentMsg !== dniTitular) || Boolean(pacienteConsultado));
+            let isConsultingOther = !isExplicitlyForSelf && (isAskingForOtherPatient || currentStage === 'esperando_dni_turno' || (dniInCurrentMsg && dniTitular && dniInCurrentMsg !== dniTitular));
 
             if (!dniToSearch || isExplicitlyForSelf) {
                 if (currentStage === 'esperando_dni_turno' && !isExplicitlyForSelf) {
