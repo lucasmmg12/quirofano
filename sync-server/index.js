@@ -1943,23 +1943,43 @@ async function syncFacturacionInternada(db, fastSync = false) {
     const entries = [...facturadoMap.entries()];
     const CHUNK_SIZE = 50;
     let altasActualizadas = 0;
+    const estadosPreservar = new Set(['Devuelta', 'Parcial', 'Alta prox. mes', 'Falta biopsia', 'Sin alta adm', 'Hc incompleta', 'Suspendida']);
+
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
+        const chunkAdms = chunk.map(([adm]) => adm);
+
+        // Consultar el estado actual de las altas para no pisar Devueltas ni observaciones clínicas
+        const { data: altasChunk } = await supabase
+            .from('altas_administrativas')
+            .select('numero_admision, estado_fac')
+            .in('numero_admision', chunkAdms);
+
+        const currentMap = new Map((altasChunk || []).map(a => [a.numero_admision, a.estado_fac]));
+
         await Promise.all(chunk.map(async ([numAdm, info]) => {
+            const currentEstado = currentMap.get(numAdm);
+            const payload = {
+                facturada: true,
+                facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
+                usuario_facturo: info.usuario,
+                cantidad_facturas: info.facturas.size,
+            };
+
+            // Auto-promover a 'Facturada' si no está en estado protegido/observado
+            if (!estadosPreservar.has(currentEstado)) {
+                payload.estado_fac = 'Facturada';
+            }
+
             const { error } = await supabase
                 .from('altas_administrativas')
-                .update({
-                    facturada: true,
-                    facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
-                    usuario_facturo: info.usuario,
-                    cantidad_facturas: info.facturas.size,
-                })
+                .update(payload)
                 .eq('numero_admision', numAdm);
             if (!error) altasActualizadas++;
         }));
     }
 
-    console.log(`   🔗 ${altasActualizadas} altas marcadas como facturadas`);
+    console.log(`   🔗 ${altasActualizadas} altas marcadas como facturadas (con estado_fac actualizado a Facturada)`);
     return { total: result.recordset.length, upserted, skipped, altasActualizadas };
 }
 
