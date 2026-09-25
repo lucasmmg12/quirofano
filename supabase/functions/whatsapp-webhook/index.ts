@@ -2429,7 +2429,6 @@ async function handleChatbotTriage(
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
-        } else {
             // 2. Extraer o preservar especialidad o doctor
             const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
             // Detectar si el turno es para un familiar o un tercero
@@ -2438,8 +2437,6 @@ async function handleChatbotTriage(
                 /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|tercero|tercera\s+persona|alguien\s+m[aá]s)\b/i.test(cleanText) ||
                 Boolean(conv?.motivo_consulta?.toLowerCase().includes('familiar') || conv?.motivo_consulta?.toLowerCase().includes('tercero'));
 
-            // 2. Extraer o preservar especialidad o doctor
-            const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
             const effectiveDocOrSpec = 
                 doctorDisplay || 
                 specialtyFromMsg || 
