@@ -2571,16 +2571,8 @@ async function handleChatbotTriage(
                 const osMsg = (updates.obra_social || paciente?.coseguro) ? `\n• *Cobertura informada:* ${updates.obra_social || paciente?.coseguro}` : '';
                 const horMsg = preferenciaHoraria ? `\n• *Preferencia horaria:* ${preferenciaHoraria}` : '';
 
-                // Sugerencia autónoma de turnos en SALUS (Propuesta 3 - Modo Solo Lectura)
-                const slotOffer = generateAutonomousSlotSuggestions(
-                    updates.medico_o_especialidad || doctorDisplay,
-                    effectiveDocOrSpec || analysis.doctorRecord?.especialidad,
-                    analysis.doctorRecord?.condiciones_consulta
-                );
-
                 if (isForOtherPatient) {
                     replyText = `¡Muchas gracias! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${candidateDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
-                        `${slotOffer.textSuggestion}\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS para el paciente y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
@@ -2591,7 +2583,6 @@ async function handleChatbotTriage(
                     updates.paciente_dni = candidateDni;
                 } else {
                     replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
-                        `${slotOffer.textSuggestion}\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en el sistema SALUS y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
@@ -3642,47 +3633,6 @@ function calculateAgeFromBirthDate(birthDateStr: string | null): number | null {
     }
 }
 
-/**
- * Sugerencia Autónoma de Turnos Disponibles en SALUS (Modo Solo Lectura)
- * Calcula opciones tentativas de turnos en próximos días hábiles basadas en parámetros del prestador o agenda
- */
-function generateAutonomousSlotSuggestions(
-    doctorName?: string | null,
-    specialty?: string | null,
-    condiciones?: string | null
-): { slot1: string; slot2: string; textSuggestion: string } {
-    const today = new Date();
-    const addDays = (d: Date, days: number) => {
-        const res = new Date(d);
-        res.setDate(res.getDate() + days);
-        return res;
-    };
-
-    // Próximos 2 días hábiles (lunes a viernes)
-    let d1 = addDays(today, 2);
-    while (d1.getDay() === 0 || d1.getDay() === 6) d1 = addDays(d1, 1);
-    let d2 = addDays(d1, 2);
-    while (d2.getDay() === 0 || d2.getDay() === 6) d2 = addDays(d2, 1);
-
-    const diasNombres = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const mesesNombres = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
-    const formatSlot = (d: Date, hora: string) => 
-        `${diasNombres[d.getDay()]} ${d.getDate()} de ${mesesNombres[d.getMonth()]} a las ${hora} hs`;
-
-    const slot1 = formatSlot(d1, '16:30');
-    const slot2 = formatSlot(d2, '10:15');
-
-    const docLabel = doctorName ? `con *${doctorName}*` : (specialty ? `en *${specialty}*` : 'para tu consulta');
-
-    const textSuggestion = `🏥 *Disponibilidad tentativa en agendas SALUS:*\n` +
-        `Para tu atención ${docLabel}, registramos los siguientes horarios próximos disponibles:\n` +
-        `🔹 *Opción 1:* ${slot1}\n` +
-        `🔹 *Opción 2:* ${slot2}\n\n` +
-        `¿Te resulta conveniente alguno de estos turnos? Respondé con tu opción preferida o avísanos si buscás otro día/horario y una asesora formalizará tu reserva en el sistema.`;
-
-    return { slot1, slot2, textSuggestion };
-}
 
 /**
  * Determina cuáles de los 6 datos obligatorios están pendientes para admisión de un nuevo paciente
@@ -3790,9 +3740,6 @@ function buildTriageSummary(
     if (docName && docName.includes('(')) docName = docName.split('(')[0].trim();
 
     const isThirdParty = Boolean(data.es_gestion_tercero || data.parentesco || intent === 'gestion_familiar');
-    const slotOffer = (docName || doctorRecord?.especialidad)
-        ? generateAutonomousSlotSuggestions(docName, doctorRecord?.especialidad, doctorRecord?.condiciones_consulta)
-        : null;
 
     return {
         resumen_solicitud: data.motivo_consulta || `Gestión de ${tramite.toLowerCase()} para ${data.nombre_completo || 'el paciente'}.`,
@@ -3812,7 +3759,7 @@ function buildTriageSummary(
                 es_paciente_existente: isExisting
             }
         },
-        turnos_disponibles_sugeridos: slotOffer,
+
         datos_paciente: {
             nombre_completo: data.nombre_completo || null,
             dni: data.dni || null,
