@@ -41,8 +41,8 @@ const app = express();
 const PORT = process.env.PORT || 3456;
 
 // â”€â”€ Supabase Client â”€â”€
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDA0MjI3NCwiZXhwIjoyMDg1NjE4Mjc0fQ.v0Zw7yFjGKJX8xsMCZJPwRyhr2eNd1gjASsI7qSK0YM';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // â”€â”€ SQL Server Config â”€â”€
@@ -3043,16 +3043,16 @@ async function calcularTriageAvanzado() {
 }
 
 let syncInProgress = false;
+let lastSyncCompletedAt = null;
 
-app.get('/api/salus/sync-all', async (req, res) => {
+async function performFullSync(fastSync = false) {
     if (syncInProgress) {
-        return res.status(429).json({ success: false, error: 'Ya hay una sincronización en curso. Espere a que termine.' });
+        throw new Error('Ya hay una sincronización en curso. Espere a que termine.');
     }
 
     syncInProgress = true;
-    const fastSync = req.query.fast === 'true';
     const startTime = Date.now();
-    console.log(`\n🚀 ▬▬▬ SINCRONIZACIÓN COMPLETA INICIADA (FastSync: ${fastSync}) ▬▬▬ `);
+    console.log(`\n🚀 ▬▬▬ SINCRONIZACIÓN ${fastSync ? 'RÁPIDA' : 'COMPLETA'} INICIADA ▬▬▬ `);
 
     const results = {};
 
@@ -3241,17 +3241,30 @@ app.get('/api/salus/sync-all', async (req, res) => {
     –¨ "Â¡Mmm... Deudas y Presupuestos frescos!" –¨
         `);
 
-        res.json({
+        lastSyncCompletedAt = new Date().toISOString();
+        return {
             success: true,
             elapsed: `${elapsed}s`,
-            timestamp: new Date().toISOString(),
+            timestamp: lastSyncCompletedAt,
             results,
-        });
-    } catch (err) {
-        console.error('âŒ Error fatal:', err.message);
-        res.status(500).json({ success: false, error: err.message });
+        };
     } finally {
         syncInProgress = false;
+    }
+}
+
+app.get('/api/salus/sync-all', async (req, res) => {
+    if (syncInProgress) {
+        return res.status(429).json({ success: false, error: 'Ya hay una sincronización en curso. Espere a que termine.' });
+    }
+
+    try {
+        const fastSync = req.query.fast === 'true';
+        const responseData = await performFullSync(fastSync);
+        res.json(responseData);
+    } catch (err) {
+        console.error('❌ Error en sync-all:', err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
@@ -3590,6 +3603,81 @@ app.get('/api/salus/cleanup/asociaciones-dups', async (req, res) => {
 });
 
 // â”€â”€ Servidor â”€â”€
+
+// ── Heartbeat a Supabase (salus_sync_server_status) ──
+async function sendHeartbeat() {
+    try {
+        await supabase.from('salus_sync_server_status').upsert({
+            id: 'primary',
+            online: true,
+            last_seen: new Date().toISOString(),
+            server_ip: '128.223.17.60',
+            version: '1.0.0',
+            sql_server_connected: pool ? true : false,
+            current_task: syncInProgress ? 'Sincronizando' : 'Inactivo',
+            last_sync_completed_at: lastSyncCompletedAt,
+            metadata: {
+                port: PORT,
+                pid: process.pid,
+                uptime: process.uptime()
+            }
+        });
+    } catch (_) {
+        // Silencioso para no saturar consola ante microcortes
+    }
+}
+
+// ── Procesador de Cola de Sincronización Remota (salus_sync_requests) ──
+// Permite que otras computadoras o la versión en Vercel (HTTPS)
+// soliciten sincronizaciones sin problemas de Mixed Content ni necesidad de abrir .bat
+async function processSyncRequestsQueue() {
+    if (syncInProgress) return;
+
+    try {
+        const { data: pending, error } = await supabase
+            .from('salus_sync_requests')
+            .select('*')
+            .eq('status', 'pending')
+            .order('requested_at', { ascending: true })
+            .limit(1);
+
+        if (error || !pending || pending.length === 0) return;
+
+        const reqItem = pending[0];
+        console.log(`\n📥 [COLA DE SYNC] Nueva solicitud recibida (ID: ${reqItem.id}, Modo: ${reqItem.mode}, Por: ${reqItem.requested_by || 'Anon'})...`);
+
+        await supabase.from('salus_sync_requests').update({
+            status: 'running',
+            started_at: new Date().toISOString()
+        }).eq('id', reqItem.id);
+
+        try {
+            const syncResult = await performFullSync(reqItem.mode === 'fast');
+            await supabase.from('salus_sync_requests').update({
+                status: 'completed',
+                completed_at: new Date().toISOString(),
+                elapsed: syncResult.elapsed,
+                results: syncResult.results
+            }).eq('id', reqItem.id);
+            console.log(`✅ [COLA DE SYNC] Solicitud ${reqItem.id} completada exitosamente (${syncResult.elapsed}).`);
+        } catch (syncErr) {
+            await supabase.from('salus_sync_requests').update({
+                status: 'error',
+                completed_at: new Date().toISOString(),
+                error: syncErr.message
+            }).eq('id', reqItem.id);
+            console.error(`❌ [COLA DE SYNC] Solicitud ${reqItem.id} falló:`, syncErr.message);
+        }
+    } catch (err) {
+        console.warn('⚠️ [COLA DE SYNC] Error verificando solicitudes:', err.message);
+    }
+}
+
+setInterval(sendHeartbeat, 15000);
+setInterval(processSyncRequestsQueue, 4000);
+setTimeout(sendHeartbeat, 2000);
+setTimeout(processSyncRequestsQueue, 3000);
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—

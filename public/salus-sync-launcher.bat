@@ -45,12 +45,21 @@ set MODULES=index.js package.json sync_censo_camas.mjs sync_diagnosticos.mjs syn
 
 for %%F in (%MODULES%) do (
     echo      - %%F
-    curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/%%F" -o "%INSTALL_DIR%\%%F"
+    where curl.exe >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        curl.exe -4 -sL --connect-timeout 10 "%REPO_RAW%/sync-server/%%F" -o "%INSTALL_DIR%\%%F"
+    ) else (
+        powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('%REPO_RAW%/sync-server/%%F', '%INSTALL_DIR%\%%F')" >nul 2>&1
+    )
 )
 
 if not exist "%INSTALL_DIR%\index.js" (
+    echo.
+    echo  ======================================================
     echo  ERROR: No se pudo descargar index.js y no hay version local previa.
-    echo  Verifique su conexion a Internet.
+    echo  Verifique su conexion a Internet o con el repositorio.
+    echo  ======================================================
+    echo.
     pause
     exit /b 1
 )
@@ -58,6 +67,7 @@ if not exist "%INSTALL_DIR%\index.js" (
 :: Generar .env local seguro
 echo VITE_SUPABASE_URL=https://hakysnqiryimxbwdslwe.supabase.co > "%INSTALL_DIR%\.env"
 echo SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDA0MjI3NCwiZXhwIjoyMDg1NjE4Mjc0fQ.v0Zw7yFjGKJX8xsMCZJPwRyhr2eNd1gjASsI7qSK0YM >> "%INSTALL_DIR%\.env"
+echo VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwNDIyNzQsImV4cCI6MjA4NTYxODI3NH0.-85OS1dohc9gh4U4qBhEBlqHi9Bq7l7H6JnzcUzrCIg >> "%INSTALL_DIR%\.env"
 echo SALUS_DB_SERVER=128.223.16.29 >> "%INSTALL_DIR%\.env"
 echo SALUS_DB_PORT=2450 >> "%INSTALL_DIR%\.env"
 echo SALUS_DB_USER=SalusConsulta >> "%INSTALL_DIR%\.env"
@@ -69,7 +79,11 @@ if not exist "%INSTALL_DIR%\node_modules\express" (
     echo [3/4] Instalando librerias de conexion (primera vez, espere unos segundos)...
     call npm install --omit=dev
     if %ERRORLEVEL% NEQ 0 (
+        echo.
+        echo  ======================================================
         echo  ERROR: Fallo la instalacion de dependencias npm.
+        echo  ======================================================
+        echo.
         pause
         exit /b 1
     )
@@ -95,12 +109,15 @@ node index.js
 
 echo.
 echo ==================================================
-echo  El servidor se ha detenido.
+echo  El servidor se ha detenido (Codigo: %ERRORLEVEL%).
 echo ==================================================
 echo.
 echo  [R] Reiniciar el servidor
 echo  [S] Salir
 echo.
-choice /C RS /N /M "Seleccione opcion [R / S]: "
-if %ERRORLEVEL% EQU 1 goto run_server
+set /p OPCION="Seleccione opcion [R / S]: "
+if /i "%OPCION%"=="R" goto run_server
+echo.
+echo Presione cualquier tecla para cerrar esta ventana...
+pause >nul
 exit /b 0

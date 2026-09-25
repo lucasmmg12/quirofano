@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle, Clock, RefreshCw } from 'lucide-react';
-import { checkSalusHealth } from '../services/salusSync';
+import { checkSalusHealth, triggerSalusSync } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
 import { supabase } from '../lib/supabase';
 
@@ -185,17 +185,12 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
         setResults(null);
 
         try {
-            const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
-            const endpoint = `${SYNC_URL}/sync-all${isFast ? '?fast=true' : ''}`;
-
-            // Timeout adaptativo: 5 min para sync rápido, 30 min para full sync
-            const timeoutMs = isFast ? 300000 : 1800000;
-            const res = await fetch(endpoint, { signal: AbortSignal.timeout(timeoutMs) });
-            const json = await res.json();
+            const userName = currentUser?.nombre || currentUser?.usuario || 'Usuario';
+            const json = await triggerSalusSync({ isFast, requestedBy: userName });
 
             if (json.success) {
-                const now = new Date();
-                setResults(json.results);
+                const now = json.timestamp ? new Date(json.timestamp) : new Date();
+                setResults(json.results || {});
                 setLastSync(now);
                 setLastSyncDate(now);
                 try {
@@ -205,14 +200,14 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
                 addToast?.(msg, 'success');
                 onComplete?.();
             } else {
-                setResults({ error: json.error });
+                setResults({ error: json.error || 'Error desconocido al sincronizar' });
                 addToast?.(`❌ Error: ${json.error}`, 'error');
             }
         } catch (err) {
             const isTimeout = err.name === 'TimeoutError' || err.message?.includes('timeout') || err.name === 'AbortError';
             const errorMsg = isTimeout 
                 ? '⏱️ La sincronización superó el tiempo límite de espera' 
-                : `❌ Error de conexión con sync-server: ${err.message}`;
+                : `❌ ${err.message || 'Error de sincronización con SALUS'}`;
             setResults({ error: errorMsg });
             addToast?.(errorMsg, 'error');
         } finally {
@@ -381,7 +376,7 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
                                         fontSize: '0.8rem', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '10px'
                                     }}>
                                         <Loader2 size={16} style={{ animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
-                                        <span>Buscando servidor en <strong>127.0.0.1:3456</strong>... Se cerrará al detectar conexión.</span>
+                                        <span>Buscando conexión con el sync-server central de SALUS... Se cerrará al detectar conexión.</span>
                                     </div>
                                     <div style={{
                                         marginTop: '12px', padding: '12px',
