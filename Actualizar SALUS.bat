@@ -13,21 +13,24 @@ reg add HKCU\Console /v QuickEdit /t REG_DWORD /d 0 /f >nul 2>&1
 :: 1. Verificar si Node.js esta instalado en el equipo
 where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    color 0C
+    color 0B
     echo.
     echo ========================================================
-    echo   ERROR: Node.js no esta instalado en esta computadora.
+    echo   AVISO IMPORTANTE:
+    echo   Ya NO es necesario ejecutar este archivo en esta PC.
     echo ========================================================
     echo.
-    echo   Para ejecutar el servidor local de sincronizacion,
-    echo   debe tener instalado Node.js (version 18 o superior).
+    echo   El Servidor de Sincronizacion SALUS ahora corre de forma
+    echo   centralizada y permanente en el servidor del Sanatorio (128.223.17.60).
     echo.
-    echo   Descarguelo gratis desde: https://nodejs.org
+    echo   Cualquier computadora puede sincronizar directamente
+    echo   haciendo clic en el boton "Sincronizar SALUS" en el navegador web,
+    echo   sin necesidad de abrir consolas ni instalar Node.js.
     echo.
     echo ========================================================
     echo.
     pause
-    exit /b 1
+    exit /b 0
 )
 
 :: 2. Actualizar repositorio si esta configurado con Git

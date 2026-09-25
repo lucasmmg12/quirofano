@@ -17,13 +17,23 @@ set REPO_RAW=https://raw.githubusercontent.com/lucasmmg12/quirofano/main
 echo [1/4] Verificando Node.js...
 where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
+    color 0B
     echo.
-    echo  ERROR: Node.js no esta instalado en este equipo.
-    echo  Descargue e instale Node.js desde: https://nodejs.org
-    echo  Luego ejecute este archivo de nuevo.
+    echo  ======================================================
+    echo    AVISO: YA NO ES NECESARIO EJECUTAR ESTE ARCHIVO
+    echo  ======================================================
+    echo.
+    echo    El Servidor de Sincronizacion SALUS ahora funciona de
+    echo    forma centralizada en el servidor del Sanatorio (128.223.17.60).
+    echo.
+    echo    Podra sincronizar directamente haciendo clic en el boton
+    echo    "Sincronizar SALUS" desde el navegador web de su PC,
+    echo    sin necesidad de consolas ni descargas adicionales.
+    echo.
+    echo  ======================================================
     echo.
     pause
-    exit /b 1
+    exit /b 0
 )
 for /f "tokens=*" %%v in ('node -v') do echo      Node.js %%v detectado correctamente.
 
