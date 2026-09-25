@@ -2468,8 +2468,12 @@ async function handleChatbotTriage(
                 analysis.doctorRecord,
                 doctorDisplay
             );
-            nextStage = res.nextStage;
-            replyText = res.replyText;
+            if (res.nextStage === 'esperando_datos_nuevo') {
+                nextStage = res.nextStage;
+                replyText = res.replyText;
+                return { replyText, updates, nextStage };
+            }
+        }
             // 2. Extraer o preservar especialidad o doctor
             const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
             // Detectar si el turno es para un familiar o un tercero
@@ -2600,7 +2604,6 @@ async function handleChatbotTriage(
                 updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
             }
         }
-    }
     // =============================================
     // FLUJO 0B: CONSULTA DE PRÓXIMO TURNO O VISITA AGENDADA
     // =============================================
