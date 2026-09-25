@@ -2345,10 +2345,16 @@ async function handleChatbotTriage(
     }
     if (rawDocName) {
         rawDocName = rawDocName.replace(/^\([^)]+\)\s*/, '').replace(/\s*\([^)]+\)$/, '').replace(/\s+SSLN$/i, '').replace(/\s+SEDE\s+\d+/i, '').trim();
+        // Limpiar formato 'APELLIDO, NOMBRE' -> 'NOMBRE APELLIDO'
+        if (rawDocName.includes(',')) {
+            const docParts = rawDocName.split(',').map((p: string) => p.trim());
+            if (docParts.length === 2 && docParts[0] && docParts[1]) {
+                rawDocName = `${docParts[1]} ${docParts[0]}`;
+            }
+        }
     }
     const hasHonorific = rawDocName && /^(dr|dra)\.?/i.test(rawDocName);
     const doctorDisplay = rawDocName ? (hasHonorific ? rawDocName : `Dr. ${rawDocName}`) : null;
-    const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
 
     // =============================================
     // FLUJO ESPECIAL: IMAGEN U ORDEN MÉDICA ENVIADA SIN CONTEXTO PREVIO
@@ -3271,7 +3277,7 @@ async function handleChatbotTriage(
         let doctorNoteMsg = '';
         const effectiveSpecialty = analysis.specialtyCandidate || detectSpecialty(cleanText) || null;
         if (doctorDisplay) {
-            doctorNoteMsg = ` con el *${doctorDisplay}*${doctorSpecialty}`;
+            doctorNoteMsg = ` con el *${doctorDisplay}*`;
             updates.medico_o_especialidad = analysis.doctorRecord?.profesional_nombre || doctorDisplay;
             updates.motivo_consulta = `Solicitud de Turno: ${doctorDisplay}`;
         } else if (effectiveSpecialty) {
@@ -3646,6 +3652,17 @@ function calculateAgeFromBirthDate(birthDateStr: string | null): number | null {
  * Sugerencia Autónoma de Turnos Disponibles en SALUS (Modo Solo Lectura)
  * Calcula opciones tentativas de turnos en próximos días hábiles basadas en parámetros del prestador o agenda
  */
+function cleanSpecialtyName(spec?: string | null): string {
+    if (!spec) return '';
+    return spec
+        .replace(/\balias:.*$/i, '')
+        .replace(/\b(boreal|osde|swiss|sancor|part|particular|mp:\d+|ssln|sede\s+\d+|contras[^\s]+).*$/i, '')
+        .replace(/\bcon\s+sanat.*$/i, '')
+        .replace(/[:;].*$/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function generateAutonomousSlotSuggestions(
     doctorName?: string | null,
     specialty?: string | null,
@@ -3673,7 +3690,9 @@ function generateAutonomousSlotSuggestions(
     const slot1 = formatSlot(d1, '16:30');
     const slot2 = formatSlot(d2, '10:15');
 
-    const docLabel = doctorName ? `con *${doctorName}*` : (specialty ? `en *${specialty}*` : 'para tu consulta');
+    const cleanDoc = doctorName ? doctorName.replace(/\s*\([^)]*\)/g, '').trim() : null;
+    const cleanSpec = cleanSpecialtyName(specialty);
+    const docLabel = cleanDoc ? `con *${cleanDoc}*` : (cleanSpec ? `en *${cleanSpec}*` : 'para tu consulta');
 
     const textSuggestion = `🏥 *Disponibilidad tentativa en agendas SALUS:*\n` +
         `Para tu atención ${docLabel}, registramos los siguientes horarios próximos disponibles:\n` +
