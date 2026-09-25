@@ -37,28 +37,43 @@ export const PLANTILLAS_TURNOS_ONLINE = [
     }
 ];
 
+function getSalusCandidateUrls() {
+    const list = [];
+    if (import.meta.env.VITE_SALUS_SYNC_URL) {
+        list.push(import.meta.env.VITE_SALUS_SYNC_URL.replace(/\/+$/, ''));
+    }
+    list.push('http://128.223.17.60:3456/api/salus');
+    list.push('http://127.0.0.1:3456/api/salus');
+    return [...new Set(list)];
+}
+
 /**
  * Sincroniza y reconcilia los turnos online directamente contra SALUS en tiempo real.
  * Ejecuta la comprobación activa de visitas existentes en el SQL Server de SALUS,
  * purga registros obsoletos/eliminados de Supabase y retorna la lista reconciliada.
  */
 export async function syncTurnosOnlineWithSalus({ days = 1, date = null } = {}) {
-    const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
-    let url = `${SYNC_URL}/turnos-online/duplicados?days=${days}`;
-    if (date) url += `&date=${encodeURIComponent(date)}`;
+    const candidateUrls = getSalusCandidateUrls();
 
-    try {
-        const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-        if (response.ok) {
-            const data = await response.json();
-            if (data && (data.success || Array.isArray(data.casos))) {
-                console.log(`[turnosOnlineService] ✅ Sincronización en vivo con SALUS completada (${data.casos?.length || 0} casos).`);
-                return { success: true, ...data };
+    for (const baseUrl of candidateUrls) {
+        try {
+            let url = `${baseUrl}/turnos-online/duplicados?days=${days}`;
+            if (date) url += `&date=${encodeURIComponent(date)}`;
+
+            const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+            if (response.ok) {
+                const data = await response.json();
+                if (data && (data.success || Array.isArray(data.casos))) {
+                    console.log(`[turnosOnlineService] ✅ Sincronización en vivo con SALUS exitosa (${data.casos?.length || 0} casos) vía ${baseUrl}`);
+                    return { success: true, ...data };
+                }
             }
+        } catch (_) {
+            // Probar siguiente candidato si este no respondió
         }
-    } catch (e) {
-        console.warn('[turnosOnlineService] No se pudo conectar al sync-server de SALUS, usando datos de Supabase:', e.message);
     }
+
+    console.warn('[turnosOnlineService] No se pudo conectar al sync-server en red LAN ni local, usando datos de Supabase.');
     // Fallback a consulta directa en Supabase
     return fetchTurnosOnlineDuplicados({ days, date, forceSync: false });
 }
@@ -145,18 +160,16 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null, force
         console.warn('⚠️ Consulta directa Supabase falló, intentando sync-server si estamos en localhost:', err.message);
     }
 
-    // Fallback opcional local
-    const isLocal = typeof window !== 'undefined' && 
-        (window.location.protocol === 'http:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-    if (isLocal) {
-        try {
-            let url = `http://127.0.0.1:3456/api/salus/turnos-online/duplicados?days=${days}`;
-            if (date) url += `&date=${encodeURIComponent(date)}`;
-            const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-            if (response.ok) return await response.json();
-        } catch (e) {
-            console.warn('Sync server local no respondió:', e.message);
+    // Fallback opcional local o LAN
+    if (typeof window !== 'undefined' && window.location.protocol !== 'https:') {
+        const fallbackUrls = ['http://128.223.17.60:3456/api/salus', 'http://127.0.0.1:3456/api/salus'];
+        for (const base of fallbackUrls) {
+            try {
+                let url = `${base}/turnos-online/duplicados?days=${days}`;
+                if (date) url += `&date=${encodeURIComponent(date)}`;
+                const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+                if (response.ok) return await response.json();
+            } catch (_) {}
         }
     }
 

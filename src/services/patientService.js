@@ -144,28 +144,33 @@ export async function fetchPatientByDniLive(dni) {
     const cleanDni = String(dni).replace(/\D/g, '').trim();
     if (cleanDni.length < 5) return null;
 
-    // 1. Intento rápido vía Sync Server conectado a SALUS
-    const SYNC_URL = import.meta.env.VITE_SALUS_SYNC_URL || 'http://127.0.0.1:3456/api/salus';
-    try {
-        const res = await fetch(`${SYNC_URL}/paciente/${cleanDni}`, { signal: AbortSignal.timeout(3500) });
-        if (res.ok) {
-            const json = await res.json();
-            if (json.success && json.paciente) {
-                const p = json.paciente;
-                return {
-                    found: true,
-                    source: 'salus_live',
-                    rawName: p.nombre,
-                    displayName: formatPatientName(p.nombre, p.nombre1, p.nombre2),
-                    dni: p.dni || cleanDni,
-                    nhc: p.nhc,
-                    mutua: p.mutua,
-                    telefono: p.telefono
-                };
+    // 1. Intento rápido vía Sync Server conectado a SALUS (LAN o local)
+    const candidates = [
+        import.meta.env.VITE_SALUS_SYNC_URL,
+        'http://128.223.17.60:3456/api/salus',
+        'http://127.0.0.1:3456/api/salus'
+    ].filter(Boolean);
+
+    for (const base of [...new Set(candidates)]) {
+        try {
+            const res = await fetch(`${base}/paciente/${cleanDni}`, { signal: AbortSignal.timeout(2500) });
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.paciente) {
+                    const p = json.paciente;
+                    return {
+                        found: true,
+                        source: 'salus_live',
+                        rawName: p.nombre,
+                        displayName: formatPatientName(p.nombre, p.nombre1, p.nombre2),
+                        dni: p.dni || cleanDni,
+                        nhc: p.nhc,
+                        mutua: p.mutua,
+                        telefono: p.telefono
+                    };
+                }
             }
-        }
-    } catch (_) {
-        // Fallback transparente a base de datos
+        } catch (_) {}
     }
 
     // 2. Consulta en calidad_pacientes_diagnosticos (Supabase)
