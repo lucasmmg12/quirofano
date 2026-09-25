@@ -117,7 +117,8 @@ import {
     analyzeMedicalOrderImage, generateChatAiSummary,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
-    transcribeAudioMessage, uploadContactCenterMedia
+    transcribeAudioMessage, uploadContactCenterMedia,
+    fetchOlderMessagesForPhone
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
@@ -219,6 +220,31 @@ export default function ContactCenterChatConsole({
             document.removeEventListener('mouseup', handleMouseUp);
         };
     }, [isDraggingRight]);
+
+    // Colapso responsive del panel derecho de CRM (Falla 29)
+    const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() => {
+        return localStorage.getItem('cc_right_panel_collapsed') === 'true';
+    });
+    const toggleRightPanel = () => {
+        setRightPanelCollapsed(prev => {
+            const next = !prev;
+            localStorage.setItem('cc_right_panel_collapsed', String(next));
+            return next;
+        });
+    };
+
+    // Filtros combinados dinámicos de triage (Falla 27)
+    const [triageFilter, setTriageFilter] = useState('all'); // 'all', 'demora_20', 'guardia', 'con_orden', 'sin_responder'
+
+    // Transferencia con modal de confirmación y pase clínico (Falla 23)
+    const [confirmTransferAgent, setConfirmTransferAgent] = useState(null);
+    const [transferNote, setTransferNote] = useState('');
+    const [isTransferring, setIsTransferring] = useState(false);
+
+    // Carga de historial antiguo (Scroll hacia atrás) (Falla 21)
+    const [loadingOlder, setLoadingOlder] = useState(false);
+    const [noMoreOlder, setNoMoreOlder] = useState(false);
+
     const [filterTab, setFilterTab] = useState('sin_asignar');
     const [searchTerm, setSearchTerm] = useState('');
     const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
@@ -599,18 +625,77 @@ export default function ContactCenterChatConsole({
     const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId;
     const lastMsgSender = lastMsgInChat?.sender || (lastMsgInChat?.direction === 'incoming' ? 'patient' : 'agent');
 
+    const lastAiSummaryTimeRef = useRef({});
+
     useEffect(() => {
         if (!selectedChat?.phone || !lastMsgInChat) return;
 
-        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente (debounce 1.2s)
+        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente con cooldown de 2 minutos
         if (lastMsgSender === 'patient') {
+            const phone = selectedChat.phone;
+            const lastRun = lastAiSummaryTimeRef.current[phone] || 0;
+            const cooldownPassed = Date.now() - lastRun > 120000;
+            if (!cooldownPassed && aiSummaryData) {
+                return;
+            }
+
             const timer = setTimeout(() => {
                 console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA automático...');
+                lastAiSummaryTimeRef.current[phone] = Date.now();
                 handleRunAiSummary(true);
             }, 1200);
             return () => clearTimeout(timer);
         }
     }, [lastMsgId, lastMsgSender, selectedChat?.phone]);
+
+    const handleConfirmTransfer = async () => {
+        if (!confirmTransferAgent || !selectedChat?.id) return;
+        setIsTransferring(true);
+        try {
+            if (transferNote.trim() && onSendMessage) {
+                await onSendMessage(selectedChat.id, `📋 [Pase Clínico a ${confirmTransferAgent.name}]: ${transferNote.trim()}`, true);
+            }
+            if (onTransferChat) {
+                onTransferChat(selectedChat.id, confirmTransferAgent.id);
+            }
+            showToast(`Conversación transferida a ${confirmTransferAgent.name}`, 'success');
+            setConfirmTransferAgent(null);
+            setTransferNote('');
+        } catch (err) {
+            console.error('Error al transferir chat:', err);
+            showToast('Error al transferir: ' + (err.message || 'Error'), 'error');
+        } finally {
+            setIsTransferring(false);
+        }
+    };
+
+    const handleLoadOlderMessages = async () => {
+        if (!selectedChat?.phone || loadingOlder) return;
+        const msgs = selectedChat.messages || [];
+        const oldest = msgs[0];
+        if (!oldest) return;
+        const beforeIso = oldest.created_at || new Date().toISOString();
+        setLoadingOlder(true);
+        try {
+            const older = await fetchOlderMessagesForPhone(selectedChat.phone, beforeIso, 40);
+            if (older && older.length > 0) {
+                const existingIds = new Set(msgs.map(m => m.id));
+                const uniqueNewOlder = older.filter(m => !existingIds.has(m.id));
+                if (uniqueNewOlder.length === 0) {
+                    setNoMoreOlder(true);
+                } else {
+                    selectedChat.messages = [...uniqueNewOlder, ...msgs];
+                    setForceUpdate(n => n + 1);
+                }
+            } else {
+                setNoMoreOlder(true);
+            }
+        } catch (err) {
+            console.error('Error cargando mensajes anteriores:', err);
+        } finally {
+            setLoadingOlder(false);
+        }
+    };
 
     // Control de desplazamiento según orden de mensajes (cronológico clásico abajo o más recientes arriba)
     useEffect(() => {
@@ -1092,11 +1177,12 @@ export default function ContactCenterChatConsole({
 
     // Filtrar chats según pestaña activa o alcance de búsqueda
     const filteredChats = useMemo(() => {
+        let base = [];
         if (isSearching) {
             if (searchScope === 'all') {
-                return [...searchedChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+                base = [...searchedChats];
             } else {
-                return searchedChats.filter(chat => {
+                base = searchedChats.filter(chat => {
                     const chatAssigned = (chat.assignedTo || '').toLowerCase();
                     const isMine = chatAssigned && (
                         myAliases.includes(chatAssigned) ||
@@ -1113,29 +1199,42 @@ export default function ContactCenterChatConsole({
                     if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
                     if (filterTab === 'todos') return true;
                     return !closed;
-                }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+                });
             }
+        } else {
+            base = chats.filter(chat => {
+                const chatAssigned = (chat.assignedTo || '').toLowerCase();
+                const isMine = chatAssigned && (
+                    myAliases.includes(chatAssigned) ||
+                    (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
+                );
+                const closed = isClosedOrArchived(chat.status);
+                const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
+                const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
+
+                if (filterTab === 'bot') return isChatBot;
+                if (filterTab === 'sin_asignar') return isChatUnassigned;
+                if (filterTab === 'asignadas_mi') return isMine && !closed;
+                if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
+                if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
+                if (filterTab === 'todos') return true;
+                return !closed;
+            });
         }
 
-        return chats.filter(chat => {
-            const chatAssigned = (chat.assignedTo || '').toLowerCase();
-            const isMine = chatAssigned && (
-                myAliases.includes(chatAssigned) ||
-                (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
-            );
-            const closed = isClosedOrArchived(chat.status);
-            const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
-            const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
-
-            if (filterTab === 'bot') return isChatBot;
-            if (filterTab === 'sin_asignar') return isChatUnassigned;
-            if (filterTab === 'asignadas_mi') return isMine && !closed;
-            if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
-            if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
-            if (filterTab === 'todos') return true;
-            return !closed;
+        return base.filter(chat => {
+            if (triageFilter === 'all') return true;
+            if (triageFilter === 'demora_15') return chat.isWaitingResponse && (chat.waitingMinutes || 0) >= 15;
+            if (triageFilter === 'guardia') {
+                const text = `${chat.lastMessage || ''} ${chat.customFields?.motivoConsulta || ''}`.toLowerCase();
+                return /\b(guardia|urgencia|emergencia|dolor|grave)\b/i.test(text);
+            }
+            if (triageFilter === 'con_orden') {
+                return chat.customFields?.pedidoMedicoFoto && chat.customFields.pedidoMedicoFoto !== 'No adjuntado';
+            }
+            return true;
         }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
-    }, [chats, isSearching, searchScope, searchedChats, filterTab, myAliases, activeAgent.name]);
+    }, [chats, isSearching, searchScope, searchedChats, filterTab, triageFilter, myAliases, activeAgent.name]);
 
     // Conversaciones seleccionables para cierre masivo (excluye las ya finalizadas)
     const selectableChats = useMemo(() => {
@@ -1813,6 +1912,73 @@ export default function ContactCenterChatConsole({
                         }}
                     >
                         Todos ({chats.length})
+                    </button>
+                </div>
+
+                {/* SUB-FILTROS DE TRIAGE CLÍNICO Y DEMORAS */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
+                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                    overflowX: 'auto'
+                }}>
+                    <button
+                        type="button"
+                        onClick={() => setTriageFilter('all')}
+                        style={{
+                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
+                            border: triageFilter === 'all' ? '1px solid #0284C7' : '1px solid transparent',
+                            background: triageFilter === 'all' ? '#E0F2FE' : 'transparent',
+                            color: triageFilter === 'all' ? '#0284C7' : '#64748B',
+                            cursor: 'pointer', whiteSpace: 'nowrap'
+                        }}
+                    >
+                        Todos
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTriageFilter('demora_15')}
+                        title="Pacientes esperando respuesta hace más de 15 minutos"
+                        style={{
+                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
+                            border: triageFilter === 'demora_15' ? '1px solid #EA580C' : '1px solid transparent',
+                            background: triageFilter === 'demora_15' ? '#FFEDD5' : 'transparent',
+                            color: triageFilter === 'demora_15' ? '#C2410C' : '#64748B',
+                            cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px'
+                        }}
+                    >
+                        ⏳ &gt;15m
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTriageFilter('guardia')}
+                        title="Consultas que mencionan guardia, urgencia o dolor agudo"
+                        style={{
+                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
+                            border: triageFilter === 'guardia' ? '1px solid #DC2626' : '1px solid transparent',
+                            background: triageFilter === 'guardia' ? '#FEE2E2' : 'transparent',
+                            color: triageFilter === 'guardia' ? '#DC2626' : '#64748B',
+                            cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px'
+                        }}
+                    >
+                        🚨 Urgencias
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTriageFilter('con_orden')}
+                        title="Pacientes con orden médica adjuntada"
+                        style={{
+                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
+                            border: triageFilter === 'con_orden' ? '1px solid #16A34A' : '1px solid transparent',
+                            background: triageFilter === 'con_orden' ? '#DCFCE7' : 'transparent',
+                            color: triageFilter === 'con_orden' ? '#15803D' : '#64748B',
+                            cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px'
+                        }}
+                    >
+                        📎 Orden
                     </button>
                 </div>
 
@@ -2575,7 +2741,8 @@ export default function ContactCenterChatConsole({
                                         <button
                                             key={targetAgent.id}
                                             onClick={() => {
-                                                onTransferChat && onTransferChat(selectedChat.id, targetAgent.id);
+                                                setConfirmTransferAgent(targetAgent);
+                                                setTransferNote('');
                                                 setTransferMenuOpen(false);
                                             }}
                                             style={{
@@ -2750,7 +2917,33 @@ export default function ContactCenterChatConsole({
                                             }}
                                         >
                                             <Clock size={12} color="#64748B" />
-                                            Cargar mensajes anteriores ({remainingCount} más)
+                                            Cargar mensajes anteriores ({remainingCount} más en memoria)
+                                        </button>
+                                    </div>
+                                )}
+                                {!hasMore && !noMoreOlder && messageSortOrder === 'chronological' && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleLoadOlderMessages}
+                                            disabled={loadingOlder}
+                                            style={{
+                                                background: '#F0F9FF',
+                                                border: '1px solid #BAE6FD',
+                                                color: '#0284C7',
+                                                borderRadius: '20px',
+                                                padding: '6px 16px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                cursor: loadingOlder ? 'wait' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                boxShadow: '0 1px 2px rgba(2,132,199,0.06)'
+                                            }}
+                                        >
+                                            <RefreshCw size={12} className={loadingOlder ? 'spin' : ''} />
+                                            {loadingOlder ? 'Descargando historial anterior...' : 'Descargar historial previo desde el servidor'}
                                         </button>
                                     </div>
                                 )}
@@ -5957,6 +6150,98 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Pase Clínico / Transferencia Segura con Nota */}
+            {confirmTransferAgent && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 100,
+                    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '16px'
+                }}>
+                    <div style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: '14px',
+                        maxWidth: '460px',
+                        width: '100%',
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+                        border: '1px solid #E2E8F0',
+                        overflow: 'hidden'
+                    }}>
+                        <div style={{
+                            padding: '16px 20px',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '0.95rem' }}>
+                                <ArrowRightLeft size={18} />
+                                <span>Pase Clínico y Transferencia</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmTransferAgent(null)}
+                                style={{ border: 'none', background: 'transparent', color: '#FFFFFF', cursor: 'pointer' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div style={{ padding: '20px' }}>
+                            <p style={{ margin: '0 0 12px', fontSize: '0.84rem', color: '#334155' }}>
+                                Vas a transferir la atención del paciente <strong style={{ color: '#0284C7' }}>{getCleanChatName(selectedChat)}</strong> a la agente <strong style={{ color: confirmTransferAgent.color || '#0F2942' }}>{confirmTransferAgent.fullName || confirmTransferAgent.name}</strong>.
+                            </p>
+                            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                                📋 Nota de Pase Interno (Opcional - se registra en la auditoría del chat):
+                            </label>
+                            <textarea
+                                value={transferNote}
+                                onChange={(e) => setTransferNote(e.target.value)}
+                                placeholder="Ej: Paciente solicita sobreturno con Dra. Gómez por cólico renal. Ya tiene orden adjunta."
+                                rows={3}
+                                style={{
+                                    width: '100%',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1',
+                                    padding: '8px 12px',
+                                    fontSize: '0.8rem',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                    fontFamily: 'inherit',
+                                    resize: 'vertical'
+                                }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmTransferAgent(null)}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmTransfer}
+                                    disabled={isTransferring}
+                                    style={{
+                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: isTransferring ? 'wait' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                >
+                                    <ArrowRightLeft size={14} />
+                                    {isTransferring ? 'Transfiriendo...' : 'Confirmar Pase'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

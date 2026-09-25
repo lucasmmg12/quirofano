@@ -449,23 +449,34 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
-        // Optimización Alto Tráfico (190k msgs/mes): Traemos las 250 conversaciones más activas y recientes
-        // ordenadas por updated_at desc para no sobrecargar el heap ni la red en PCs de baja RAM
-        const { data: convData, error: convError } = await supabase
-            .from('contact_center_conversations')
-            .select('*')
-            .order('updated_at', { ascending: false })
-            .limit(250);
+        // Prioridad Crítica: Primero todas las conversaciones activas (abierto, sin_asignar, bot)
+        // para que NINGÚN paciente en espera sea ocultado por límite de corte.
+        const [activeConvRes, archivedConvRes] = await Promise.all([
+            supabase
+                .from('contact_center_conversations')
+                .select('*')
+                .in('status', ['abierto', 'sin_asignar', 'bot'])
+                .order('updated_at', { ascending: false })
+                .limit(200),
+            supabase
+                .from('contact_center_conversations')
+                .select('*')
+                .in('status', ['archivado', 'cerrado', 'finalizado'])
+                .order('updated_at', { ascending: false })
+                .limit(100)
+        ]);
+
+        const activeList = activeConvRes.data || [];
+        const archivedList = archivedConvRes.data || [];
+        const convData = [...activeList, ...archivedList];
 
         const convByPhone = {};
-        if (convData && !convError) {
-            convData.forEach(c => {
-                if (c.phone) convByPhone[normalizeArgentinePhone(c.phone)] = c;
-            });
-        }
+        convData.forEach(c => {
+            if (c.phone) convByPhone[normalizeArgentinePhone(c.phone)] = c;
+        });
 
         // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
-        // Para cuidar RAM y evitar congelamientos: limitamos a 600 mensajes y proyectamos solo columnas requeridas
+        // Proyectamos columnas esenciales y limitamos mensajes iniciales activos
         const { data: rawMessages, error } = await supabase
             .from('whatsapp_messages')
             .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
@@ -1213,12 +1224,21 @@ export async function lookupPatientByPhone(phone) {
  * Soporta búsqueda EXCLUSIVA por DNI o NHC (NO por teléfono para evitar confusiones familiares).
  * Realiza búsqueda en tiempo real en SQL Server de SALUS con fallback local.
  */
+const salusPatientCache = new Map();
+const SALUS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos de cache
+
 export async function lookupPatientFromSalus(query) {
     if (!query || String(query).trim().length < 4) return null;
     const rawStr = String(query).trim();
     const clean = rawStr.replace(/\D/g, '');
 
     if (!clean || clean.length < 5) return null;
+
+    // Cache hit en memoria del cliente para navegación instantánea
+    const cached = salusPatientCache.get(clean);
+    if (cached && (Date.now() - cached.timestamp < SALUS_CACHE_TTL_MS)) {
+        return cached.data;
+    }
 
     // 1. Prioridad: Búsqueda en tiempo real en SALUS SQL Server vía sync-server (timeout 2.5s)
     try {
@@ -1232,6 +1252,7 @@ export async function lookupPatientFromSalus(query) {
         if (res.ok) {
             const json = await res.json();
             if (json.success && json.paciente) {
+                salusPatientCache.set(clean, { data: json.paciente, timestamp: Date.now() });
                 return json.paciente;
             }
         }
@@ -1408,27 +1429,14 @@ export async function bulkCloseConversationsSilent({ targetChats, resolutionReas
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
-    const upsertRows = [];
+    const phones = [];
     const updatedChats = [];
 
     for (const chat of targetChats) {
         if (!chat?.phone) continue;
         const norm = normalizeArgentinePhone(chat.phone);
         if (!norm) continue;
-
-        upsertRows.push({
-            phone: norm,
-            status: 'archivado',
-            resolution_reason: resolutionReason,
-            closed_at: now.toISOString(),
-            closed_by_agent_id: activeAgent?.id || null,
-            closed_by_agent_name: activeAgent?.name || null,
-            assigned_agent_id: null,
-            assigned_agent_name: null,
-            bot_active: true,
-            bot_stage: 'inicio',
-            updated_at: now.toISOString()
-        });
+        phones.push(norm);
 
         const sysMsg = {
             id: 'sys_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -1451,7 +1459,37 @@ export async function bulkCloseConversationsSilent({ targetChats, resolutionReas
         });
     }
 
-    if (upsertRows.length > 0) {
+    if (phones.length > 0) {
+        // 1. Intentar ejecución atómica mediante RPC en PostgreSQL
+        try {
+            const { error: rpcErr } = await supabase.rpc('bulk_close_contact_center_chats', {
+                p_phones: phones,
+                p_reason: resolutionReason,
+                p_agent_id: activeAgent?.id || null,
+                p_agent_name: activeAgent?.name || null
+            });
+            if (!rpcErr) {
+                return updatedChats;
+            }
+        } catch (_) {
+            // Fallback a upsert directo si la migración no se ha corrido en Supabase
+        }
+
+        // 2. Fallback resiliente
+        const upsertRows = phones.map(norm => ({
+            phone: norm,
+            status: 'archivado',
+            resolution_reason: resolutionReason,
+            closed_at: now.toISOString(),
+            closed_by_agent_id: activeAgent?.id || null,
+            closed_by_agent_name: activeAgent?.name || null,
+            assigned_agent_id: null,
+            assigned_agent_name: null,
+            bot_active: true,
+            bot_stage: 'inicio',
+            updated_at: now.toISOString()
+        }));
+
         const { error } = await supabase
             .from('contact_center_conversations')
             .upsert(upsertRows, { onConflict: 'phone' });
@@ -1468,40 +1506,72 @@ export async function bulkCloseConversationsSilent({ targetChats, resolutionReas
 /**
  * Sonido de notificación característico para nuevos mensajes entrantes (tipo WhatsApp Web)
  * Sintetizado con Web Audio API (no requiere archivos externos)
+ * Soporta Singleton para no filtrar memoria y modo prioritario para urgencias/esperas altas.
  */
-export function playContactCenterChime() {
-    try {
+let sharedAudioCtx = null;
+
+function getSharedAudioContext() {
+    if (typeof window === 'undefined') return null;
+    if (!sharedAudioCtx) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        const ctx = new AudioCtx();
+        if (AudioCtx) {
+            sharedAudioCtx = new AudioCtx();
+        }
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+}
 
-        // Tono 1 (880Hz - A5)
-        const osc1 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(880, ctx.currentTime);
-        gain1.gain.setValueAtTime(0.18, ctx.currentTime);
-        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.16);
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.start(ctx.currentTime);
-        osc1.stop(ctx.currentTime + 0.16);
+export function playContactCenterChime(priority = 'normal') {
+    try {
+        const ctx = getSharedAudioContext();
+        if (!ctx) return;
 
-        // Tono 2 (1175Hz - D6, ligeramente más agudo)
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(1175, ctx.currentTime + 0.13);
-        gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.13);
-        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start(ctx.currentTime + 0.13);
-        osc2.stop(ctx.currentTime + 0.35);
+        const isUrgent = priority === 'urgent' || priority === 'urgente' || priority === 'priority';
+        const now = ctx.currentTime;
 
-        setTimeout(() => {
-            try { ctx.close(); } catch { }
-        }, 600);
+        if (isUrgent) {
+            // Tono de Alerta Triádica para Urgencias de Guardia o Paciente esperando > 20 min (587Hz -> 880Hz -> 1175Hz)
+            const freqs = [587, 880, 1175];
+            freqs.forEach((f, idx) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                const startTime = now + (idx * 0.1);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(f, startTime);
+                gain.gain.setValueAtTime(0.2, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.18);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + 0.18);
+            });
+        } else {
+            // Tono Normal WhatsApp Web Sanatorio (A5 880Hz -> D6 1175Hz)
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(880, now);
+            gain1.gain.setValueAtTime(0.18, now);
+            gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+            osc1.connect(gain1);
+            gain1.connect(ctx.destination);
+            osc1.start(now);
+            osc1.stop(now + 0.16);
+
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(1175, now + 0.13);
+            gain2.gain.setValueAtTime(0.15, now + 0.13);
+            gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start(now + 0.13);
+            osc2.stop(now + 0.35);
+        }
     } catch (e) {
         console.warn('[contact-center] Audio notification prevented:', e);
     }
@@ -2081,4 +2151,65 @@ export async function saveBotTreeConfig(botTree, user = 'admin') {
     }
 
     return data;
+}
+
+/**
+ * Consulta mensajes históricos anteriores para un teléfono específico (Paginación / Scroll hacia atrás)
+ */
+export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt, limit = 40) {
+    if (!phone || !beforeCreatedAt) return [];
+    try {
+        const normPhone = normalizeArgentinePhone(phone);
+        const { data: rawMessages, error } = await supabase
+            .from('whatsapp_messages')
+            .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
+            .eq('line_id', 'contact_center')
+            .eq('phone', normPhone)
+            .lt('created_at', beforeCreatedAt)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) throw error;
+        if (!rawMessages || rawMessages.length === 0) return [];
+
+        // Invertir para orden cronológico ascendente
+        const chronological = [...rawMessages].reverse();
+
+        return chronological.map(m => {
+            const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.content && m.content.startsWith('_event_voice_note_')) || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
+            const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
+            const audioUnder = m.raw_payload?.audio_understanding || null;
+
+            const sanitizedRaw = m.raw_payload ? {
+                order_analysis: m.raw_payload.order_analysis,
+                audio_transcription: audioTrans,
+                audio_understanding: audioUnder,
+                agent: m.raw_payload.agent,
+                bot: m.raw_payload.bot || m.raw_payload.is_bot
+            } : null;
+
+            return {
+                id: 'real_' + m.id,
+                realId: m.id,
+                sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
+                senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
+                senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
+                agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
+                tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
+                type: isAudio ? 'audio' : (m.media_type || 'text'),
+                text: (m.content && !m.content.startsWith('_event_')) ? m.content : '',
+                mediaUrl: m.media_url || null,
+                orderAnalysis: m.raw_payload?.order_analysis || null,
+                audioTranscription: audioTrans,
+                audioUnderstanding: audioUnder,
+                rawPayload: sanitizedRaw,
+                isNote: m.direction === 'note',
+                created_at: m.created_at,
+                timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+            };
+        });
+    } catch (err) {
+        console.error('[contactCenterService] Error fetching older messages:', err);
+        return [];
+    }
 }

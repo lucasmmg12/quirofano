@@ -193,15 +193,16 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     return;
                 }
 
-                // Reproducir sonido y notificación si es entrante (usa soundEnabledRef para no recrear sockets)
+                // Reproducir sonido y notificación si es entrante (con detección de prioridad para triage auditivo)
                 if (isIncoming) {
+                    const isUrgent = /\b(guardia|urgencia|emergencia|dolor|grave|hemorragia|urgente)\b/i.test(newMsg.content || '');
                     if (soundEnabledRef.current) {
-                        playContactCenterChime();
+                        playContactCenterChime(isUrgent ? 'urgent' : 'normal');
                     }
                     if (addToast) {
                         const senderDisplay = newMsg.sender_name || normPhone || 'Paciente';
                         const preview = (newMsg.content || '').substring(0, 50);
-                        addToast(`💬 ${senderDisplay}: ${preview || 'Archivo multimedia adjunto'}`, 'info');
+                        addToast(`💬 ${senderDisplay}: ${preview || 'Archivo multimedia adjunto'}`, isUrgent ? 'warning' : 'info');
                     }
                 }
 

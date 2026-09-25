@@ -147,18 +147,20 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }
             }
 
-            // Consultar mensajes de la línea de Contact Center
+            // Consultar mensajes de la línea de Contact Center (Optimizado para RAM)
             let msgQuery = supabase
                 .from('whatsapp_messages')
                 .select('id, phone, direction, sender_name, content, created_at, raw_payload')
                 .eq('line_id', 'contact_center')
-                .order('created_at', { ascending: true });
+                .order('created_at', { ascending: true })
+                .limit(4000); // Límite de seguridad para no agotar la RAM
 
             // Consultar conversaciones
             let convQuery = supabase
                 .from('contact_center_conversations')
                 .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, motivo_consulta, ai_summary, created_at, last_message_at')
-                .order('created_at', { ascending: true });
+                .order('created_at', { ascending: true })
+                .limit(2000);
 
             if (filterStart) {
                 msgQuery = msgQuery.gte('created_at', filterStart.toISOString());
@@ -169,17 +171,20 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 convQuery = convQuery.lte('created_at', filterEnd.toISOString());
             }
 
-            // También consultamos historial ampliado de los últimos 6 meses para la comparativa mes a mes
+            // Historial ampliado de los últimos 6 meses para la comparativa mes a mes (Solo salientes y con proyección ligera)
             const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1, 0, 0, 0);
-            const { data: monthlyRawMsgs } = await supabase
+            const monthlyPromise = supabase
                 .from('whatsapp_messages')
                 .select('id, direction, created_at')
                 .eq('line_id', 'contact_center')
-                .gte('created_at', sixMonthsAgo.toISOString());
+                .eq('direction', 'outgoing')
+                .gte('created_at', sixMonthsAgo.toISOString())
+                .limit(10000);
 
-            const [{ data: messages, error: msgErr }, { data: convs, error: convErr }] = await Promise.all([
+            const [{ data: messages, error: msgErr }, { data: convs, error: convErr }, { data: monthlyRawMsgs }] = await Promise.all([
                 msgQuery,
-                convQuery
+                convQuery,
+                monthlyPromise
             ]);
 
             if (msgErr) throw msgErr;
