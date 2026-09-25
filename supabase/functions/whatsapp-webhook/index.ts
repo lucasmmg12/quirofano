@@ -2468,11 +2468,9 @@ async function handleChatbotTriage(
                 analysis.doctorRecord,
                 doctorDisplay
             );
-            if (res.nextStage === 'esperando_datos_nuevo') {
-                nextStage = res.nextStage;
-                replyText = res.replyText;
-                return { replyText, updates, nextStage };
-            }
+            nextStage = res.nextStage;
+            replyText = res.replyText;
+            return { replyText, updates, nextStage };
         }
             // 2. Extraer o preservar especialidad o doctor
             const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
