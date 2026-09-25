@@ -114,13 +114,50 @@ Deno.serve(async (req) => {
             const activeTemp = overrideConfig?.temperature !== undefined ? parseFloat(overrideConfig.temperature) : dynamicConfig.temperature;
             const activeBotName = overrideConfig?.botName || dynamicConfig.botName || 'Dora';
 
-            // 2. Compilar variables del paciente
-            const pName = patientData.nombre || 'Paciente de Prueba';
-            const pDni = patientData.dni || (patientData.esRegistrado ? '28475561' : 'Sin DNI');
-            const pOs = patientData.obraSocial || patientData.cobertura || (patientData.esRegistrado ? 'OSP (Obra Social Provincia) - Plan Tradicional' : 'A confirmar');
-            const pTurnos = patientData.turnos || (patientData.esRegistrado 
-                ? '\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n1. Fecha: 28/09/2026 | Hora: 16:30 hs | Profesional: Dra. Gómez Carrizo | Especialidad: Ginecología | Sede: Sede San Luis (San Luis 432 Oeste)\n'
-                : 'No registra turnos previos.');
+            // 2. Extraer DNI candidato del mensaje actual, historial o del preset del paciente
+            const userDniMatch = userMessage.match(/\b\d{7,8}\b/) || 
+                (Array.isArray(history) && [...history].reverse().find((h: any) => h.sender === 'user' && /\b\d{7,8}\b/.test(h.text))?.text.match(/\b\d{7,8}\b/));
+            const targetDni = userDniMatch ? userDniMatch[0] : (patientData.dni ? String(patientData.dni).replace(/\D/g, '') : null);
+
+            // 3. Verificar si el DNI existe en la base hospital_pacientes (SALUS)
+            let isExistingInDb = false;
+            let dbRecord: any = null;
+            if (targetDni) {
+                const { data: pFound } = await supabase
+                    .from('hospital_pacientes')
+                    .select('id_paciente, nombre, dni, coseguro, fecha_nacimiento, edad, nhc, centro, telefono')
+                    .eq('dni', targetDni)
+                    .maybeSingle();
+                if (pFound) {
+                    isExistingInDb = true;
+                    dbRecord = pFound;
+                }
+            }
+
+            // Consultar turnos activos si el paciente existe en SALUS
+            let turnosStr = '';
+            if (targetDni) {
+                const { data: activeTurnos } = await supabase
+                    .from('hospital_turnos')
+                    .select('fecha, hora, medico, especialidad, sede, obra_social')
+                    .eq('dni', targetDni)
+                    .gte('fecha', new Date().toISOString().split('T')[0])
+                    .order('fecha', { ascending: true })
+                    .limit(3);
+                
+                if (activeTurnos && activeTurnos.length > 0) {
+                    turnosStr = '\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n' +
+                        activeTurnos.map((t: any, idx: number) => 
+                            `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Sede: ${t.sede} | Cobertura: ${t.obra_social || 'A confirmar'}`
+                        ).join('\n');
+                }
+            }
+
+            // Compilar variables del paciente
+            const pName = dbRecord?.nombre || patientData.nombre || 'Paciente';
+            const pDni = targetDni || (patientData.esRegistrado ? '28475561' : 'Sin DNI');
+            const pOs = dbRecord?.coseguro || patientData.obraSocial || patientData.cobertura || (patientData.esRegistrado ? 'OSP (Obra Social Provincia) - Plan Tradicional' : 'A confirmar');
+            const pTurnos = turnosStr || patientData.turnos || (isExistingInDb ? 'Sin turnos próximos agendados.' : 'No registra turnos previos.');
 
             let compiledPrompt = activePrompt
                 .replace(/\{nombre\}/g, pName)
@@ -129,31 +166,34 @@ Deno.serve(async (req) => {
                 .replace(/\{turnos\}/g, pTurnos)
                 .replace(/\{bot_name\}|\{nombre_bot\}|\{asistente\}/gi, activeBotName);
 
-            if (!compiledPrompt.includes('{nombre}') && !compiledPrompt.includes(pName)) {
-                compiledPrompt += `\n\nDATOS DEL PACIENTE ACTUAL:\n- Nombre: ${pName}\n- DNI: ${pDni}\n- Cobertura: ${pOs}\n${pTurnos}`;
+            // Inyectar el estado real de SALUS en las directivas del modelo para que la IA responda exactamente con los datos de SALUS
+            if (targetDni && isExistingInDb && dbRecord) {
+                compiledPrompt += `\n\n[ESTADO SALUS EN TIEMPO REAL - CAMINO 1]:
+El DNI ${targetDni} CORRESPONDE A UN PACIENTE YA REGISTRADO EN EL SISTEMA SALUS:
+- Nombre: ${dbRecord.nombre}
+- DNI: ${dbRecord.dni}
+- Obra Social / Prepaga registrada: ${dbRecord.coseguro || 'A confirmar'}
+${pTurnos}
+
+DIRECTIVAS CLÍNICAS OBLIGATORIAS:
+1. CONFIRMA CON CLARIDAD QUE ENCONTRASTE LA FICHA DE "${dbRecord.nombre}" (DNI ${dbRecord.dni}) EN SANATORIO ARGENTINO.
+2. NO LE PIDAS LOS 5 DATOS DE ALTA/ADMISIÓN (el paciente ya tiene historia clínica en SALUS).
+3. Consúltale para qué especialidad médica o profesional solicita el turno y qué preferencia de días y horarios tiene (mañana o tarde), o confirma si mantiene la cobertura ${dbRecord.coseguro || 'registrada'}.`;
+            } else if (targetDni && !isExistingInDb) {
+                compiledPrompt += `\n\n[ESTADO SALUS EN TIEMPO REAL - CAMINO 2]:
+El DNI ${targetDni} NO FIGURA REGISTRADO EN EL SISTEMA SALUS (PACIENTE NUEVO).
+DIRECTIVAS CLÍNICAS OBLIGATORIAS:
+1. Informa amablemente que con el DNI ${targetDni} no figura ficha previa en Sanatorio Argentino.
+2. Solicita en un solo mensaje los datos obligatorios de admisión para abrir su ficha digital: Nombre y Apellido completo, Fecha de Nacimiento (DD/MM/AAAA) o edad, Obra Social/Prepaga y Plan (o Particular), Departamento de San Juan donde reside, y la Especialidad médica o profesional requerido.`;
+            } else {
+                if (!compiledPrompt.includes('{nombre}') && !compiledPrompt.includes(pName)) {
+                    compiledPrompt += `\n\nDATOS DEL PACIENTE ACTUAL:\n- Nombre: ${pName}\n- DNI: ${pDni}\n- Cobertura: ${pOs}\n${pTurnos}`;
+                }
             }
 
             // Asegurar formato JSON de salida si no está
             if (!compiledPrompt.includes('"replyText"') || !compiledPrompt.includes('"transferToAgent"')) {
                 compiledPrompt += `\n\nDevuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:\n{\n  "replyText": "Texto de la respuesta en WhatsApp...",\n  "intent": "derivacion_agente | turno | autorizacion | guardia | chequeo | informes | agradecimiento | general",\n  "transferToAgent": boolean,\n  "summary": "Resumen breve de la consulta en 1 línea para el equipo"\n}`;
-            }
-
-            // Verificar si el DNI existe en la base hospital_pacientes
-            let isExistingInDb = false;
-            let dbRecord = null;
-            if (patientData.dni) {
-                const cleanDni = String(patientData.dni).replace(/\D/g, '');
-                if (cleanDni) {
-                    const { data: pFound } = await supabase
-                        .from('hospital_pacientes')
-                        .select('id, nombre, coseguro, fecha_nacimiento')
-                        .eq('dni', cleanDni)
-                        .maybeSingle();
-                    if (pFound) {
-                        isExistingInDb = true;
-                        dbRecord = pFound;
-                    }
-                }
             }
 
             // 3. Ejecutar llamada real a OpenAI

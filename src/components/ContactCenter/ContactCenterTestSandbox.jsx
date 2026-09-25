@@ -110,7 +110,7 @@ export default function ContactCenterTestSandbox({
         try {
             const clean = query.trim();
             const isNum = /^\d+$/.test(clean);
-            let q = supabase.from('hospital_pacientes').select('id, nombre, dni, coseguro, fecha_nacimiento, centro').limit(6);
+            let q = supabase.from('hospital_pacientes').select('id_paciente, nombre, dni, coseguro, fecha_nacimiento, centro').limit(6);
             if (isNum) {
                 q = q.ilike('dni', `%${clean}%`);
             } else {
@@ -181,6 +181,18 @@ export default function ContactCenterTestSandbox({
             setLastResult(res);
 
             if (res) {
+                // Si el mensaje contenía un DNI y se resolvió su ficha en SALUS, sincronizar en vivo la ficha activa del paciente
+                if (res.dbRecord) {
+                    setPatient({
+                        nombre: res.dbRecord.nombre,
+                        dni: res.dbRecord.dni,
+                        obraSocial: res.dbRecord.coseguro || 'Particular',
+                        turnos: 'Ficha activa en SALUS',
+                        esRegistrado: true
+                    });
+                    setPatientType('custom');
+                }
+
                 const botReply = {
                     id: Date.now() + 1,
                     sender: 'bot',
@@ -458,7 +470,7 @@ export default function ContactCenterTestSandbox({
                                     }}>
                                         {searchResults.map(p => (
                                             <div
-                                                key={p.id}
+                                                key={p.id_paciente || p.dni}
                                                 onClick={() => handleSelectSalusPatient(p)}
                                                 style={{
                                                     padding: '6px 10px',
