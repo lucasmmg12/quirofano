@@ -28,6 +28,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
 import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
+import './Gobernanza.css';
 
 export default function GuardiaClinicaDashboard({ 
     onOpenDocModal, 
@@ -622,15 +623,16 @@ export default function GuardiaClinicaDashboard({
                     </div>
                 </div>
 
-                {/* Grilla de Gráficos de Tendencia Histórica Principal */}
+                {/* Contenedor de Gráficos de Tendencia Histórica Principal (100% de Ancho) */}
                 <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))',
-                    gap: '20px'
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
+                    width: '100%'
                 }}>
                     {/* ─── PRIMER GRÁFICA DESTACADA: COBERTURA Y EVOLUCIÓN MENSUAL DEL TRIAGE DE ENFERMERÍA ─── */}
                     <div style={{
-                        gridColumn: '1 / -1',
+                        width: '100%',
                         background: '#FFFFFF',
                         borderRadius: '12px',
                         border: '1px solid #BFDBFE',
@@ -638,7 +640,8 @@ export default function GuardiaClinicaDashboard({
                         boxShadow: '0 4px 12px -2px rgba(37, 99, 235, 0.08)',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '16px'
+                        gap: '16px',
+                        boxSizing: 'border-box'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
                             <div>
@@ -777,16 +780,20 @@ export default function GuardiaClinicaDashboard({
                         </div>
                     </div>
 
-                    {/* Gráfico 2: Demanda Mensual vs. Conversión a Cirugía (≤ 48h) */}
-                    <div style={{
-                        background: '#F8FAFC',
-                        borderRadius: '10px',
-                        border: '1px solid #E2E8F0',
-                        padding: '16px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px'
-                    }}>
+                    {/* ─── FILA DE 2 GRÁFICOS: VOLUMEN VS CIRUGÍA & CURVA DE TIEMPOS (OCUPAN EL 100% DEL ESPACIO) ─── */}
+                    <div className="guardia-charts-two-col">
+                        {/* Gráfico 2: Demanda Mensual vs. Conversión a Cirugía (≤ 48h) */}
+                        <div style={{
+                            background: '#F8FAFC',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                            width: '100%',
+                            boxSizing: 'border-box'
+                        }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
@@ -862,18 +869,20 @@ export default function GuardiaClinicaDashboard({
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
-                    </div>
+                        </div>
 
-                    {/* Gráfico 2: Curva de Oportunidad (Espera Médica vs Permanencia) con Meta 30 min */}
-                    <div style={{
-                        background: '#F8FAFC',
-                        borderRadius: '10px',
-                        border: '1px solid #E2E8F0',
-                        padding: '16px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px'
-                    }}>
+                        {/* Gráfico 3: Curva de Oportunidad (Espera Médica vs Permanencia) con Meta 30 min */}
+                        <div style={{
+                            background: '#F8FAFC',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                            width: '100%',
+                            boxSizing: 'border-box'
+                        }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
@@ -951,15 +960,17 @@ export default function GuardiaClinicaDashboard({
                     </div>
                 </div>
 
-                {/* Gráfico 3: Comparativa de Indicadores de Calidad Hospitalaria (Reconsulta 72h y Reinternación) */}
+                {/* Gráfico 4: Comparativa de Indicadores de Calidad Hospitalaria (Reconsulta 72h y Reinternación) (100% de Ancho) */}
                 <div style={{
+                    width: '100%',
                     background: '#F8FAFC',
                     borderRadius: '10px',
                     border: '1px solid #E2E8F0',
                     padding: '16px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '12px'
+                    gap: '12px',
+                    boxSizing: 'border-box'
                 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
                         <div>
@@ -1013,13 +1024,10 @@ export default function GuardiaClinicaDashboard({
                     </div>
                 </div>
             </div>
+        </div>
 
-            {/* ─── DESGLOSE DE TRIAGE Y DESTINOS CON VISUALIZADORES INTERACTIVOS ─── */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-                gap: '16px'
-            }}>
+            {/* ─── DESGLOSE DE TRIAGE Y DESTINOS CON VISUALIZADORES INTERACTIVOS (100% DE ANCHO) ─── */}
+            <div className="guardia-charts-two-col">
                 {/* Visualizador de Distribución de Triage */}
                 <div style={{
                     background: '#FFFFFF',

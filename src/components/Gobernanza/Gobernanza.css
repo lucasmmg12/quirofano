@@ -197,3 +197,19 @@
 .telar-kpi-card-hover:hover .kpi-actions {
     opacity: 1;
 }
+
+/* Grilla Responsiva al 100% de Ancho para Gráficos de Guardia */
+.guardia-charts-two-col {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 20px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+@media (max-width: 1024px) {
+    .guardia-charts-two-col {
+        grid-template-columns: 1fr !important;
+    }
+}
+
