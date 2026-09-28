@@ -559,6 +559,24 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
                     <HelpCircle size={15} />
                 </div>
 
+                <button
+                    onClick={handleDownloadLauncher}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '6px 10px', borderRadius: '8px',
+                        background: '#F8FAFC', border: '1px solid #CBD5E1',
+                        color: '#475569', fontSize: '0.73rem', fontWeight: 600,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        userSelect: 'none',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.color = '#0284C7'; e.currentTarget.style.borderColor = '#0284C7'; e.currentTarget.style.background = '#F0F9FF'; }}
+                    onMouseOut={e => { e.currentTarget.style.color = '#475569'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.background = '#F8FAFC'; }}
+                    title="Descargar acceso directo 'Actualizar SALUS.bat' para sincronizar desde el escritorio con doble clic"
+                >
+                    <Download size={13} style={{ color: '#0284C7' }} />
+                    Descargar .bat
+                </button>
+
                 {/* Badge Fecha y Hora de Última Actualización */}
                 {showTimestamp && (
                     <div
