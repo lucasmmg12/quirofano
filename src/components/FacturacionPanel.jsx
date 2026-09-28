@@ -551,22 +551,27 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         const isFacB = (b.facturada || b.estado_fac === 'Facturada') ? 1 : 0;
                         if (isFacA !== isFacB) return isFacB - isFacA;
 
-                        // 1. Priorizar ficha con fecha_alta registrada
+                        // 1. Priorizar ficha con Control ADM finalizado ('Si' / 'Sí')
+                        const hasControlA = (a.control_adm_finalizado === 'Si' || a.control_adm_finalizado === 'Sí') ? 1 : 0;
+                        const hasControlB = (b.control_adm_finalizado === 'Si' || b.control_adm_finalizado === 'Sí') ? 1 : 0;
+                        if (hasControlA !== hasControlB) return hasControlB - hasControlA;
+
+                        // 2. Priorizar admisión de internación (I... o T...) sobre ambulatoria/quirófano (PED...)
+                        const isHospA = /^(I|T)/i.test(a.numero_admision || '') ? 1 : 0;
+                        const isHospB = /^(I|T)/i.test(b.numero_admision || '') ? 1 : 0;
+                        if (isHospA !== isHospB) return isHospB - isHospA;
+
+                        // 3. Priorizar ficha con fecha_alta médica registrada
                         const hasAltaA = a.fecha_alta ? 1 : 0;
                         const hasAltaB = b.fecha_alta ? 1 : 0;
                         if (hasAltaA !== hasAltaB) return hasAltaB - hasAltaA;
 
-                        // 2. Priorizar admisión principal (I0...) sobre admisión UCI (UCI...)
-                        const isMainA = (a.numero_admision || '').toUpperCase().startsWith('I') ? 1 : 0;
-                        const isMainB = (b.numero_admision || '').toUpperCase().startsWith('I') ? 1 : 0;
-                        if (isMainA !== isMainB) return isMainB - isMainA;
-
-                        // 3. Priorizar la que tenga procedimientos cargados
+                        // 4. Priorizar la que tenga procedimientos cargados
                         const hasProcA = (a.procedimientos_detalle && a.procedimientos_detalle.length > 0) ? 1 : 0;
                         const hasProcB = (b.procedimientos_detalle && b.procedimientos_detalle.length > 0) ? 1 : 0;
                         if (hasProcA !== hasProcB) return hasProcB - hasProcA;
 
-                        // 4. Fallback a fecha de creación más reciente
+                        // 5. Fallback a fecha de creación más reciente
                         const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
                         const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
                         return dateB - dateA;
