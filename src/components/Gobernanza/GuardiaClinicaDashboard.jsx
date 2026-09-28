@@ -1443,7 +1443,22 @@ export default function GuardiaClinicaDashboard({
                                 const badgeColor = isN1 ? '#991B1B' : isN2 ? '#92400E' : '#1E40AF';
 
                                 return (
-                                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div 
+                                        key={idx} 
+                                        onClick={() => setSelectedOutlierModal('triage_severidad')}
+                                        title="Haga clic para ver el desglose nominal de cada paciente con triage"
+                                        style={{ 
+                                            display: 'flex', 
+                                            flexDirection: 'column', 
+                                            gap: '4px',
+                                            cursor: 'pointer',
+                                            padding: '4px 6px',
+                                            borderRadius: '6px',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
                                             <span style={{ fontWeight: 700, color: '#334155' }}>{t.nivel}</span>
                                             <span style={{ fontWeight: 800, color: badgeColor, background: badgeBg, padding: '2px 8px', borderRadius: '8px', fontSize: '0.72rem' }}>
