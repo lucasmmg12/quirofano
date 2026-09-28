@@ -30,6 +30,93 @@ import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
 import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
 import './Gobernanza.css';
 
+// ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS ───
+const CHART_HELP_CATALOGO = {
+    triage_evolution: {
+        id: 'triage_evolution',
+        titulo: 'Cobertura y Evolución Mensual del Triage de Enfermería',
+        subtitulo: 'Serie Temporal 2026 · SALUS Protocolo 621 · (ENF) Triage enfermeria',
+        icon: '🩺',
+        queMuestra: 'Compara mes a mes el volumen total de pacientes que ingresaron a la Guardia Clínica (barras celestes/azules) contra aquellos a los que el equipo de enfermería les realizó efectivamente el Triage de signos vitales (barras violetas), y grafica la línea de cobertura porcentual resultante frente a la meta normada.',
+        comoSeCalcula: 'Se divide la cantidad de admisiones de guardia que cuentan con un registro activo en [PR InstRespEntrada] para el Protocolo 621 entre el total de consultas de VLISE_Visitas del mes, multiplicado por 100.',
+        fuenteSalus: 'VLISE_Visitas cruzada por idEntrada con PR InstRespEntrada (Protocolo 621: (ENF) Triage enfermeria: TD, TS, FC, Tº, FR, SAO2, HGT y Observaciones).',
+        meta: 'Meta Progresiva: > 50% | Meta de Acreditación Final: > 95%',
+        impactoGestion: 'Garantiza que la atención médica priorice el riesgo de vida por sobre el orden de llegada. Permite auditar el cumplimiento del plantel de enfermería, asegurar trazabilidad medicolegal y fundamentar los tiempos de espera ante los pacientes y financiadores.'
+    },
+    conversion_cirugia: {
+        id: 'conversion_cirugia',
+        titulo: 'Volumen de Consultas vs. Conversión Quirúrgica (≤ 48 hs)',
+        subtitulo: 'Articulación de Urgencias con Centro Quirúrgico',
+        icon: '✂️',
+        queMuestra: 'Relaciona la demanda mensual espontánea de la guardia con el volumen y porcentaje de pacientes que requirieron una intervención quirúrgica en quirófano dentro de las primeras 48 horas posteriores a su ingreso.',
+        comoSeCalcula: 'Se contabilizan los pacientes de VLISE_Visitas que registran una intervención en TABLEAU_Cirugias con diferencia horaria menor o igual a 48 horas, dividido el total de consultas de urgencia del mes.',
+        fuenteSalus: 'VLISE_Visitas cruzada con TABLEAU_Cirugias por número de documento / historia clínica (NHC).',
+        meta: 'Benchmark Internacional: 8% a 12%',
+        impactoGestion: 'Mide la capacidad de resolución quirúrgica de urgencias (apendicectomías, fracturas, colecistectomías agudas) y detecta si la guardia se está usando indebidamente como vía de atajo para programar cirugías electivas.'
+    },
+    tiempos_espera: {
+        id: 'tiempos_espera',
+        titulo: 'Curva de Tiempos de Oportunidad y Permanencia',
+        subtitulo: 'Tiempos de Proceso Asistencial en Guardia',
+        icon: '⏱️',
+        queMuestra: 'Traza la evolución mensual de dos tiempos críticos: los minutos transcurridos desde el ingreso administrativo hasta la atención del médico (Tiempo de Espera, línea naranja), y los minutos totales desde el ingreso hasta el egreso de la guardia (Permanencia Total, área sombreada violeta).',
+        comoSeCalcula: 'Diferencia en minutos entre marcas de reloj de SALUS: Fecha Entrada Real vs Fecha Atención Médica, y Fecha Entrada Real vs Fecha Salida Real.',
+        fuenteSalus: 'VLISE_Visitas (campos [Fecha Entrada Real], [Fecha Salida Real], asistencias registradas).',
+        meta: 'Meta Oportunidad Médica: < 30 minutos | Permanencia promedio: < 90 minutos',
+        impactoGestion: 'Identifica retrasos en la sala de espera y cuellos de botella en la resolución médica (demoras en resultados de laboratorio, ecografías, tomografías o administración de sueros/medicación).'
+    },
+    calidad_72h: {
+        id: 'calidad_72h',
+        titulo: 'Indicadores de Calidad y Seguridad Clínica (72 horas)',
+        subtitulo: 'Monitoreo de Reconsultas a Guardia y Reinternaciones Inesperadas',
+        icon: '🛡️',
+        queMuestra: 'Monitorea en paralelo la Tasa de Reconsulta a Guardia (pacientes que vuelven a consultar antes de 3 días) y la Tasa de Reinternación Temprana (pacientes que egresaron de piso clínico y vuelven a internarse antes de 72 hs).',
+        comoSeCalcula: 'Porcentaje de pacientes con reingreso a guardia en ≤ 72 hs sobre el total de consultas, y porcentaje de readmisiones en internación en ≤ 72 hs sobre el total de altas clínicas del mes.',
+        fuenteSalus: 'VLISE_Visitas (autocruce temporal por paciente ≤ 72 horas) y TABLEAU_Admisiones (procedencia Urgencias).',
+        meta: 'Reconsulta Guardia: < 7% | Reinternación Piso: < 5%',
+        impactoGestion: 'Son los termómetros máximos de seguridad clínica. Valores elevados advierten altas apresuradas, tratamientos incompletos, falta de pautas de alarma o diagnósticos iniciales no acertados.'
+    },
+    triage_severidad: {
+        id: 'triage_severidad',
+        titulo: 'Clasificación de Severidad (Triage)',
+        subtitulo: 'Estratificación del Riesgo Clínico en el Ingreso',
+        icon: '🚦',
+        queMuestra: 'Distribución cualitativa y porcentual de los pacientes según el código de color y severidad asignado en el Protocolo 621 de Enfermería: N1 Rojo (Emergencia 0 min), N2 Naranja (Muy Urgente < 15 min), N3 Amarillo (Urgente < 30 min), N4 Verde (Poco Urgente < 60 min), N5 Azul (No Urgente) y Evaluados con signos vitales.',
+        comoSeCalcula: 'Conteo y porcentaje de cada nivel registrado en el campo observaciones y preguntas del Protocolo 621 en [PR InstRespEntrada].',
+        fuenteSalus: 'PR InstRespEntrada (idProtocolo = 621, preguntas 13802 a 13807 y 13814/13815).',
+        meta: 'Trazabilidad 100% de pacientes evaluados',
+        impactoGestion: 'Permite defender ante auditorías y dirección por qué determinados pacientes aguardan en sala mientras otros son ingresados de inmediato a shockroom, y balancear la dotación de guardia.'
+    },
+    destinos_postguardia: {
+        id: 'destinos_postguardia',
+        titulo: 'Destinos Post-Guardia Efectivos',
+        subtitulo: 'Resolutividad Ambulatoria y Derivación Interna',
+        icon: '📊',
+        queMuestra: 'Muestra a dónde van los pacientes una vez finalizada la atención médica de guardia: Alta a Domicilio, Internación en Piso Clínico, Pase a Quirófano de Urgencia o Traslado a Cuidados Críticos (UCI / Terapia Intermedia).',
+        comoSeCalcula: 'Cruce entre los motivos de cierre y altas de VLISE_Visitas con los números de admisión hospitalaria en TABLEAU_Admisiones dentro de las 24 horas del ingreso.',
+        fuenteSalus: 'VLISE_Visitas y TABLEAU_Admisiones (fechas de admisión y servicios de destino).',
+        meta: 'Alta domiciliaria esperada: 85% – 92% | Derivación a camas: 8% – 15%',
+        impactoGestion: 'Mide la capacidad resolutiva ambulatoria de la guardia. Alerta tempranamente sobre tensiones en la disponibilidad de camas de internación y camas críticas del Sanatorio.'
+    }
+};
+
+const helpBtnStyle = {
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    border: '1px solid #CBD5E1',
+    background: '#FFFFFF',
+    color: '#2563EB',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+    transition: 'all 0.15s ease',
+    padding: 0,
+    flexShrink: 0
+};
+
 export default function GuardiaClinicaDashboard({ 
     onOpenDocModal, 
     activeIndicatorIds = [], 
@@ -40,6 +127,7 @@ export default function GuardiaClinicaDashboard({
     const [historialResumen, setHistorialResumen] = useState([]);
     const [selectedPeriodo, setSelectedPeriodo] = useState('2026-09');
     const [selectedKpiDetail, setSelectedKpiDetail] = useState(null);
+    const [selectedChartHelp, setSelectedChartHelp] = useState(null);
     const [copiedSql, setCopiedSql] = useState(false);
     const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
 
@@ -652,6 +740,14 @@ export default function GuardiaClinicaDashboard({
                                     <span style={{ fontSize: '0.7rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '3px 8px', borderRadius: '6px' }}>
                                         SALUS Protocolo 621 · (ENF) Triage enfermeria
                                     </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.triage_evolution)}
+                                        title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
+                                        style={helpBtnStyle}
+                                    >
+                                        <HelpCircle size={14} />
+                                    </button>
                                 </div>
                                 <h4 style={{ margin: '8px 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
                                     Cobertura y Evolución Mensual del Triage de Enfermería
@@ -803,9 +899,19 @@ export default function GuardiaClinicaDashboard({
                                     Cruce con Quirófano (Meta normada: 8% - 12%)
                                 </span>
                             </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
-                                Barras + % Conv.
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
+                                    Barras + % Conv.
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.conversion_cirugia)}
+                                    title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
+                                    style={helpBtnStyle}
+                                >
+                                    <HelpCircle size={14} />
+                                </button>
+                            </div>
                         </div>
 
                         <div style={{ height: '260px', width: '100%' }}>
@@ -892,9 +998,19 @@ export default function GuardiaClinicaDashboard({
                                     Espera al Médico (min) vs. Permanencia Total en Guardia
                                 </span>
                             </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '6px' }}>
-                                Meta Oportunidad: &lt; 30 min
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '6px' }}>
+                                    Meta Oportunidad: &lt; 30 min
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.tiempos_espera)}
+                                    title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
+                                    style={helpBtnStyle}
+                                >
+                                    <HelpCircle size={14} />
+                                </button>
+                            </div>
                         </div>
 
                         <div style={{ height: '260px', width: '100%' }}>
@@ -981,13 +1097,21 @@ export default function GuardiaClinicaDashboard({
                                 Tasa de Reconsulta a Guardia (Meta: &lt; 7%) y Tasa de Reinternación Inesperada (Meta: &lt; 5%)
                             </span>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
                                 Meta Reconsulta &lt; 7%
                             </span>
                             <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px' }}>
                                 Meta Reinternación &lt; 5%
                             </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.calidad_72h)}
+                                title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
+                                style={helpBtnStyle}
+                            >
+                                <HelpCircle size={14} />
+                            </button>
                         </div>
                     </div>
 
@@ -1045,9 +1169,19 @@ export default function GuardiaClinicaDashboard({
                                 Clasificación de Severidad (Triage)
                             </h4>
                         </div>
-                        <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                            Total: {currentData.consultas_con_triage} clasificados
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                                Total: {currentData.consultas_con_triage} clasificados
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.triage_severidad)}
+                                title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
+                                style={helpBtnStyle}
+                            >
+                                <HelpCircle size={14} />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Gráfico Donut de Triage */}
@@ -1145,9 +1279,19 @@ export default function GuardiaClinicaDashboard({
                                 Destinos Post-Guardia Efectivos
                             </h4>
                         </div>
-                        <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                            Flujo ambulatorio e internación
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                                Flujo ambulatorio e internación
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.destinos_postguardia)}
+                                title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
+                                style={helpBtnStyle}
+                            >
+                                <HelpCircle size={14} />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Gráfico de Barras Horizontal de Destinos */}
@@ -1558,6 +1702,185 @@ export default function GuardiaClinicaDashboard({
                 periodo={currentData.periodo}
                 totalConsultas={currentData.total_consultas}
             />
+
+            {/* ─── MODAL DE EXPLICACIÓN DETALLADA DE GRÁFICOS (GOBERNANZA CLÍNICA) ─── */}
+            {selectedChartHelp && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999,
+                    backdropFilter: 'blur(3px)',
+                    padding: '16px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '680px',
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+                        animation: 'fadeIn 0.2s ease-out'
+                    }}>
+                        {/* Header del Modal */}
+                        <div style={{
+                            padding: '18px 24px',
+                            borderBottom: '1px solid #E2E8F0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: '42px',
+                                    height: '42px',
+                                    borderRadius: '10px',
+                                    background: '#FFFFFF',
+                                    border: '1px solid #BFDBFE',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '1.35rem',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.08)',
+                                    flexShrink: 0
+                                }}>
+                                    {selectedChartHelp.icon}
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', background: '#DBEAFE', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            Guía Analítica de Gráfico
+                                        </span>
+                                    </div>
+                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>
+                                        {selectedChartHelp.titulo}
+                                    </h3>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                        {selectedChartHelp.subtitulo}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedChartHelp(null)}
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #CBD5E1',
+                                    borderRadius: '8px',
+                                    color: '#64748B',
+                                    fontSize: '1rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    width: '32px',
+                                    height: '32px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Contenido Didáctico del Gráfico */}
+                        <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* 1. ¿Qué estamos viendo? */}
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.9rem' }}>💡</span>
+                                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        ¿Qué estamos viendo en este gráfico?
+                                    </label>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.86rem', color: '#334155', lineHeight: 1.55 }}>
+                                    {selectedChartHelp.queMuestra}
+                                </p>
+                            </div>
+
+                            {/* 2. Cómo se calcula y Meta */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                                <div style={{ background: '#EFF6FF', borderRadius: '10px', border: '1px solid #BFDBFE', padding: '12px 14px' }}>
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                        📐 Fórmula & Cálculo
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#1E3A8A', lineHeight: 1.45 }}>
+                                        {selectedChartHelp.comoSeCalcula}
+                                    </p>
+                                </div>
+
+                                <div style={{ background: '#F0FDF4', borderRadius: '10px', border: '1px solid #BBF7D0', padding: '12px 14px' }}>
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                        🎯 Meta / Benchmark Normado
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#14532D', lineHeight: 1.45, fontWeight: 700 }}>
+                                        {selectedChartHelp.meta}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* 3. Fuente de Datos en SALUS */}
+                            <div style={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', padding: '10px 14px' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '3px' }}>
+                                    📡 Origen y Trazabilidad en Base de Datos SALUS
+                                </div>
+                                <code style={{ fontSize: '0.76rem', color: '#0F172A', background: '#F1F5F9', padding: '3px 8px', borderRadius: '4px', display: 'inline-block' }}>
+                                    {selectedChartHelp.fuenteSalus}
+                                </code>
+                            </div>
+
+                            {/* 4. Impacto en la Toma de Decisiones Médicas */}
+                            <div style={{ background: '#FFFBEB', borderRadius: '10px', border: '1px solid #FDE68A', padding: '12px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '0.85rem' }}>🎯</span>
+                                    <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase' }}>
+                                        Impacto Asistencial y Decisión Médica
+                                    </label>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.82rem', color: '#78350F', lineHeight: 1.5 }}>
+                                    {selectedChartHelp.impactoGestion}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{
+                            padding: '12px 20px',
+                            borderTop: '1px solid #E2E8F0',
+                            background: '#F8FAFC',
+                            display: 'flex',
+                            justifyContent: 'flex-end'
+                        }}>
+                            <button
+                                onClick={() => setSelectedChartHelp(null)}
+                                style={{
+                                    padding: '8px 22px',
+                                    borderRadius: '8px',
+                                    background: '#2563EB',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '0.84rem',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                }}
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
 
         </div>
     );
