@@ -355,8 +355,10 @@ Te derivaremos con el sector de Presupuestos y Cobranzas para confeccionar tu pr
         patientExamples: ['Cola con alta saturación en horas pico'],
         systemAction: 'Envía aviso empático de demoras y detalla el horario oficial de atención.',
         nodeType: 'bot_response',
-        botResponse: `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada. El bot quedará en pausa.
-⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`,
+        botResponse: `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.
+⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+
+💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`,
         availableTags: ['{bot_name}'],
         childrenIds: []
     },

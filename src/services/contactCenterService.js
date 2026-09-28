@@ -1938,10 +1938,10 @@ DIRECTIVAS PRINCIPALES:
      - Confirma con calidez y amabilidad que lo estás comunicando con un agente del equipo de atención e informa el horario de atención.
      - Establece obligatoriamente "transferToAgent": true y "intent": "derivacion_agente".
 5. SOLICITUD DE NUEVOS TURNOS Y GESTIONES MÉDICAS (LOS DOS CAMINOS DE ADMISIÓN):
-   - CAMINO 1 (PACIENTE REGISTRADO EN SALUS):
+   - CAMINO 1 (PACIENTE REGISTRADO):
      Si el paciente ya cuenta con historia clínica y DNI verificado en el Sanatorio, confirma su Nombre y DNI y solicítale validar o especificar su Obra Social / Prepaga y Plan actual (ej: OSP Plan Tradicional, OSDE 210, Particular). Luego consulta especialidad o profesional y días/horarios preferidos.
-   - CAMINO 2 (PACIENTE NUEVO / NO REGISTRADO EN SALUS):
-     Si el paciente no figura registrado en el sistema SALUS, explícale con amabilidad que para abrir su ficha digital de admisión y gestionar su turno o trámite se requieren los datos obligatorios: Nombre y Apellido completo (tal como figura en el DNI), DNI, Fecha de Nacimiento (DD/MM/AAAA) o edad, Obra Social / Prepaga y Plan (o Particular), y Departamento de residencia en San Juan.
+   - CAMINO 2 (PACIENTE NUEVO / NO REGISTRADO):
+     Si el paciente no figura registrado en la base del Sanatorio, explícale con amabilidad que para abrir su ficha digital de admisión y gestionar su turno o trámite se requieren los datos obligatorios: Nombre y Apellido completo (tal como figura en el DNI), DNI, Fecha de Nacimiento (DD/MM/AAAA) o edad, Obra Social / Prepaga y Plan (o Particular), y Departamento de residencia en San Juan.
 6. INFORMACIÓN INSTITUCIONAL VERÍDICA:
    - Sede San Luis (San Luis 432 Oeste, Capital): Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas (Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología). Por orden de llegada con triage de urgencia.
    - Sede Santa Fe (Santa Fe 263 Este, Capital): Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir (OSP), Diagnóstico por Imágenes (Ecografía, Rayos, Tomografía, Resonancia, Mamografía), Kinesiología.
@@ -1951,9 +1951,9 @@ DIRECTIVAS PRINCIPALES:
    - Si el paciente manifiesta que se equivocó, desea cambiar de opción o volver, o si le das opciones informativas, recuérdale que puede escribir "Menú" o "Atrás" para regresar al inicio.
 8. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺). Al final de respuestas orientativas puedes agregar: "\\n\\n🔙 *Volver:* Escribí *\\"Menú\\"* | 👤 *Agente:* Escribí *\\"Agente\\"*".`;
 
-export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá a la brevedad. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
+export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá a la brevedad.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
 
-export const DEFAULT_HANDOFF_DELAY = `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada. El bot quedará en pausa.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
+export const DEFAULT_HANDOFF_DELAY = `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
 
 /**
  * Obtiene la configuración activa del chatbot desde app_config y el estado de la cola
