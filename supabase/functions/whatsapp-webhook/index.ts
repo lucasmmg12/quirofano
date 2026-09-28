@@ -1838,6 +1838,35 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         }
     }
 
+    // Si no se detectó por regex con prefijo "Dr./con/para", buscar si alguna palabra del mensaje coincide directamente con un apellido de médico
+    if (!doctorCandidate) {
+        const wordsInText = clean.split(/[\s,.\-_/]+/).map(w => w.trim()).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
+        const nonDoctorWords = new Set([
+            'turno', 'turnos', 'cita', 'citas', 'para', 'por', 'con', 'del', 'las', 'los', 'una', 'uno',
+            'mañana', 'tarde', 'siesta', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado',
+            'sancor', 'osde', 'osp', 'omint', 'swiss', 'medical', 'particular', 'provincia', 'damsup',
+            'hola', 'buen', 'dia', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
+            'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre'
+        ]);
+
+        for (const w of wordsInText) {
+            if (!nonDoctorWords.has(w)) {
+                try {
+                    const { data: dMatch } = await supabase
+                        .from('contact_center_doctor_parameters')
+                        .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                        .ilike('profesional_nombre', `%${w}%`)
+                        .limit(5);
+
+                    if (dMatch && dMatch.length > 0) {
+                        doctorCandidate = w;
+                        break;
+                    }
+                } catch (_) {}
+            }
+        }
+    }
+
     // Buscar en la base de datos de parámetros médicos de Sanatorio Argentino
     let doctorRecord: any = null;
     if (doctorCandidate) {
@@ -2208,22 +2237,25 @@ async function handleChatbotTriage(
     const candidateDni: string | null = dniMatch ? dniMatch[0] : (isOnlyDigits ? rawDigits : null);
     const dniInMessage = candidateDni;
 
+    // Persistencia y memoria: DNI en el mensaje actual O DNI previamente registrado en la conversación
+    const effectiveDni = dniInMessage || conv?.dni || null;
+
     let paciente: any = null;
 
-    if (dniInMessage) {
+    if (effectiveDni) {
         try {
             const { data: pByDni, error: pacError } = await supabase
                 .from('hospital_pacientes')
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .eq('dni', dniInMessage)
+                .eq('dni', effectiveDni)
                 .limit(1)
                 .maybeSingle();
 
             if (pByDni) {
                 paciente = pByDni;
-                console.log(`[triage-bot] Paciente identificado en SALUS por DNI provisto ${dniInMessage}: ${paciente.nombre} (HC: ${paciente.nhc})`);
+                console.log(`[triage-bot] Paciente identificado por DNI ${effectiveDni}: ${paciente.nombre} (HC: ${paciente.nhc})`);
             } else {
-                console.log(`[triage-bot] DNI provisto ${dniInMessage} no figura en padrón maestro de SALUS (usuario nuevo)`);
+                console.log(`[triage-bot] DNI ${effectiveDni} no figura en padrón institucional (usuario nuevo)`);
             }
         } catch (e) {
             console.warn('[triage-bot] Error consultando paciente por DNI:', e);
@@ -2618,123 +2650,142 @@ async function handleChatbotTriage(
         }
             // 2. Extraer o preservar especialidad o doctor
             const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
-            // Detectar si el turno es para un familiar o un tercero
             const isForOtherPatient = 
                 Boolean(analysis.isForOtherPatient) ||
                 /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|tercero|tercera\s+persona|alguien\s+m[aá]s)\b/i.test(cleanText) ||
                 Boolean(conv?.motivo_consulta?.toLowerCase().includes('familiar') || conv?.motivo_consulta?.toLowerCase().includes('tercero'));
 
+            // Acumulación de médico/especialidad: si vino en este mensaje o ya estaba guardado en la conversación previa
             const effectiveDocOrSpec = 
                 doctorDisplay || 
                 specialtyFromMsg || 
                 updates.medico_o_especialidad || 
+                conv?.medico_o_especialidad ||
                 null;
 
             if (effectiveDocOrSpec) {
                 updates.medico_o_especialidad = effectiveDocOrSpec;
             }
 
-            // 3. Extraer obra social y plan si vino en el texto
+            // 3. Extraer obra social y plan si vino en el texto o preservar de la previa
             const extractedOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
-            if (extractedOs && !extractedOs.toLowerCase().includes('a confirmar')) {
-                updates.obra_social = extractedOs;
+            const effectiveOs = 
+                extractedOs || 
+                updates.obra_social || 
+                conv?.obra_social || 
+                paciente?.coseguro || 
+                null;
+
+            if (effectiveOs && !effectiveOs.toLowerCase().includes('a confirmar')) {
+                updates.obra_social = effectiveOs;
             }
 
-            // Extraer preferencias de horario si se mencionan
+            // 4. Extraer preferencias de horario si se mencionan o preservar de la previa
             let preferenciaHoraria = '';
             if (/\b(ma[nñ]ana|ma[nñ]anas|temprano)\b/i.test(cleanText)) {
                 preferenciaHoraria = 'Turno Mañana';
             } else if (/\b(tarde|tardes|siesta)\b/i.test(cleanText)) {
                 preferenciaHoraria = 'Turno Tarde';
+            } else if (conv?.motivo_consulta?.includes('Turno Mañana')) {
+                preferenciaHoraria = 'Turno Mañana';
+            } else if (conv?.motivo_consulta?.includes('Turno Tarde')) {
+                preferenciaHoraria = 'Turno Tarde';
             }
 
-            const mappedName = paciente?.nombre || fullName;
+            // DNI definitivo acumulado
+            const targetDni = candidateDni || conv?.dni || paciente?.dni || null;
+            if (targetDni) updates.dni = targetDni;
+
+            const mappedName = paciente?.nombre || patientLegalName || whatsappName;
             let cleanName = mappedName;
             if (mappedName && mappedName.includes(',')) {
                 const parts = mappedName.split(',').map((p: string) => p.trim());
                 cleanName = `${parts[1]} ${parts[0]}`;
             }
 
-            // Si es paciente registrado pero aún no confirmó su Obra Social y Plan:
-            const hasValidOsAndPlan = (updates.obra_social && 
-                !updates.obra_social.toLowerCase().includes('a confirmar') && 
-                !updates.obra_social.toLowerCase().includes('a consultar')) ||
-                Boolean(paciente?.coseguro);
+            // COMPROBACIÓN INTELIGENTE DE VARIABLES OBLIGATORIAS:
+            // Tenemos 3 variables clave: DNI, Médico/Especialidad, Obra Social.
+            const hasDni = Boolean(targetDni);
+            const hasDoctor = Boolean(effectiveDocOrSpec);
+            const hasOs = Boolean(updates.obra_social && !updates.obra_social.toLowerCase().includes('a confirmar') && !updates.obra_social.toLowerCase().includes('a consultar'));
 
-            if (paciente && candidateDni && !hasValidOsAndPlan) {
-                if (isForOtherPatient) {
-                    replyText = `¡Muchas gracias! 🏥 Encontramos la historia clínica de *${cleanName}* en Sanatorio Argentino (DNI: *${candidateDni}*).\n\n` +
-                        `📋 Para verificar su cobertura institucional y registrar la solicitud correctamente, por favor indícanos o confírmanos su *Obra Social / Prepaga y Plan actual* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):`;
-                } else {
-                    const pGreeting = cleanName !== 'Paciente' ? ` *${cleanName}*` : '';
-                    replyText = `¡Muchas gracias${pGreeting}! 🏥 Encontramos tu historia clínica en Sanatorio Argentino (DNI: *${candidateDni}*).\n\n` +
-                        `📋 Para verificar tu cobertura institucional y registrar tu solicitud correctamente, por favor indícanos o confírmanos tu *Obra Social / Prepaga y Plan actual* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):`;
-                }
-                updates.status = 'bot';
-                updates.bot_active = true;
-                nextStage = 'esperando_obra_social_paciente';
-                updates.bot_stage = 'esperando_obra_social_paciente';
-            } else if (candidateDni && !effectiveDocOrSpec) {
-                const osInfo = (updates.obra_social || paciente?.coseguro) ? ` (${updates.obra_social || paciente?.coseguro})` : '';
-                if (isForOtherPatient) {
-                    replyText = `¡Muchas gracias! 🏥 Registramos los datos de *${cleanName}* (DNI: *${candidateDni}*)${osInfo}.\n\n` +
-                        `Por favor indícanos:\n` +
-                        `• ¿Con qué *profesional* o para qué *especialidad médica* solicita la atención?\n` +
-                        `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-                    updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${candidateDni}, esperando especialidad)`;
-                } else {
-                    const pGreeting = cleanName !== 'Paciente' ? ` *${cleanName}*` : '';
-                    replyText = `¡Muchas gracias${pGreeting}! 🏥 Registramos tu DNI *${candidateDni}*${osInfo}.\n\n` +
-                        `Por favor indícanos:\n` +
-                        `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
-                        `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-                    updates.motivo_consulta = `Solicitud de Turno: ${cleanName} (DNI ${candidateDni}, esperando especialidad)`;
-                }
-                updates.status = 'bot';
-                updates.bot_active = true;
-                nextStage = 'esperando_datos_turno';
-            } else if (!candidateDni && !paciente?.dni && !effectiveDocOrSpec) {
-                replyText = `¡Entendido! 🏥 Para poder verificar la historia clínica en Sanatorio Argentino o dar de alta en nuestro sistema, por favor indícanos:\n\n` +
-                    `• Número de *DNI del paciente* (solo números, sin puntos ni espacios)\n` +
-                    `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
-                    `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
-                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-                updates.status = 'bot';
-                updates.bot_active = true;
-                nextStage = 'esperando_datos_turno';
-                updates.motivo_consulta = 'Solicitud de Turno (esperando DNI y especialidad)';
-            } else {
-                const docMsg = updates.medico_o_especialidad 
-                    ? ` con el *${updates.medico_o_especialidad}*` 
-                    : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
-
-                const osMsg = (updates.obra_social || paciente?.coseguro) ? `\n• *Cobertura informada:* ${updates.obra_social || paciente?.coseguro}` : '';
+            // CASO A: SI TENEMOS TODAS LAS VARIABLES (DNI + Médico + Obra Social) -> CONFIRMACIÓN INMEDIATA
+            if (hasDni && hasDoctor && hasOs) {
+                const docMsg = ` con el *${effectiveDocOrSpec}*`;
+                const osMsg = `\n• *Cobertura informada:* ${updates.obra_social}`;
                 const horMsg = preferenciaHoraria ? `\n• *Preferencia horaria:* ${preferenciaHoraria}` : '';
 
                 if (isForOtherPatient) {
-                    replyText = `¡Muchas gracias! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${candidateDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
+                    replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${targetDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional para el paciente y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                    updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${candidateDni}) - ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+                    updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${targetDni}) - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
                     updates.es_gestion_tercero = true;
-                    updates.titular_nombre = fullName;
+                    updates.titular_nombre = whatsappName;
                     updates.paciente_nombre = cleanName;
-                    updates.paciente_dni = candidateDni;
+                    updates.paciente_dni = targetDni;
                 } else {
-                    replyText = `¡Muchas gracias${cleanName && cleanName !== 'Paciente' ? ` *${cleanName}*` : ''}! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
+                    replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                    updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${cleanName} - ${updates.medico_o_especialidad || 'A coordinar'}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+                    updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${cleanName} - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
                 }
 
                 updates.status = 'sin_asignar';
                 updates.bot_active = false;
                 nextStage = 'esperando_agente';
                 updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+            }
+            // CASO B: TENEMOS DNI Y MÉDICO, PERO FALTA OBRA SOCIAL -> PREGUNTAR SOLO POR LA OBRA SOCIAL
+            else if (hasDni && hasDoctor && !hasOs) {
+                replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Ya registramos tu DNI *${targetDni}* y tu solicitud con *${effectiveDocOrSpec}*.` +
+                    (preferenciaHoraria ? ` (${preferenciaHoraria})` : '') +
+                    `\n\n📋 Para verificar tu cobertura en nuestro sistema y confirmar la cita, por favor indícanos tu *Obra Social / Prepaga y Plan* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_obra_social_paciente';
+                updates.bot_stage = 'esperando_obra_social_paciente';
+            }
+            // CASO C: TENEMOS DNI (Y TAL VEZ OS), PERO FALTA EL MÉDICO/ESPECIALIDAD -> PREGUNTAR SOLO POR MÉDICO Y HORARIO
+            else if (hasDni && !hasDoctor) {
+                const osInfo = updates.obra_social ? ` (${updates.obra_social})` : '';
+                replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tu DNI *${targetDni}*${osInfo}.\n\n` +
+                    `Por favor indícanos:\n` +
+                    `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                    `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_turno';
+                updates.motivo_consulta = `Solicitud de Turno: ${cleanName} (DNI ${targetDni}, esperando especialidad)`;
+            }
+            // CASO D: TENEMOS MÉDICO PERO FALTA DNI -> PREGUNTAR SOLO POR EL DNI
+            else if (!hasDni && hasDoctor) {
+                replyText = `¡Perfecto *${whatsappName}*! Registramos tu solicitud para atenderte con *${effectiveDocOrSpec}*.` +
+                    (preferenciaHoraria ? ` (${preferenciaHoraria})` : '') +
+                    `\n\nPor favor indícanos:\n` +
+                    `• Número de *DNI del paciente* (sin puntos ni espacios)\n` +
+                    (!hasOs ? `• *Obra Social / Prepaga* y plan (o si tu atención será Particular)\n\n` : '\n\n') +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_turno';
+            }
+            // CASO E: NO TENEMOS NINGÚN DATO AÚN
+            else {
+                replyText = `¡Entendido *${whatsappName}*! 🏥 Para poder verificar la historia clínica en Sanatorio Argentino o registrar tu atención en nuestro sistema, por favor indícanos:\n\n` +
+                    `• Número de *DNI del paciente* (solo números, sin puntos ni espacios)\n` +
+                    `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                    `• Preferencia de *días y horarios* (mañana o tarde)\n` +
+                    `• *Obra Social / Prepaga* y plan (o Particular)\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_turno';
+                updates.motivo_consulta = 'Solicitud de Turno (esperando datos)';
             }
         }
     // =============================================
