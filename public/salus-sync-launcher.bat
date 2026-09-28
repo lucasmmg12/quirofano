@@ -1,14 +1,13 @@
 @echo off
-title SALUS Sync Server - Sanatorio Argentino
+setlocal EnableDelayedExpansion
+title SALUS Sync - Sanatorio Argentino
 color 0A
 
 echo ========================================================
-echo   SALUS Sync Server - Sanatorio Argentino
-echo   Conectando a SQL Server SALUS y Supabase Cloud...
+echo   SALUS Sync - Sanatorio Argentino
+echo   Actualizacion Automatica de Datos Clinicos y Gestion
 echo ========================================================
 echo.
-
-reg add HKCU\Console /v QuickEdit /t REG_DWORD /d 0 /f >nul 2>&1
 
 where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
@@ -18,59 +17,32 @@ if %ERRORLEVEL% NEQ 0 (
     echo   ERROR: Node.js no esta instalado en esta computadora.
     echo ========================================================
     echo.
-    echo   Para ejecutar el servidor local de sincronizacion,
-    echo   debe tener instalado Node.js (version 18 o superior).
+    echo   Para sincronizar con SALUS, debe tener instalado Node.js.
     echo   Descarguelo gratis desde: https://nodejs.org
     echo.
+    echo ========================================================
     pause
     exit /b 1
 )
 
-if exist "%~dp0.git" (
-    echo [*] Verificando actualizaciones del sistema desde GitHub...
-    cd /d "%~dp0"
-    call git pull origin main 2>nul
+:: Si la carpeta sync-server existe localmente y se desea ejecutar el daemon central:
+if exist "%~dp0sync-server\index.js" (
+    echo   [1] Sincronizar Todo Ahora (Rapido / Universal)
+    echo   [2] Iniciar Servidor Daemon en segundo plano
     echo.
+    set /p MODO="Seleccione [1 / 2, Enter=1]: "
+    if "!MODO!"=="2" (
+        cd /d "%~dp0sync-server"
+        node index.js
+        pause
+        exit /b 0
+    )
 )
 
-if not exist "%~dp0sync-server" (
-    color 0C
-    echo [ERROR] No se encontro la carpeta "sync-server".
-    pause
-    exit /b 1
-)
+echo [*] Iniciando actualizacion de datos desde SALUS...
+node -e "eval(Buffer.from('CmNvbnN0IFNVUEFCQVNFX1VSTCA9ICdodHRwczovL2hha3lzbnFpcnlpbXhid2RzbHdlLnN1cGFiYXNlLmNvJzsKY29uc3QgQU5PTl9LRVkgPSAnZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBjM01pT2lKemRYQmhZbUZ6WlNJc0luSmxaaUk2SW1oaGEzbHpibkZwY25scGJYaGlkMlJ6YkhkbElpd2ljbTlzWlNJNkltRnViMjRpTENKcFlYUWlPakUzTnpBd05ESXlOelFzSW1WNGNDSTZNakE0TlRZeE9ESTNOSDAuLTg1T1MxZG9oYzlnaDRVNHFCaEVCbHFIaTlCcTdsN0g2Sm56Y1V6ckNJZyc7Cgpjb25zdCBoZWFkZXJzID0gewogICdhcGlrZXknOiBBTk9OX0tFWSwKICAnQXV0aG9yaXphdGlvbic6ICdCZWFyZXIgJyArIEFOT05fS0VZLAogICdDb250ZW50LVR5cGUnOiAnYXBwbGljYXRpb24vanNvbicsCiAgJ1ByZWZlcic6ICdyZXR1cm49cmVwcmVzZW50YXRpb24nCn07Cgphc3luYyBmdW5jdGlvbiBtYWluKCkgewogIGNvbnNvbGUubG9nKCdcbj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Jyk7CiAgY29uc29sZS5sb2coJyAgIFNBTFVTIFNZTkMg4oCUIFNBTkFUT1JJTyBBUkdFTlRJTk8nKTsKICBjb25zb2xlLmxvZygnICAgU2luY3Jvbml6YWNpb24gVW5pdmVyc2FsIGRlIERhdG9zIENsaW5pY29zIHkgR2VzdGlvbicpOwogIGNvbnNvbGUubG9nKCc9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuJyk7CgogIGNvbnNvbGUubG9nKCdbKl0gVmVyaWZpY2FuZG8gY29uZXhpb24gY29uIGVsIFNlcnZpZG9yIENlbnRyYWwgU0FMVVMgKDEyOC4yMjMuMTcuNjApLi4uJyk7CiAgdHJ5IHsKICAgIGNvbnN0IHNSZXMgPSBhd2FpdCBmZXRjaChTVVBBQkFTRV9VUkwgKyAnL3Jlc3QvdjEvc2FsdXNfc3luY19zZXJ2ZXJfc3RhdHVzP2lkPWVxLnByaW1hcnkmc2VsZWN0PSonLCB7IGhlYWRlcnMgfSk7CiAgICBjb25zdCBzRGF0YSA9IGF3YWl0IHNSZXMuanNvbigpOwogICAgY29uc3Qgc3J2ID0gc0RhdGEgJiYgc0RhdGFbMF07CiAgICBpZiAoc3J2ICYmIHNydi5vbmxpbmUpIHsKICAgICAgY29uc29sZS5sb2coJ1tPS10gU2Vydmlkb3IgQ2VudHJhbCBPbmxpbmUgKElQOiAnICsgKHNydi5zZXJ2ZXJfaXAgfHwgJzEyOC4yMjMuMTcuNjAnKSArICcsIFNBTFVTIFNRTCBTZXJ2ZXI6IENvbmVjdGFkbyknKTsKICAgIH0gZWxzZSB7CiAgICAgIGNvbnNvbGUubG9nKCdBVklTTzogRWwgc2Vydmlkb3IgY2VudHJhbCBubyBlbWl0ZSBzZW5hbCByZWNpZW50ZS4nKTsKICAgICAgY29uc29sZS5sb2coJ0FzZWd1cmVzZSBkZSBxdWUgZWwgZXF1aXBvIHByaW5jaXBhbCAoMTI4LjIyMy4xNy42MCkgZXN0ZSBlbmNlbmRpZG8uXG4nKTsKICAgIH0KICB9IGNhdGNoIChlcnIpIHsKICAgIGNvbnNvbGUubG9nKCdBdmlzbyBjb25zdWx0YW5kbyBlc3RhZG8gY2VudHJhbDonLCBlcnIubWVzc2FnZSk7CiAgfQoKICBjb25zb2xlLmxvZygnWypdIEVudmlhbmRvIG9yZGVuIGRlIHNpbmNyb25pemFjaW9uIGEgU3VwYWJhc2UgQ2xvdWQuLi4nKTsKICBjb25zdCBvc1VzZXIgPSBwcm9jZXNzLmVudi5VU0VSTkFNRSB8fCBwcm9jZXNzLmVudi5VU0VSIHx8ICdQQyBFeHRlcm5hJzsKICBjb25zdCByZXFSZXMgPSBhd2FpdCBmZXRjaChTVVBBQkFTRV9VUkwgKyAnL3Jlc3QvdjEvc2FsdXNfc3luY19yZXF1ZXN0cycsIHsKICAgIG1ldGhvZDogJ1BPU1QnLAogICAgaGVhZGVycywKICAgIGJvZHk6IEpTT04uc3RyaW5naWZ5KHsKICAgICAgbW9kZTogJ2Zhc3QnLAogICAgICBzdGF0dXM6ICdwZW5kaW5nJywKICAgICAgcmVxdWVzdGVkX2J5OiBvc1VzZXIgKyAnICguYmF0KScsCiAgICAgIHJlcXVlc3RlZF9hdDogbmV3IERhdGUoKS50b0lTT1N0cmluZygpCiAgICB9KQogIH0pOwoKICBjb25zdCByZXFEYXRhID0gYXdhaXQgcmVxUmVzLmpzb24oKTsKICBjb25zdCByZXFJdGVtID0gcmVxRGF0YSAmJiByZXFEYXRhWzBdOwogIGlmICghcmVxSXRlbSB8fCAhcmVxSXRlbS5pZCkgewogICAgY29uc29sZS5lcnJvcignRXJyb3IgY3JlYW5kbyBzb2xpY2l0dWQgZGUgc2luY3Jvbml6YWNpb246JywgcmVxRGF0YSk7CiAgICBwcm9jZXNzLmV4aXQoMSk7CiAgfQoKICBjb25zb2xlLmxvZygnW09LXSBTb2xpY2l0dWQgcmVnaXN0cmFkYSBleGl0b3NhbWVudGUgKElEOiAnICsgcmVxSXRlbS5pZC5zbGljZSgwLCA4KSArICcpLicpOwogIGNvbnNvbGUubG9nKCdbKl0gRWwgc2Vydmlkb3IgY2VudHJhbCBlc3RhIGV4dHJheWVuZG8geSBjb25zb2xpZGFuZG8gZGF0b3MgZGUgU0FMVVMuLi5cbicpOwoKICBsZXQgbGFzdFRhc2sgPSAnJzsKICBjb25zdCBzdGFydFRpbWUgPSBEYXRlLm5vdygpOwogIGNvbnN0IG1heFdhaXRNcyA9IDE1ICogNjAgKiAxMDAwOwoKICB3aGlsZSAoRGF0ZS5ub3coKSAtIHN0YXJ0VGltZSA8IG1heFdhaXRNcykgewogICAgYXdhaXQgbmV3IFByb21pc2UociA9PiBzZXRUaW1lb3V0KHIsIDIwMDApKTsKCiAgICBjb25zdCBbcG9sbFJlcywgc3RhdHVzUmVzXSA9IGF3YWl0IFByb21pc2UuYWxsKFsKICAgICAgZmV0Y2goU1VQQUJBU0VfVVJMICsgJy9yZXN0L3YxL3NhbHVzX3N5bmNfcmVxdWVzdHM/aWQ9ZXEuJyArIHJlcUl0ZW0uaWQgKyAnJnNlbGVjdD0qJywgeyBoZWFkZXJzIH0pLnRoZW4ociA9PiByLmpzb24oKSksCiAgICAgIGZldGNoKFNVUEFCQVNFX1VSTCArICcvcmVzdC92MS9zYWx1c19zeW5jX3NlcnZlcl9zdGF0dXM/aWQ9ZXEucHJpbWFyeSZzZWxlY3Q9Y3VycmVudF90YXNrJywgeyBoZWFkZXJzIH0pLnRoZW4ociA9PiByLmpzb24oKSkKICAgIF0pOwoKICAgIGNvbnN0IHBvbGxJdGVtID0gcG9sbFJlcyAmJiBwb2xsUmVzWzBdOwogICAgY29uc3QgY3VyVGFzayA9IHN0YXR1c1JlcyAmJiBzdGF0dXNSZXNbMF0gJiYgc3RhdHVzUmVzWzBdLmN1cnJlbnRfdGFzazsKCiAgICBpZiAoY3VyVGFzayAmJiBjdXJUYXNrICE9PSAnSW5hY3Rpdm8nICYmIGN1clRhc2sgIT09IGxhc3RUYXNrKSB7CiAgICAgIGxhc3RUYXNrID0gY3VyVGFzazsKICAgICAgY29uc3QgZWxhcHNlZFNlYyA9IE1hdGgucm91bmQoKERhdGUubm93KCkgLSBzdGFydFRpbWUpIC8gMTAwMCk7CiAgICAgIGNvbnNvbGUubG9nKCcgICBbJyArIGVsYXBzZWRTZWMgKyAnc10gPj4gJyArIGN1clRhc2sgKyAnLi4uJyk7CiAgICB9CgogICAgaWYgKHBvbGxJdGVtKSB7CiAgICAgIGlmIChwb2xsSXRlbS5zdGF0dXMgPT09ICdjb21wbGV0ZWQnKSB7CiAgICAgICAgY29uc3QgdG90YWxTZWMgPSBwb2xsSXRlbS5lbGFwc2VkIHx8IChNYXRoLnJvdW5kKChEYXRlLm5vdygpIC0gc3RhcnRUaW1lKSAvIDEwMDApICsgJ3MnKTsKICAgICAgICBjb25zb2xlLmxvZygnXG49PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PScpOwogICAgICAgIGNvbnNvbGUubG9nKCcgIEVYSVRPOiDCoVNpbmNyb25pemFjaW9uIGNvbXBsZXRhZGEgZW4gJyArIHRvdGFsU2VjICsgJyEnKTsKICAgICAgICBjb25zb2xlLmxvZygnPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0nKTsKICAgICAgICBjb25zb2xlLmxvZygnICAqIFRvZG9zIGxvcyBtb2R1bG9zIGZ1ZXJvbiBhY3R1YWxpemFkb3MgZW4gbGEgYmFzZSBkZSBkYXRvcy4nKTsKICAgICAgICBjb25zb2xlLmxvZygnICAqIFlhIHB1ZWRlIHZlciBsb3MgZGF0b3MgbWFzIHJlY2llbnRlcyBlbiBlbCBzaXN0ZW1hIHdlYi4nKTsKICAgICAgICBjb25zb2xlLmxvZygnPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbicpOwogICAgICAgIHJldHVybjsKICAgICAgfQogICAgICBpZiAocG9sbEl0ZW0uc3RhdHVzID09PSAnZXJyb3InKSB7CiAgICAgICAgY29uc29sZS5lcnJvcignXG5FcnJvciBkdXJhbnRlIGxhIHNpbmNyb25pemFjaW9uOiAnICsgKHBvbGxJdGVtLmVycm9yIHx8ICdFcnJvciBkZXNjb25vY2lkbycpKTsKICAgICAgICByZXR1cm47CiAgICAgIH0KICAgIH0KICB9CgogIGNvbnNvbGUubG9nKCdcblRpZW1wbyBtYXhpbW8gYWxjYW56YWRvLiBFbCBzZXJ2aWRvciBjb250aW51YXJhIGVuIHNlZ3VuZG8gcGxhbm8uJyk7Cn0KCm1haW4oKS5jYXRjaChlID0+IHsKICBjb25zb2xlLmVycm9yKCdFcnJvciBmYXRhbDonLCBlLm1lc3NhZ2UpOwp9KTsK', 'base64').toString('utf8'))"
 
-cd /d "%~dp0sync-server"
-
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr :3456 ^| findstr LISTENING 2^>nul') do (
-    taskkill /F /PID %%p >nul 2>&1
-)
-
-if not exist "node_modules\express" (
-    echo [!] Instalando dependencias de Node.js...
-    call npm install --omit=dev
-)
-
-:run_server
-cls
-echo ========================================================
-echo   SALUS Sync Server - Sanatorio Argentino (ACTIVO)
-echo ========================================================
-echo   - Base de Datos SALUS : 128.223.16.29:2450 (LAN)
-echo   - Servidor Central    : http://128.223.17.60:3456
-echo   - Destino Cloud       : Supabase Sanatorio Argentino
 echo.
-echo   Sincronizaciones automaticas activas:
-echo     * Turnos Activos y Visitas   : cada 5 minutos
-echo     * Turnos Online Duplicados   : cada 10 minutos
-echo     * Diagnosticos y Evoluciones : cada 20 minutos
-echo     * Parametros Medicos         : cada 30 minutos
-echo     * Historial 360 Pacientes    : cada 4 minutos
-echo ========================================================
-echo.
-
-node index.js
-
-set /p OPCION="Seleccione [R] Reiniciar / [S] Salir: "
-if /i "%OPCION%"=="R" goto run_server
+echo Presione cualquier tecla para cerrar esta ventana...
+pause >nul
 exit /b 0
