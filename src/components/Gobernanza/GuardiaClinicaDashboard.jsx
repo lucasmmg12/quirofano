@@ -4,8 +4,9 @@ import {
     Layers, PieChart as PieChartIcon, Bed, FileText, Calendar, RefreshCw, 
     BookOpen, Sparkles, TrendingUp, ArrowUpRight, ArrowDownRight, 
     Check, Copy, ShieldCheck, ChevronRight, HelpCircle, Scissors, Users,
-    BarChart3, Eye, BarChart2
+    BarChart3, Eye, BarChart2, Maximize2
 } from 'lucide-react';
+import GuardiaOutliersModal from './GuardiaOutliersModal';
 import {
     ResponsiveContainer,
     ComposedChart,
@@ -117,6 +118,23 @@ const helpBtnStyle = {
     flexShrink: 0
 };
 
+const outlierBtnStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    background: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: '6px',
+    color: '#1D4ED8',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    padding: '3px 9px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    flexShrink: 0,
+    boxShadow: '0 1px 2px rgba(37, 99, 235, 0.08)'
+};
+
 export default function GuardiaClinicaDashboard({ 
     onOpenDocModal, 
     activeIndicatorIds = [], 
@@ -128,6 +146,7 @@ export default function GuardiaClinicaDashboard({
     const [selectedPeriodo, setSelectedPeriodo] = useState('2026-09');
     const [selectedKpiDetail, setSelectedKpiDetail] = useState(null);
     const [selectedChartHelp, setSelectedChartHelp] = useState(null);
+    const [selectedOutlierModal, setSelectedOutlierModal] = useState(null);
     const [copiedSql, setCopiedSql] = useState(false);
     const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
 
@@ -742,6 +761,15 @@ export default function GuardiaClinicaDashboard({
                                     </span>
                                     <button
                                         type="button"
+                                        onClick={() => setSelectedOutlierModal('triage_evolution')}
+                                        title="Ampliar gráfico, ver casos extremos y descargar Excel/PDF"
+                                        style={outlierBtnStyle}
+                                    >
+                                        <Maximize2 size={12} />
+                                        Outliers & Casos
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.triage_evolution)}
                                         title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
                                         style={helpBtnStyle}
@@ -905,6 +933,15 @@ export default function GuardiaClinicaDashboard({
                                 </span>
                                 <button
                                     type="button"
+                                    onClick={() => setSelectedOutlierModal('conversion_cirugia')}
+                                    title="Ampliar gráfico, ver casos extremos y descargar Excel/PDF"
+                                    style={outlierBtnStyle}
+                                >
+                                    <Maximize2 size={12} />
+                                    Outliers & Casos
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.conversion_cirugia)}
                                     title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
                                     style={helpBtnStyle}
@@ -1002,6 +1039,15 @@ export default function GuardiaClinicaDashboard({
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '6px' }}>
                                     Meta Oportunidad: &lt; 30 min
                                 </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedOutlierModal('tiempos_espera')}
+                                    title="Analizar Outliers y Casos Extremos de Tiempos de Espera con descarga Excel/PDF"
+                                    style={outlierBtnStyle}
+                                >
+                                    <Maximize2 size={13} />
+                                    <span>Outliers & Casos</span>
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.tiempos_espera)}
@@ -1106,6 +1152,15 @@ export default function GuardiaClinicaDashboard({
                             </span>
                             <button
                                 type="button"
+                                onClick={() => setSelectedOutlierModal('calidad_72h')}
+                                title="Analizar Outliers y Casos Extremos de Reconsultas/Reinternaciones con descarga Excel/PDF"
+                                style={outlierBtnStyle}
+                            >
+                                <Maximize2 size={13} />
+                                <span>Outliers & Casos</span>
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.calidad_72h)}
                                 title="¿Qué muestra este gráfico? Clic para ver la explicación detallada"
                                 style={helpBtnStyle}
@@ -1173,6 +1228,15 @@ export default function GuardiaClinicaDashboard({
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
                                 Total: {currentData.consultas_con_triage} clasificados
                             </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedOutlierModal('triage_severidad')}
+                                title="Analizar Distribución de Triage y Casos con descarga Excel/PDF"
+                                style={outlierBtnStyle}
+                            >
+                                <Maximize2 size={13} />
+                                <span>Outliers & Casos</span>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.triage_severidad)}
@@ -1283,6 +1347,15 @@ export default function GuardiaClinicaDashboard({
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
                                 Flujo ambulatorio e internación
                             </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedOutlierModal('destinos_postguardia')}
+                                title="Analizar Destinos Post-Guardia y Casos con descarga Excel/PDF"
+                                style={outlierBtnStyle}
+                            >
+                                <Maximize2 size={13} />
+                                <span>Outliers & Casos</span>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.destinos_postguardia)}
@@ -1881,6 +1954,14 @@ export default function GuardiaClinicaDashboard({
                 </div>
             )}
 
+            {/* Modal de Análisis de Outliers y Casos Extremos (con exportación Excel y PDF) */}
+            <GuardiaOutliersModal
+                isOpen={!!selectedOutlierModal}
+                onClose={() => setSelectedOutlierModal(null)}
+                chartType={selectedOutlierModal || 'tiempos_espera'}
+                periodo={selectedPeriodo}
+                periodoNombre={formatPeriodoLabel(selectedPeriodo)}
+            />
 
         </div>
     );
