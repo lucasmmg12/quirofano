@@ -98,6 +98,17 @@ const CHART_HELP_CATALOGO = {
         fuenteSalus: 'VLISE_Visitas y TABLEAU_Admisiones (fechas de admisión y servicios de destino).',
         meta: 'Alta domiciliaria esperada: 85% – 92% | Derivación a camas: 8% – 15%',
         impactoGestion: 'Mide la capacidad resolutiva ambulatoria de la guardia. Alerta tempranamente sobre tensiones en la disponibilidad de camas de internación y camas críticas del Sanatorio.'
+    },
+    adherencia_epicrisis: {
+        id: 'adherencia_epicrisis',
+        titulo: 'Tasa de Adherencia a Epicrisis en Altas de Urgencias',
+        subtitulo: 'Cumplimiento y Calidad en Confección de Epicrisis Electrónica en Internación Clínica',
+        icon: '📋',
+        queMuestra: 'Porcentaje de pacientes egresados de internación clínica procedentes de guardia que cuentan con el documento de Epicrisis médica debidamente confeccionado y firmado en la Historia Clínica Electrónica.',
+        comoSeCalcula: 'Se contabilizan las admisiones de [TABLEAU_Admisiones] con Procedencia = "Derivado desde Urgencias" y Especialidad = "CLINICO ", calculando el cociente entre las que registran [Motivo de alta] e informe de epicrisis versus el total de altas clínicas del período, multiplicado por 100.',
+        fuenteSalus: 'SALUS: TABLEAU_Admisiones y PR RespuestasProtocolo (Protocolo 382 Epicrisis). Frecuencia: Mensual.',
+        meta: 'Meta Institucional: 100% de altas con Epicrisis cerrada y firmada',
+        impactoGestion: 'Garantiza la continuidad asistencial post-alta, la seguridad medicolegal del paciente, la correcta codificación y facturación con las obras sociales/prepagas, y el cumplimiento estricto de las directrices de Calidad Institucional de Sanatorio Argentino.'
     }
 };
 
@@ -309,6 +320,9 @@ export default function GuardiaClinicaDashboard({
                     permanenciaMin: Number(r.permanencia_guardia_min_promedio) || 0,
                     reconsultaPct: Number(r.reconsulta_72h_pct) || 0,
                     reinternacionPct: Number(r.reinternacion_72h_pct) || 0,
+                    adherenciaEpicrisisPct: Number(r.adherencia_epicrisis_pct) || 0,
+                    altasClinicas: r.total_altas_clinicas || 0,
+                    altasConEpicrisis: r.altas_con_epicrisis || 0,
                     mujeresPct: Number(r.mujeres_pct) || 0,
                     hombresPct: Number(r.hombres_pct) || 0,
                     isSelected: r.periodo === selectedPeriodo
@@ -749,9 +763,9 @@ export default function GuardiaClinicaDashboard({
                     subtitle={`${currentData.altas_con_epicrisis} de ${currentData.total_altas_clinicas} protocolos`}
                     meta="Meta: 100% Obligatorio"
                     metaStatus={currentData.adherencia_epicrisis_pct === 100 ? 'ok' : 'warning'}
-                    detalle="Porcentaje de altas clínicas con Protocolo 382 (Epicrisis Médica) registrado formalmente en SALUS."
+                    detalle="Porcentaje de altas clínicas con Protocolo 382 (Epicrisis Médica) registrado formalmente en SALUS. Clic para auditar nominalmente cada caso."
                     origen="TABLEAU_Admisiones y PR RespuestasProtocolo"
-                    onClick={() => setSelectedKpiDetail(INDICADORES_GUARDIA_CATALOGO[8])}
+                    onClick={() => setSelectedOutlierModal('adherencia_epicrisis')}
                 />
 
             </div>
@@ -1341,6 +1355,106 @@ export default function GuardiaClinicaDashboard({
                                     activeDot={{ r: 6 }} 
                                 />
                             </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Gráfico 5: Tasa de Adherencia a Epicrisis en Altas de Urgencias (Serie Temporal Mensual) */}
+                <div style={{
+                    width: '100%',
+                    background: '#F8FAFC',
+                    borderRadius: '10px',
+                    border: '1px solid #E2E8F0',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    boxSizing: 'border-box'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <FileText size={18} color="#15803D" />
+                                <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Tasa de Adherencia a Epicrisis en Altas de Urgencias (Serie Temporal Mensual)
+                                </h4>
+                            </div>
+                            <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'block', marginTop: '2px' }}>
+                                Porcentaje de pacientes egresados de internación clínica procedentes de guardia con documento de Epicrisis médica cerrada y firmada (Meta: 100%)
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
+                                {formatPeriodoLabel(currentData.periodo)}: {currentData.adherencia_epicrisis_pct}% ({currentData.altas_con_epicrisis} de {currentData.total_altas_clinicas} altas)
+                            </span>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
+                                Meta 100% Obligatorio
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedOutlierModal('adherencia_epicrisis')}
+                                title="Analizar Altas Clínicas y Epicrisis con descarga Excel/PDF"
+                                style={outlierBtnStyle}
+                            >
+                                <Maximize2 size={13} />
+                                <span>Outliers & Casos</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.adherencia_epicrisis)}
+                                title="¿Qué muestra este gráfico? Clic para ver la explicación detallada y query SQL"
+                                style={helpBtnStyle}
+                            >
+                                <HelpCircle size={14} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ height: '190px', width: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart 
+                                data={evolutionChartData} 
+                                margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
+                                onClick={(e) => {
+                                    if (e && e.activePayload && e.activePayload[0]) {
+                                        handleSelectPeriodo(e.activePayload[0].payload.periodo);
+                                    }
+                                }}
+                                style={{ cursor: 'pointer' }}
+                            >
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                <XAxis dataKey="mes" stroke="#64748B" fontSize={11} tickLine={false} />
+                                <YAxis yAxisId="pct" stroke="#64748B" fontSize={11} tickLine={false} unit="%" domain={[85, 105]} />
+                                <YAxis yAxisId="vol" orientation="right" stroke="#94A3B8" fontSize={10} tickLine={false} />
+                                <RechartsTooltip content={<CustomEpicrisisTooltip />} />
+                                <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
+                                <ReferenceLine yAxisId="pct" y={100} stroke="#16A34A" strokeDasharray="3 3" label={{ value: 'Meta Institucional (100%)', fill: '#16A34A', fontSize: 10 }} />
+                                <ReferenceLine 
+                                    x={formatMesCorto(selectedPeriodo)} 
+                                    stroke="#2563EB" 
+                                    strokeWidth={2} 
+                                    strokeDasharray="3 3" 
+                                    label={{ value: `Auditado: ${formatMesCorto(selectedPeriodo)}`, fill: '#1E40AF', fontSize: 10, position: 'top' }} 
+                                />
+                                <Bar 
+                                    yAxisId="vol" 
+                                    dataKey="altasClinicas" 
+                                    name="Altas Clínicas Totales" 
+                                    fill="#CBD5E1" 
+                                    radius={[4, 4, 0, 0]} 
+                                    barSize={18} 
+                                />
+                                <Line 
+                                    yAxisId="pct" 
+                                    type="monotone" 
+                                    dataKey="adherenciaEpicrisisPct" 
+                                    name="% Adherencia Epicrisis" 
+                                    stroke="#16A34A" 
+                                    strokeWidth={2.8} 
+                                    dot={{ r: 4, fill: '#16A34A' }} 
+                                    activeDot={{ r: 6 }} 
+                                />
+                            </ComposedChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
@@ -2465,6 +2579,47 @@ function CustomQualityTooltip({ active, payload, label }) {
                     </strong>
                 </div>
             ))}
+        </div>
+    );
+}
+
+function CustomEpicrisisTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0]?.payload;
+    const cumpleMeta = data?.adherenciaEpicrisisPct >= 100;
+    return (
+        <div style={{
+            background: '#FFFFFF',
+            border: '1px solid #CBD5E1',
+            borderRadius: '10px',
+            padding: '12px 14px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+            fontSize: '0.75rem',
+            minWidth: '220px'
+        }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
+                Período: {data?.mesFull || label}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', color: '#475569' }}>
+                <span>Altas Clínicas (Guardia):</span>
+                <strong style={{ color: '#0F172A' }}>{data?.altasClinicas} pac.</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '4px 0', color: '#475569' }}>
+                <span>Con Epicrisis Cerrada:</span>
+                <strong style={{ color: '#16A34A' }}>{data?.altasConEpicrisis} pac.</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '6px 0 0 0', paddingTop: '6px', borderTop: '1px solid #F1F5F9' }}>
+                <span style={{ fontWeight: 700, color: '#0F172A' }}>Tasa de Adherencia:</span>
+                <span style={{
+                    fontWeight: 800,
+                    color: cumpleMeta ? '#166534' : '#B45309',
+                    background: cumpleMeta ? '#DCFCE7' : '#FEF3C7',
+                    padding: '1px 6px',
+                    borderRadius: '4px'
+                }}>
+                    {data?.adherenciaEpicrisisPct}%
+                </span>
+            </div>
         </div>
     );
 }

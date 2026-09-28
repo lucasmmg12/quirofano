@@ -127,6 +127,7 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
                 adm.NHC,
                 adm.[Fecha ingreso] AS FechaIngreso,
                 adm.[Fecha alta] AS FechaAlta,
+                adm.[Motivo de alta] AS MotivoAlta,
                 ISNULL(adm.Dias, DATEDIFF(DAY, adm.[Fecha ingreso], ISNULL(adm.[Fecha alta], GETDATE()))) AS DiasEstada,
                 CASE 
                     WHEN EXISTS (
@@ -152,13 +153,13 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
             CAST((SELECT COUNT(*) FROM ConsultasGuardia WHERE TieneTriageEnfermeria = 1) * 100.0 / NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(5,2)) AS cobertura_triage_pct,
             (SELECT COUNT(*) FROM Reconsultas72h) AS cantidad_reconsultas_72h,
             CAST((SELECT COUNT(*) FROM Reconsultas72h) * 100.0 / NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(5,2)) AS reconsulta_72h_pct,
-            (SELECT COUNT(*) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS total_altas_clinicas,
+            (SELECT COUNT(*) FROM AdmisionesClinicas) AS total_altas_clinicas,
             (SELECT SUM(EsReinternacion72h) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS reinternaciones_72h,
             CAST((SELECT SUM(EsReinternacion72h) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) * 100.0 / 
                  NULLIF((SELECT COUNT(*) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL), 0) AS DECIMAL(5,2)) AS reinternacion_72h_pct,
             CAST((SELECT AVG(DiasEstada * 1.0) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS DECIMAL(5,2)) AS promedio_dias_estada,
-            (SELECT COUNT(*) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS altas_con_epicrisis,
-            100.00 AS adherencia_epicrisis_pct;
+            (SELECT COUNT(CASE WHEN MotivoAlta IS NOT NULL THEN 1 END) FROM AdmisionesClinicas) AS altas_con_epicrisis,
+            CAST((SELECT COUNT(CASE WHEN MotivoAlta IS NOT NULL THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0) FROM AdmisionesClinicas) AS DECIMAL(5,2)) AS adherencia_epicrisis_pct;
     `;
 
     const resPrincipal = await pool.request().query(queryMaestra);

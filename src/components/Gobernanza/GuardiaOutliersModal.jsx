@@ -3,7 +3,8 @@ import {
     X, AlertTriangle, Clock, Download, Search, Filter, 
     FileSpreadsheet, FileText, CheckCircle2, ChevronRight,
     Users, ShieldAlert, ArrowUpDown, Stethoscope, BedDouble,
-    Activity, Heart, Thermometer, Droplet, FileCheck, ClipboardList
+    Activity, Heart, Thermometer, Droplet, FileCheck, ClipboardList,
+    Bed, FileCheck2, UserCheck, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
@@ -12,8 +13,10 @@ import * as XLSX from 'xlsx';
  * GuardiaOutliersModal
  * Modal clínico interactivo para analizar valores extremos (outliers) y distribución
  * nominal de pacientes en cualquier gráfico del panel de Guardia Clínica.
- * Admite tanto auditoría de demoras (outliers de tiempo) como auditoría nominal
- * completa de Triage (Protocolo 621, signos vitales y observaciones de enfermería).
+ * Admite:
+ * 1. Auditoría de demoras (outliers de tiempo y permanencia).
+ * 2. Auditoría nominal completa de Triage (Protocolo 621, signos vitales y observaciones).
+ * 3. Auditoría de Adherencia a Epicrisis en Altas Clínicas de Urgencias (Protocolo 382).
  */
 export default function GuardiaOutliersModal({
     isOpen,
@@ -23,12 +26,13 @@ export default function GuardiaOutliersModal({
     periodoNombre = 'Septiembre 2026'
 }) {
     const isTriage = chartType === 'triage_severidad' || chartType === 'triage_evolution';
+    const isEpicrisis = chartType === 'adherencia_epicrisis';
 
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState('all'); 
-    const [sortBy, setSortBy] = useState(isTriage ? 'fecha_desc' : 'espera_desc');
+    const [sortBy, setSortBy] = useState(isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
 
     // Cargar pacientes nominales desde Supabase
     useEffect(() => {
@@ -37,7 +41,7 @@ export default function GuardiaOutliersModal({
         let isMounted = true;
         setLoading(true);
         setActiveFilter('all');
-        setSortBy(isTriage ? 'fecha_desc' : 'espera_desc');
+        setSortBy(isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
 
         const fetchData = async () => {
             try {
@@ -58,6 +62,23 @@ export default function GuardiaOutliersModal({
 
                     if (error) {
                         console.error('Error fetching guardia_triage_pacientes:', error.message);
+                    } else if (isMounted) {
+                        setRecords(data || []);
+                    }
+                } else if (isEpicrisis) {
+                    let query = supabase
+                        .from('guardia_epicrisis_altas')
+                        .select('*');
+
+                    if (periodo && periodo !== '2026-ANUAL') {
+                        query = query.eq('periodo', targetPeriodo);
+                    }
+
+                    const { data, error } = await query
+                        .order('fecha_ingreso', { ascending: false });
+
+                    if (error) {
+                        console.error('Error fetching guardia_epicrisis_altas:', error.message);
                     } else if (isMounted) {
                         setRecords(data || []);
                     }
@@ -83,10 +104,16 @@ export default function GuardiaOutliersModal({
 
         fetchData();
         return () => { isMounted = false; };
-    }, [isOpen, periodo, isTriage]);
+    }, [isOpen, periodo, isTriage, isEpicrisis]);
 
     const chartConfig = useMemo(() => {
         switch(chartType) {
+            case 'adherencia_epicrisis':
+                return {
+                    title: 'Auditoría Nominal de Altas Clínicas y Epicrisis (Protocolo 382)',
+                    subtitle: 'Pacientes derivados de urgencias a internación clínica con estado de confección y firma de epicrisis médica',
+                    badge: 'Auditoría Protocolo 382'
+                };
             case 'triage_evolution':
             case 'triage_severidad':
                 return {
@@ -124,7 +151,7 @@ export default function GuardiaOutliersModal({
 
     // Estadísticas de Outliers de Tiempo
     const stats = useMemo(() => {
-        if (isTriage) return {};
+        if (isTriage || isEpicrisis) return {};
         const total = records.length;
         const conEspera = records.filter(r => r.minutos_espera != null);
         const meta30 = conEspera.filter(r => r.minutos_espera <= 30).length;
@@ -151,7 +178,7 @@ export default function GuardiaOutliersModal({
             maxEspera,
             avgEspera
         };
-    }, [records, isTriage]);
+    }, [records, isTriage, isEpicrisis]);
 
     // Estadísticas de Triage
     const triageStats = useMemo(() => {
@@ -179,6 +206,24 @@ export default function GuardiaOutliersModal({
         };
     }, [records, isTriage]);
 
+    // Estadísticas de Epicrisis
+    const epicrisisStats = useMemo(() => {
+        if (!isEpicrisis) return {};
+        const total = records.length;
+        const cerradas = records.filter(r => r.tiene_epicrisis).length;
+        const pendientes = records.filter(r => !r.tiene_epicrisis).length;
+        const adherenciaPct = total > 0 ? ((cerradas / total) * 100).toFixed(1) : '100.0';
+        const avgEstada = total > 0 ? (records.reduce((acc, r) => acc + (r.dias_estada || 0), 0) / total).toFixed(1) : '0';
+
+        return {
+            total,
+            cerradas,
+            pendientes,
+            adherenciaPct,
+            avgEstada
+        };
+    }, [records, isEpicrisis]);
+
     // Filtrar y ordenar registros
     const filteredRecords = useMemo(() => {
         return records
@@ -191,7 +236,9 @@ export default function GuardiaOutliersModal({
                     const matchOs = (r.obra_social || '').toLowerCase().includes(term);
                     const matchObs = (r.observacion_enfermeria || '').toLowerCase().includes(term);
                     const matchNivel = (r.nivel_triage || '').toLowerCase().includes(term);
-                    if (!matchName && !matchNhc && !matchOs && !matchObs && !matchNivel) return false;
+                    const matchDoc = (r.doctor || '').toLowerCase().includes(term);
+                    const matchHab = (r.habitacion || '').toLowerCase().includes(term);
+                    if (!matchName && !matchNhc && !matchOs && !matchObs && !matchNivel && !matchDoc && !matchHab) return false;
                 }
 
                 if (isTriage) {
@@ -209,6 +256,16 @@ export default function GuardiaOutliersModal({
                     }
                     if (activeFilter === 'con_signos') {
                         return r.ta_sistolica != null || r.fc != null || r.temperatura != null || r.sato2 != null;
+                    }
+                    return true;
+                }
+
+                if (isEpicrisis) {
+                    if (activeFilter === 'cerradas') {
+                        return r.tiene_epicrisis === true;
+                    }
+                    if (activeFilter === 'pendientes') {
+                        return r.tiene_epicrisis === false;
                     }
                     return true;
                 }
@@ -257,17 +314,75 @@ export default function GuardiaOutliersModal({
                     return 0;
                 }
 
+                if (isEpicrisis) {
+                    if (sortBy === 'fecha_desc') {
+                        return (b.fecha_ingreso || '').localeCompare(a.fecha_ingreso || '');
+                    }
+                    if (sortBy === 'fecha_asc') {
+                        return (a.fecha_ingreso || '').localeCompare(b.fecha_ingreso || '');
+                    }
+                    if (sortBy === 'paciente_asc') {
+                        return (a.paciente || '').localeCompare(b.paciente || '');
+                    }
+                    if (sortBy === 'estada_desc') {
+                        return (b.dias_estada || 0) - (a.dias_estada || 0);
+                    }
+                    return 0;
+                }
+
                 if (sortBy === 'espera_desc') return (b.minutos_espera || 0) - (a.minutos_espera || 0);
                 if (sortBy === 'perm_desc') return (b.minutos_permanencia || 0) - (a.minutos_permanencia || 0);
                 if (sortBy === 'fecha_asc') return (a.fecha_visita || '').localeCompare(b.fecha_visita || '') || (a.hora_llegada || '').localeCompare(b.hora_llegada || '');
                 if (sortBy === 'paciente_asc') return (a.paciente || '').localeCompare(b.paciente || '');
                 return 0;
             });
-    }, [records, searchTerm, activeFilter, sortBy, isTriage]);
+    }, [records, searchTerm, activeFilter, sortBy, isTriage, isEpicrisis]);
 
     // ── Exportación a Excel ──
     const handleExportExcel = () => {
         const wb = XLSX.utils.book_new();
+
+        if (isEpicrisis) {
+            // Hoja 1: Resumen Epicrisis
+            const summaryData = [
+                ['SANATORIO ARGENTINO — AUDITORÍA DE CALIDAD & GOBERNANZA'],
+                ['INFORME NOMINAL DE ALTAS CLÍNICAS Y ADHERENCIA A EPICRISIS (PROTOCOLO 382)'],
+                [`Período Auditado: ${periodoNombre} (${periodo})`],
+                [`Fecha de Extracción: ${new Date().toLocaleString('es-AR')}`],
+                [`Filtro Activo en Reporte: ${activeFilter.toUpperCase()} | Total Registros: ${filteredRecords.length}`],
+                [],
+                ['MÉTRICA DE EPICRISIS', 'CANTIDAD AUDITADA', 'DISTRIBUCIÓN %', 'ESTÁNDAR INSTITUCIONAL'],
+                ['Total Altas Clínicas (desde Guardia)', epicrisisStats.total, '100.0%', 'TABLEAU_Admisiones procedencia Urgencias'],
+                ['Altas con Epicrisis Cerrada', epicrisisStats.cerradas, `${epicrisisStats.adherenciaPct}%`, 'Meta: 100% Obligatorio'],
+                ['Altas Pendientes / Sin Epicrisis', epicrisisStats.pendientes, `${((epicrisisStats.pendientes / (epicrisisStats.total || 1)) * 100).toFixed(1)}%`, 'Desvío / Paciente aún en curso'],
+                ['Estada Promedio en Piso Clínico', `${epicrisisStats.avgEstada} días`, '-', 'Benchmark: 1.5 - 2.5 días']
+            ];
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Epicrisis');
+
+            // Hoja 2: Detalle Nominal
+            const detailRows = filteredRecords.map((r, idx) => ({
+                'N°': idx + 1,
+                'Paciente': r.paciente,
+                'NHC': r.nhc,
+                'Obra Social': r.obra_social,
+                'Fecha Ingreso': r.fecha_ingreso ? r.fecha_ingreso.replace('T', ' ').substring(0, 16) : '',
+                'Fecha Alta': r.fecha_alta ? r.fecha_alta.replace('T', ' ').substring(0, 16) : 'Pendiente / Internado',
+                'Días Estada': r.dias_estada ?? '',
+                'Habitación': r.habitacion ?? '',
+                'Médico a Cargo (Doctor)': r.doctor ?? '',
+                'Usuario Alta': r.usuario_alta ?? '',
+                'Proceso Clínico': r.proceso ?? '',
+                'Motivo Alta': r.motivo_alta ?? 'Sin alta definitiva',
+                'Estado Epicrisis': r.tiene_epicrisis ? 'Confeccionada / Cerrada' : 'Pendiente / Sin Epicrisis'
+            }));
+            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+            XLSX.utils.book_append_sheet(wb, wsDetail, 'Altas Clínicas Detalladas');
+
+            const fileName = `Guardia_Epicrisis_Altas_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            return;
+        }
 
         if (isTriage) {
             // Hoja 1: Resumen de Auditoría Triage
@@ -380,6 +495,76 @@ export default function GuardiaOutliersModal({
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.text(`Período Auditado: ${periodoNombre} (${periodo}) | Emitido: ${new Date().toLocaleDateString('es-AR')}`, 297 - 14, 11, { align: 'right' });
+
+        if (isEpicrisis) {
+            // Título de Epicrisis
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text('AUDITORÍA NOMINAL DE ADHERENCIA A EPICRISIS (PROTOCOLO 382)', 14, 26);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Altas de internación procedentes de urgencias. Filtro: ${activeFilter.toUpperCase()} (${filteredRecords.length} pacientes). Meta: 100%.`, 14, 31);
+
+            // Tabla Resumen KPIs Epicrisis
+            autoTable(doc, {
+                startY: 35,
+                theme: 'grid',
+                head: [['Total Altas Clínicas', 'Con Epicrisis Cerrada', 'Pendientes / Sin Epicrisis', 'Tasa de Adherencia', 'Estada Promedio']],
+                body: [[
+                    `${epicrisisStats.total}`,
+                    `${epicrisisStats.cerradas}`,
+                    `${epicrisisStats.pendientes}`,
+                    `${epicrisisStats.adherenciaPct}%`,
+                    `${epicrisisStats.avgEstada} días`
+                ]],
+                headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
+                bodyStyles: { fontSize: 8, textColor: [30, 41, 59], fontStyle: 'bold' },
+                styles: { halign: 'center', cellPadding: 2 }
+            });
+
+            // Tabla Nominal Top 100 Epicrisis
+            const tableRows = filteredRecords.slice(0, 100).map((r, i) => [
+                i + 1,
+                r.paciente,
+                r.nhc,
+                (r.obra_social || '').substring(0, 22),
+                r.fecha_ingreso ? r.fecha_ingreso.substring(0, 10) : '-',
+                r.fecha_alta ? r.fecha_alta.substring(0, 10) : 'Pendiente',
+                r.dias_estada ? `${r.dias_estada}d` : '-',
+                (r.doctor || '-').substring(0, 24),
+                r.habitacion || '-',
+                r.tiene_epicrisis ? 'CERRADA' : 'PENDIENTE'
+            ]);
+
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 5,
+                theme: 'striped',
+                head: [['N°', 'Paciente', 'NHC', 'Obra Social', 'Ingreso', 'Alta', 'Estada', 'Médico a Cargo', 'Hab.', 'Epicrisis']],
+                body: tableRows,
+                headStyles: { fillColor: [22, 163, 74], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+                bodyStyles: { fontSize: 7, textColor: [15, 23, 42] },
+                columnStyles: {
+                    0: { cellWidth: 8, halign: 'center' },
+                    1: { cellWidth: 48, fontStyle: 'bold' },
+                    2: { cellWidth: 16, halign: 'center' },
+                    3: { cellWidth: 38 },
+                    4: { cellWidth: 18, halign: 'center' },
+                    5: { cellWidth: 18, halign: 'center' },
+                    6: { cellWidth: 14, halign: 'center' },
+                    7: { cellWidth: 44 },
+                    8: { cellWidth: 20, halign: 'center' },
+                    9: { cellWidth: 24, halign: 'center', fontStyle: 'bold' }
+                },
+                styles: { overflow: 'ellipsize', cellPadding: 1.5 }
+            });
+
+            const fileName = `Informe_Epicrisis_Guardia_${periodo}_${new Date().toISOString().split('T')[0]}.pdf`;
+            doc.save(fileName);
+            return;
+        }
 
         if (isTriage) {
             // Título de Triage
@@ -569,22 +754,22 @@ export default function GuardiaOutliersModal({
                             width: '42px',
                             height: '42px',
                             borderRadius: '10px',
-                            background: isTriage ? '#EFF6FF' : '#EFF6FF',
-                            border: '1px solid #BFDBFE',
+                            background: isEpicrisis ? '#F0FDF4' : '#EFF6FF',
+                            border: `1px solid ${isEpicrisis ? '#BBF7D0' : '#BFDBFE'}`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#2563EB'
+                            color: isEpicrisis ? '#16A34A' : '#2563EB'
                         }}>
-                            {isTriage ? <ClipboardList size={22} /> : <Clock size={22} />}
+                            {isEpicrisis ? <FileCheck2 size={22} /> : isTriage ? <ClipboardList size={22} /> : <Clock size={22} />}
                         </div>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{
                                     fontSize: '0.68rem',
                                     fontWeight: 800,
-                                    color: '#1E40AF',
-                                    background: '#DBEAFE',
+                                    color: isEpicrisis ? '#166534' : '#1E40AF',
+                                    background: isEpicrisis ? '#DCFCE7' : '#DBEAFE',
                                     padding: '2px 8px',
                                     borderRadius: '4px',
                                     textTransform: 'uppercase',
@@ -677,7 +862,81 @@ export default function GuardiaOutliersModal({
                 </div>
 
                 {/* ── KPI Cards Superiores ── */}
-                {isTriage ? (
+                {isEpicrisis ? (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '12px',
+                        padding: '16px 24px',
+                        background: '#F1F5F9',
+                        borderBottom: '1px solid #E2E8F0'
+                    }}>
+                        {/* Total Altas Clínicas */}
+                        <div style={{ background: '#FFFFFF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #CBD5E1' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Total Altas Clínicas (Guardia)
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+                                {(epicrisisStats.total || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                Procedencia Urgencias
+                            </div>
+                        </div>
+
+                        {/* Con Epicrisis Cerrada */}
+                        <div style={{ background: '#F0FDF4', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BBF7D0' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Con Epicrisis Cerrada
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D', marginTop: '4px' }}>
+                                {(epicrisisStats.cerradas || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#166534' }}>
+                                Informe formalizado y firmado
+                            </div>
+                        </div>
+
+                        {/* Pendientes */}
+                        <div style={{ background: '#FFFBEB', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FDE68A' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Pendientes / Sin Epicrisis
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
+                                {(epicrisisStats.pendientes || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#92400E' }}>
+                                En curso / Sin alta definitiva
+                            </div>
+                        </div>
+
+                        {/* Tasa Adherencia % */}
+                        <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BFDBFE' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Tasa de Adherencia a Epicrisis
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1D4ED8', marginTop: '4px' }}>
+                                {epicrisisStats.adherenciaPct}%
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#1E40AF' }}>
+                                Meta: 100% Obligatorio
+                            </div>
+                        </div>
+
+                        {/* Estada Promedio */}
+                        <div style={{ background: '#FAF5FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E9D5FF' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#6B21A8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Estada Promedio en Piso
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7E22CE', marginTop: '4px' }}>
+                                {epicrisisStats.avgEstada} d
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#6B21A8' }}>
+                                Días de internación clínica
+                            </div>
+                        </div>
+                    </div>
+                ) : isTriage ? (
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -856,7 +1115,34 @@ export default function GuardiaOutliersModal({
                         <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', marginRight: '4px', textTransform: 'uppercase' }}>
                             Filtrar:
                         </span>
-                        {isTriage ? (
+                        {isEpicrisis ? (
+                            [
+                                { id: 'all', label: `Todas las Altas (${epicrisisStats.total || 0})` },
+                                { id: 'cerradas', label: `✅ Con Epicrisis Cerrada (${epicrisisStats.cerradas || 0})`, color: '#166534' },
+                                { id: 'pendientes', label: `⚠️ Pendientes / Sin Epicrisis (${epicrisisStats.pendientes || 0})`, color: '#B45309' }
+                            ].map(f => {
+                                const active = activeFilter === f.id;
+                                return (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setActiveFilter(f.id)}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 700,
+                                            border: active ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                            background: active ? '#EFF6FF' : '#FFFFFF',
+                                            color: active ? '#1D4ED8' : (f.color || '#475569'),
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {f.label}
+                                    </button>
+                                );
+                            })
+                        ) : isTriage ? (
                             [
                                 { id: 'all', label: `Todos (${triageStats.total || 0})` },
                                 { id: 'n3_amarillo', label: `🟡 N3 Amarillo (${triageStats.n3Amarillo || 0})`, color: '#B45309' },
@@ -925,7 +1211,7 @@ export default function GuardiaOutliersModal({
                             <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
                             <input
                                 type="text"
-                                placeholder={isTriage ? "Buscar por paciente, NHC, síntoma u obra social..." : "Buscar paciente, NHC u obra social..."}
+                                placeholder={isEpicrisis ? "Buscar por paciente, NHC, médico o habitación..." : isTriage ? "Buscar por paciente, NHC, síntoma u obra social..." : "Buscar paciente, NHC u obra social..."}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 style={{
@@ -951,9 +1237,111 @@ export default function GuardiaOutliersModal({
                     ) : filteredRecords.length === 0 ? (
                         <div style={{ padding: '60px', textAlign: 'center', color: '#64748B' }}>
                             <CheckCircle2 size={36} style={{ color: '#16A34A', marginBottom: '8px' }} />
-                            <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>No se encontraron pacientes para este filtro.</div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>No se encontraron registros para este filtro.</div>
                             <div style={{ fontSize: '0.8rem' }}>Intente con otro filtro o limpie la búsqueda.</div>
                         </div>
+                    ) : isEpicrisis ? (
+                        /* ── TABLA ESPECÍFICA DE EPICRISIS ── */
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', position: 'sticky', top: 0, zIndex: 10 }}>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '35px', textAlign: 'center' }}>N°</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '220px' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'paciente_asc' ? 'fecha_desc' : 'paciente_asc')}>
+                                            Paciente
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '75px', textAlign: 'center' }}>NHC</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '160px' }}>Obra Social</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '120px', textAlign: 'center' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'fecha_desc' ? 'fecha_asc' : 'fecha_desc')}>
+                                            Fecha Ingreso
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '120px', textAlign: 'center' }}>Fecha Alta</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '80px', textAlign: 'center' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'estada_desc' ? 'fecha_desc' : 'estada_desc')}>
+                                            Estada
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '180px' }}>Médico a Cargo</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '90px', textAlign: 'center' }}>Hab.</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '140px', textAlign: 'center' }}>Estado Epicrisis</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredRecords.slice(0, 300).map((r, idx) => {
+                                    const tieneEpicrisis = r.tiene_epicrisis;
+
+                                    return (
+                                        <tr 
+                                            key={r.id || idx}
+                                            style={{
+                                                borderBottom: '1px solid #E2E8F0',
+                                                background: !tieneEpicrisis ? '#FFFBEB' : idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                                transition: 'background 0.15s ease'
+                                            }}
+                                        >
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#94A3B8', fontWeight: 600 }}>{idx + 1}</td>
+                                            <td style={{ padding: '9px 8px', fontWeight: 700, color: !tieneEpicrisis ? '#B45309' : '#0F172A' }}>
+                                                {r.paciente}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', fontFamily: 'monospace', color: '#475569', fontWeight: 600 }}>
+                                                {r.nhc || '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', color: '#475569', fontSize: '0.74rem', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {r.obra_social || '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#334155' }}>
+                                                {r.fecha_ingreso ? r.fecha_ingreso.substring(0, 10) : '-'}
+                                                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{r.fecha_ingreso ? r.fecha_ingreso.substring(11, 16) : ''}</div>
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#334155' }}>
+                                                {r.fecha_alta ? (
+                                                    <>
+                                                        <div>{r.fecha_alta.substring(0, 10)}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{r.fecha_alta.substring(11, 16)}</div>
+                                                    </>
+                                                ) : (
+                                                    <span style={{ fontSize: '0.72rem', color: '#D97706', fontWeight: 700, background: '#FEF3C7', padding: '1px 6px', borderRadius: '4px' }}>
+                                                        Internado
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: 700, color: '#334155' }}>
+                                                {r.dias_estada != null ? `${r.dias_estada} d` : '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', color: '#334155', fontSize: '0.76rem', fontWeight: 600 }}>
+                                                {r.doctor || '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#475569', fontSize: '0.76rem', fontFamily: 'monospace' }}>
+                                                {r.habitacion || '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center' }}>
+                                                <span style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.74rem',
+                                                    fontWeight: 800,
+                                                    background: tieneEpicrisis ? '#DCFCE7' : '#FEF3C7',
+                                                    color: tieneEpicrisis ? '#15803D' : '#B45309',
+                                                    border: `1px solid ${tieneEpicrisis ? '#86EFAC' : '#FCD34D'}`
+                                                }}>
+                                                    {tieneEpicrisis ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                                                    {tieneEpicrisis ? 'Cerrada' : 'Pendiente'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     ) : isTriage ? (
                         /* ── TABLA ESPECÍFICA DE TRIAGE ── */
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
@@ -1206,7 +1594,7 @@ export default function GuardiaOutliersModal({
                     justifyContent: 'space-between'
                 }}>
                     <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                        Mostrando <strong>{filteredRecords.length}</strong> de <strong>{records.length}</strong> pacientes del período <strong>{periodoNombre}</strong>
+                        Mostrando <strong>{filteredRecords.length}</strong> de <strong>{records.length}</strong> registros del período <strong>{periodoNombre}</strong>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
