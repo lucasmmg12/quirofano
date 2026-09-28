@@ -3076,6 +3076,16 @@ async function calcularTriageAvanzado() {
 
 let syncInProgress = false;
 let lastSyncCompletedAt = null;
+let currentSyncTask = 'Inactivo';
+
+async function updateServerTask(taskName) {
+    currentSyncTask = taskName;
+    try {
+        await supabase.from('salus_sync_server_status').update({
+            current_task: taskName
+        }).eq('id', 'primary');
+    } catch (_) {}
+}
 
 async function performFullSync(fastSync = false) {
     if (syncInProgress) {
@@ -3290,6 +3300,7 @@ async function performFullSync(fastSync = false) {
         };
     } finally {
         syncInProgress = false;
+        await updateServerTask('Inactivo');
     }
 }
 
@@ -3659,7 +3670,7 @@ async function sendHeartbeat() {
             server_ip: '128.223.17.60',
             version: '1.0.0',
             sql_server_connected: pool ? true : false,
-            current_task: syncInProgress ? 'Sincronizando' : 'Inactivo',
+            current_task: syncInProgress ? currentSyncTask : 'Inactivo',
             last_sync_completed_at: lastSyncCompletedAt,
             metadata: {
                 port: PORT,
@@ -3697,7 +3708,18 @@ async function processSyncRequestsQueue() {
         }).eq('id', reqItem.id);
 
         try {
-            const syncResult = await performFullSync(reqItem.mode === 'fast');
+            let syncResult;
+            if (reqItem.mode === 'pacientes') {
+                await updateServerTask('Sincronizando Padrón de Pacientes');
+                const pRes = await syncPacientes({ days: 30 });
+                syncResult = {
+                    elapsed: `${((pRes?.durationMs || 0) / 1000).toFixed(1)}s`,
+                    results: pRes
+                };
+            } else {
+                syncResult = await performFullSync(reqItem.mode === 'fast');
+            }
+
             await supabase.from('salus_sync_requests').update({
                 status: 'completed',
                 completed_at: new Date().toISOString(),
@@ -3712,6 +3734,8 @@ async function processSyncRequestsQueue() {
                 error: syncErr.message
             }).eq('id', reqItem.id);
             console.error(`❌ [COLA DE SYNC] Solicitud ${reqItem.id} falló:`, syncErr.message);
+        } finally {
+            await updateServerTask('Inactivo');
         }
     } catch (err) {
         console.warn('⚠️ [COLA DE SYNC] Error verificando solicitudes:', err.message);
@@ -3758,6 +3782,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }, 15000);
 
         setInterval(async () => {
+            if (syncInProgress) return;
             try {
                 console.log('⏰ [Turnos Online Auto] Ejecutando sincronización periódica (cada 10 min)...');
                 const poolInst = await getPool();
@@ -3780,6 +3805,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }, 10000);
 
         setInterval(async () => {
+            if (syncInProgress) return;
             try {
                 console.log('⏰ [Turnos Activos Auto] Sincronización periódica (cada 5 min)...');
                 const poolInst = await getPool();
@@ -3800,6 +3826,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }, 20000);
 
         setInterval(async () => {
+            if (syncInProgress) return;
             try {
                 console.log('⏰ [Censo Camas Auto] Ejecutando sincronización periódica de camas UCI (cada 10 min)...');
                 await syncCensoCamas();
@@ -3821,6 +3848,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }, 30000);
 
         setInterval(async () => {
+            if (syncInProgress) return;
             try {
                 console.log('⏰ [Diagnósticos Auto] Ejecutando sincronización periódica (últimos 7 días)...');
                 const f7 = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().split('T')[0];
@@ -3843,6 +3871,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }, 45000);
 
         setInterval(async () => {
+            if (syncInProgress) return;
             try {
                 console.log('⏰ [Médicos Auto] Ejecutando sincronización periódica de parámetros...');
                 await syncDoctorParameters();
@@ -3855,6 +3884,7 @@ app.listen(PORT, '0.0.0.0', () => {
         // 4. HISTORIAL CLÍNICO CONTACT CENTER (Cada 4 min y al inicio)
         // Sincroniza consultas, diagnósticos y síntomas de los pacientes de Contact Center hacia Supabase
         async function syncHistorialContactCenter() {
+            if (syncInProgress) return;
             try {
                 const poolInst = await getPool();
                 const { data: convs, error: convErr } = await supabase

@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Database, Check, AlertTriangle, Loader2, Download, ChevronDown, ChevronUp, HelpCircle, Clock, RefreshCw } from 'lucide-react';
-import { checkSalusHealth, triggerSalusSync } from '../services/salusSync';
+import { checkSalusHealth, triggerSalusSync, isLocalEnvironment } from '../services/salusSync';
 import { getCurrentUser } from '../services/authService';
 import { supabase } from '../lib/supabase';
 
@@ -81,6 +81,7 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
     const [, setTick] = useState(0);
     const [showDownloadHelp, setShowDownloadHelp] = useState(false);
     const [checking, setChecking] = useState(false);
+    const [currentProgressTask, setCurrentProgressTask] = useState(null);
 
     const currentUser = getCurrentUser();
     const isFrojo = currentUser?.usuario === 'frojo';
@@ -183,10 +184,15 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
         setSyncing(true);
         setExpanded(true);
         setResults(null);
+        setCurrentProgressTask(null);
 
         try {
             const userName = currentUser?.nombre || currentUser?.usuario || 'Usuario';
-            const json = await triggerSalusSync({ isFast, requestedBy: userName });
+            const json = await triggerSalusSync({
+                isFast,
+                requestedBy: userName,
+                onProgress: (task) => setCurrentProgressTask(task)
+            });
 
             if (json.success) {
                 const now = json.timestamp ? new Date(json.timestamp) : new Date();
@@ -212,6 +218,7 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
             addToast?.(errorMsg, 'error');
         } finally {
             setSyncing(false);
+            setCurrentProgressTask(null);
         }
     };
 
@@ -224,32 +231,48 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
         setShowDownloadHelp(true);
     };
 
-    // ── OFFLINE: Ofrecer descarga del launcher ──
+    // ── OFFLINE: Ofrecer descarga del launcher (solo en localhost) o aviso claro ──
     if (salusAvailable === false) {
         const formattedSync = formatLastSync(lastSyncDate);
         const relTime = getRelativeTime(lastSyncDate);
+        const isLocal = isLocalEnvironment();
 
         return (
             <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                    onClick={handleDownloadLauncher}
-                    style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '8px 14px', borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                        color: '#fff', border: 'none',
-                        fontSize: '0.78rem', fontWeight: 700,
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
-                        transition: 'all 0.2s',
-                    }}
-                    onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(245, 158, 11, 0.45)'}
-                    onMouseOut={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.3)'}
-                    title="Descargar launcher para conectar con SALUS"
-                >
-                    <Download size={14} />
-                    Activar SALUS
-                </button>
+                {isLocal ? (
+                    <button
+                        onClick={handleDownloadLauncher}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '10px',
+                            background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                            color: '#fff', border: 'none',
+                            fontSize: '0.78rem', fontWeight: 700,
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                            transition: 'all 0.2s',
+                        }}
+                        onMouseOver={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(245, 158, 11, 0.45)'}
+                        onMouseOut={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(245, 158, 11, 0.3)'}
+                        title="Descargar launcher para conectar con SALUS"
+                    >
+                        <Download size={14} />
+                        Activar SALUS
+                    </button>
+                ) : (
+                    <div
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 12px', borderRadius: '10px',
+                            background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D',
+                            fontSize: '0.78rem', fontWeight: 600,
+                        }}
+                        title="El servidor central de sincronización (128.223.17.60) no emite señal hace más de 15 minutos. Por favor avise a Innovación / Sistemas."
+                    >
+                        <AlertTriangle size={14} style={{ color: '#D97706' }} />
+                        SALUS Desconectado
+                    </div>
+                )}
 
                 <button
                     onClick={() => {
@@ -507,7 +530,7 @@ export default function SalusSyncButton({ onComplete, addToast, module = null, s
                     ) : (
                         <Database size={15} />
                     )}
-                    {syncing ? 'Sincronizando...' : 'Sync Rápido'}
+                    {syncing ? (currentProgressTask || 'Sincronizando...') : 'Sync Rápido'}
                 </button>
 
                 <button

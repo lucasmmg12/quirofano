@@ -38,13 +38,13 @@ export const PLANTILLAS_TURNOS_ONLINE = [
 ];
 
 function getSalusCandidateUrls() {
-    const list = [];
-    if (import.meta.env.VITE_SALUS_SYNC_URL) {
-        list.push(import.meta.env.VITE_SALUS_SYNC_URL.replace(/\/+$/, ''));
+    const isLocal = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (isLocal && window.location.protocol !== 'https:') {
+        return ['http://127.0.0.1:3456/api/salus', 'http://localhost:3456/api/salus'];
     }
-    list.push('http://128.223.17.60:3456/api/salus');
-    list.push('http://127.0.0.1:3456/api/salus');
-    return [...new Set(list)];
+    return [];
 }
 
 /**
@@ -160,14 +160,17 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null, force
         console.warn('⚠️ Consulta directa Supabase falló, intentando sync-server si estamos en localhost:', err.message);
     }
 
-    // Fallback opcional local o LAN
-    if (typeof window !== 'undefined' && window.location.protocol !== 'https:') {
-        const fallbackUrls = ['http://128.223.17.60:3456/api/salus', 'http://127.0.0.1:3456/api/salus'];
+    // Fallback opcional local
+    const isLocal = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if (isLocal && window.location.protocol !== 'https:') {
+        const fallbackUrls = ['http://127.0.0.1:3456/api/salus', 'http://localhost:3456/api/salus'];
         for (const base of fallbackUrls) {
             try {
                 let url = `${base}/turnos-online/duplicados?days=${days}`;
                 if (date) url += `&date=${encodeURIComponent(date)}`;
-                const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+                const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
                 if (response.ok) return await response.json();
             } catch (_) {}
         }
