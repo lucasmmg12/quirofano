@@ -374,7 +374,7 @@ export default function GobernanzaPanel({ currentUser }) {
                 )}
 
                 {activeTab === 'indicadores' && (
-                    <GobernanzaIndicadores proyectoId={selectedProyecto.id} currentUser={currentUser} />
+                    <GobernanzaIndicadores proyectoId={selectedProyecto.id} currentUser={currentUser} proyecto={selectedProyecto} />
                 )}
 
                 {activeTab === 'documentos' && (

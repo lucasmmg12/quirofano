@@ -126,6 +126,8 @@ export default function GuardiaClinicaDashboard({
                     mes: mesAbrev,
                     mesFull: formatPeriodoLabel(r.periodo),
                     consultas: r.total_consultas || 0,
+                    triageados: r.consultas_con_triage || 0,
+                    triagePct: Number(r.cobertura_triage_pct) || 0,
                     cirugias: r.cantidad_pases_cirugia || 0,
                     conversionPct: Number(r.conversion_cirugia_pct) || 0,
                     esperaMin: Number(r.espera_medico_min_promedio) || 0,
@@ -139,21 +141,33 @@ export default function GuardiaClinicaDashboard({
             });
     }, [historialResumen, selectedPeriodo]);
 
-    // Datos estructurados para el Donut de Triage del período activo
+    // Datos estructurados para el Donut de Triage del período activo (Protocolo 621 Enfermería)
     const triageChartData = useMemo(() => {
         if (!currentData?.triage_distribucion || !Array.isArray(currentData.triage_distribucion)) return [];
         return currentData.triage_distribucion.map(t => {
             let color = '#2563EB';
             let labelCorto = t.nivel;
-            if (t.nivel?.includes('N1')) {
+            if (t.nivel?.toLowerCase().includes('rojo') || t.nivel?.includes('N1')) {
                 color = '#DC2626';
-                labelCorto = 'N1 Emergencia';
-            } else if (t.nivel?.includes('N2')) {
+                labelCorto = 'Rojo Emergencia';
+            } else if (t.nivel?.toLowerCase().includes('naranja') || t.nivel?.includes('N2')) {
+                color = '#EA580C';
+                labelCorto = 'Naranja Muy Urg.';
+            } else if (t.nivel?.toLowerCase().includes('amarillo') || t.nivel?.includes('N3')) {
                 color = '#F59E0B';
-                labelCorto = 'N2 Urgencia';
-            } else if (t.nivel?.includes('N3')) {
-                color = '#2563EB';
-                labelCorto = 'N3 Urg. Menor';
+                labelCorto = 'Amarillo Urgente';
+            } else if (t.nivel?.toLowerCase().includes('verde') || t.nivel?.includes('N4')) {
+                color = '#10B981';
+                labelCorto = 'Verde Poco Urg.';
+            } else if (t.nivel?.toLowerCase().includes('azul') || t.nivel?.includes('N5')) {
+                color = '#3B82F6';
+                labelCorto = 'Azul No Urg.';
+            } else if (t.nivel?.toLowerCase().includes('evaluado') || t.nivel?.toLowerCase().includes('signos')) {
+                color = '#6366F1';
+                labelCorto = 'Signos Vitales';
+            } else if (t.nivel?.toLowerCase().includes('sin triage')) {
+                color = '#CBD5E1';
+                labelCorto = 'Sin Triage';
             }
             return {
                 name: labelCorto,
@@ -477,13 +491,13 @@ export default function GuardiaClinicaDashboard({
                 {/* 3. Cobertura y Precisión del Triage */}
                 <KpiCard
                     icon={<CheckCircle2 size={18} color="#0284C7" />}
-                    title="Cobertura de Triage"
+                    title="Cobertura Triage Enfermería"
                     value={`${currentData.cobertura_triage_pct}%`}
-                    subtitle={`${currentData.consultas_con_triage} consultas categorizadas`}
-                    meta="Meta: > 95%"
-                    metaStatus="ok"
-                    detalle="Porcentaje de pacientes que ingresan al circuito formal con categorización clínica de gravedad."
-                    origen="VLISE_Visitas ([Tipo Visita] N1, N2, N3)"
+                    subtitle={`${currentData.consultas_con_triage?.toLocaleString()} de ${currentData.total_consultas?.toLocaleString()} ingresados`}
+                    meta="Meta Progresiva: > 50%"
+                    metaStatus={currentData.cobertura_triage_pct >= 50 ? 'ok' : currentData.cobertura_triage_pct > 20 ? 'info' : 'warning'}
+                    detalle="Porcentaje de pacientes de Guardia Clínica con Protocolo 621 ((ENF) Triage enfermeria) registrado por enfermeros con toma de signos vitales (TA, FC, Tº, SAO2, HGT) y clasificación clínica."
+                    origen="VLISE_Visitas cruzada con [PR InstRespEntrada] (Protocolo SALUS 621)"
                     onClick={() => setSelectedKpiDetail(INDICADORES_GUARDIA_CATALOGO[2])}
                 />
 
@@ -608,13 +622,162 @@ export default function GuardiaClinicaDashboard({
                     </div>
                 </div>
 
-                {/* Grilla de los 2 Gráficos de Tendencia Histórica Principal */}
+                {/* Grilla de Gráficos de Tendencia Histórica Principal */}
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))',
                     gap: '20px'
                 }}>
-                    {/* Gráfico 1: Demanda Mensual vs. Conversión a Cirugía (≤ 48h) */}
+                    {/* ─── PRIMER GRÁFICA DESTACADA: COBERTURA Y EVOLUCIÓN MENSUAL DEL TRIAGE DE ENFERMERÍA ─── */}
+                    <div style={{
+                        gridColumn: '1 / -1',
+                        background: '#FFFFFF',
+                        borderRadius: '12px',
+                        border: '1px solid #BFDBFE',
+                        padding: '20px 24px',
+                        boxShadow: '0 4px 12px -2px rgba(37, 99, 235, 0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, background: '#EFF6FF', color: '#1E40AF', padding: '3px 8px', borderRadius: '6px', border: '1px solid #DBEAFE' }}>
+                                        INDICADOR PRIORITARIO #1
+                                    </span>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '3px 8px', borderRadius: '6px' }}>
+                                        SALUS Protocolo 621 · (ENF) Triage enfermeria
+                                    </span>
+                                </div>
+                                <h4 style={{ margin: '8px 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Cobertura y Evolución Mensual del Triage de Enfermería
+                                </h4>
+                                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                                    Del total de pacientes ingresados a la Guardia Clínica, ¿a cuántos realmente les hicieron el triage mes por mes?
+                                </span>
+                            </div>
+
+                            {/* Micro-resumen del Período Seleccionado */}
+                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                <div style={{ background: '#F8FAFC', padding: '8px 14px', borderRadius: '8px', border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>Ingresos {formatPeriodoLabel(currentData.periodo)}</div>
+                                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>{currentData.total_consultas?.toLocaleString()} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#64748B' }}>pac.</span></div>
+                                </div>
+                                <div style={{ background: '#EFF6FF', padding: '8px 14px', borderRadius: '8px', border: '1px solid #BFDBFE', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.68rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>Triages Realizados</div>
+                                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1E40AF' }}>{currentData.consultas_con_triage?.toLocaleString()} <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#3B82F6' }}>pac.</span></div>
+                                </div>
+                                <div style={{ background: currentData.cobertura_triage_pct > 20 ? '#DCFCE7' : '#FEF3C7', padding: '8px 14px', borderRadius: '8px', border: `1px solid ${currentData.cobertura_triage_pct > 20 ? '#86EFAC' : '#FDE68A'}`, textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.68rem', color: currentData.cobertura_triage_pct > 20 ? '#166534' : '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>% Cobertura Real</div>
+                                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: currentData.cobertura_triage_pct > 20 ? '#15803D' : '#B45309' }}>{currentData.cobertura_triage_pct}%</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Gráfico ComposedChart: Ingresos vs Triages + % Cobertura */}
+                        <div style={{ height: '320px', width: '100%', marginTop: '6px' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <ComposedChart data={evolutionChartData} margin={{ top: 15, right: 20, left: -5, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                    <XAxis 
+                                        dataKey="mes" 
+                                        stroke="#64748B" 
+                                        fontSize={12} 
+                                        tickLine={false} 
+                                    />
+                                    <YAxis 
+                                        yAxisId="left" 
+                                        stroke="#1E40AF" 
+                                        fontSize={11} 
+                                        tickLine={false}
+                                        domain={[0, 'auto']}
+                                    />
+                                    <YAxis 
+                                        yAxisId="right" 
+                                        orientation="right" 
+                                        stroke="#10B981" 
+                                        fontSize={11} 
+                                        tickLine={false}
+                                        unit="%"
+                                        domain={[0, 100]}
+                                    />
+                                    <RechartsTooltip content={<CustomTriageEvolutionTooltip />} />
+                                    <Legend 
+                                        wrapperStyle={{ fontSize: '0.78rem', paddingTop: '10px' }} 
+                                    />
+                                    {/* Barra Total Ingresados a Guardia */}
+                                    <Bar 
+                                        yAxisId="left" 
+                                        dataKey="consultas" 
+                                        name="Total Ingresados Guardia" 
+                                        fill="#CBD5E1" 
+                                        radius={[4, 4, 0, 0]} 
+                                        maxBarSize={30} 
+                                    />
+                                    {/* Barra Triages Realizados por Enfermeros */}
+                                    <Bar 
+                                        yAxisId="left" 
+                                        dataKey="triageados" 
+                                        name="Triages Efectuados (Enfermería)" 
+                                        fill="#1E40AF" 
+                                        radius={[4, 4, 0, 0]} 
+                                        maxBarSize={30} 
+                                    >
+                                        {evolutionChartData.map((entry, index) => (
+                                            <Cell 
+                                                key={`triage-bar-${index}`} 
+                                                fill={entry.periodo === selectedPeriodo ? '#2563EB' : '#1E40AF'} 
+                                            />
+                                        ))}
+                                    </Bar>
+                                    {/* Línea % Cobertura */}
+                                    <Line 
+                                        yAxisId="right" 
+                                        type="monotone" 
+                                        dataKey="triagePct" 
+                                        name="% Cobertura de Triage" 
+                                        stroke="#10B981" 
+                                        strokeWidth={3} 
+                                        dot={{ r: 5, fill: '#10B981', stroke: '#FFFFFF', strokeWidth: 2 }} 
+                                        activeDot={{ r: 8, stroke: '#065F46', strokeWidth: 2 }} 
+                                    />
+                                    <ReferenceLine yAxisId="right" y={50} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'Meta Progresiva (50%)', fill: '#059669', fontSize: 10, position: 'insideTopLeft' }} />
+                                </ComposedChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        {/* Banner Informativo y Auditoría */}
+                        <div style={{
+                            background: '#F8FAFC',
+                            borderRadius: '8px',
+                            border: '1px solid #E2E8F0',
+                            padding: '10px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '10px',
+                            fontSize: '0.76rem',
+                            color: '#475569'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '1rem' }}>🩺</span>
+                                <span>
+                                    <strong>Hallazgo Clínico:</strong> El protocolo SALUS 621 comenzó su implementación sistemática en <strong>Julio 2026 (188 triages, 12.8%)</strong>, consolidándose en <strong>Agosto (470 triages, 26.3%)</strong> y <strong>Septiembre (440 triages, 26.7%)</strong>. En total acumulado 2026 ya se documentaron <strong>1.098 triages</strong>.
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                                <span style={{ background: '#EFF6FF', color: '#1E40AF', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>TA (TD/TS)</span>
+                                <span style={{ background: '#EFF6FF', color: '#1E40AF', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>FC</span>
+                                <span style={{ background: '#EFF6FF', color: '#1E40AF', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>Tº</span>
+                                <span style={{ background: '#EFF6FF', color: '#1E40AF', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>SAO2</span>
+                                <span style={{ background: '#EFF6FF', color: '#1E40AF', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>HGT</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Gráfico 2: Demanda Mensual vs. Conversión a Cirugía (≤ 48h) */}
                     <div style={{
                         background: '#F8FAFC',
                         borderRadius: '10px',
@@ -1736,3 +1899,45 @@ function CustomQualityTooltip({ active, payload, label }) {
         </div>
     );
 }
+
+function CustomTriageEvolutionTooltip({ active, payload, label }) {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0]?.payload;
+    return (
+        <div style={{
+            background: '#FFFFFF',
+            border: '1px solid #CBD5E1',
+            borderRadius: '10px',
+            padding: '12px 16px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            fontSize: '0.78rem',
+            minWidth: '240px'
+        }}>
+            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '8px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
+                Período: {data?.mesFull || label}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0' }}>
+                <span style={{ color: '#64748B', fontWeight: 600 }}>Total Ingresos Guardia:</span>
+                <strong style={{ color: '#1E293B' }}>{data?.consultas?.toLocaleString()} pac.</strong>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0' }}>
+                <span style={{ color: '#1E40AF', fontWeight: 700 }}>Triage Realizado (Enf):</span>
+                <strong style={{ color: '#1E40AF' }}>{data?.triageados?.toLocaleString()} pac.</strong>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '6px 0 0 0', paddingTop: '6px', borderTop: '1px dashed #E2E8F0' }}>
+                <span style={{ color: '#059669', fontWeight: 800 }}>% Cobertura Triage:</span>
+                <strong style={{ color: '#059669', fontSize: '0.92rem' }}>{data?.triagePct}%</strong>
+            </div>
+            {data?.triageados === 0 ? (
+                <div style={{ marginTop: '6px', fontSize: '0.7rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                    Protocolo no implementado en este mes
+                </div>
+            ) : (
+                <div style={{ marginTop: '6px', fontSize: '0.7rem', color: '#64748B' }}>
+                    Protocolo 621: (ENF) Triage enfermería
+                </div>
+            )}
+        </div>
+    );
+}
+

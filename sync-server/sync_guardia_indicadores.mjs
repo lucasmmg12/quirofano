@@ -47,9 +47,24 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
         DECLARE @FechaHasta DATETIME = '${fechaHasta} 23:59:59';
 
         WITH 
+        TriageReal AS (
+            SELECT 
+                r.idEntrada,
+                MAX(CASE WHEN r.idPreguntaPr = 13807 THEN CAST(r.valorM AS VARCHAR(MAX)) END) AS ObservacionTriage,
+                MAX(CASE WHEN r.idPreguntaPr = 13802 THEN r.valorN END) AS TD,
+                MAX(CASE WHEN r.idPreguntaPr = 13814 THEN r.valorN END) AS TS,
+                MAX(CASE WHEN r.idPreguntaPr = 13803 THEN r.valorN END) AS FC,
+                MAX(CASE WHEN r.idPreguntaPr = 13804 THEN r.valorN END) AS Temp,
+                MAX(CASE WHEN r.idPreguntaPr = 13815 THEN r.valorN END) AS SAO2
+            FROM [PR InstRespEntrada] r
+            WHERE r.idPreguntaPr IN (13802, 13814, 13803, 13804, 13805, 13806, 13815, 13807)
+              AND r.activo = 1
+            GROUP BY r.idEntrada
+        ),
         ConsultasGuardia AS (
             SELECT 
                 v.idVisita,
+                v.idEntrada,
                 v.NHC,
                 v.Paciente,
                 v.[Tipo Visita] AS TipoVisita,
@@ -69,13 +84,18 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
                     THEN DATEDIFF(MINUTE, v.[Fecha Entrada Real], v.[Fecha Salida Real])
                     ELSE NULL 
                 END AS MinutosEstanciaGuardia,
+                CASE WHEN tr.idEntrada IS NOT NULL THEN 1 ELSE 0 END AS TieneTriageEnfermeria,
                 CASE 
-                    WHEN v.[Tipo Visita] LIKE '%(N1)%' THEN 'N1 - Emergencia / Crítico'
-                    WHEN v.[Tipo Visita] LIKE '%(N2)%' THEN 'N2 - Urgencia'
-                    WHEN v.[Tipo Visita] LIKE '%(N3)%' THEN 'N3 - Urgencia Menor'
-                    ELSE 'No Categorizado'
+                    WHEN tr.idEntrada IS NULL THEN 'Sin Triage'
+                    WHEN UPPER(tr.ObservacionTriage) LIKE '%ROJO%' THEN 'N1 Rojo (Emergencia)'
+                    WHEN UPPER(tr.ObservacionTriage) LIKE '%NARANJA%' THEN 'N2 Naranja (Muy Urgente)'
+                    WHEN UPPER(tr.ObservacionTriage) LIKE '%AMARILLO%' THEN 'N3 Amarillo (Urgente)'
+                    WHEN UPPER(tr.ObservacionTriage) LIKE '%VERDE%' THEN 'N4 Verde (Poco Urgente)'
+                    WHEN UPPER(tr.ObservacionTriage) LIKE '%AZUL%' THEN 'N5 Azul (No Urgente)'
+                    ELSE 'Evaluado Clínico / Signos'
                 END AS NivelTriage
             FROM VLISE_Visitas v
+            LEFT JOIN TriageReal tr ON v.idEntrada = tr.idEntrada
             WHERE v.[Grupo Agenda] = 'GUARDIA CLINICA'
               AND v.[Fecha Visita] >= @FechaDesde 
               AND v.[Fecha Visita] <= @FechaHasta
@@ -128,8 +148,8 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
             CAST((SELECT COUNT(*) FROM ConversionesQx) * 100.0 / NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(5,2)) AS conversion_cirugia_pct,
             CAST((SELECT AVG(MinutosEsperaAtencion * 1.0) FROM ConsultasGuardia WHERE MinutosEsperaAtencion BETWEEN 0 AND 300) AS DECIMAL(6,2)) AS espera_medico_min_promedio,
             CAST((SELECT AVG(MinutosEstanciaGuardia * 1.0) FROM ConsultasGuardia WHERE MinutosEstanciaGuardia BETWEEN 0 AND 600) AS DECIMAL(6,2)) AS permanencia_guardia_min_promedio,
-            (SELECT COUNT(*) FROM ConsultasGuardia WHERE NivelTriage <> 'No Categorizado') AS consultas_con_triage,
-            CAST((SELECT COUNT(*) FROM ConsultasGuardia WHERE NivelTriage <> 'No Categorizado') * 100.0 / NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(5,2)) AS cobertura_triage_pct,
+            (SELECT COUNT(*) FROM ConsultasGuardia WHERE TieneTriageEnfermeria = 1) AS consultas_con_triage,
+            CAST((SELECT COUNT(*) FROM ConsultasGuardia WHERE TieneTriageEnfermeria = 1) * 100.0 / NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(5,2)) AS cobertura_triage_pct,
             (SELECT COUNT(*) FROM Reconsultas72h) AS cantidad_reconsultas_72h,
             CAST((SELECT COUNT(*) FROM Reconsultas72h) * 100.0 / NULLIF((SELECT COUNT(*) FROM ConsultasGuardia), 0) AS DECIMAL(5,2)) AS reconsulta_72h_pct,
             (SELECT COUNT(*) FROM AdmisionesClinicas WHERE FechaAlta IS NOT NULL) AS total_altas_clinicas,
@@ -144,28 +164,44 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
     const resPrincipal = await pool.request().query(queryMaestra);
     const row = resPrincipal.recordset[0] || {};
 
-    // Consultar desglose de triage
+    // Consultar desglose de triage con enfermería real
     const queryTriage = `
+        WITH TriageReal AS (
+            SELECT 
+                r.idEntrada,
+                MAX(CASE WHEN r.idPreguntaPr = 13807 THEN CAST(r.valorM AS VARCHAR(MAX)) END) AS ObservacionTriage
+            FROM [PR InstRespEntrada] r
+            WHERE r.idPreguntaPr IN (13802, 13814, 13803, 13804, 13805, 13806, 13815, 13807)
+              AND r.activo = 1
+            GROUP BY r.idEntrada
+        )
         SELECT 
             CASE 
-                WHEN [Tipo Visita] LIKE '%(N1)%' THEN 'Nivel 1 (Emergencia)'
-                WHEN [Tipo Visita] LIKE '%(N2)%' THEN 'Nivel 2 (Urgencia)'
-                WHEN [Tipo Visita] LIKE '%(N3)%' THEN 'Nivel 3 (Urgencia Menor)'
-                ELSE 'Sin Triage'
+                WHEN tr.idEntrada IS NULL THEN 'Sin Triage'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%ROJO%' THEN 'N1 Rojo (Emergencia)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%NARANJA%' THEN 'N2 Naranja (Muy Urgente)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%AMARILLO%' THEN 'N3 Amarillo (Urgente)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%VERDE%' THEN 'N4 Verde (Poco Urgente)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%AZUL%' THEN 'N5 Azul (No Urgente)'
+                ELSE 'Evaluado Clínico / Signos'
             END AS nivel,
             COUNT(*) AS cantidad,
             CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS DECIMAL(5,2)) AS porcentaje
-        FROM VLISE_Visitas
-        WHERE [Grupo Agenda] = 'GUARDIA CLINICA'
-          AND [Fecha Visita] >= '${fechaDesde} 00:00:00'
-          AND [Fecha Visita] <= '${fechaHasta} 23:59:59'
-          AND Asistencia = 'Presente'
+        FROM VLISE_Visitas v
+        LEFT JOIN TriageReal tr ON v.idEntrada = tr.idEntrada
+        WHERE v.[Grupo Agenda] = 'GUARDIA CLINICA'
+          AND v.[Fecha Visita] >= '${fechaDesde} 00:00:00'
+          AND v.[Fecha Visita] <= '${fechaHasta} 23:59:59'
+          AND v.Asistencia = 'Presente'
         GROUP BY 
             CASE 
-                WHEN [Tipo Visita] LIKE '%(N1)%' THEN 'Nivel 1 (Emergencia)'
-                WHEN [Tipo Visita] LIKE '%(N2)%' THEN 'Nivel 2 (Urgencia)'
-                WHEN [Tipo Visita] LIKE '%(N3)%' THEN 'Nivel 3 (Urgencia Menor)'
-                ELSE 'Sin Triage'
+                WHEN tr.idEntrada IS NULL THEN 'Sin Triage'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%ROJO%' THEN 'N1 Rojo (Emergencia)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%NARANJA%' THEN 'N2 Naranja (Muy Urgente)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%AMARILLO%' THEN 'N3 Amarillo (Urgente)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%VERDE%' THEN 'N4 Verde (Poco Urgente)'
+                WHEN UPPER(tr.ObservacionTriage) LIKE '%AZUL%' THEN 'N5 Azul (No Urgente)'
+                ELSE 'Evaluado Clínico / Signos'
             END;
     `;
     const resTriage = await pool.request().query(queryTriage);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, Target, ChevronDown, ChevronUp, Save, Loader2, CheckCircle2, Circle } from 'lucide-react';
+import { Plus, Target, ChevronDown, ChevronUp, Save, Loader2, CheckCircle2, Circle, BarChart3, LayoutDashboard } from 'lucide-react';
+import GuardiaClinicaDashboard from './Gobernanza/GuardiaClinicaDashboard';
 
 function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
     const textareaRef = useRef(null);
@@ -37,7 +38,12 @@ function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 8
     );
 }
 
-export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
+export default function GobernanzaIndicadores({ proyectoId, currentUser, proyecto }) {
+    const isGuardia = Boolean(
+        proyecto?.nombre?.toLowerCase().includes('guardia') ||
+        proyectoId === '15533f6c-df44-42ae-a6f7-e3376d3b58fc'
+    );
+    const [viewMode, setViewMode] = useState(isGuardia ? 'graficos' : 'especificaciones');
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -177,36 +183,115 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
 
     return (
         <div style={{ width: '100%', paddingBottom: '40px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>Indicadores y Métricas</h3>
-                <button onClick={() => setShowNew(true)} style={{ background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <Plus size={16} /> Nuevo Indicador
-                </button>
+            {/* Header con Conmutador de Vistas */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                    <h3 style={{ margin: 0, color: '#0f172a', fontWeight: 800, fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        Indicadores y Métricas Clínicas
+                    </h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                        {isGuardia 
+                            ? 'Monitoreo asistencial y analítico del Servicio de Guardia Clínica (SALUS)' 
+                            : 'Catálogo técnico de indicadores de gobernanza y queries SQL asociadas.'}
+                    </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {isGuardia && (
+                        <div style={{
+                            display: 'flex',
+                            background: '#f1f5f9',
+                            padding: '3px',
+                            borderRadius: '10px',
+                            border: '1px solid #e2e8f0',
+                            gap: '3px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('graficos')}
+                                style={{
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: viewMode === 'graficos' ? '#ffffff' : 'transparent',
+                                    color: viewMode === 'graficos' ? '#1e40af' : '#64748b',
+                                    fontWeight: viewMode === 'graficos' ? 800 : 600,
+                                    fontSize: '0.82rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    boxShadow: viewMode === 'graficos' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <BarChart3 size={16} color={viewMode === 'graficos' ? '#2563eb' : '#64748b'} />
+                                Tablero & Gráficos
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('especificaciones')}
+                                style={{
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: viewMode === 'especificaciones' ? '#ffffff' : 'transparent',
+                                    color: viewMode === 'especificaciones' ? '#1e40af' : '#64748b',
+                                    fontWeight: viewMode === 'especificaciones' ? 800 : 600,
+                                    fontSize: '0.82rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    boxShadow: viewMode === 'especificaciones' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <Target size={16} color={viewMode === 'especificaciones' ? '#2563eb' : '#64748b'} />
+                                Especificaciones SQL ({indicadores.length})
+                            </button>
+                        </div>
+                    )}
+
+                    {viewMode === 'especificaciones' && (
+                        <button onClick={() => setShowNew(true)} style={{ background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                            <Plus size={16} /> Nuevo Indicador
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {showNew && (
-                <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #3b82f6', marginBottom: '24px', display: 'flex', gap: '12px' }}>
-                    <input 
-                        type="text" 
-                        placeholder="Ej: Tasa de Ocupación UCI" 
-                        value={newTitulo} 
-                        onChange={e => setNewTitulo(e.target.value)} 
-                        style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}
-                        autoFocus
-                    />
-                    <button onClick={() => setShowNew(false)} style={{ padding: '10px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancelar</button>
-                    <button onClick={handleCreate} disabled={creating} style={{ background: '#3b82f6', color: 'white', padding: '10px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                        {creating ? 'Guardando...' : 'Guardar'}
-                    </button>
-                </div>
+            {/* Vista 1: Tablero de Control con Gráficos Interactivos de Guardia */}
+            {isGuardia && viewMode === 'graficos' && (
+                <GuardiaClinicaDashboard />
             )}
 
-            {indicadores.length === 0 && !showNew ? (
-                <div style={{ textAlign: 'center', padding: '60px', color: '#64748b', background: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-                    <Target size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
-                    <p>No hay indicadores definidos. Empieza agregando el primero.</p>
-                </div>
-            ) : (
+            {/* Vista 2: Catálogo de Especificaciones Técnicas y SQL */}
+            {(!isGuardia || viewMode === 'especificaciones') && (
+                <>
+                    {showNew && (
+                        <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #3b82f6', marginBottom: '24px', display: 'flex', gap: '12px' }}>
+                            <input 
+                                type="text" 
+                                placeholder="Ej: Tasa de Ocupación UCI" 
+                                value={newTitulo} 
+                                onChange={e => setNewTitulo(e.target.value)} 
+                                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none' }}
+                                autoFocus
+                            />
+                            <button onClick={() => setShowNew(false)} style={{ padding: '10px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', fontWeight: 600 }}>Cancelar</button>
+                            <button onClick={handleCreate} disabled={creating} style={{ background: '#3b82f6', color: 'white', padding: '10px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                                {creating ? 'Guardando...' : 'Guardar'}
+                            </button>
+                        </div>
+                    )}
+
+                    {indicadores.length === 0 && !showNew ? (
+                        <div style={{ textAlign: 'center', padding: '60px', color: '#64748b', background: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                            <Target size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
+                            <p>No hay indicadores definidos. Empieza agregando el primero.</p>
+                        </div>
+                    ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {indicadores.map(ind => {
                         const isExpanded = expandedId === ind.id;
@@ -305,6 +390,8 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser }) {
                         );
                     })}
                 </div>
+            )}
+                </>
             )}
         </div>
     );
