@@ -464,25 +464,22 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const fetchUltimaActualizacion = async () => {
         try {
             setLoadingActualizacion(true);
-            const [rCenso, rOcup] = await Promise.all([
-                supabase
-                    .from('calidad_censo_camas_uci')
-                    .select('updated_at')
-                    .order('updated_at', { ascending: false, nullsFirst: false })
-                    .limit(1),
-                supabase
-                    .from('calidad_admisiones_ocupacion')
-                    .select('updated_at')
-                    .order('updated_at', { ascending: false, nullsFirst: false })
-                    .limit(1)
-            ]);
+            const queries = [
+                supabase.from('calidad_censo_camas_uci').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
+                supabase.from('calidad_admisiones_ocupacion').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
+                supabase.from('guardia_indicadores_resumen').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
+                supabase.from('surgeries').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
+                supabase.from('altas_administrativas').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1)
+            ];
 
-            const t1 = rCenso.data?.[0]?.updated_at;
-            const t2 = rOcup.data?.[0]?.updated_at;
+            const results = await Promise.all(queries);
+            const timestamps = results
+                .flatMap(r => r.data || [])
+                .map(r => r.updated_at ? new Date(r.updated_at).getTime() : null)
+                .filter(Boolean);
 
-            const valid = [t1, t2].filter(Boolean).map(t => new Date(t).getTime());
-            if (valid.length > 0) {
-                setUltimaActualizacion(new Date(Math.max(...valid)));
+            if (timestamps.length > 0) {
+                setUltimaActualizacion(new Date(Math.max(...timestamps)));
             }
         } catch (err) {
             console.warn('Error al obtener última actualización de SALUS:', err);
@@ -3068,7 +3065,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     {/* Sincronización y Exportación IA */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {!isUciOnly && (
-                            <SalusSyncButton onComplete={() => { fetchData(); fetchUltimaActualizacion(); }} />
+                            <SalusSyncButton onComplete={() => { fetchData(); fetchUltimaActualizacion(); }} showTimestamp={false} />
                         )}
                         
                         {onOpenInfografia && (

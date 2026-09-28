@@ -3248,6 +3248,14 @@ async function performFullSync(fastSync = false) {
             results.turnosActivos = { error: err.message };
         }
 
+        try {
+            console.log('🔄 [Censo Camas UCI] Sincronizando censo y ocupación de camas con SALUS...');
+            results.censoCamas = await syncCensoCamas();
+        } catch (err) {
+            console.error('❌ Error en sincronización de censo de camas:', err.message);
+            results.censoCamas = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
@@ -3780,6 +3788,25 @@ app.listen(PORT, '0.0.0.0', () => {
                 console.warn('⚠️ [Turnos Activos Auto] Error en ciclo periódico:', e.message);
             }
         }, 5 * 60 * 1000);
+
+        // 1c. CENSO DE CAMAS UCI (Cada 10 min)
+        setTimeout(async () => {
+            try {
+                console.log('⏰ [Censo Camas Auto] Sincronización inicial de camas UCI...');
+                await syncCensoCamas();
+            } catch (e) {
+                console.warn('⚠️ [Censo Camas Auto] Error en sincronización inicial:', e.message);
+            }
+        }, 20000);
+
+        setInterval(async () => {
+            try {
+                console.log('⏰ [Censo Camas Auto] Ejecutando sincronización periódica de camas UCI (cada 10 min)...');
+                await syncCensoCamas();
+            } catch (e) {
+                console.warn('⚠️ [Censo Camas Auto] Error en ciclo periódico:', e.message);
+            }
+        }, 10 * 60 * 1000);
 
         // 2. DIAGNÓSTICOS, SÍNTOMAS Y EVOLUCIÓN (Cada 20 min)
         setTimeout(async () => {
