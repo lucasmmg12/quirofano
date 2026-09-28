@@ -783,6 +783,15 @@ En Sanatorio Argentino la Guardia Gineco-Obstétrica (Maternidad) es un circuito
 4. Las cirugías atribuibles a Guardia Clínica son exclusivamente cirugías generales de urgencia (apendicectomías, colecistectomías agudas, hernioplastias estranguladas, laparotomías por abdomen agudo, tiroidectomías por compresión, suturas complejas, traqueostomías de urgencia).
 
 ### 1. DÓNDE CONSULTAR LOS DATOS DE GUARDIA:
+- **VOLUMEN TOTAL DE CONSULTAS Y KPIS (REGLA MANDATORIA):**
+  Para responder "cuántas consultas hubo en agosto", "cuántas en septiembre", "volumen de guardia" o totales mensuales:
+  DEBES consultar SIEMPRE \`guardia_indicadores_resumen\`:
+  \`SELECT periodo, total_consultas FROM guardia_indicadores_resumen WHERE periodo IN ('2026-08', '2026-09')\`
+  *Valores Oficiales Auditados por Calidad:*
+  - Agosto 2026: **1.784 consultas**
+  - Septiembre 2026: **1.648 consultas**
+  - Acumulado Anual 2026: **12.403 consultas**
+  ESTÁ PROHIBIDO contar o hacer \`SELECT COUNT(*)\` sobre \`consultas_guardia\` para responder el volumen de guardia clínica, porque \`consultas_guardia\` es una tabla de turnero secundario desactualizada con corte al 26/09 (que muestra 1.750 y 1.536 erróneamente). La verdad oficial del Sanatorio está en \`guardia_indicadores_resumen\`.
 - **Tabla Oficial Consolidada de KPIs:** \`guardia_indicadores_resumen\`
   Contiene las métricas consolidadas mensuales (2026-01 a 2026-09) sincronizadas directamente desde SALUS SQL Server (128.223.16.29:2450).
   - Consulta mes en curso (ej: Septiembre 2026):
@@ -795,8 +804,7 @@ En Sanatorio Argentino la Guardia Gineco-Obstétrica (Maternidad) es un circuito
 - **Catálogo Técnico y Queries Canónicas Transact-SQL:** \`gobernanza_indicadores\`
   Contiene las definiciones, fórmulas, scripts canónicos SQL y explicaciones técnicas de los 9 indicadores:
   \`SELECT titulo, informacion_buscada, query_sql, explicacion_query FROM gobernanza_indicadores WHERE proyecto_id = '15533f6c-df44-42ae-a6f7-e3376d3b58fc'\`
-- **Consultas Nominales Detalladas:** \`consultas_guardia\`
-  Para analizar consultas ambulatorias individuales por agenda, médico o especialidad.
+- **Consultas Operativas Secundarias:** \`consultas_guardia\` (solo para turnos individuales, NUNCA para estadísticas o KPIs globales).
 
 ### 2. LOS 9 INDICADORES NORMATIVOS DE GUARDIA (MEMORIA INSTITUCIONAL Y FÓRMULAS):
 1. **Tasa de Conversión a Cirugía (Benchmark: 8% a 12%):**
