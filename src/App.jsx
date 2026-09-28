@@ -274,6 +274,14 @@ function App({ currentUser, onLogout }) {
                 return;
             }
 
+            const username = (currentUser?.usuario || '').toLowerCase().trim();
+            if (MASTER_ADMINS.includes(username)) {
+                setSelectedModules(null); // null = acceso total e irrestricto a todos los módulos
+                setNeedsModuleOnboarding(false);
+                setShowModuleOnboarding(false);
+                return;
+            }
+
             // Fetch module preferences
             supabase.from('user_module_preferences')
                 .select('selected_modules, completed_onboarding')

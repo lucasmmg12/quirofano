@@ -4,7 +4,7 @@
 import { supabase } from '../lib/supabase';
 
 // Usuarios con permiso de edición (usuario sin @dominio)
-const EDIT_USERS = ['jcorrea', 'lmarinero', 'frojo', 'admin', 'mrodriguez', 'dsantaella'];
+const EDIT_USERS = ['jcorrea', 'lmarinero', 'frojo', 'admin', 'mrodriguez', 'dsantaella', 'sfemenia', 'paraya'];
 
 export function canEditAsignacion(user) {
     const u = (user?.usuario || user?.email || '').toLowerCase().split('@')[0];

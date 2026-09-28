@@ -18,7 +18,7 @@ const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
 const CONFIG_KEY = 'contact_center_allowed_users';
 
 // Administradores con acceso maestro permanente
-export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea'];
+export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya'];
 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
@@ -30,7 +30,7 @@ export const CONTACT_CENTER_AGENTS = [
 ];
 
 export const CONTACT_CENTER_AUTHORIZED_USERNAMES = [
-    'lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea',
+    'lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya',
     'daguilera', 'daniela',
     'solivier', 'sofia',
     'vjacques', 'virginia',
@@ -44,6 +44,11 @@ export function isUserAuthorizedForContactCenter(user) {
     if (!user) return true; // Fallback permisivo si no hay sesión estricta
     const username = (user.usuario || user.username || user.email || user.id || '').toLowerCase().trim().split('@')[0];
     const nombre = (user.nombre || user.fullName || '').toLowerCase().trim();
+
+    // 0. Master Admins (Acceso total e irrestricto)
+    if (MASTER_ADMINS.includes(username)) {
+        return true;
+    }
 
     // 1. Lucas Marinero (Supervisor)
     if (
@@ -238,6 +243,8 @@ export const INITIAL_CHATS = [];
 export const SYSTEM_KNOWN_USERS = [
     { usuario: 'lmarinero', nombre: 'Lucas Marinero', rol: 'Supervisor General / Sistemas', avatar: 'LM' },
     { usuario: 'admin', nombre: 'Administrador', rol: 'Administrador General', avatar: 'AD' },
+    { usuario: 'sfemenia', nombre: 'Sergio Femenia', rol: 'Dirección / Administrador General', avatar: 'SF' },
+    { usuario: 'paraya', nombre: 'Pablo Araya', rol: 'Dirección / Administrador General', avatar: 'PA' },
     { usuario: 'mrodriguez', nombre: 'M. Rodriguez', rol: 'Administrador General', avatar: 'MR' },
     { usuario: 'dsantaella', nombre: 'D. Santaella', rol: 'Administrador General', avatar: 'DS' },
     { usuario: 'daniela', nombre: 'Daniela Aguilera', rol: 'Atención al Paciente / Contact Center', avatar: 'DA' },
