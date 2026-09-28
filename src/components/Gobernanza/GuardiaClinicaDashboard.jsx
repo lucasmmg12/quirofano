@@ -659,9 +659,9 @@ export default function GuardiaClinicaDashboard({
                     subtitle={`${currentData.cantidad_pases_cirugia} de ${currentData.total_consultas} consultas (≤ 48 hs)`}
                     meta="Meta: 8% - 12%"
                     metaStatus={currentData.conversion_cirugia_pct >= 8 && currentData.conversion_cirugia_pct <= 12 ? 'ok' : 'info'}
-                    detalle="Pacientes de Guardia ingresados a Quirófano dentro de las 48 horas (cruce VLISE_Visitas → TABLEAU_Cirugias). Clic para ver línea de tiempo nominal."
+                    detalle="Pacientes de Guardia ingresados a Quirófano dentro de las 48 horas (cruce VLISE_Visitas → TABLEAU_Cirugias). Clic para ver auditoría nominal y procedimientos quirúrgicos."
                     origen="VLISE_Visitas cruzada con TABLEAU_Cirugias (Ventana ≤ 48 hs)"
-                    onClick={() => setIsConversionModalOpen(true)}
+                    onClick={() => setSelectedOutlierModal('conversion_cirugia')}
                 />
 
                 {/* 2. Tiempos de Espera (Triage y Médico) */}
@@ -1026,7 +1026,11 @@ export default function GuardiaClinicaDashboard({
                                 </span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
+                                <span 
+                                    onClick={() => setSelectedOutlierModal('conversion_cirugia')}
+                                    title="Clic para ver detalle de cirugías derivadas"
+                                    style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE', cursor: 'pointer' }}
+                                >
                                     {formatPeriodoLabel(currentData.periodo)}: {currentData.cantidad_pases_cirugia} cirugías ({currentData.conversion_cirugia_pct}%)
                                 </span>
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
@@ -1035,11 +1039,17 @@ export default function GuardiaClinicaDashboard({
                                 <button
                                     type="button"
                                     onClick={() => setSelectedOutlierModal('conversion_cirugia')}
-                                    title="Ampliar gráfico, ver casos extremos y descargar Excel/PDF"
-                                    style={outlierBtnStyle}
+                                    title="Analizar cirugías realizadas que vienen de guardia clínica y descargar Excel/PDF"
+                                    style={{
+                                        ...outlierBtnStyle,
+                                        background: '#EFF6FF',
+                                        color: '#1D4ED8',
+                                        border: '1px solid #BFDBFE',
+                                        fontWeight: 700
+                                    }}
                                 >
-                                    <Maximize2 size={12} />
-                                    Outliers & Casos
+                                    <Scissors size={12} />
+                                    Cirugías & Casos
                                 </button>
                                 <button
                                     type="button"

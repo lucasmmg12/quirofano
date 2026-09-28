@@ -4,7 +4,7 @@ import {
     FileSpreadsheet, FileText, CheckCircle2, ChevronRight,
     Users, ShieldAlert, ArrowUpDown, Stethoscope, BedDouble,
     Activity, Heart, Thermometer, Droplet, FileCheck, ClipboardList,
-    Bed, FileCheck2, UserCheck, AlertCircle
+    Bed, FileCheck2, UserCheck, AlertCircle, Scissors
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
@@ -17,6 +17,7 @@ import * as XLSX from 'xlsx';
  * 1. Auditoría de demoras (outliers de tiempo y permanencia).
  * 2. Auditoría nominal completa de Triage (Protocolo 621, signos vitales y observaciones).
  * 3. Auditoría de Adherencia a Epicrisis en Altas Clínicas de Urgencias (Protocolo 382).
+ * 4. Análisis quirúrgico nominal de derivaciones desde Guardia Clínica a Quirófano (≤ 48 hs).
  */
 export default function GuardiaOutliersModal({
     isOpen,
@@ -27,12 +28,13 @@ export default function GuardiaOutliersModal({
 }) {
     const isTriage = chartType === 'triage_severidad' || chartType === 'triage_evolution';
     const isEpicrisis = chartType === 'adherencia_epicrisis';
+    const isConversionCirugia = chartType === 'conversion_cirugia';
 
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState('all'); 
-    const [sortBy, setSortBy] = useState(isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
+    const [sortBy, setSortBy] = useState(isConversionCirugia ? 'espera_asc' : isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
 
     // Cargar pacientes nominales desde Supabase
     useEffect(() => {
@@ -41,13 +43,31 @@ export default function GuardiaOutliersModal({
         let isMounted = true;
         setLoading(true);
         setActiveFilter('all');
-        setSortBy(isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
+        setSortBy(isConversionCirugia ? 'espera_asc' : isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
 
         const fetchData = async () => {
             try {
                 const targetPeriodo = periodo === '2026-ANUAL' ? '2026-09' : periodo;
 
-                if (isTriage) {
+                if (isConversionCirugia) {
+                    let query = supabase
+                        .from('guardia_cirugias_conversion')
+                        .select('*');
+
+                    if (periodo && periodo !== '2026-ANUAL') {
+                        query = query.eq('periodo', targetPeriodo);
+                    }
+
+                    const { data, error } = await query
+                        .order('fecha_cirugia', { ascending: false })
+                        .order('hora_cirugia', { ascending: false });
+
+                    if (error) {
+                        console.error('Error fetching guardia_cirugias_conversion:', error.message);
+                    } else if (isMounted) {
+                        setRecords(data || []);
+                    }
+                } else if (isTriage) {
                     let query = supabase
                         .from('guardia_triage_pacientes')
                         .select('*');
@@ -104,7 +124,7 @@ export default function GuardiaOutliersModal({
 
         fetchData();
         return () => { isMounted = false; };
-    }, [isOpen, periodo, isTriage, isEpicrisis]);
+    }, [isOpen, periodo, isTriage, isEpicrisis, isConversionCirugia]);
 
     const chartConfig = useMemo(() => {
         switch(chartType) {
@@ -123,9 +143,9 @@ export default function GuardiaOutliersModal({
                 };
             case 'conversion_cirugia':
                 return {
-                    title: 'Volumen de Consultas vs. Conversión Quirúrgica — Casos de Guardia',
-                    subtitle: 'Auditoría nominal de pacientes y derivaciones de urgencia a quirófano',
-                    badge: 'Conversión Quirúrgica'
+                    title: 'Análisis Quirúrgico de Guardia — Cirugías Derivadas (≤ 48 hs)',
+                    subtitle: 'Auditoría nominal y clínica de intervenciones quirúrgicas practicadas a pacientes derivados desde Guardia Clínica',
+                    badge: 'Quirófano & Urgencias'
                 };
             case 'calidad_72h':
                 return {
@@ -151,7 +171,7 @@ export default function GuardiaOutliersModal({
 
     // Estadísticas de Outliers de Tiempo
     const stats = useMemo(() => {
-        if (isTriage || isEpicrisis) return {};
+        if (isTriage || isEpicrisis || isConversionCirugia) return {};
         const total = records.length;
         const conEspera = records.filter(r => r.minutos_espera != null);
         const meta30 = conEspera.filter(r => r.minutos_espera <= 30).length;
@@ -178,7 +198,76 @@ export default function GuardiaOutliersModal({
             maxEspera,
             avgEspera
         };
-    }, [records, isTriage, isEpicrisis]);
+    }, [records, isTriage, isEpicrisis, isConversionCirugia]);
+
+    // Estadísticas de Cirugías de Guardia
+    const cirugiasStats = useMemo(() => {
+        if (!isConversionCirugia) return {};
+        const total = records.length;
+        const pacientesUnicos = new Set(records.map(r => r.nhc || r.paciente)).size;
+        
+        // Procedimientos
+        const procMap = {};
+        records.forEach(r => {
+            const p = (r.cirugia_procedimiento || 'CIRUGIA GENERAL').trim();
+            procMap[p] = (procMap[p] || 0) + 1;
+        });
+        const topProcedimientos = Object.entries(procMap)
+            .map(([nombre, cantidad]) => ({ nombre, cantidad, pct: total > 0 ? ((cantidad / total) * 100).toFixed(1) : '0' }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+
+        // Especialidades
+        const espMap = {};
+        records.forEach(r => {
+            const e = (r.especialidad || 'CIRUGIA GENERAL').trim();
+            espMap[e] = (espMap[e] || 0) + 1;
+        });
+        const topEspecialidades = Object.entries(espMap)
+            .map(([nombre, cantidad]) => ({ nombre, cantidad, pct: total > 0 ? ((cantidad / total) * 100).toFixed(1) : '0' }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+
+        // Cirujanos
+        const cirujanoMap = {};
+        records.forEach(r => {
+            const c = (r.cirujano || 'Sin Asignar').trim();
+            cirujanoMap[c] = (cirujanoMap[c] || 0) + 1;
+        });
+        const topCirujanos = Object.entries(cirujanoMap)
+            .map(([nombre, cantidad]) => ({ nombre, cantidad, pct: total > 0 ? ((cantidad / total) * 100).toFixed(1) : '0' }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+
+        // Tiempos de espera
+        const conHoras = records.filter(r => r.horas_espera_qx != null && r.horas_espera_qx >= 0);
+        const avgHoras = conHoras.length > 0 ? (conHoras.reduce((acc, r) => acc + Number(r.horas_espera_qx), 0) / conHoras.length).toFixed(1) : '0';
+        const menos6h = records.filter(r => r.horas_espera_qx != null && r.horas_espera_qx <= 6).length;
+        const de6a12h = records.filter(r => r.horas_espera_qx != null && r.horas_espera_qx > 6 && r.horas_espera_qx <= 12).length;
+        const de12a24h = records.filter(r => r.horas_espera_qx != null && r.horas_espera_qx > 12 && r.horas_espera_qx <= 24).length;
+        const de24a48h = records.filter(r => r.horas_espera_qx != null && r.horas_espera_qx > 24 && r.horas_espera_qx <= 48).length;
+        const mas48h = records.filter(r => r.horas_espera_qx != null && r.horas_espera_qx > 48).length;
+        const urgenciasNoProg = records.filter(r => {
+            const st = (r.estado_cirugia || '').toUpperCase();
+            return st.includes('URGENCIA') || st.includes('NO PROGRAMADA');
+        }).length;
+
+        return {
+            total,
+            pacientesUnicos,
+            avgHoras,
+            topProcedimientos,
+            topEspecialidades,
+            topCirujanos,
+            menos6h,
+            menos6hPct: total > 0 ? ((menos6h / total) * 100).toFixed(1) : '0',
+            de6a12h,
+            de6a12hPct: total > 0 ? ((de6a12h / total) * 100).toFixed(1) : '0',
+            de12a24h,
+            de12a24hPct: total > 0 ? ((de12a24h / total) * 100).toFixed(1) : '0',
+            de24a48h,
+            de24a48hPct: total > 0 ? ((de24a48h / total) * 100).toFixed(1) : '0',
+            mas48h,
+            urgenciasNoProg
+        };
+    }, [records, isConversionCirugia]);
 
     // Estadísticas de Triage
     const triageStats = useMemo(() => {
@@ -233,12 +322,44 @@ export default function GuardiaOutliersModal({
                     const term = searchTerm.toLowerCase();
                     const matchName = (r.paciente || '').toLowerCase().includes(term);
                     const matchNhc = (r.nhc || '').toLowerCase().includes(term);
+                    const matchDni = (r.dni || '').toLowerCase().includes(term);
                     const matchOs = (r.obra_social || '').toLowerCase().includes(term);
+                    const matchProc = (r.cirugia_procedimiento || '').toLowerCase().includes(term);
+                    const matchEsp = (r.especialidad || '').toLowerCase().includes(term);
+                    const matchCir = (r.cirujano || '').toLowerCase().includes(term);
                     const matchObs = (r.observacion_enfermeria || '').toLowerCase().includes(term);
                     const matchNivel = (r.nivel_triage || '').toLowerCase().includes(term);
                     const matchDoc = (r.doctor || '').toLowerCase().includes(term);
                     const matchHab = (r.habitacion || '').toLowerCase().includes(term);
-                    if (!matchName && !matchNhc && !matchOs && !matchObs && !matchNivel && !matchDoc && !matchHab) return false;
+                    if (!matchName && !matchNhc && !matchDni && !matchOs && !matchProc && !matchEsp && !matchCir && !matchObs && !matchNivel && !matchDoc && !matchHab) return false;
+                }
+
+                if (isConversionCirugia) {
+                    if (activeFilter === 'menos_6h') {
+                        return r.horas_espera_qx != null && r.horas_espera_qx <= 6;
+                    }
+                    if (activeFilter === '6_a_12h') {
+                        return r.horas_espera_qx != null && r.horas_espera_qx > 6 && r.horas_espera_qx <= 12;
+                    }
+                    if (activeFilter === '12_a_24h') {
+                        return r.horas_espera_qx != null && r.horas_espera_qx > 12 && r.horas_espera_qx <= 24;
+                    }
+                    if (activeFilter === '24_a_48h') {
+                        return r.horas_espera_qx != null && r.horas_espera_qx > 24 && r.horas_espera_qx <= 48;
+                    }
+                    if (activeFilter === 'urgencias') {
+                        const st = (r.estado_cirugia || '').toUpperCase();
+                        return st.includes('URGENCIA') || st.includes('NO PROGRAMADA');
+                    }
+                    if (activeFilter.startsWith('proc_')) {
+                        const targetProc = activeFilter.replace('proc_', '').toLowerCase();
+                        return (r.cirugia_procedimiento || '').toLowerCase().includes(targetProc);
+                    }
+                    if (activeFilter.startsWith('esp_')) {
+                        const targetEsp = activeFilter.replace('esp_', '').toLowerCase();
+                        return (r.especialidad || '').toLowerCase().includes(targetEsp);
+                    }
+                    return true;
                 }
 
                 if (isTriage) {
@@ -289,6 +410,16 @@ export default function GuardiaOutliersModal({
                 return true;
             })
             .sort((a, b) => {
+                if (isConversionCirugia) {
+                    if (sortBy === 'espera_asc') return (a.horas_espera_qx || 0) - (b.horas_espera_qx || 0);
+                    if (sortBy === 'espera_desc') return (b.horas_espera_qx || 0) - (a.horas_espera_qx || 0);
+                    if (sortBy === 'fecha_desc') return (b.fecha_cirugia || '').localeCompare(a.fecha_cirugia || '') || (b.hora_cirugia || '').localeCompare(a.hora_cirugia || '');
+                    if (sortBy === 'fecha_asc') return (a.fecha_cirugia || '').localeCompare(b.fecha_cirugia || '') || (a.hora_cirugia || '').localeCompare(b.hora_cirugia || '');
+                    if (sortBy === 'paciente_asc') return (a.paciente || '').localeCompare(b.paciente || '');
+                    if (sortBy === 'procedimiento_asc') return (a.cirugia_procedimiento || '').localeCompare(b.cirugia_procedimiento || '');
+                    return 0;
+                }
+
                 if (isTriage) {
                     if (sortBy === 'fecha_desc') {
                         return (b.fecha_visita || '').localeCompare(a.fecha_visita || '') || (b.hora_llegada || '').localeCompare(a.hora_llegada || '');
@@ -336,11 +467,67 @@ export default function GuardiaOutliersModal({
                 if (sortBy === 'paciente_asc') return (a.paciente || '').localeCompare(b.paciente || '');
                 return 0;
             });
-    }, [records, searchTerm, activeFilter, sortBy, isTriage, isEpicrisis]);
+    }, [records, searchTerm, activeFilter, sortBy, isTriage, isEpicrisis, isConversionCirugia]);
 
     // ── Exportación a Excel ──
     const handleExportExcel = () => {
         const wb = XLSX.utils.book_new();
+
+        if (isConversionCirugia) {
+            // Hoja 1: Resumen Ejecutivo de Cirugías
+            const summaryData = [
+                ['SANATORIO ARGENTINO — AUDITORÍA DE CALIDAD & GOBERNANZA'],
+                ['INFORME DE CIRUGÍAS DERIVADAS DESDE GUARDIA CLÍNICA (≤ 48 HORAS)'],
+                [`Período Auditado: ${periodoNombre} (${periodo})`],
+                [`Fecha de Extracción: ${new Date().toLocaleString('es-AR')}`],
+                [`Filtro Activo en Reporte: ${activeFilter.toUpperCase()} | Total Registros: ${filteredRecords.length}`],
+                [],
+                ['MÉTRICA QUIRÚRGICA DE GUARDIA', 'CANTIDAD AUDITADA', 'DISTRIBUCIÓN %', 'ESTÁNDAR INSTITUCIONAL'],
+                ['Total Cirugías Derivadas (≤ 48 hs)', cirugiasStats.total, '100.0%', 'TABLEAU_Cirugias con ingreso en Guardia'],
+                ['Pacientes Únicos Operados', cirugiasStats.pacientesUnicos, `${((cirugiasStats.pacientesUnicos / (cirugiasStats.total || 1)) * 100).toFixed(1)}%`, 'Historias Clínicas distintas'],
+                ['Tiempo Promedio Guardia -> Quirófano', `${cirugiasStats.avgHoras} horas`, '-', 'Desde ingreso a guardia a incisión quirúrgica'],
+                ['Emergencias Inmediatas (≤ 6 hs)', cirugiasStats.menos6h, `${cirugiasStats.menos6hPct}%`, 'Resolución de máxima urgencia'],
+                ['Urgencias Quirúrgicas (6 a 12 hs)', cirugiasStats.de6a12h, `${cirugiasStats.de6a12hPct}%`, 'Resolución en turno de guardia'],
+                ['Resolución 12 a 24 hs', cirugiasStats.de12a24h, `${cirugiasStats.de12a24hPct}%`, 'Resolución en primer día de internación'],
+                ['Ventana 24 a 48 hs', cirugiasStats.de24a48h, `${cirugiasStats.de24a48hPct}%`, 'Estabilización clínica previa'],
+                ['Urgencias y No Programadas', cirugiasStats.urgenciasNoProg, `${((cirugiasStats.urgenciasNoProg / (cirugiasStats.total || 1)) * 100).toFixed(1)}%`, 'Estado formal en SALUS'],
+                [],
+                ['TOP PROCEDIMIENTOS QUIRÚRGICOS MÁS FRECUENTES', 'CANTIDAD', 'PARTICIPACIÓN %']
+            ];
+
+            (cirugiasStats.topProcedimientos || []).slice(0, 10).forEach(p => {
+                summaryData.push([p.nombre, p.cantidad, `${p.pct}%`]);
+            });
+
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Quirúrgico');
+
+            // Hoja 2: Detalle Nominal
+            const detailRows = filteredRecords.map((r, idx) => ({
+                'N°': idx + 1,
+                'Paciente': r.paciente,
+                'NHC': r.nhc || '-',
+                'DNI': r.dni || '-',
+                'Obra Social': r.obra_social || '-',
+                'Llegada a Guardia (Fecha)': r.fecha_guardia || '',
+                'Llegada a Guardia (Hora)': r.hora_guardia || '',
+                'Cirugía / Procedimiento': r.cirugia_procedimiento || '',
+                'Especialidad Quirúrgica': r.especialidad || 'CIRUGIA',
+                'Cirujano': r.cirujano || 'Sin Asignar',
+                'Fecha Quirófano': r.fecha_cirugia || '',
+                'Hora Inicio Quirófano': r.hora_cirugia || '',
+                'Horas de Espera a Qx': r.horas_espera_qx != null ? Number(r.horas_espera_qx) : '',
+                'Rango de Espera': r.rango_espera || '',
+                'Estado Cirugía': r.estado_cirugia || 'Programada',
+                'Duración (min)': r.duracion_minutos || ''
+            }));
+            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+            XLSX.utils.book_append_sheet(wb, wsDetail, 'Cirugías Detalladas');
+
+            const fileName = `Guardia_Cirugias_Conversion_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            return;
+        }
 
         if (isEpicrisis) {
             // Hoja 1: Resumen Epicrisis
@@ -495,6 +682,81 @@ export default function GuardiaOutliersModal({
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.text(`Período Auditado: ${periodoNombre} (${periodo}) | Emitido: ${new Date().toLocaleDateString('es-AR')}`, 297 - 14, 11, { align: 'right' });
+
+        if (isConversionCirugia) {
+            // Título de Cirugías de Guardia
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text('AUDITORÍA QUIRÚRGICA: CIRUGÍAS DERIVADAS DE GUARDIA CLÍNICA (≤ 48 HS)', 14, 26);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Pacientes que ingresaron por Guardia y pasaron a Quirófano. Filtro: ${activeFilter.toUpperCase()} (${filteredRecords.length} cirugías).`, 14, 31);
+
+            // Tabla Resumen KPIs Cirugías
+            autoTable(doc, {
+                startY: 35,
+                theme: 'grid',
+                head: [['Total Cirugías Derivadas', 'Pacientes Únicos', 'Promedio Espera Qx', 'Emergencias <=6hs', 'Urgencias 6-12hs', 'Resolución 12-24hs', 'Ventana 24-48hs', 'Cirugía #1 Más Frecuente']],
+                body: [[
+                    `${cirugiasStats.total}`,
+                    `${cirugiasStats.pacientesUnicos}`,
+                    `${cirugiasStats.avgHoras} hs`,
+                    `${cirugiasStats.menos6h} (${cirugiasStats.menos6hPct}%)`,
+                    `${cirugiasStats.de6a12h} (${cirugiasStats.de6a12hPct}%)`,
+                    `${cirugiasStats.de12a24h} (${cirugiasStats.de12a24hPct}%)`,
+                    `${cirugiasStats.de24a48h} (${cirugiasStats.de24a48hPct}%)`,
+                    (cirugiasStats.topProcedimientos?.[0]?.nombre || '-').substring(0, 32)
+                ]],
+                headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 7.5 },
+                bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], fontStyle: 'bold' },
+                styles: { halign: 'center', cellPadding: 2 }
+            });
+
+            // Tabla Nominal Top 100 Cirugías
+            const tableRows = filteredRecords.slice(0, 100).map((r, i) => [
+                i + 1,
+                r.paciente,
+                r.nhc || '-',
+                (r.obra_social || '').substring(0, 18),
+                r.fecha_guardia ? `${r.fecha_guardia} ${r.hora_guardia ? r.hora_guardia.substring(0, 5) : ''}` : '-',
+                (r.cirugia_procedimiento || '').substring(0, 36),
+                (r.especialidad || 'CIRUGIA').substring(0, 18),
+                (r.cirujano || 'Sin Asignar').substring(0, 20),
+                r.fecha_cirugia ? `${r.fecha_cirugia} ${r.hora_cirugia ? r.hora_cirugia.substring(0, 5) : ''}` : '-',
+                r.horas_espera_qx != null ? `${r.horas_espera_qx}h` : '-',
+                (r.estado_cirugia || 'Programada').substring(0, 14)
+            ]);
+
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 5,
+                theme: 'striped',
+                head: [['N°', 'Paciente', 'NHC', 'Obra Social', 'Llegada Guardia', 'Procedimiento Quirúrgico', 'Especialidad', 'Cirujano', 'Cirugía', 'Espera', 'Estado']],
+                body: tableRows,
+                headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+                bodyStyles: { fontSize: 6.5, textColor: [15, 23, 42] },
+                columnStyles: {
+                    0: { cellWidth: 8, halign: 'center' },
+                    1: { cellWidth: 42, fontStyle: 'bold' },
+                    2: { cellWidth: 14, halign: 'center' },
+                    3: { cellWidth: 28 },
+                    4: { cellWidth: 24, halign: 'center' },
+                    5: { cellWidth: 50 },
+                    6: { cellWidth: 26 },
+                    7: { cellWidth: 32 },
+                    8: { cellWidth: 24, halign: 'center' },
+                    9: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                    10: { cellWidth: 20, halign: 'center' }
+                },
+                styles: { overflow: 'ellipsize', cellPadding: 1.5 }
+            });
+
+            const fileName = `Informe_Cirugias_Guardia_${periodo}_${new Date().toISOString().split('T')[0]}.pdf`;
+            doc.save(fileName);
+            return;
+        }
 
         if (isEpicrisis) {
             // Título de Epicrisis
@@ -862,7 +1124,247 @@ export default function GuardiaOutliersModal({
                 </div>
 
                 {/* ── KPI Cards Superiores ── */}
-                {isEpicrisis ? (
+                {isConversionCirugia ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+                        {/* 5 KPI Cards Principales */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                            gap: '12px',
+                            padding: '16px 24px',
+                            background: '#F1F5F9',
+                            borderBottom: '1px solid #E2E8F0'
+                        }}>
+                            {/* Card 1: Total Cirugías */}
+                            <div style={{ background: '#FFFFFF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #CBD5E1' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Cirugías Derivadas de Guardia
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+                                    {(cirugiasStats.total || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    En <strong>{cirugiasStats.pacientesUnicos || 0}</strong> pacientes únicos
+                                </div>
+                            </div>
+
+                            {/* Card 2: Promedio de Espera a Quirófano */}
+                            <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BFDBFE' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Tiempo Promedio a Quirófano
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1D4ED8', marginTop: '4px' }}>
+                                    {cirugiasStats.avgHoras || 0} hs
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#1E40AF' }}>
+                                    Desde llegada a guardia a inicio cirugía
+                                </div>
+                            </div>
+
+                            {/* Card 3: Emergencias Inmediatas <= 6h */}
+                            <div style={{ background: '#F0FDF4', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BBF7D0' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Emergencia Inmediata (&le; 6 hs)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D', marginTop: '4px' }}>
+                                    {cirugiasStats.menos6h || 0}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#166534' }}>
+                                    <strong>{cirugiasStats.menos6hPct || 0}%</strong> resuelto en &le; 6 horas
+                                </div>
+                            </div>
+
+                            {/* Card 4: Urgencias Quirúrgicas 6 - 12 hs */}
+                            <div style={{ background: '#FFFBEB', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FDE68A' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Urgencia Quirúrgica (6 - 12 hs)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
+                                    {cirugiasStats.de6a12h || 0}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#92400E' }}>
+                                    <strong>{cirugiasStats.de6a12hPct || 0}%</strong> turno de guardia
+                                </div>
+                            </div>
+
+                            {/* Card 5: Cirugía Top #1 */}
+                            <div style={{ background: '#FAF5FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E9D5FF' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#6B21A8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Procedimiento Más Frecuente
+                                </div>
+                                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#7E22CE', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={cirugiasStats.topProcedimientos?.[0]?.nombre}>
+                                    {cirugiasStats.topProcedimientos?.[0]?.nombre ? cirugiasStats.topProcedimientos[0].nombre.replace(/^\(CX\)\s*/i, '').substring(0, 26) + '...' : 'Sin registros'}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#6B21A8' }}>
+                                    <strong>{cirugiasStats.topProcedimientos?.[0]?.cantidad || 0} cirugías</strong> ({cirugiasStats.topProcedimientos?.[0]?.pct || 0}%)
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Panel Visual: Ranking de Top Cirugías & Distribución de Tiempos */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+                            gap: '16px',
+                            padding: '16px 24px',
+                            background: '#FFFFFF',
+                            borderBottom: '1px solid #E2E8F0'
+                        }}>
+                            {/* Ranking Top Cirugías */}
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                padding: '14px 16px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Scissors size={15} style={{ color: '#2563EB' }} />
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                            Top Procedimientos Quirúrgicos desde Guardia
+                                        </span>
+                                    </div>
+                                    <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                                        {cirugiasStats.topProcedimientos?.length || 0} tipos de cirugía
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {(cirugiasStats.topProcedimientos || []).slice(0, 5).map((p, idx) => (
+                                        <div 
+                                            key={idx}
+                                            onClick={() => setActiveFilter(activeFilter === `proc_${p.nombre.substring(0, 15)}` ? 'all' : `proc_${p.nombre.substring(0, 15)}`)}
+                                            style={{
+                                                cursor: 'pointer',
+                                                padding: '6px 8px',
+                                                borderRadius: '6px',
+                                                background: activeFilter === `proc_${p.nombre.substring(0, 15)}` ? '#EFF6FF' : '#FFFFFF',
+                                                border: activeFilter === `proc_${p.nombre.substring(0, 15)}` ? '1px solid #93C5FD' : '1px solid #F1F5F9',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '3px' }}>
+                                                <span style={{ fontWeight: 700, color: '#1E293B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80%' }}>
+                                                    #{idx + 1} {p.nombre.replace(/^\(CX\)\s*/i, '')}
+                                                </span>
+                                                <strong style={{ color: '#2563EB' }}>{p.cantidad} ({p.pct}%)</strong>
+                                            </div>
+                                            <div style={{ width: '100%', height: '6px', background: '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                                                <div style={{ width: `${p.pct}%`, height: '100%', background: idx === 0 ? '#2563EB' : idx === 1 ? '#3B82F6' : '#60A5FA', borderRadius: '3px' }} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Distribución por Tiempo de Oportunidad Guardia -> Qx */}
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                padding: '14px 16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Clock size={15} style={{ color: '#16A34A' }} />
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Distribución de Tiempos a Quirófano
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, background: '#DCFCE7', padding: '1px 6px', borderRadius: '4px' }}>
+                                            Ventana 48 hs
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                        <div 
+                                            onClick={() => setActiveFilter(activeFilter === 'menos_6h' ? 'all' : 'menos_6h')}
+                                            style={{
+                                                cursor: 'pointer',
+                                                padding: '8px 10px',
+                                                borderRadius: '8px',
+                                                background: activeFilter === 'menos_6h' ? '#DCFCE7' : '#FFFFFF',
+                                                border: '1px solid #BBF7D0'
+                                            }}
+                                        >
+                                            <div style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 800 }}>⚡ &le; 6 hs (Emergencia Inmediata)</div>
+                                            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#15803D', marginTop: '2px' }}>{cirugiasStats.menos6h || 0}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#166534' }}>{cirugiasStats.menos6hPct || 0}% de los casos</div>
+                                        </div>
+
+                                        <div 
+                                            onClick={() => setActiveFilter(activeFilter === '6_a_12h' ? 'all' : '6_a_12h')}
+                                            style={{
+                                                cursor: 'pointer',
+                                                padding: '8px 10px',
+                                                borderRadius: '8px',
+                                                background: activeFilter === '6_a_12h' ? '#DBEAFE' : '#FFFFFF',
+                                                border: '1px solid #BFDBFE'
+                                            }}
+                                        >
+                                            <div style={{ fontSize: '0.68rem', color: '#1E40AF', fontWeight: 800 }}>🕒 6 a 12 hs (Urgencia de Guardia)</div>
+                                            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1D4ED8', marginTop: '2px' }}>{cirugiasStats.de6a12h || 0}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#1E40AF' }}>{cirugiasStats.de6a12hPct || 0}% de los casos</div>
+                                        </div>
+
+                                        <div 
+                                            onClick={() => setActiveFilter(activeFilter === '12_a_24h' ? 'all' : '12_a_24h')}
+                                            style={{
+                                                cursor: 'pointer',
+                                                padding: '8px 10px',
+                                                borderRadius: '8px',
+                                                background: activeFilter === '12_a_24h' ? '#FEF3C7' : '#FFFFFF',
+                                                border: '1px solid #FDE68A'
+                                            }}
+                                        >
+                                            <div style={{ fontSize: '0.68rem', color: '#92400E', fontWeight: 800 }}>📅 12 a 24 hs (Resolución 24h)</div>
+                                            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#B45309', marginTop: '2px' }}>{cirugiasStats.de12a24h || 0}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#92400E' }}>{cirugiasStats.de12a24hPct || 0}% de los casos</div>
+                                        </div>
+
+                                        <div 
+                                            onClick={() => setActiveFilter(activeFilter === '24_a_48h' ? 'all' : '24_a_48h')}
+                                            style={{
+                                                cursor: 'pointer',
+                                                padding: '8px 10px',
+                                                borderRadius: '8px',
+                                                background: activeFilter === '24_a_48h' ? '#FFEDD5' : '#FFFFFF',
+                                                border: '1px solid #FED7AA'
+                                            }}
+                                        >
+                                            <div style={{ fontSize: '0.68rem', color: '#9A3412', fontWeight: 800 }}>⏱️ 24 a 48 hs (Estabilización previa)</div>
+                                            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#C2410C', marginTop: '2px' }}>{cirugiasStats.de24a48h || 0}</div>
+                                            <div style={{ fontSize: '0.7rem', color: '#9A3412' }}>{cirugiasStats.de24a48hPct || 0}% de los casos</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Resumen Especialidades */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #E2E8F0', fontSize: '0.72rem', color: '#475569', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 700 }}>Especialidades:</span>
+                                    {(cirugiasStats.topEspecialidades || []).slice(0, 4).map((e, idx) => (
+                                        <span 
+                                            key={idx} 
+                                            onClick={() => setActiveFilter(activeFilter === `esp_${e.nombre.substring(0, 10)}` ? 'all' : `esp_${e.nombre.substring(0, 10)}`)}
+                                            style={{ 
+                                                cursor: 'pointer',
+                                                background: activeFilter === `esp_${e.nombre.substring(0, 10)}` ? '#BFDBFE' : '#EFF6FF', 
+                                                color: '#1E40AF', 
+                                                padding: '1px 6px', 
+                                                borderRadius: '4px', 
+                                                fontWeight: 700 
+                                            }}
+                                        >
+                                            {e.nombre}: {e.cantidad}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : isEpicrisis ? (
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -1115,7 +1617,37 @@ export default function GuardiaOutliersModal({
                         <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', marginRight: '4px', textTransform: 'uppercase' }}>
                             Filtrar:
                         </span>
-                        {isEpicrisis ? (
+                        {isConversionCirugia ? (
+                            [
+                                { id: 'all', label: `Todas (${cirugiasStats.total || 0})` },
+                                { id: 'menos_6h', label: `⚡ ≤ 6 hs Inmediatas (${cirugiasStats.menos6h || 0})`, color: '#15803D' },
+                                { id: '6_a_12h', label: `🕒 6 - 12 hs (${cirugiasStats.de6a12h || 0})`, color: '#1D4ED8' },
+                                { id: '12_a_24h', label: `📅 12 - 24 hs (${cirugiasStats.de12a24h || 0})`, color: '#B45309' },
+                                { id: '24_a_48h', label: `⏱️ 24 - 48 hs (${cirugiasStats.de24a48h || 0})`, color: '#C2410C' },
+                                { id: 'urgencias', label: `🚨 Urgencias / No Prog (${cirugiasStats.urgenciasNoProg || 0})`, color: '#DC2626' }
+                            ].map(f => {
+                                const active = activeFilter === f.id;
+                                return (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setActiveFilter(f.id)}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 700,
+                                            border: active ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                            background: active ? '#EFF6FF' : '#FFFFFF',
+                                            color: active ? '#1D4ED8' : (f.color || '#475569'),
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {f.label}
+                                    </button>
+                                );
+                            })
+                        ) : isEpicrisis ? (
                             [
                                 { id: 'all', label: `Todas las Altas (${epicrisisStats.total || 0})` },
                                 { id: 'cerradas', label: `✅ Con Epicrisis Cerrada (${epicrisisStats.cerradas || 0})`, color: '#166534' },
@@ -1211,7 +1743,7 @@ export default function GuardiaOutliersModal({
                             <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
                             <input
                                 type="text"
-                                placeholder={isEpicrisis ? "Buscar por paciente, NHC, médico o habitación..." : isTriage ? "Buscar por paciente, NHC, síntoma u obra social..." : "Buscar paciente, NHC u obra social..."}
+                                placeholder={isConversionCirugia ? "Buscar por paciente, cirugía, cirujano, especialidad o NHC..." : isEpicrisis ? "Buscar por paciente, NHC, médico o habitación..." : isTriage ? "Buscar por paciente, NHC, síntoma u obra social..." : "Buscar paciente, NHC u obra social..."}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 style={{
@@ -1240,6 +1772,142 @@ export default function GuardiaOutliersModal({
                             <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>No se encontraron registros para este filtro.</div>
                             <div style={{ fontSize: '0.8rem' }}>Intente con otro filtro o limpie la búsqueda.</div>
                         </div>
+                    ) : isConversionCirugia ? (
+                        /* ── TABLA ESPECÍFICA DE CIRUGÍAS DERIVADAS DE GUARDIA ── */
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', position: 'sticky', top: 0, zIndex: 10 }}>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '35px', textAlign: 'center' }}>N°</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '220px' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'paciente_asc' ? 'fecha_desc' : 'paciente_asc')}>
+                                            Paciente & DNI
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '75px', textAlign: 'center' }}>NHC</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '150px' }}>Obra Social</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '110px', textAlign: 'center' }}>Llegada Guardia</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700 }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'procedimiento_asc' ? 'fecha_desc' : 'procedimiento_asc')}>
+                                            Cirugía / Procedimiento
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '170px' }}>Especialidad & Cirujano</th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '120px', textAlign: 'center' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'fecha_desc' ? 'fecha_asc' : 'fecha_desc')}>
+                                            Fecha & Hora Qx
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '130px', textAlign: 'center' }}>
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'espera_asc' ? 'espera_desc' : 'espera_asc')}>
+                                            Espera a Qx
+                                            <ArrowUpDown size={12} />
+                                        </div>
+                                    </th>
+                                    <th style={{ padding: '10px 8px', color: '#475569', fontWeight: 700, width: '110px', textAlign: 'center' }}>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredRecords.slice(0, 350).map((r, idx) => {
+                                    const hs = r.horas_espera_qx != null ? Number(r.horas_espera_qx) : 0;
+                                    const isMenos6 = hs <= 6;
+                                    const is6a12 = hs > 6 && hs <= 12;
+                                    const is12a24 = hs > 12 && hs <= 24;
+                                    const is24a48 = hs > 24;
+
+                                    return (
+                                        <tr 
+                                            key={r.id || idx}
+                                            style={{
+                                                borderBottom: '1px solid #E2E8F0',
+                                                background: isMenos6 ? '#F0FDF4' : idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                                transition: 'background 0.15s ease'
+                                            }}
+                                        >
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#94A3B8', fontWeight: 600 }}>{idx + 1}</td>
+                                            <td style={{ padding: '9px 8px' }}>
+                                                <div style={{ fontWeight: 700, color: '#0F172A' }}>{r.paciente}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                    <span>DNI: {r.dni || '-'}</span>
+                                                    {r.tipo_cirugia && (
+                                                        <span style={{ background: '#F1F5F9', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>
+                                                            {r.tipo_cirugia}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', fontFamily: 'monospace', color: '#475569', fontWeight: 600 }}>
+                                                {r.nhc || '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', color: '#334155', fontSize: '0.78rem' }}>
+                                                {r.obra_social || '-'}
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#334155' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '0.78rem' }}>{r.fecha_guardia}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>{r.hora_guardia || '-'}</div>
+                                            </td>
+                                            <td style={{ padding: '9px 8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#1E3A8A' }}>
+                                                    <Scissors size={13} style={{ color: '#2563EB', flexShrink: 0 }} />
+                                                    <span>{r.cirugia_procedimiento}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '9px 8px' }}>
+                                                <div style={{ fontWeight: 700, color: '#047857', fontSize: '0.78rem' }}>
+                                                    {r.especialidad || 'CIRUGIA GENERAL'}
+                                                </div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                    {r.cirujano || 'Sin Asignar'}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#334155' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '0.78rem' }}>{r.fecha_cirugia}</div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>{r.hora_cirugia || '-'}</div>
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center' }}>
+                                                <span style={{
+                                                    display: 'inline-flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    padding: '3px 8px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.76rem',
+                                                    fontWeight: 800,
+                                                    background: isMenos6 ? '#DCFCE7' : is6a12 ? '#EFF6FF' : is12a24 ? '#FEF3C7' : '#FFEDD5',
+                                                    color: isMenos6 ? '#15803D' : is6a12 ? '#1D4ED8' : is12a24 ? '#B45309' : '#C2410C',
+                                                    border: `1px solid ${isMenos6 ? '#86EFAC' : is6a12 ? '#BFDBFE' : is12a24 ? '#FCD34D' : '#FDBA74'}`
+                                                }}>
+                                                    <span>{hs} hs</span>
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>
+                                                        {isMenos6 ? 'Inmediata' : is6a12 ? 'Urgente' : is12a24 ? '12 - 24 hs' : '24 - 48 hs'}
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '9px 8px', textAlign: 'center' }}>
+                                                <span style={{
+                                                    display: 'inline-block',
+                                                    padding: '3px 7px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 700,
+                                                    background: r.estado_cirugia === 'Realizada' ? '#DCFCE7' : '#F1F5F9',
+                                                    color: r.estado_cirugia === 'Realizada' ? '#15803D' : '#475569'
+                                                }}>
+                                                    {r.estado_cirugia || 'Realizada'}
+                                                </span>
+                                                {r.duracion_minutos && (
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '2px' }}>
+                                                        {r.duracion_minutos} min
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     ) : isEpicrisis ? (
                         /* ── TABLA ESPECÍFICA DE EPICRISIS ── */
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
