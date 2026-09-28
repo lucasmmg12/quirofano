@@ -3557,6 +3557,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             activeIndicatorIds={activeGuardiaIds}
                             onToggleIndicator={handleToggleGuardiaIndicator}
                             addToast={addToast}
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            onDatePresetChange={handleSetDatePreset}
+                            onCustomDateChange={(d, h) => {
+                                setFechaDesde(d);
+                                setFechaHasta(h);
+                                setDatePresetMode('personalizado');
+                            }}
                         />
                     ) : loading ? (
                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>

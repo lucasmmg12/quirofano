@@ -139,7 +139,12 @@ export default function GuardiaClinicaDashboard({
     onOpenDocModal, 
     activeIndicatorIds = [], 
     onToggleIndicator,
-    addToast 
+    addToast,
+    fechaDesde,
+    fechaHasta,
+    datePresetMode,
+    onDatePresetChange,
+    onCustomDateChange
 }) {
     const [loading, setLoading] = useState(true);
     const [historialResumen, setHistorialResumen] = useState([]);
@@ -155,6 +160,58 @@ export default function GuardiaClinicaDashboard({
         fetchResumenData();
     }, []);
 
+    // Sincronización automática cuando el usuario cambia el período o rango en la barra superior del Telar
+    useEffect(() => {
+        if (!fechaDesde || historialResumen.length === 0) return;
+        
+        // 1. Rango Anual completo (ej. 2026-01-01 a 2026-12-31)
+        if (fechaDesde.endsWith('-01-01') && fechaHasta && fechaHasta.endsWith('-12-31')) {
+            const yearStr = fechaDesde.slice(0, 4);
+            const anualKey = `${yearStr}-ANUAL`;
+            if (historialResumen.some(h => h.periodo === anualKey)) {
+                setSelectedPeriodo(anualKey);
+                return;
+            }
+        }
+
+        // 2. Mes específico según fechaDesde (ej: '2026-08' para 2026-08-01)
+        const targetYearMonth = fechaDesde.slice(0, 7);
+        if (historialResumen.some(h => h.periodo === targetYearMonth)) {
+            setSelectedPeriodo(targetYearMonth);
+        }
+    }, [fechaDesde, fechaHasta, historialResumen]);
+
+    // Función bidireccional para seleccionar período y sincronizar con la barra superior
+    const handleSelectPeriodo = (nuevoPeriodo) => {
+        setSelectedPeriodo(nuevoPeriodo);
+        if (onCustomDateChange) {
+            if (nuevoPeriodo.includes('ANUAL')) {
+                const year = nuevoPeriodo.split('-')[0] || '2026';
+                onCustomDateChange(`${year}-01-01`, `${year}-12-31`);
+                onDatePresetChange?.('personalizado');
+            } else {
+                const [year, month] = nuevoPeriodo.split('-');
+                const lastDay = new Date(Number(year), Number(month), 0).getDate();
+                const dDesde = `${year}-${month}-01`;
+                const dHasta = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+                
+                const now = new Date();
+                const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+                
+                if (nuevoPeriodo === currentMonthStr) {
+                    onDatePresetChange?.('este_mes');
+                } else if (nuevoPeriodo === prevMonthStr) {
+                    onDatePresetChange?.('mes_anterior');
+                } else {
+                    onDatePresetChange?.('personalizado');
+                }
+                onCustomDateChange(dDesde, dHasta);
+            }
+        }
+    };
+
     const fetchResumenData = async () => {
         setLoading(true);
         try {
@@ -166,6 +223,16 @@ export default function GuardiaClinicaDashboard({
             if (error) throw error;
             if (data && data.length > 0) {
                 setHistorialResumen(data);
+                
+                // Si viene un fechaDesde inicial, priorizar ese período
+                if (fechaDesde) {
+                    const targetYearMonth = fechaDesde.slice(0, 7);
+                    if (data.some(d => d.periodo === targetYearMonth)) {
+                        setSelectedPeriodo(targetYearMonth);
+                        return;
+                    }
+                }
+
                 // Si el período seleccionado no está en la lista, usar el mes más reciente (excluyendo ANUAL como default)
                 if (!data.some(d => d.periodo === selectedPeriodo)) {
                     const latestMonth = data.find(d => !d.periodo.includes('ANUAL'));
@@ -404,7 +471,7 @@ export default function GuardiaClinicaDashboard({
                                 <button
                                     key={h.periodo}
                                     type="button"
-                                    onClick={() => setSelectedPeriodo(h.periodo)}
+                                    onClick={() => handleSelectPeriodo(h.periodo)}
                                     style={{
                                         background: isSel ? '#1E40AF' : 'transparent',
                                         color: isSel ? '#FFFFFF' : '#475569',
@@ -427,7 +494,7 @@ export default function GuardiaClinicaDashboard({
                             <button
                                 key={annualPeriod.periodo}
                                 type="button"
-                                onClick={() => setSelectedPeriodo(annualPeriod.periodo)}
+                                onClick={() => handleSelectPeriodo(annualPeriod.periodo)}
                                 title="Ver consolidado acumulado de todo el año 2026"
                                 style={{
                                     background: selectedPeriodo === annualPeriod.periodo ? '#1E40AF' : 'transparent',
@@ -450,7 +517,7 @@ export default function GuardiaClinicaDashboard({
                     {historialResumen.length > 0 && (
                         <select
                             value={selectedPeriodo}
-                            onChange={(e) => setSelectedPeriodo(e.target.value)}
+                            onChange={(e) => handleSelectPeriodo(e.target.value)}
                             style={{
                                 padding: '5px 10px',
                                 borderRadius: '8px',
@@ -805,7 +872,16 @@ export default function GuardiaClinicaDashboard({
                         {/* Gráfico ComposedChart: Ingresos vs Triages + % Cobertura */}
                         <div style={{ height: '320px', width: '100%', marginTop: '6px' }}>
                             <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={evolutionChartData} margin={{ top: 15, right: 20, left: -5, bottom: 5 }}>
+                                <ComposedChart 
+                                    data={evolutionChartData} 
+                                    margin={{ top: 15, right: 20, left: -5, bottom: 5 }}
+                                    onClick={(e) => {
+                                        if (e && e.activePayload && e.activePayload[0]) {
+                                            handleSelectPeriodo(e.activePayload[0].payload.periodo);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                                     <XAxis 
                                         dataKey="mes" 
@@ -870,6 +946,14 @@ export default function GuardiaClinicaDashboard({
                                         activeDot={{ r: 8, stroke: '#065F46', strokeWidth: 2 }} 
                                     />
                                     <ReferenceLine yAxisId="right" y={50} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'Meta Progresiva (50%)', fill: '#059669', fontSize: 10, position: 'insideTopLeft' }} />
+                                    <ReferenceLine 
+                                        yAxisId="left" 
+                                        x={formatMesCorto(selectedPeriodo)} 
+                                        stroke="#2563EB" 
+                                        strokeWidth={2} 
+                                        strokeDasharray="3 3" 
+                                        label={{ value: `Auditado: ${formatMesCorto(selectedPeriodo)}`, fill: '#1E40AF', fontSize: 10, position: 'top' }} 
+                                    />
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
@@ -928,8 +1012,11 @@ export default function GuardiaClinicaDashboard({
                                 </span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
+                                    {formatPeriodoLabel(currentData.periodo)}: {currentData.cantidad_pases_cirugia} cirugías ({currentData.conversion_cirugia_pct}%)
+                                </span>
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
-                                    Barras + % Conv.
+                                    Meta 8% - 12%
                                 </span>
                                 <button
                                     type="button"
@@ -953,7 +1040,16 @@ export default function GuardiaClinicaDashboard({
 
                         <div style={{ height: '260px', width: '100%' }}>
                             <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={evolutionChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                <ComposedChart 
+                                    data={evolutionChartData} 
+                                    margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                                    onClick={(e) => {
+                                        if (e && e.activePayload && e.activePayload[0]) {
+                                            handleSelectPeriodo(e.activePayload[0].payload.periodo);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                                     <XAxis 
                                         dataKey="mes" 
@@ -1009,6 +1105,14 @@ export default function GuardiaClinicaDashboard({
                                     {/* Rango de Benchmark 8% - 12% */}
                                     <ReferenceLine yAxisId="right" y={8} stroke="#10B981" strokeDasharray="3 3" />
                                     <ReferenceLine yAxisId="right" y={12} stroke="#10B981" strokeDasharray="3 3" />
+                                    <ReferenceLine 
+                                        yAxisId="left" 
+                                        x={formatMesCorto(selectedPeriodo)} 
+                                        stroke="#2563EB" 
+                                        strokeWidth={2} 
+                                        strokeDasharray="3 3" 
+                                        label={{ value: `Auditado: ${formatMesCorto(selectedPeriodo)}`, fill: '#1E40AF', fontSize: 10, position: 'top' }} 
+                                    />
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
@@ -1036,6 +1140,9 @@ export default function GuardiaClinicaDashboard({
                                 </span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
+                                    {formatPeriodoLabel(currentData.periodo)}: Espera {currentData.espera_medico_min_promedio}m · Perm {currentData.permanencia_guardia_min_promedio}m
+                                </span>
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '6px' }}>
                                     Meta Oportunidad: &lt; 30 min
                                 </span>
@@ -1061,7 +1168,16 @@ export default function GuardiaClinicaDashboard({
 
                         <div style={{ height: '260px', width: '100%' }}>
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={evolutionChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                <AreaChart 
+                                    data={evolutionChartData} 
+                                    margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                                    onClick={(e) => {
+                                        if (e && e.activePayload && e.activePayload[0]) {
+                                            handleSelectPeriodo(e.activePayload[0].payload.periodo);
+                                        }
+                                    }}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <defs>
                                         <linearGradient id="colorPermanencia" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#6366F1" stopOpacity={0.25} />
@@ -1098,6 +1214,13 @@ export default function GuardiaClinicaDashboard({
                                             fontWeight: 700, 
                                             position: 'insideTopRight' 
                                         }} 
+                                    />
+                                    <ReferenceLine 
+                                        x={formatMesCorto(selectedPeriodo)} 
+                                        stroke="#2563EB" 
+                                        strokeWidth={2} 
+                                        strokeDasharray="3 3" 
+                                        label={{ value: `Auditado: ${formatMesCorto(selectedPeriodo)}`, fill: '#1E40AF', fontSize: 10, position: 'top' }} 
                                     />
                                     <Area 
                                         type="monotone" 
@@ -1144,6 +1267,9 @@ export default function GuardiaClinicaDashboard({
                             </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
+                                {formatPeriodoLabel(currentData.periodo)}: Recons {currentData.reconsulta_72h_pct}% · Reint {currentData.reinternacion_72h_pct}%
+                            </span>
                             <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '6px' }}>
                                 Meta Reconsulta &lt; 7%
                             </span>
@@ -1172,7 +1298,16 @@ export default function GuardiaClinicaDashboard({
 
                     <div style={{ height: '190px', width: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={evolutionChartData} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
+                            <LineChart 
+                                data={evolutionChartData} 
+                                margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
+                                onClick={(e) => {
+                                    if (e && e.activePayload && e.activePayload[0]) {
+                                        handleSelectPeriodo(e.activePayload[0].payload.periodo);
+                                    }
+                                }}
+                                style={{ cursor: 'pointer' }}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                                 <XAxis dataKey="mes" stroke="#64748B" fontSize={11} tickLine={false} />
                                 <YAxis stroke="#64748B" fontSize={11} tickLine={false} unit="%" domain={[0, 10]} />
@@ -1180,6 +1315,13 @@ export default function GuardiaClinicaDashboard({
                                 <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
                                 <ReferenceLine y={7} stroke="#D97706" strokeDasharray="3 3" label={{ value: 'Meta Reconsulta (7%)', fill: '#D97706', fontSize: 10 }} />
                                 <ReferenceLine y={5} stroke="#2563EB" strokeDasharray="3 3" label={{ value: 'Meta Reinternación (5%)', fill: '#2563EB', fontSize: 10 }} />
+                                <ReferenceLine 
+                                    x={formatMesCorto(selectedPeriodo)} 
+                                    stroke="#2563EB" 
+                                    strokeWidth={2} 
+                                    strokeDasharray="3 3" 
+                                    label={{ value: `Auditado: ${formatMesCorto(selectedPeriodo)}`, fill: '#1E40AF', fontSize: 10, position: 'top' }} 
+                                />
                                 <Line 
                                     type="monotone" 
                                     dataKey="reconsultaPct" 
@@ -1225,8 +1367,8 @@ export default function GuardiaClinicaDashboard({
                             </h4>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                                Total: {currentData.consultas_con_triage} clasificados
+                            <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 700, background: '#EFF6FF', padding: '2px 8px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
+                                {formatPeriodoLabel(currentData.periodo)}: {currentData.consultas_con_triage} clasificados ({currentData.cobertura_triage_pct}%)
                             </span>
                             <button
                                 type="button"
@@ -1344,8 +1486,8 @@ export default function GuardiaClinicaDashboard({
                             </h4>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                                Flujo ambulatorio e internación
+                            <span style={{ fontSize: '0.72rem', color: '#0D9488', fontWeight: 700, background: '#F0FDFA', padding: '2px 8px', borderRadius: '6px', border: '1px solid #CCFBF1' }}>
+                                {formatPeriodoLabel(currentData.periodo)}: {currentData.total_consultas?.toLocaleString()} egresos
                             </span>
                             <button
                                 type="button"
