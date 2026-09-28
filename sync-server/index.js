@@ -1943,22 +1943,23 @@ async function syncFacturacionInternada(db, fastSync = false) {
     const entries = [...facturadoMap.entries()];
     const CHUNK_SIZE = 50;
     let altasActualizadas = 0;
-    const estadosPreservar = new Set(['Devuelta', 'Parcial', 'Alta prox. mes', 'Falta biopsia', 'Sin alta adm', 'Hc incompleta', 'Suspendida']);
+    const estadosPreservar = new Set(['Parcial', 'Alta prox. mes', 'Falta biopsia', 'Sin alta adm', 'Hc incompleta', 'Suspendida']);
 
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
         const chunkAdms = chunk.map(([adm]) => adm);
 
-        // Consultar el estado actual de las altas para no pisar Devueltas ni observaciones clínicas
+        // Consultar el estado actual de las altas para respetar July/August y estados clínicos
         const { data: altasChunk } = await supabase
             .from('altas_administrativas')
-            .select('numero_admision, estado_fac')
+            .select('numero_admision, estado_fac, fecha_alta, fecha_ingreso, devuelta_at')
             .in('numero_admision', chunkAdms);
 
-        const currentMap = new Map((altasChunk || []).map(a => [a.numero_admision, a.estado_fac]));
+        const currentMap = new Map((altasChunk || []).map(a => [a.numero_admision, a]));
 
         await Promise.all(chunk.map(async ([numAdm, info]) => {
-            const currentEstado = currentMap.get(numAdm);
+            const altaRow = currentMap.get(numAdm);
+            const currentEstado = altaRow?.estado_fac;
             const payload = {
                 facturada: true,
                 facturada_at: info.fecha ? new Date(info.fecha + 'T12:00:00').toISOString() : new Date().toISOString(),
@@ -1966,9 +1967,20 @@ async function syncFacturacionInternada(db, fastSync = false) {
                 cantidad_facturas: info.facturas.size,
             };
 
-            // Auto-promover a 'Facturada' si no está en estado protegido/observado
-            if (!estadosPreservar.has(currentEstado)) {
-                payload.estado_fac = 'Facturada';
+            // Proteger Julio y Agosto si ya fueron modificados manualmente por el usuario
+            const fechaRef = altaRow?.fecha_alta || altaRow?.fecha_ingreso;
+            const isJulioAgosto = fechaRef && fechaRef >= '2026-07-01' && fechaRef < '2026-09-01';
+
+            if (!isJulioAgosto) {
+                // Para Septiembre en adelante: si fue Devuelta y posteriormente facturada en SALUS -> Facturada
+                if (currentEstado === 'Devuelta') {
+                    const devueltaFechaStr = altaRow?.devuelta_at ? altaRow.devuelta_at.split('T')[0] : null;
+                    if (!devueltaFechaStr || !info.fecha || info.fecha >= devueltaFechaStr) {
+                        payload.estado_fac = 'Facturada';
+                    }
+                } else if (!estadosPreservar.has(currentEstado)) {
+                    payload.estado_fac = 'Facturada';
+                }
             }
 
             const { error } = await supabase
@@ -3326,6 +3338,11 @@ app.get('/api/salus/sync/cobros', async (req, res) => {
 
 app.get('/api/salus/sync/notas-credito', async (req, res) => {
     try { const db = await getPool(); res.json({ success: true, results: await syncNotasCredito(db, req.query.fast === 'true') }); }
+    catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+app.get('/api/salus/sync/facturacion-internada', async (req, res) => {
+    try { const db = await getPool(); res.json({ success: true, results: await syncFacturacionInternada(db, req.query.fast === 'true') }); }
     catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 

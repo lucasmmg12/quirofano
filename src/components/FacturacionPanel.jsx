@@ -301,9 +301,21 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 if (a.usuario_facturo && !a.responsable_fac) {
                     updates.responsable_fac = a.usuario_facturo;
                 }
-                // Si SALUS marcó facturada=true y no tiene estado asignado o está Pendiente, setear Facturada
-                if (a.facturada && (!a.estado_fac || a.estado_fac === 'Pendiente')) {
-                    updates.estado_fac = 'Facturada';
+                // Si SALUS marcó facturada=true: respetar Julio y Agosto si fueron modificados manualmente,
+                // pero a partir de Septiembre en adelante, si fue Devuelta y luego facturada en SALUS, auto-promover a Facturada
+                const fechaRef = a.fecha_alta || a.fecha_ingreso;
+                const isJulioAgosto = fechaRef && fechaRef >= '2026-07-01' && fechaRef < '2026-09-01';
+
+                if (!isJulioAgosto && a.facturada) {
+                    if (!a.estado_fac || a.estado_fac === 'Pendiente') {
+                        updates.estado_fac = 'Facturada';
+                    } else if (a.estado_fac === 'Devuelta') {
+                        const devueltaFecha = a.devuelta_at ? a.devuelta_at.split('T')[0] : null;
+                        const facturadaFecha = a.facturada_at ? a.facturada_at.split('T')[0] : null;
+                        if (!devueltaFecha || !facturadaFecha || facturadaFecha >= devueltaFecha) {
+                            updates.estado_fac = 'Facturada';
+                        }
+                    }
                 }
                 return Object.keys(updates).length > 0 ? { ...a, ...updates } : a;
             });
@@ -652,8 +664,19 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
             const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
 
-            if (facturada && (!estado_fac || estado_fac === 'Pendiente')) {
-                estado_fac = 'Facturada';
+            const fechaRefAlta = alta.fecha_alta || computed_fecha_ingreso;
+            const isJulioAgostoAlta = fechaRefAlta && fechaRefAlta >= '2026-07-01' && fechaRefAlta < '2026-09-01';
+
+            if (!isJulioAgostoAlta && facturada) {
+                if (!estado_fac || estado_fac === 'Pendiente') {
+                    estado_fac = 'Facturada';
+                } else if (estado_fac === 'Devuelta') {
+                    const devueltaFecha = alta.devuelta_at ? alta.devuelta_at.split('T')[0] : null;
+                    const facturadaFecha = alta.facturada_at ? alta.facturada_at.split('T')[0] : null;
+                    if (!devueltaFecha || !facturadaFecha || facturadaFecha >= devueltaFecha) {
+                        estado_fac = 'Facturada';
+                    }
+                }
             }
 
             return {
