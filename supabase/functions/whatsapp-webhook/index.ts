@@ -1052,6 +1052,7 @@ let cachedHandoffSettings: {
     timestamp: number;
 } | null = null;
 
+let cachedInactivityTimeoutMinutes = 15;
 let currentQueueCount = 0;
 let lastQueueCheck = 0;
 
@@ -1078,14 +1079,15 @@ async function refreshQueueAndHandoffConfig(supabaseClient: any): Promise<number
                 currentQueueCount = count;
             }
 
-            // 2. Obtener textos personalizados de derivación y umbral de demoras desde app_config
+            // 2. Obtener textos personalizados de derivación, umbral de demoras y tiempo de inactividad desde app_config
             const { data: configData, error: cfgErr } = await supabaseClient
                 .from('app_config')
                 .select('key, value')
                 .in('key', [
                     'contact_center_handoff_normal',
                     'contact_center_handoff_delay',
-                    'contact_center_delay_threshold'
+                    'contact_center_delay_threshold',
+                    'contact_center_inactivity_timeout_minutes'
                 ]);
 
             if (!cfgErr && configData && configData.length > 0) {
@@ -1099,6 +1101,12 @@ async function refreshQueueAndHandoffConfig(supabaseClient: any): Promise<number
                     threshold: map['contact_center_delay_threshold'] ? parseInt(map['contact_center_delay_threshold'], 10) : 5,
                     timestamp: now
                 };
+                if (map['contact_center_inactivity_timeout_minutes']) {
+                    const parsedTimeout = parseInt(map['contact_center_inactivity_timeout_minutes'], 10);
+                    if (!isNaN(parsedTimeout) && parsedTimeout > 0) {
+                        cachedInactivityTimeoutMinutes = parsedTimeout;
+                    }
+                }
             }
         }
     } catch (err) {
@@ -2026,7 +2034,12 @@ Devuelve un JSON con:
                         intent = parsed.intent as any;
                     }
                     if (parsed.doctor && !doctorCandidate) {
-                        doctorCandidate = parsed.doctor.toLowerCase().trim();
+                        const docWord = parsed.doctor.toLowerCase().trim();
+                        const isOnlyDigits = /^\d+$/.test(clean.replace(/[\s.-]/g, ''));
+                        // NUNCA aceptar un doctor retornado por OpenAI si el mensaje actual son solo números/DNI o si el texto del paciente no contiene esa palabra
+                        if (!isOnlyDigits && docWord.length >= 3 && clean.toLowerCase().includes(docWord)) {
+                            doctorCandidate = docWord;
+                        }
                     }
                 }
             } catch (err) {
@@ -2084,10 +2097,24 @@ async function handleChatbotTriage(
         conv?.closed_by_agent_id
     );
 
-    // Si el chat estaba cerrado:
-    // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVO USUARIO
-    if (wasClosed) {
-        console.log(`[triage-bot] Chat ${phone} estaba cerrado. REACTIVANDO TODO A CERO como NUEVO USUARIO.`);
+    // Comprobar si la sesión expiró por tiempo de inactividad
+    // Umbral de inactividad: 15 minutos sin mensajes nuevos (configurable en app_config)
+    const INACTIVITY_TIMEOUT_MINUTES = cachedInactivityTimeoutMinutes || 15;
+    const lastMsgTime = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
+    const minutesSinceLastMsg = lastMsgTime > 0 ? (Date.now() - lastMsgTime) / (1000 * 60) : 0;
+    const isSessionExpiredByInactivity = Boolean(
+        conv && 
+        lastMsgTime > 0 && 
+        minutesSinceLastMsg >= INACTIVITY_TIMEOUT_MINUTES
+    );
+
+    // Saludo o reinicio explícito del usuario ("hola", "menu", "inicio", etc.)
+    const isExplicitGreetingOrMenu = /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/i.test(cleanText);
+
+    // Si el chat estaba cerrado o expiró por inactividad:
+    // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVA SESIÓN
+    if (wasClosed || isSessionExpiredByInactivity) {
+        console.log(`[triage-bot] Chat ${phone} ${wasClosed ? 'estaba cerrado' : `inactivo por ${minutesSinceLastMsg.toFixed(1)} min (umbral ${INACTIVITY_TIMEOUT_MINUTES} min)`}. REACTIVANDO SESIÓN A CERO.`);
         await supabase
             .from('contact_center_conversations')
             .update({
@@ -2103,13 +2130,7 @@ async function handleChatbotTriage(
                 bot_stage: 'inicio',
                 motivo_consulta: null,
                 medico_o_especialidad: null,
-                dni: null,
-                nombre_completo: null,
-                obra_social: null,
-                nhc: null,
-                fecha_nacimiento: null,
-                email: null,
-                es_paciente_existente: false,
+                ai_summary: null,
                 updated_at: new Date().toISOString()
             })
             .eq('phone', phone);
@@ -2125,16 +2146,14 @@ async function handleChatbotTriage(
             conv.status = 'bot';
             conv.bot_active = true;
             conv.bot_stage = 'inicio';
-            conv.dni = null;
-            conv.nombre_completo = null;
-            conv.obra_social = null;
-            conv.nhc = null;
-            conv.es_paciente_existente = false;
+            conv.motivo_consulta = null;
+            conv.medico_o_especialidad = null;
+            conv.ai_summary = null;
         }
     }
 
-    // 1.1 Si la conversación está asignada a un agente humano en vivo: el bot se mantiene en silencio absoluto
-    if (conv && !wasClosed && conv.assigned_agent_id) {
+    // 1.1 Si la conversación está asignada a un agente humano en vivo (y no expiró por inactividad): el bot se mantiene en silencio absoluto
+    if (conv && !wasClosed && !isSessionExpiredByInactivity && conv.assigned_agent_id) {
         console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}. Bot en silencio.`);
         const silentUpdates: Record<string, any> = {
             last_message_text: cleanText,
@@ -2150,10 +2169,8 @@ async function handleChatbotTriage(
         return;
     }
 
-    // 1.2 Si el bot fue silenciado o está esperando agente, verificar si el paciente envía un saludo o reinicio ("hola", "menu", "inicio")
-    const isExplicitGreetingOrMenu = /^(hola|buenas|buen\s+dia|buenas\s+tardes|buenas\s+noches|menu|menú|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/i.test(cleanText);
-
-    if (conv && !wasClosed && (conv.bot_active === false || conv.bot_stage === 'esperando_agente')) {
+    // 1.2 Si el bot fue silenciado o está esperando agente (y no expiró por inactividad)
+    if (conv && !wasClosed && !isSessionExpiredByInactivity && (conv.bot_active === false || conv.bot_stage === 'esperando_agente')) {
         if (!isExplicitGreetingOrMenu) {
             console.log(`[triage-bot] Chat ${phone} en espera de asesor (bot_active=false o bot_stage=${conv.bot_stage}). Bot en silencio.`);
             const silentUpdates: Record<string, any> = {
@@ -2185,18 +2202,24 @@ async function handleChatbotTriage(
             await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
             return;
         } else {
-            console.log(`[triage-bot] Chat ${phone} reactivado por saludo o solicitud de menú ("${cleanText}"). Tratando como nuevo usuario.`);
+            console.log(`[triage-bot] Chat ${phone} reactivado por saludo o solicitud de menú ("${cleanText}"). Tratando como nueva consulta.`);
             conv.bot_active = true;
             conv.bot_stage = 'inicio';
-            conv.dni = null;
-            conv.nombre_completo = null;
-            conv.obra_social = null;
-            conv.nhc = null;
-            conv.es_paciente_existente = false;
+            conv.medico_o_especialidad = null;
+            conv.motivo_consulta = null;
+            conv.ai_summary = null;
+            conv.status = 'bot';
+            conv.assigned_agent_id = null;
+            conv.assigned_agent_name = null;
+            conv.assigned_at = null;
+            conv.closed_at = null;
+            conv.resolution_reason = null;
+            conv.closed_by_agent_id = null;
+            conv.closed_by_agent_name = null;
         }
     }
 
-    let currentStage = (wasClosed ? 'inicio' : (conv?.bot_stage || 'inicio'));
+    let currentStage = (wasClosed || isSessionExpiredByInactivity ? 'inicio' : (conv?.bot_stage || 'inicio'));
     let replyText = '';
     let nextStage = currentStage;
     let updates: Record<string, any> = {
@@ -2205,7 +2228,7 @@ async function handleChatbotTriage(
         updated_at: new Date().toISOString()
     };
 
-    if (wasClosed || isExplicitGreetingOrMenu) {
+    if (wasClosed || isSessionExpiredByInactivity || isExplicitGreetingOrMenu) {
         updates.closed_at = null;
         updates.resolution_reason = null;
         updates.closed_by_agent_id = null;
@@ -2218,13 +2241,15 @@ async function handleChatbotTriage(
         updates.bot_stage = 'inicio';
         updates.motivo_consulta = null;
         updates.medico_o_especialidad = null;
-        updates.dni = null;
-        updates.nombre_completo = null;
-        updates.obra_social = null;
-        updates.nhc = null;
-        updates.fecha_nacimiento = null;
-        updates.email = null;
-        updates.es_paciente_existente = false;
+        updates.ai_summary = null;
+        if (conv) {
+            conv.medico_o_especialidad = null;
+            conv.motivo_consulta = null;
+            conv.ai_summary = null;
+            conv.bot_stage = 'inicio';
+            conv.status = 'bot';
+            conv.bot_active = true;
+        }
     }
 
     // 1. Identificar al paciente EXCLUSIVAMENTE por DNI en el mensaje actual (nunca pre-mapear por teléfono)
@@ -2365,7 +2390,20 @@ async function handleChatbotTriage(
         .order('created_at', { ascending: false })
         .limit(15);
 
-    const recentHistory = (rawHistory || []).reverse();
+    // Filtrar historial para que contenga ÚNICAMENTE mensajes de la sesión activa:
+    // - Si la sesión expiró por inactividad o el chat estaba cerrado: historial vacío para nueva sesión
+    // - Descartar mensajes más antiguos que el umbral de inactividad
+    // - Si el usuario envió un comando de reinicio ("menú", "hola"), descartar los mensajes previos a ese reinicio
+    let activeSessionHistory: any[] = [];
+    if (!wasClosed && !isSessionExpiredByInactivity && rawHistory && rawHistory.length > 0) {
+        const sessionCutoffTime = Date.now() - (INACTIVITY_TIMEOUT_MINUTES * 60 * 1000);
+        const filtered = rawHistory.filter((m: any) => new Date(m.created_at).getTime() >= sessionCutoffTime).reverse();
+        const lastRestartIdx = filtered.map((m: any) => 
+            m.direction === 'incoming' && /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|inicio|comenzar|empezar|reiniciar)[!.\s]*$/i.test(m.content || '')
+        ).lastIndexOf(true);
+        activeSessionHistory = lastRestartIdx >= 0 ? filtered.slice(lastRestartIdx) : filtered;
+    }
+    const recentHistory = activeSessionHistory;
 
     // Detectar si el paciente envió recientemente una imagen o documento (en este mensaje o en los últimos 2)
     const patientSentImageRecently = isIncomingMedia || recentHistory.slice(-3).some((m: any) => 
@@ -2521,8 +2559,18 @@ async function handleChatbotTriage(
         updates.assigned_agent_id = null;
         updates.assigned_agent_name = null;
         updates.assigned_at = null;
-        nextStage = 'menu_bienvenida';
+        updates.medico_o_especialidad = null;
         updates.motivo_consulta = 'Menú Principal (solicitado por usuario)';
+        updates.ai_summary = null;
+        if (conv) {
+            conv.medico_o_especialidad = null;
+            conv.motivo_consulta = null;
+            conv.ai_summary = null;
+            conv.bot_stage = 'menu_bienvenida';
+            conv.status = 'bot';
+            conv.bot_active = true;
+        }
+        nextStage = 'menu_bienvenida';
     }
     // =============================================
     // FLUJO 0A-2B: SELECCIÓN DE MÉDICO HOMÓNIMO
@@ -2655,12 +2703,12 @@ async function handleChatbotTriage(
                 /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|tercero|tercera\s+persona|alguien\s+m[aá]s)\b/i.test(cleanText) ||
                 Boolean(conv?.motivo_consulta?.toLowerCase().includes('familiar') || conv?.motivo_consulta?.toLowerCase().includes('tercero'));
 
-            // Acumulación de médico/especialidad: si vino en este mensaje o ya estaba guardado en la conversación previa
+            // Acumulación de médico/especialidad: si vino en este mensaje o ya estaba guardado en la conversación previa dentro de este mismo flujo
             const effectiveDocOrSpec = 
                 doctorDisplay || 
                 specialtyFromMsg || 
                 updates.medico_o_especialidad || 
-                conv?.medico_o_especialidad ||
+                (conv?.bot_stage === 'esperando_datos_turno' && conv?.medico_o_especialidad ? conv.medico_o_especialidad : null) ||
                 null;
 
             if (effectiveDocOrSpec) {
@@ -2912,13 +2960,34 @@ async function handleChatbotTriage(
     ) {
         // CASO 1A: Paciente respondiendo su Obra Social y Plan (Camino 1: Paciente Registrado)
         if (currentStage === 'esperando_obra_social_paciente') {
+            const isGreetingOrReset = /^(hola+|buenas+|buen\s+d[ií]a+|menu+|men[uú]+|inicio|comenzar|empezar|reiniciar|atras|atrás)[!.\s]*$/i.test(cleanText);
+            if (isGreetingOrReset) {
+                replyText = getWelcomeMenuMessage(whatsappName);
+                updates.status = 'bot';
+                updates.bot_active = true;
+                updates.bot_stage = 'menu_bienvenida';
+                updates.medico_o_especialidad = null;
+                updates.motivo_consulta = 'Menú de Bienvenida (esperando selección)';
+                updates.ai_summary = null;
+                if (conv) {
+                    conv.medico_o_especialidad = null;
+                    conv.motivo_consulta = null;
+                    conv.ai_summary = null;
+                    conv.bot_stage = 'menu_bienvenida';
+                    conv.status = 'bot';
+                    conv.bot_active = true;
+                }
+                nextStage = 'menu_bienvenida';
+                return { replyText, updates, nextStage };
+            }
+
             const osPlanText = cleanText.trim();
             updates.obra_social = osPlanText;
             console.log(`[triage-bot] Obra Social y Plan registrado para paciente en SALUS: ${osPlanText}`);
 
             // Extraer o verificar si también aportó especialidad o doctor
             const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
-            const effectiveDocOrSpec = doctorDisplay || specialtyFromMsg || updates.medico_o_especialidad || conv?.medico_o_especialidad || null;
+            const effectiveDocOrSpec = doctorDisplay || specialtyFromMsg || updates.medico_o_especialidad || (conv?.bot_stage === 'esperando_obra_social_paciente' && conv?.medico_o_especialidad ? conv.medico_o_especialidad : null) || null;
 
             if (effectiveDocOrSpec) {
                 updates.medico_o_especialidad = effectiveDocOrSpec;
@@ -3466,6 +3535,10 @@ async function handleChatbotTriage(
         } else {
             updates.medico_o_especialidad = null; // Limpiar para no arrastrar consultas viejas
             updates.motivo_consulta = 'Solicitud de Turno / Consulta';
+            if (conv) {
+                conv.medico_o_especialidad = null;
+                conv.motivo_consulta = 'Solicitud de Turno / Consulta';
+            }
         }
 
         const isAskingOtherInTurno = 
