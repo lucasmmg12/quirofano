@@ -51,6 +51,7 @@ async function getSchemaContext(): Promise<string> {
                 'calidad_pacientes_diagnosticos',
                 'calidad_uci_kinesiologia',
                 'guardia_indicadores_resumen',
+                'guardia_triage_pacientes',
                 'gobernanza_indicadores',
                 'gobernanza_proyectos',
                 'activos', 'activos_movimientos'
@@ -490,6 +491,21 @@ Contiene las métricas oficiales y KPIs mensuales de Guardia de Urgencias del Sa
 - \`altas_con_epicrisis\` (int) — Altas de piso clínico con Protocolo 382 (Epicrisis) completado (ej: 24 de 24 en sep, 86 de 86 en jul).
 - \`adherencia_epicrisis_pct\` (numeric) — % de adherencia a epicrisis = 100.0%. Meta institucional: 100%.
 
+### \`guardia_triage_pacientes\` (Pacientes Nominales con Triage de Enfermería - Protocolo SALUS 621)
+Contiene la nómina individual de todos los pacientes de Guardia Clínica a quienes enfermería les realizó triage formal o toma de signos vitales:
+- \`id\` (bigint PK)
+- \`periodo\` (text) — '2026-09', '2026-08', '2026-07'
+- \`nhc\` (text) — Número de Historia Clínica
+- \`paciente\` (text) — Apellido y Nombre
+- \`obra_social\` (text)
+- \`agenda\` (text) — 'GUARDIAS CLINICA'
+- \`tipo_visita\` (text)
+- \`fecha_visita\` (date) — Fecha de atención (YYYY-MM-DD)
+- \`hora_llegada\` (text) — Hora real de llegada (HH:MM:SS)
+- \`nivel_triage\` (text) — 'Evaluado Clínico / Signos', 'N3 Amarillo (Urgente)', 'N4 Verde (Poco Urgente)', 'N1 Rojo', 'N2 Naranja'
+- \`observacion_enfermeria\` (text) — Notas y observaciones de enfermería
+- \`ta_sistolica\` (numeric), \`ta_diastolica\` (numeric), \`fc\` (numeric), \`temperatura\` (numeric), \`sato2\` (numeric)
+
 ### \`gobernanza_indicadores\` (Catálogo de Indicadores y Repositorio Transact-SQL de SALUS)
 Catálogo oficial de gobernanza de indicadores del Sanatorio Argentino:
 - \`id\` (uuid PK)
@@ -773,6 +789,9 @@ En Sanatorio Argentino la Guardia Gineco-Obstétrica (Maternidad) es un circuito
     \`SELECT * FROM guardia_indicadores_resumen WHERE periodo = '2026-09'\`
   - Evolución mensual histórica 2026:
     \`SELECT periodo, total_consultas, conversion_cirugia_pct, espera_medico_min_promedio, permanencia_guardia_min_promedio, reconsulta_72h_pct, reinternacion_72h_pct, total_tac, total_rx, tasa_imagenes_100_consultas, promedio_dias_estada, adherencia_epicrisis_pct FROM guardia_indicadores_resumen ORDER BY periodo ASC\`
+- **Pacientes Nominales con Triage de Enfermería (Protocolo 621):** \`guardia_triage_pacientes\`
+  Contiene la nómina de cada paciente que recibió triage / control de signos vitales por enfermería en Guardia Clínica.
+  - REGLA OBLIGATORIA: Cuando el usuario pida "los pacientes con triage", "los 440 pacientes de triage", "listado de triage en Excel", "quiénes tuvieron triage en septiembre", etc., DEBES consultar \`guardia_triage_pacientes\` (ej: \`WHERE periodo = '2026-09'\`) y usar \`generate_excel_report\`. NUNCA consultes \`consultas_guardia\` para el triage de enfermería ni filtres por (N3).
 - **Catálogo Técnico y Queries Canónicas Transact-SQL:** \`gobernanza_indicadores\`
   Contiene las definiciones, fórmulas, scripts canónicos SQL y explicaciones técnicas de los 9 indicadores:
   \`SELECT titulo, informacion_buscada, query_sql, explicacion_query FROM gobernanza_indicadores WHERE proyecto_id = '15533f6c-df44-42ae-a6f7-e3376d3b58fc'\`
@@ -790,11 +809,11 @@ En Sanatorio Argentino la Guardia Gineco-Obstétrica (Maternidad) es un circuito
    - *Fórmula:* Espera al médico = \`AVG(DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Hora Entrada]))\`; Permanencia total = \`AVG(DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Salida Real]))\`.
    - *Fuente SALUS:* \`VLISE_Visitas\` con marcas temporales reales nativas.
    - *Dato Real:* En Septiembre 2026, espera al médico **33.96 min**, permanencia total **48.27 min**. En Julio 2026, espera **28.18 min**, permanencia **41.19 min**.
-3. **Cobertura y Clasificación de Triage (Benchmark: > 95%):**
-   - *Definición:* Porcentaje de pacientes ingresados con categoría de severidad asignada formalmente.
-   - *Categorías SALUS:* \`(N1) VISITA CLINICA\` (~85%), \`(N2) VISITA CLINICA\` (~14%), \`(N3) VISITA CLINICA\` (~1%).
-   - *Fuente SALUS:* \`VLISE_Visitas\` campo \`[Tipo Visita]\`.
-   - *Dato Real:* En Sanatorio Argentino la cobertura es del **100.0%** (todas las consultas tienen categorización).
+3. **Cobertura y Clasificación de Triage de Enfermería (Benchmark: >= 90%):**
+   - *Definición:* Pacientes evaluados por enfermería en el Protocolo SALUS 621 con toma de signos vitales (Tensión Arterial, FC, Temperatura, Saturación) y categorización de urgencia.
+   - *Niveles de Triage:* 'Evaluado Clínico / Signos', 'N3 Amarillo (Urgente)', 'N4 Verde (Poco Urgente)', 'N1 Rojo', 'N2 Naranja'.
+   - *Fuente SALUS:* \`[PR InstRespEntrada]\` (idProtocolo 621) cruzado con \`VLISE_Visitas\` por \`idEntrada\`. En Supabase se consulta la tabla nominal \`guardia_triage_pacientes\`.
+   - *Dato Real:* En Septiembre 2026 se registraron **441 triages de enfermería** (311 Evaluado Clínico, 119 N4 Verde, 10 N3 Amarillo).
 4. **Tasa de Reconsulta a las 72 Horas (Umbral Calidad: < 7%):**
    - *Definición:* Porcentaje de pacientes dados de alta de guardia que retornan a consultar dentro de los 3 días posteriores por el mismo episodio.
    - *Fórmula:* \`(cantidad_reconsultas_72h / total_consultas) * 100\` mediante autocruce temporal por \`NHC\` en ventana \`<= 72 horas\`.
@@ -926,11 +945,12 @@ Si necesitás exportar MÚLTIPLES pestañas (por ejemplo, exportando los indicad
 - Montos numéricos SIN formato (el frontend los formatea)
 - Fechas como strings legibles: "08/05/2026"
 - Estados legibles: "Confirmada" en vez de "azul"
-- MÁXIMO 500 filas por reporte. Si hay más, avisá al usuario y mostrá los primeros 500.
+- MÁXIMO 1000 filas por reporte (los reportes de Excel soportan hasta 1000 filas completas). Si hay más, avisá al usuario y mostrá las primeras 1000.
 - Siempre acompañá el bloque beto-excel con un mensaje descriptivo al usuario.
 
 ### Reportes predefinidos por módulo:
 Cuando el usuario pida "exportar deudas", "Excel de cirugías", etc. sin filtros específicos, usá estos queries base:
+- **Triage de Enfermería Guardia**: SELECT paciente, nhc, obra_social, agenda, fecha_visita, hora_llegada, nivel_triage, observacion_enfermeria, ta_sistolica, ta_diastolica, fc, temperatura, sato2 FROM guardia_triage_pacientes WHERE periodo = '2026-09' ORDER BY fecha_visita ASC, hora_llegada ASC LIMIT 1000
 - **Deudas**: SELECT nombre, nhc, telefono, cobertura, deuda_total, categoria, facturas_count, fecha_deuda FROM deudas_pacientes ORDER BY deuda_total DESC LIMIT 500
 - **Cirugías**: SELECT nombre, dni, obra_social, fecha_cirugia, medico, modulo, status, ausente FROM surgeries WHERE excluido = false ORDER BY fecha_cirugia DESC LIMIT 500
 - **Consultas Guardia**: SELECT paciente, nif, cliente, agenda, tipo_visita, fecha_visita, visita_especialidad FROM consultas_guardia WHERE mes_periodo = '[mes_actual]' LIMIT 500
@@ -1247,7 +1267,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
  * This is the core of the RAG pattern: GPT generates SQL based on the schema
  * context, and this function safely executes it.
  */
-async function queryDatabase(args: Record<string, unknown>): Promise<string> {
+async function queryDatabase(args: Record<string, unknown>, maxLimit: number = 50): Promise<string> {
     const rawSql = (args.sql as string || '').trim();
     const sql = rawSql.replace(/;+\s*$/, '');
     const explanation = args.explanation as string || '';
@@ -1272,12 +1292,13 @@ async function queryDatabase(args: Record<string, unknown>): Promise<string> {
         if (error) {
             console.error('[beto] RPC error:', error.message);
             // Try fallback
-            return await fallbackQuery(sql);
+            return await fallbackQuery(sql, maxLimit);
         }
 
+        const limit = maxLimit || 50;
         const result = data || [];
-        const truncated = result.length > 50;
-        const finalData = truncated ? result.slice(0, 50) : result;
+        const truncated = result.length > limit;
+        const finalData = truncated ? result.slice(0, limit) : result;
 
         return JSON.stringify({
             success: true,
@@ -1287,7 +1308,7 @@ async function queryDatabase(args: Record<string, unknown>): Promise<string> {
         });
     } catch (err) {
         console.error('[beto] Query execution error:', err.message);
-        return await fallbackQuery(sql);
+        return await fallbackQuery(sql, maxLimit);
     }
 }
 
@@ -1295,7 +1316,7 @@ async function queryDatabase(args: Record<string, unknown>): Promise<string> {
  * Fallback: Use Supabase PostgREST API to execute simple queries
  * when RPC is not available.
  */
-async function fallbackQuery(sql: string): Promise<string> {
+async function fallbackQuery(sql: string, maxLimit: number = 50): Promise<string> {
     // Parse the SQL to extract table name and use PostgREST
     const tableMatch = sql.match(/FROM\s+["']?(\w+)["']?/i);
     if (!tableMatch) {
@@ -1305,7 +1326,7 @@ async function fallbackQuery(sql: string): Promise<string> {
     const table = tableMatch[1];
     const hasWhere = sql.match(/WHERE\s+(.+?)(?:ORDER|GROUP|LIMIT|$)/is);
     const hasLimit = sql.match(/LIMIT\s+(\d+)/i);
-    const limit = hasLimit ? parseInt(hasLimit[1]) : 50;
+    const limit = maxLimit || (hasLimit ? parseInt(hasLimit[1]) : 50);
 
     // For simple queries, use Supabase client
     let query = supabase.from(table).select('*').limit(limit);
@@ -1969,15 +1990,15 @@ async function generateExcelReport(args: Record<string, unknown>): Promise<strin
         return JSON.stringify({ error: 'Solo se permiten consultas SELECT.' });
     }
 
-    // Enforce LIMIT 500
+    // Enforce LIMIT 1000
     let safeSql = sql;
     if (!sqlUpper.includes('LIMIT')) {
-        safeSql += ' LIMIT 500';
+        safeSql += ' LIMIT 1000';
     }
 
     try {
-        // Reuse query infrastructure
-        const queryResult = await queryDatabase({ sql: safeSql, explanation: `Excel report: ${reportName}` });
+        // Reuse query infrastructure allowing up to 1000 rows for Excel reports
+        const queryResult = await queryDatabase({ sql: safeSql, explanation: `Excel report: ${reportName}` }, 1000);
         const parsed = JSON.parse(queryResult);
 
         if (!parsed.success || !parsed.data) {

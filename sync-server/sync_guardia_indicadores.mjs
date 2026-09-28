@@ -319,6 +319,70 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
         console.log(`   💾 Guardado exitosamente en Supabase.`);
     }
 
+    // Sincronizar pacientes nominales con triage en guardia_triage_pacientes
+    if (periodo !== '2026-ANUAL') {
+        try {
+            const queryNominalTriage = `
+                WITH TriageReal AS (
+                    SELECT 
+                        r.idEntrada,
+                        MAX(CASE WHEN r.idPreguntaPr = 13807 THEN CAST(r.valorM AS VARCHAR(MAX)) END) AS ObservacionTriage,
+                        MAX(CASE WHEN r.idPreguntaPr = 13802 THEN r.valorN END) AS TD,
+                        MAX(CASE WHEN r.idPreguntaPr = 13814 THEN r.valorN END) AS TS,
+                        MAX(CASE WHEN r.idPreguntaPr = 13803 THEN r.valorN END) AS FC,
+                        MAX(CASE WHEN r.idPreguntaPr = 13804 THEN r.valorN END) AS Temp,
+                        MAX(CASE WHEN r.idPreguntaPr = 13815 THEN r.valorN END) AS SAO2
+                    FROM [PR InstRespEntrada] r
+                    WHERE r.idPreguntaPr IN (13802, 13814, 13803, 13804, 13805, 13806, 13815, 13807)
+                      AND r.activo = 1
+                    GROUP BY r.idEntrada
+                )
+                SELECT 
+                    '${periodo}' AS periodo,
+                    LTRIM(RTRIM(v.NHC)) AS nhc,
+                    LTRIM(RTRIM(v.Paciente)) AS paciente,
+                    LTRIM(RTRIM(v.Cliente)) AS obra_social,
+                    LTRIM(RTRIM(v.Agenda)) AS agenda,
+                    LTRIM(RTRIM(v.[Tipo Visita])) AS tipo_visita,
+                    CONVERT(VARCHAR(10), v.[Fecha Visita], 23) AS fecha_visita,
+                    CONVERT(VARCHAR(8), v.[Fecha Entrada Real], 108) AS hora_llegada,
+                    CASE 
+                        WHEN UPPER(tr.ObservacionTriage) LIKE '%ROJO%' THEN 'N1 Rojo (Emergencia)'
+                        WHEN UPPER(tr.ObservacionTriage) LIKE '%NARANJA%' THEN 'N2 Naranja (Muy Urgente)'
+                        WHEN UPPER(tr.ObservacionTriage) LIKE '%AMARILLO%' THEN 'N3 Amarillo (Urgente)'
+                        WHEN UPPER(tr.ObservacionTriage) LIKE '%VERDE%' THEN 'N4 Verde (Poco Urgente)'
+                        WHEN UPPER(tr.ObservacionTriage) LIKE '%AZUL%' THEN 'N5 Azul (No Urgente)'
+                        ELSE 'Evaluado Clínico / Signos'
+                    END AS nivel_triage,
+                    ISNULL(CAST(tr.ObservacionTriage AS VARCHAR(500)), NULL) AS observacion_enfermeria,
+                    tr.TS AS ta_sistolica,
+                    tr.TD AS ta_diastolica,
+                    tr.FC AS fc,
+                    tr.Temp AS temperatura,
+                    tr.SAO2 AS sato2
+                FROM VLISE_Visitas v
+                INNER JOIN TriageReal tr ON v.idEntrada = tr.idEntrada
+                WHERE v.[Grupo Agenda] = 'GUARDIA CLINICA'
+                  AND v.[Fecha Visita] >= '${fechaDesde} 00:00:00'
+                  AND v.[Fecha Visita] <= '${fechaHasta} 23:59:59'
+                  AND v.Asistencia = 'Presente'
+                ORDER BY v.[Fecha Visita] ASC, v.[Fecha Entrada Real] ASC;
+            `;
+            const resNominal = await pool.request().query(queryNominalTriage);
+            const nominalRows = resNominal.recordset || [];
+            if (nominalRows.length > 0) {
+                await supabase.from('guardia_triage_pacientes').delete().eq('periodo', periodo);
+                const batchSize = 100;
+                for (let i = 0; i < nominalRows.length; i += batchSize) {
+                    await supabase.from('guardia_triage_pacientes').insert(nominalRows.slice(i, i + batchSize));
+                }
+                console.log(`   📋 ${nominalRows.length} pacientes con triage sincronizados en guardia_triage_pacientes.`);
+            }
+        } catch (eNom) {
+            console.warn(`   ⚠️ Advertencia sincronizando guardia_triage_pacientes para ${periodo}:`, eNom.message);
+        }
+    }
+
     return payload;
 }
 
