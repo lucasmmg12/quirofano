@@ -546,6 +546,11 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             for (const [dateKey, dateEntries] of byDate) {
                 if (dateEntries.length > 1) {
                     const sorted = [...dateEntries].sort((a, b) => {
+                        // 0. Priorizar la ficha que ya esté Facturada en SALUS
+                        const isFacA = (a.facturada || a.estado_fac === 'Facturada') ? 1 : 0;
+                        const isFacB = (b.facturada || b.estado_fac === 'Facturada') ? 1 : 0;
+                        if (isFacA !== isFacB) return isFacB - isFacA;
+
                         // 1. Priorizar ficha con fecha_alta registrada
                         const hasAltaA = a.fecha_alta ? 1 : 0;
                         const hasAltaB = b.fecha_alta ? 1 : 0;
@@ -634,7 +639,11 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         traspasada_por = e.traspasada_por;
                     }
                     if (!en_carrito_traspaso && e.en_carrito_traspaso) en_carrito_traspaso = e.en_carrito_traspaso;
-                    if ((!estado_fac || estado_fac === 'Pendiente') && e.estado_fac && e.estado_fac !== 'Pendiente') {
+                    if (e.facturada || e.estado_fac === 'Facturada') {
+                        facturada = true;
+                        estado_fac = 'Facturada';
+                        if (e.responsable_fac) responsable_fac = e.responsable_fac;
+                    } else if ((!estado_fac || estado_fac === 'Pendiente') && e.estado_fac && e.estado_fac !== 'Pendiente') {
                         estado_fac = e.estado_fac;
                     }
                     if (!responsable_fac && e.responsable_fac) responsable_fac = e.responsable_fac;
@@ -742,6 +751,8 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             result = result.filter(a =>
                 (a.paciente || '').toLowerCase().includes(s) ||
                 (a.numero_admision || '').toLowerCase().includes(s) ||
+                (a._mergedAdmissions && a._mergedAdmissions.some(m => (m || '').toLowerCase().includes(s))) ||
+                (a._siblingAdmissionNumbers && a._siblingAdmissionNumbers.some(m => (m || '').toLowerCase().includes(s))) ||
                 (a.doctor || '').toLowerCase().includes(s) ||
                 (a.cliente || '').toLowerCase().includes(s) ||
                 (a.proceso || '').toLowerCase().includes(s) ||
@@ -2097,6 +2108,11 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                                                                             </span>
                                                                         )}
                                                                     </span>
+                                                                    {alta._mergedAdmissions.filter(x => x !== alta.numero_admision).length > 0 && (
+                                                                        <span style={{ fontSize: '0.65rem', color: '#166534', fontWeight: 600 }}>
+                                                                            Incluye: {alta._mergedAdmissions.filter(x => x !== alta.numero_admision).join(', ')}
+                                                                        </span>
+                                                                    )}
                                                                     <button 
                                                                         onClick={(e) => { e.stopPropagation(); handleSepararReingreso(alta.id); }}
                                                                         title="Des-fusionar y marcar como Reingreso Real"

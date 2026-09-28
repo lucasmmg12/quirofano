@@ -1952,7 +1952,7 @@ async function syncFacturacionInternada(db, fastSync = false) {
         // Consultar el estado actual de las altas para respetar July/August y estados clínicos
         const { data: altasChunk } = await supabase
             .from('altas_administrativas')
-            .select('numero_admision, estado_fac, fecha_alta, fecha_ingreso, devuelta_at')
+            .select('numero_admision, estado_fac, fecha_alta, fecha_ingreso, devuelta_at, paciente')
             .in('numero_admision', chunkAdms);
 
         const currentMap = new Map((altasChunk || []).map(a => [a.numero_admision, a]));
@@ -1987,7 +1987,18 @@ async function syncFacturacionInternada(db, fastSync = false) {
                 .from('altas_administrativas')
                 .update(payload)
                 .eq('numero_admision', numAdm);
-            if (!error) altasActualizadas++;
+            if (!error) {
+                altasActualizadas++;
+                // Propagar también a admisiones hermanas/gemelas (ej: PED00001655 y T008847) del mismo paciente y fecha
+                if (altaRow?.paciente && altaRow?.fecha_ingreso) {
+                    await supabase
+                        .from('altas_administrativas')
+                        .update(payload)
+                        .eq('paciente', altaRow.paciente)
+                        .eq('fecha_ingreso', altaRow.fecha_ingreso)
+                        .eq('facturada', false);
+                }
+            }
         }));
     }
 

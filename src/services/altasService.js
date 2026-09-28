@@ -362,6 +362,29 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
         from += PAGE_SIZE;
     }
 
+    // Si se especificó una búsqueda por texto (ej: "1655" o apellido del paciente),
+    // traer también las admisiones hermanas/gemelas de esos pacientes (ej: T008847 con PED00001655)
+    // para que el frontend pueda unificarlas y reconocer si ya fueron facturadas.
+    if (search && allData.length > 0) {
+        const patients = [...new Set(allData.map(r => r.paciente).filter(Boolean))];
+        if (patients.length > 0 && patients.length <= 50) {
+            const { data: siblings } = await supabase
+                .from('altas_administrativas')
+                .select('*')
+                .in('paciente', patients)
+                .or('traspaso_id.not.is.null,estado.eq.Suspendida,facturada.eq.true,estado_fac.eq.Facturada');
+
+            if (siblings && siblings.length > 0) {
+                const existingIds = new Set(allData.map(r => r.id));
+                for (const sib of siblings) {
+                    if (!existingIds.has(sib.id)) {
+                        allData.push(sib);
+                    }
+                }
+            }
+        }
+    }
+
     // Deduplicación estricta por numero_admision para evitar filas duplicadas o pisadas (autosalud)
     // Facturación recibe únicamente los registros traspasados/despachados en el carrito o suspendidos
     const mapByAdmision = new Map();
@@ -385,6 +408,8 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
             }
         }
     }
+    allData = Array.from(mapByAdmision.values());
+
     // Deduplicación preventiva de prórrogas/cortes de mes (-P1, -P2):
     // Si la admisión base ya está presente y facturada (o tiene facturas), descartar el registro duplicado -P no facturado
     const baseFacturadas = new Set(
@@ -408,12 +433,28 @@ export async function fetchAltasFacturacion({ fromDate, toDate, search } = {}) {
 
     if (search) {
         const s = search.toLowerCase().trim();
-        allData = allData.filter(a =>
-            (a.paciente || '').toLowerCase().includes(s) ||
-            (a.doctor || '').toLowerCase().includes(s) ||
-            (a.cliente || '').toLowerCase().includes(s) ||
-            (a.numero_admision || '').toLowerCase().includes(s)
+        // Guardar pacientes que coincidieron directamente con la búsqueda
+        const matchedPatients = new Set(
+            allData
+                .filter(a =>
+                    (a.paciente || '').toLowerCase().includes(s) ||
+                    (a.doctor || '').toLowerCase().includes(s) ||
+                    (a.cliente || '').toLowerCase().includes(s) ||
+                    (a.numero_admision || '').toLowerCase().includes(s)
+                )
+                .map(a => (a.paciente || '').trim().toUpperCase())
+                .filter(Boolean)
         );
+
+        // Conservar tanto las admisiones que coinciden directamente como sus hermanas de mismo paciente
+        allData = allData.filter(a => {
+            const pac = (a.paciente || '').trim().toUpperCase();
+            return matchedPatients.has(pac) ||
+                (a.paciente || '').toLowerCase().includes(s) ||
+                (a.doctor || '').toLowerCase().includes(s) ||
+                (a.cliente || '').toLowerCase().includes(s) ||
+                (a.numero_admision || '').toLowerCase().includes(s);
+        });
     }
 
     return allData;
