@@ -149,9 +149,21 @@ async function main() {
     console.log('🚀 Sincronizando Tiempos y Outliers de Guardia Clínica...');
     const pool = await sql.connect(SQL_CONFIG);
 
-    await syncPeriod(pool, '2026-09', '2026-09-01', '2026-09-30');
-    await syncPeriod(pool, '2026-08', '2026-08-01', '2026-08-31');
-    await syncPeriod(pool, '2026-07', '2026-07-01', '2026-07-31');
+    const periods = [
+        { p: '2026-09', d: '2026-09-01', h: '2026-09-30' },
+        { p: '2026-08', d: '2026-08-01', h: '2026-08-31' },
+        { p: '2026-07', d: '2026-07-01', h: '2026-07-31' },
+        { p: '2026-06', d: '2026-06-01', h: '2026-06-30' },
+        { p: '2026-05', d: '2026-05-01', h: '2026-05-31' },
+        { p: '2026-04', d: '2026-04-01', h: '2026-04-30' },
+        { p: '2026-03', d: '2026-03-01', h: '2026-03-31' },
+        { p: '2026-02', d: '2026-02-01', h: '2026-02-28' },
+        { p: '2026-01', d: '2026-01-01', h: '2026-01-31' }
+    ];
+
+    for (const item of periods) {
+        await syncPeriod(pool, item.p, item.d, item.h);
+    }
 
     await pool.close();
     console.log('\n🏁 Sincronización de tiempos y outliers completada!');

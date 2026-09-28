@@ -35,6 +35,7 @@ export default function GuardiaOutliersModal({
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState('all'); 
     const [sortBy, setSortBy] = useState(isConversionCirugia ? 'espera_asc' : isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
+    const [visibleCount, setVisibleCount] = useState(500);
 
     // Cargar pacientes nominales desde Supabase
     useEffect(() => {
@@ -43,77 +44,71 @@ export default function GuardiaOutliersModal({
         let isMounted = true;
         setLoading(true);
         setActiveFilter('all');
+        setVisibleCount(500);
         setSortBy(isConversionCirugia ? 'espera_asc' : isTriage || isEpicrisis ? 'fecha_desc' : 'espera_desc');
 
         const fetchData = async () => {
             try {
                 const targetPeriodo = periodo === '2026-ANUAL' ? '2026-09' : periodo;
 
+                // Función de paginación automática para evitar el límite de 1.000 filas por request de Supabase/PostgREST
+                const fetchAllRows = async (tableName, applyFilters) => {
+                    let allRows = [];
+                    let page = 0;
+                    const pageSize = 1000;
+                    while (true) {
+                        let query = supabase
+                            .from(tableName)
+                            .select('*')
+                            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                        query = applyFilters(query);
+                        const { data, error } = await query;
+
+                        if (error) {
+                            console.error(`Error fetching ${tableName}:`, error.message);
+                            break;
+                        }
+                        if (!data || data.length === 0) break;
+                        allRows.push(...data);
+                        if (data.length < pageSize) break;
+                        page++;
+                    }
+                    return allRows;
+                };
+
                 if (isConversionCirugia) {
-                    let query = supabase
-                        .from('guardia_cirugias_conversion')
-                        .select('*');
-
-                    if (periodo && periodo !== '2026-ANUAL') {
-                        query = query.eq('periodo', targetPeriodo);
-                    }
-
-                    const { data, error } = await query
-                        .order('fecha_cirugia', { ascending: false })
-                        .order('hora_cirugia', { ascending: false });
-
-                    if (error) {
-                        console.error('Error fetching guardia_cirugias_conversion:', error.message);
-                    } else if (isMounted) {
-                        setRecords(data || []);
-                    }
+                    const data = await fetchAllRows('guardia_cirugias_conversion', (q) => {
+                        let res = q;
+                        if (periodo && periodo !== '2026-ANUAL') {
+                            res = res.eq('periodo', targetPeriodo);
+                        }
+                        return res.order('fecha_cirugia', { ascending: false }).order('hora_cirugia', { ascending: false });
+                    });
+                    if (isMounted) setRecords(data || []);
                 } else if (isTriage) {
-                    let query = supabase
-                        .from('guardia_triage_pacientes')
-                        .select('*');
-
-                    if (periodo && periodo !== '2026-ANUAL') {
-                        query = query.eq('periodo', targetPeriodo);
-                    }
-
-                    const { data, error } = await query
-                        .order('fecha_visita', { ascending: false })
-                        .order('hora_llegada', { ascending: false });
-
-                    if (error) {
-                        console.error('Error fetching guardia_triage_pacientes:', error.message);
-                    } else if (isMounted) {
-                        setRecords(data || []);
-                    }
+                    const data = await fetchAllRows('guardia_triage_pacientes', (q) => {
+                        let res = q;
+                        if (periodo && periodo !== '2026-ANUAL') {
+                            res = res.eq('periodo', targetPeriodo);
+                        }
+                        return res.order('fecha_visita', { ascending: false }).order('hora_llegada', { ascending: false });
+                    });
+                    if (isMounted) setRecords(data || []);
                 } else if (isEpicrisis) {
-                    let query = supabase
-                        .from('guardia_epicrisis_altas')
-                        .select('*');
-
-                    if (periodo && periodo !== '2026-ANUAL') {
-                        query = query.eq('periodo', targetPeriodo);
-                    }
-
-                    const { data, error } = await query
-                        .order('fecha_ingreso', { ascending: false });
-
-                    if (error) {
-                        console.error('Error fetching guardia_epicrisis_altas:', error.message);
-                    } else if (isMounted) {
-                        setRecords(data || []);
-                    }
+                    const data = await fetchAllRows('guardia_epicrisis_altas', (q) => {
+                        let res = q;
+                        if (periodo && periodo !== '2026-ANUAL') {
+                            res = res.eq('periodo', targetPeriodo);
+                        }
+                        return res.order('fecha_ingreso', { ascending: false });
+                    });
+                    if (isMounted) setRecords(data || []);
                 } else {
-                    const { data, error } = await supabase
-                        .from('guardia_consultas_tiempos')
-                        .select('*')
-                        .eq('periodo', targetPeriodo)
-                        .order('minutos_espera', { ascending: false, nullsFirst: false });
-
-                    if (error) {
-                        console.error('Error fetching guardia_consultas_tiempos:', error.message);
-                    } else if (isMounted) {
-                        setRecords(data || []);
-                    }
+                    const data = await fetchAllRows('guardia_consultas_tiempos', (q) => {
+                        return q.eq('periodo', targetPeriodo).order('minutos_espera', { ascending: false, nullsFirst: false });
+                    });
+                    if (isMounted) setRecords(data || []);
                 }
             } catch (err) {
                 console.error('Error in GuardiaOutliersModal:', err);
@@ -1810,7 +1805,7 @@ export default function GuardiaOutliersModal({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredRecords.slice(0, 350).map((r, idx) => {
+                                {filteredRecords.slice(0, visibleCount).map((r, idx) => {
                                     const hs = r.horas_espera_qx != null ? Number(r.horas_espera_qx) : 0;
                                     const isMenos6 = hs <= 6;
                                     const is6a12 = hs > 6 && hs <= 12;
@@ -1941,7 +1936,7 @@ export default function GuardiaOutliersModal({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredRecords.slice(0, 300).map((r, idx) => {
+                                {filteredRecords.slice(0, visibleCount).map((r, idx) => {
                                     const tieneEpicrisis = r.tiene_epicrisis;
 
                                     return (
@@ -2041,7 +2036,7 @@ export default function GuardiaOutliersModal({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredRecords.slice(0, 350).map((r, idx) => {
+                                {filteredRecords.slice(0, visibleCount).map((r, idx) => {
                                     const nivel = r.nivel_triage || '';
                                     const isAmarillo = nivel.toLowerCase().includes('amarillo') || nivel.includes('N3');
                                     const isVerde = nivel.toLowerCase().includes('verde') || nivel.includes('N4');
@@ -2162,7 +2157,7 @@ export default function GuardiaOutliersModal({
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredRecords.slice(0, 300).map((r, idx) => {
+                                {filteredRecords.slice(0, visibleCount).map((r, idx) => {
                                     const esCritico = r.minutos_espera != null && r.minutos_espera > 90;
                                     const esModerado = r.minutos_espera != null && r.minutos_espera > 60 && r.minutos_espera <= 90;
                                     const esMeta = r.minutos_espera != null && r.minutos_espera <= 30;
@@ -2250,6 +2245,29 @@ export default function GuardiaOutliersModal({
                             </tbody>
                         </table>
                     )}
+
+                    {filteredRecords.length > visibleCount && (
+                        <div style={{ textAlign: 'center', padding: '16px 0', borderTop: '1px solid #E2E8F0', marginTop: '12px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setVisibleCount(prev => prev + 500)}
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1.5px solid #BFDBFE',
+                                    color: '#1D4ED8',
+                                    borderRadius: '8px',
+                                    padding: '8px 20px',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 1px 3px rgba(37,99,235,0.1)',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                Cargar 500 pacientes más (Mostrando {Math.min(filteredRecords.length, visibleCount)} de {filteredRecords.length.toLocaleString()})
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* ── Footer ── */}
@@ -2262,7 +2280,7 @@ export default function GuardiaOutliersModal({
                     justifyContent: 'space-between'
                 }}>
                     <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                        Mostrando <strong>{filteredRecords.length}</strong> de <strong>{records.length}</strong> registros del período <strong>{periodoNombre}</strong>
+                        Mostrando <strong>{Math.min(filteredRecords.length, visibleCount)}</strong> de <strong>{filteredRecords.length.toLocaleString()}</strong> pacientes filtrados ({records.length.toLocaleString()} totales del período <strong>{periodoNombre}</strong>)
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
