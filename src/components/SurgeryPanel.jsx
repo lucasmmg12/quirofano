@@ -64,6 +64,16 @@ function getEffectiveStatus(surgery) {
     return surgery.status || 'lila';
 }
 
+/** Identifica si una cirugía corresponde a Hemodinamia */
+export function isHemodinamia(surgery) {
+    if (!surgery) return false;
+    const ga = (surgery.grupo_agendas || '').toUpperCase();
+    if (ga.includes('HEMODINAMIA')) return true;
+    const desc = (surgery.descripcion || '').toUpperCase();
+    if (desc.includes('HEMODINAMIA')) return true;
+    return false;
+}
+
 const URGENCY_THRESHOLDS = {
     critical: 24,   // < 24hs → ROJO
     warning: 72,    // 24-72hs → AMARILLO
@@ -151,6 +161,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [initialLoadDone, setInitialLoadDone] = useState(false);
     const [filter, setFilter] = useState('all');
+    const [agendaFilter, setAgendaFilter] = useState('all'); // 'all' | 'quirofano' | 'hemodinamia'
     const [searchTerm, setSearchTerm] = useState('');
     const [showUpload, setShowUpload] = useState(false);
     const [showAddForm, setShowAddForm] = useState(false);
@@ -346,6 +357,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const filtered = useMemo(() => {
         let list = surgeries;
 
+        // Agenda filter (Quirófanos vs Hemodinamia)
+        if (agendaFilter === 'hemodinamia') {
+            list = list.filter(s => isHemodinamia(s));
+        } else if (agendaFilter === 'quirofano') {
+            list = list.filter(s => !isHemodinamia(s));
+        }
+
         // Text search
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
@@ -355,6 +373,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 s.telefono?.includes(term) ||
                 s.medico?.toLowerCase().includes(term) ||
                 s.obra_social?.toLowerCase().includes(term) ||
+                s.descripcion?.toLowerCase().includes(term) ||
+                s.grupo_agendas?.toLowerCase().includes(term) ||
                 patientDataMap[s.id_paciente]?.dni?.includes(term)
             );
         }
@@ -372,7 +392,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         }
 
         return list;
-    }, [surgeries, searchTerm, filter, patientDataMap]);
+    }, [surgeries, searchTerm, filter, agendaFilter, patientDataMap]);
 
     // Count for tabs (based on ausente from raw data, not filtered)
     const historySurgeries = useMemo(() => {
@@ -967,6 +987,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     // Render individual surgery rows (extracted for reuse)
     const renderSurgeryRows = (surgery, effectiveStatus, cfg, cd, isExpanded) => {
         const isSuspended = surgery.ausente === '1';
+        const isHemo = isHemodinamia(surgery);
         const rows = [
             <tr key={surgery.id} className="cart__row"
                 onClick={() => {
@@ -978,16 +999,29 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}
                 style={{
                     cursor: 'pointer', transition: 'background 0.15s',
-                    ...(isSuspended && {
+                    ...(isSuspended ? {
                         background: '#FEF2F2',
                         opacity: 0.75,
-                    }),
+                    } : isHemo ? {
+                        background: isExpanded ? '#E0F2FE' : '#F0F9FF',
+                    } : {}),
                 }}
-                onMouseOver={e => { if (!isExpanded) e.currentTarget.style.background = isSuspended ? '#FEE2E2' : 'var(--neutral-50)'; }}
-                onMouseOut={e => { if (!isExpanded) e.currentTarget.style.background = isSuspended ? '#FEF2F2' : ''; }}
+                onMouseOver={e => {
+                    if (!isExpanded) {
+                        e.currentTarget.style.background = isSuspended ? '#FEE2E2' : isHemo ? '#E0F2FE' : 'var(--neutral-50)';
+                    }
+                }}
+                onMouseOut={e => {
+                    if (!isExpanded) {
+                        e.currentTarget.style.background = isSuspended ? '#FEF2F2' : isHemo ? '#F0F9FF' : '';
+                    }
+                }}
             >
                 {/* Row Checkbox */}
-                <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }}>
+                <td className="cart__td" style={{
+                    textAlign: 'center', padding: '4px',
+                    borderLeft: isHemo ? '4px solid #0284C7' : isSuspended ? '4px solid #EF4444' : '4px solid transparent',
+                }}>
                     {surgery.ausente !== '0' && surgery.ausente !== '1' && (
                         <input
                             type="checkbox"
@@ -1107,8 +1141,22 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     fontWeight: 600, fontSize: '0.82rem',
                     ...(isSuspended && { color: '#DC2626', textDecoration: 'line-through' }),
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {surgery.nombre}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span>{surgery.nombre}</span>
+                        {isHemo && (
+                            <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                padding: '1px 7px', borderRadius: '4px',
+                                background: '#E0F2FE', color: '#0369A1',
+                                fontSize: '0.62rem', fontWeight: 700,
+                                border: '1px solid #BAE6FD',
+                                textDecoration: 'none',
+                                letterSpacing: '0.3px',
+                                whiteSpace: 'nowrap',
+                            }}>
+                                🫀 HEMODINAMIA
+                            </span>
+                        )}
                         {isSuspended && (
                             <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '2px',
@@ -1123,6 +1171,18 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                             </span>
                         )}
                     </div>
+                    {surgery.descripcion && (
+                        <div style={{
+                            fontSize: '0.72rem',
+                            color: isHemo ? '#0284C7' : 'var(--neutral-500)',
+                            fontWeight: isHemo ? 600 : 400,
+                            marginTop: '2px',
+                            whiteSpace: 'normal',
+                            lineHeight: 1.25,
+                        }}>
+                            {surgery.descripcion}
+                        </div>
+                    )}
                 </td>
                 {/* DNI (from pacientes table) */}
                 <td className="cart__td" style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--neutral-600)' }}>
@@ -1320,6 +1380,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     fontSize: '0.78rem',
                                 }}>
                                     {[
+                                        { label: 'Servicio / Agenda', value: isHemo ? '🫀 HEMODINAMIA' : (surgery.grupo_agendas || 'QUIRÓFANOS') },
+                                        { label: 'Procedimiento', value: surgery.descripcion || surgery.modulo },
                                         { label: 'ID Paciente', value: surgery.id_paciente },
                                         { label: 'DNI', value: patientDataMap[surgery.id_paciente]?.dni || surgery.dni },
                                         { label: 'Edad', value: patientDataMap[surgery.id_paciente]?.edad },
@@ -2011,52 +2073,100 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             {/* ==================== SURGERY TABLE — GROUPED BY DATE ==================== */}
             <div className="cart" style={{ overflow: 'hidden' }}>
                 <div className="cart__header" style={{ flexDirection: 'column', gap: 'var(--space-3)' }}>
-                    <div className="cart__title-group">
-                        <div className="cart__icon-badge"><Calendar size={18} /></div>
-                        <h3 className="cart__title">
-                            {viewMode === 'upcoming' ? 'Cirugías Programadas' : 'Historial de Cirugías'}
-                        </h3>
-                        <span className="cart__badge">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</span>
-                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+                        <div className="cart__title-group">
+                            <div className="cart__icon-badge"><Calendar size={18} /></div>
+                            <h3 className="cart__title">
+                                {viewMode === 'upcoming' ? 'Cirugías Programadas' : 'Historial de Cirugías'}
+                            </h3>
+                            <span className="cart__badge">{filtered.length} registro{filtered.length !== 1 ? 's' : ''}</span>
+                        </div>
 
-                    {/* View Mode Tabs */}
-                    <div style={{ display: 'flex', gap: '2px', background: 'var(--neutral-100)', borderRadius: 'var(--radius-md)', padding: '3px', width: 'fit-content' }}>
-                        <button
-                            onClick={() => setViewMode('upcoming')}
-                            style={{
-                                padding: '6px 16px', borderRadius: 'var(--radius-sm)',
-                                fontSize: '0.78rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                                background: viewMode === 'upcoming' ? '#fff' : 'transparent',
-                                color: viewMode === 'upcoming' ? 'var(--primary-500)' : 'var(--neutral-500)',
-                                boxShadow: viewMode === 'upcoming' ? 'var(--shadow-sm)' : 'none',
-                                transition: 'all 0.2s',
-                                display: 'flex', alignItems: 'center', gap: '5px',
-                            }}
-                        >
-                            <Zap size={13} /> Próximas
-                            <span style={{
-                                background: viewMode === 'upcoming' ? 'var(--primary-500)' : 'var(--neutral-300)',
-                                color: '#fff', padding: '1px 7px', borderRadius: '8px', fontSize: '0.7rem',
-                            }}>{viewMode === 'upcoming' ? filtered.length : '⚡'}</span>
-                        </button>
-                        <button
-                            onClick={() => setViewMode('history')}
-                            style={{
-                                padding: '6px 16px', borderRadius: 'var(--radius-sm)',
-                                fontSize: '0.78rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                                background: viewMode === 'history' ? '#fff' : 'transparent',
-                                color: viewMode === 'history' ? 'var(--neutral-700)' : 'var(--neutral-500)',
-                                boxShadow: viewMode === 'history' ? 'var(--shadow-sm)' : 'none',
-                                transition: 'all 0.2s',
-                                display: 'flex', alignItems: 'center', gap: '5px',
-                            }}
-                        >
-                            <Clock size={13} /> Historial
-                            <span style={{
-                                background: viewMode === 'history' ? 'var(--neutral-600)' : 'var(--neutral-300)',
-                                color: '#fff', padding: '1px 7px', borderRadius: '8px', fontSize: '0.7rem',
-                            }}>{viewMode === 'history' ? filtered.length : '📋'}</span>
-                        </button>
+                        {/* Controls: View Mode Tabs & Agenda Filter */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            {/* View Mode Tabs */}
+                            <div style={{ display: 'flex', gap: '2px', background: 'var(--neutral-100)', borderRadius: 'var(--radius-md)', padding: '3px' }}>
+                                <button
+                                    onClick={() => setViewMode('upcoming')}
+                                    style={{
+                                        padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.78rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                                        background: viewMode === 'upcoming' ? '#fff' : 'transparent',
+                                        color: viewMode === 'upcoming' ? 'var(--primary-500)' : 'var(--neutral-500)',
+                                        boxShadow: viewMode === 'upcoming' ? 'var(--shadow-sm)' : 'none',
+                                        transition: 'all 0.2s',
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                    }}
+                                >
+                                    <Zap size={13} /> Próximas
+                                    <span style={{
+                                        background: viewMode === 'upcoming' ? 'var(--primary-500)' : 'var(--neutral-300)',
+                                        color: '#fff', padding: '1px 7px', borderRadius: '8px', fontSize: '0.7rem',
+                                    }}>{viewMode === 'upcoming' ? filtered.length : '⚡'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('history')}
+                                    style={{
+                                        padding: '6px 14px', borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.78rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                                        background: viewMode === 'history' ? '#fff' : 'transparent',
+                                        color: viewMode === 'history' ? 'var(--neutral-700)' : 'var(--neutral-500)',
+                                        boxShadow: viewMode === 'history' ? 'var(--shadow-sm)' : 'none',
+                                        transition: 'all 0.2s',
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                    }}
+                                >
+                                    <Clock size={13} /> Historial
+                                    <span style={{
+                                        background: viewMode === 'history' ? 'var(--neutral-600)' : 'var(--neutral-300)',
+                                        color: '#fff', padding: '1px 7px', borderRadius: '8px', fontSize: '0.7rem',
+                                    }}>{viewMode === 'history' ? filtered.length : '📋'}</span>
+                                </button>
+                            </div>
+
+                            {/* Agenda Filter (Todas / Quirófanos / Hemodinamia) */}
+                            <div style={{ display: 'flex', gap: '2px', background: 'var(--neutral-100)', borderRadius: 'var(--radius-md)', padding: '3px' }}>
+                                <button
+                                    onClick={() => setAgendaFilter('all')}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.76rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                                        background: agendaFilter === 'all' ? '#fff' : 'transparent',
+                                        color: agendaFilter === 'all' ? 'var(--neutral-800)' : 'var(--neutral-500)',
+                                        boxShadow: agendaFilter === 'all' ? 'var(--shadow-sm)' : 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    Todas
+                                </button>
+                                <button
+                                    onClick={() => setAgendaFilter('quirofano')}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.76rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                                        background: agendaFilter === 'quirofano' ? '#fff' : 'transparent',
+                                        color: agendaFilter === 'quirofano' ? 'var(--primary-600)' : 'var(--neutral-500)',
+                                        boxShadow: agendaFilter === 'quirofano' ? 'var(--shadow-sm)' : 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    🏥 Quirófanos
+                                </button>
+                                <button
+                                    onClick={() => setAgendaFilter('hemodinamia')}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.76rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                        background: agendaFilter === 'hemodinamia' ? '#0284C7' : 'transparent',
+                                        color: agendaFilter === 'hemodinamia' ? '#fff' : '#0369A1',
+                                        boxShadow: agendaFilter === 'hemodinamia' ? 'var(--shadow-sm)' : 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    🫀 Hemodinamia
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     {/* History Month Filter */}

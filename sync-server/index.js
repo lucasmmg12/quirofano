@@ -693,15 +693,25 @@ async function syncUci(db, fastSync = false) {
 async function syncCirugias(db) {
     console.log('📋 [1/7] Extrayendo cirugías de SALUS...');
     const result = await db.request().query(`
-        SELECT TOP 400
+        SELECT TOP 600
             CAST(A.Data AS DATE) AS Data_Fecha,
             A.idPaciente, A.nombre, A.telefono1, A.Descrip,
-            A.mutua, A.Ausente, A.GrupoAgendas, Q.Doctor,
+            A.mutua, A.Ausente, A.GrupoAgendas,
+            COALESCE(
+                CASE 
+                    WHEN Q.Doctor LIKE '%RX%' OR Q.Doctor IS NULL OR LEN(LTRIM(RTRIM(Q.Doctor))) = 0 THEN NULL 
+                    ELSE Q.Doctor 
+                END,
+                P.Nombre,
+                A.GrupoAgendas
+            ) AS Doctor,
             V.Instrucciones AS Instrucciones_RTF
         FROM _PR_AGENDA_QRY_SENZILL A
         LEFT JOIN _PR_AGENDA_QRY_QUIROFAN Q 
             ON A.idPaciente = Q.idPaciente 
-            AND CAST(A.Data AS DATE) = CAST(Q.Data AS DATE) 
+            AND CAST(A.Data AS DATE) = CAST(Q.Data AS DATE)
+        LEFT JOIN Visitas Vis ON A.idVisita = Vis.id
+        LEFT JOIN Personal P ON Vis.idPersonal = P.id
         OUTER APPLY (
             SELECT TOP 1 Instrucciones
             FROM VLIS_PeticionesPruebas_SERVICIO V_Sub
@@ -712,8 +722,8 @@ async function syncCirugias(db) {
         ) V
         WHERE A.Descrip LIKE '(CX)%'
           AND A.nombre NOT LIKE '%Bloque%'
-          AND A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD')
-          AND CAST(A.Data AS DATE) >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
+          AND A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD', N'HEMODINAMIA')
+          AND CAST(A.Data AS DATE) >= DATEADD(DAY, -14, CAST(GETDATE() AS DATE))
         ORDER BY A.Data DESC
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
@@ -813,11 +823,22 @@ async function syncCirugias(db) {
     // Filtrar registros con datos completos para upsert
     const validRecords = records.filter(r => r.id_paciente && r.nombre && r.fecha_cirugia);
 
-    // Deduplicar (último gana)
+    // Deduplicar (unir procedimientos del mismo paciente en el mismo día si hay varios registros)
     const deduped = new Map();
     for (const row of validRecords) {
         const key = `${row.id_paciente}|${row.nombre}|${row.fecha_cirugia}`;
-        deduped.set(key, row);
+        if (deduped.has(key)) {
+            const existingRow = deduped.get(key);
+            if (row.descripcion && !existingRow.descripcion.includes(row.descripcion)) {
+                existingRow.descripcion = `${existingRow.descripcion} + ${row.descripcion}`;
+                existingRow.modulo = existingRow.descripcion;
+            }
+            if (row.medico && row.medico !== 'HEMODINAMIA' && !row.medico.includes('RX') && (!existingRow.medico || existingRow.medico === 'HEMODINAMIA' || existingRow.medico.includes('RX'))) {
+                existingRow.medico = row.medico;
+            }
+        } else {
+            deduped.set(key, row);
+        }
     }
 
     const patientIds = [...new Set([...deduped.values()].map(r => r.id_paciente))];
