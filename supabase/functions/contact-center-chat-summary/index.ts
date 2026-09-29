@@ -369,6 +369,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         }
 
         const finalSummary = {
+            ...(conv?.ai_summary || {}),
             ...parsed,
             prestador_matched: matchedDoctor,
             generated_at: new Date().toISOString(),

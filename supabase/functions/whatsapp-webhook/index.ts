@@ -2785,6 +2785,7 @@ async function handleChatbotTriage(
         updates.bot_stage = 'esperando_seleccion_medico';
         nextStage = 'esperando_seleccion_medico';
         updates.motivo_consulta = `Selección de Médico (${analysis.doctorCandidate ? analysis.doctorCandidate.toUpperCase() : 'Homónimo'})`;
+        updates.medico_o_especialidad = `Homónimos: ${capSurname || 'Buteler'}`;
 
         // Preservar datos aportados en el mismo mensaje para no volver a pedirlos
         if (candidateDni) updates.dni = candidateDni;
@@ -2895,7 +2896,49 @@ async function handleChatbotTriage(
     // FLUJO 0A-2B: SELECCIÓN DE MÉDICO HOMÓNIMO
     // =============================================
     else if (currentStage === 'esperando_seleccion_medico') {
-        const storedDocs = (conv?.ai_summary as any)?.candidates_medicos || [];
+        let storedDocs = (conv?.ai_summary as any)?.candidates_medicos || [];
+
+        // Recuperación resiliente si candidates_medicos no está en memoria o fue sobrescrito
+        if (!Array.isArray(storedDocs) || storedDocs.length === 0) {
+            const surnameMatch = conv?.medico_o_especialidad?.replace(/^Homónimos:\s*/i, '') || 
+                                 conv?.motivo_consulta?.match(/Selección de Médico \(([^)]+)\)/i)?.[1] || 
+                                 lastBotMessage?.content?.match(/doctor\/a\s+([^\n?]+)/i)?.[1]?.trim() || 
+                                 'Buteler';
+
+            if (surnameMatch) {
+                try {
+                    const { data: fallbackDocs } = await supabase
+                        .from('contact_center_doctor_parameters')
+                        .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                        .ilike('profesional_nombre', `%${surnameMatch.trim()}%`)
+                        .limit(15);
+                    
+                    if (fallbackDocs && fallbackDocs.length > 0) {
+                        const enriched = fallbackDocs.map((d: any) => {
+                            const info = formatDoctorDisplay(d);
+                            return { ...d, formattedInfo: info, displayName: info.displayName, cleanSpecialty: info.specialty };
+                        });
+                        const uniqueMap = new Map();
+                        for (const d of enriched) {
+                            const k = d.displayName.toLowerCase();
+                            if (!uniqueMap.has(k)) {
+                                uniqueMap.set(k, d);
+                            } else {
+                                const ex = uniqueMap.get(k);
+                                if ((d.condiciones_consulta?.length || 0) > (ex.condiciones_consulta?.length || 0)) {
+                                    uniqueMap.set(k, d);
+                                }
+                            }
+                        }
+                        storedDocs = Array.from(uniqueMap.values()).slice(0, 5);
+                        console.log(`[triage-bot] 🔄 Fallback de homónimos reconstruyó ${storedDocs.length} médicos para '${surnameMatch}'`);
+                    }
+                } catch (fbErr) {
+                    console.warn('[triage-bot] Error reconstruyendo candidatos homónimos:', fbErr);
+                }
+            }
+        }
+
         let selectedDoc: any = null;
         const trimmed = cleanText.trim().toLowerCase();
 
