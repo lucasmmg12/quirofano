@@ -3709,7 +3709,42 @@ app.get('/api/salus/cleanup/asociaciones-dups', async (req, res) => {
     }
 });
 
-// â”€â”€ Servidor â”€â”€
+// ── Sincronizador de Métricas de Incentivos Contact Center hacia Supabase ──
+export async function syncIncentivosContactCenterToSupabase(periodo) {
+    try {
+        const poolInst = await getPool();
+        const data = await getIncentivosContactCenter(poolInst, { periodo });
+        if (data) {
+            await supabase.from('app_config').upsert({
+                key: `cc_incentivo_${periodo}`,
+                value: JSON.stringify({ ...data, synced_at: new Date().toISOString() }),
+                label: `Métricas de Incentivos Contact Center ${periodo}`,
+                category: 'incentivos_contact_center',
+                updated_at: new Date().toISOString(),
+                updated_by: 'salus_sync_server'
+            });
+            console.log(`🏆 [Incentivos Auto] Sincronizado período ${periodo} a Supabase app_config.`);
+        }
+        return data;
+    } catch (e) {
+        console.warn(`⚠️ [Incentivos Auto] Error sincronizando ${periodo}:`, e.message);
+        throw e;
+    }
+}
+
+// ── Endpoint HTTP de Incentivos del Contact Center ──
+app.get('/api/salus/incentivos-contact-center', async (req, res) => {
+    try {
+        const periodo = req.query.periodo || new Date().toISOString().substring(0, 7);
+        const data = await syncIncentivosContactCenterToSupabase(periodo);
+        res.json({ success: true, data });
+    } catch (err) {
+        console.error('Error calculando incentivos de SALUS:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── Servidor ──
 
 // ── Heartbeat a Supabase (salus_sync_server_status) ──
 async function sendHeartbeat() {
@@ -3968,6 +4003,21 @@ app.listen(PORT, '0.0.0.0', () => {
 
         setTimeout(syncHistorialContactCenter, 5000);
         setInterval(syncHistorialContactCenter, 4 * 60 * 1000);
+
+        // 5. INCENTIVOS CONTACT CENTER MES A MES (Inicio y cada 15 min)
+        async function syncIncentivosCiclo() {
+            if (syncInProgress) return;
+            try {
+                const meses = ['2026-08', '2026-09', '2026-10'];
+                for (const m of meses) {
+                    await syncIncentivosContactCenterToSupabase(m);
+                }
+            } catch (e) {
+                console.warn('⚠️ [Incentivos Auto] Error en ciclo:', e.message);
+            }
+        }
+        setTimeout(syncIncentivosCiclo, 6000);
+        setInterval(syncIncentivosCiclo, 15 * 60 * 1000);
     }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
 });
 

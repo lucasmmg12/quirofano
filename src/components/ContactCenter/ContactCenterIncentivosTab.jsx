@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Award, TrendingUp, Users, Calendar, CheckCircle2, AlertCircle, 
     ArrowUpRight, Printer, RefreshCw, HelpCircle, FileText, ChevronDown, 
-    ChevronUp, Shield, Sliders, DollarSign, MessageSquare, PhoneCall
+    ChevronUp, Shield, Sliders, DollarSign, MessageSquare, PhoneCall,
+    ChevronLeft, ChevronRight, Cloud
 } from 'lucide-react';
 import { 
     BASE_GARANTIZADA_HISTORICA,
@@ -20,44 +21,65 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [datosSalus, setDatosSalus] = useState(null);
+    const [dataSource, setDataSource] = useState(null);
+    const [lastSyncDate, setLastSyncDate] = useState(null);
     const [mensajesManuales, setMensajesManuales] = useState('');
     const [ajustesFte, setAjustesFte] = useState({});
     const [showEscalonesModal, setShowEscalonesModal] = useState(false);
     const [showReporteModal, setShowReporteModal] = useState(false);
     const [activeEscalonTab, setActiveEscalonTab] = useState('mensajes');
 
+    // Navegación mes a mes
+    const navegarMes = (direccion) => {
+        const [yStr, mStr] = periodo.split('-');
+        let y = parseInt(yStr, 10);
+        let m = parseInt(mStr, 10) + direccion;
+        if (m < 1) { m = 12; y--; }
+        if (m > 12) { m = 1; y++; }
+        const nuevoPeriodo = `${y}-${String(m).padStart(2, '0')}`;
+        setPeriodo(nuevoPeriodo);
+    };
+
     // Cargar datos del período seleccionado
-    const cargarPeriodo = async (p = periodo) => {
+    const cargarPeriodo = async (p = periodo, isForce = false) => {
         setLoading(true);
         setError(null);
         try {
-            const [salusData, msgsSb] = await Promise.all([
-                fetchMetricasIncentivosSalus(p),
+            const [salusRes, msgsSb] = await Promise.all([
+                fetchMetricasIncentivosSalus(p, { forceRefresh: isForce }),
                 fetchMensajesContactCenterMes(p)
             ]);
-            setDatosSalus(salusData);
+            const rawData = salusRes.data || salusRes;
+            setDatosSalus(rawData);
+            setDataSource(salusRes.source || 'cloud');
+            setLastSyncDate(salusRes.updatedAt || new Date().toISOString());
 
-            // Valores de referencia históricos para meses ya transcurridos si en base no hay tracking completo
-            let defaultMsgs = msgsSb;
-            if (p === '2026-08') defaultMsgs = 7820; // Mes completo agosto (superó escalón 6)
-            if (p === '2026-09') defaultMsgs = 7640; // Mes completo septiembre
-            setMensajesManuales(String(defaultMsgs));
+            // Valores de referencia o conteo real de mensajes
+            let defaultMsgs = msgsSb || 0;
+            if (p === '2026-08' && defaultMsgs === 0) defaultMsgs = 7820; // Mes completo agosto
+            if (p === '2026-09' && defaultMsgs === 0) defaultMsgs = 7640; // Mes completo septiembre
+            if (defaultMsgs > 0 || !mensajesManuales) {
+                setMensajesManuales(String(defaultMsgs));
+            }
 
-            // Inicializar ajustes de FTE para casos específicos
+            // Inicializar ajustes de FTE para casos específicos de altas/bajas
             if (p === '2026-08') {
-                setAjustesFte({
+                setAjustesFte(prev => ({
+                    ...prev,
                     eleal: 0.5, // Érica ingreso a mediados de agosto
                     macosta: 1.0
-                });
+                }));
             } else if (p === '2026-09') {
-                setAjustesFte({
+                setAjustesFte(prev => ({
+                    ...prev,
                     eleal: 0.5, // Curva 50%
                     macosta: 0.15 // Baja a principios de septiembre (días trabajados)
-                });
+                }));
             } else {
-                setAjustesFte({
+                setAjustesFte(prev => ({
+                    ...prev,
                     eleal: 0.5
-                });
+                }));
             }
         } catch (err) {
             console.error('Error cargando métricas de incentivos:', err);
@@ -69,7 +91,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     };
 
     useEffect(() => {
-        cargarPeriodo(periodo);
+        cargarPeriodo(periodo, false);
     }, [periodo]);
 
     // Cálculo dinámico de la liquidación
@@ -154,33 +176,97 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </div>
                 </div>
 
-                {/* Controles de Período y Acciones */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F8FAFC', padding: '6px 12px', borderRadius: '10px', border: '1px solid #CBD5E1' }}>
-                        <Calendar size={15} color="#0284C7" />
-                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>Período:</span>
-                        <select
-                            value={periodo}
-                            onChange={(e) => setPeriodo(e.target.value)}
+                {/* Controles de Período y Acciones Mes a Mes */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* Navegador Mes a Mes */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: '#F8FAFC',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '10px',
+                        padding: '2px 4px'
+                    }}>
+                        <button
+                            onClick={() => navegarMes(-1)}
+                            title="Mes anterior"
                             style={{
-                                border: 'none',
                                 background: 'transparent',
-                                fontWeight: 800,
-                                fontSize: '0.80rem',
-                                color: '#003B71',
-                                outline: 'none',
-                                cursor: 'pointer'
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: '#475569',
+                                borderRadius: '6px'
                             }}
                         >
-                            <option value="2026-08">Agosto 2026 (Simulación Piloto)</option>
-                            <option value="2026-09">Septiembre 2026 (Mes Actual)</option>
-                            <option value="2026-10">Octubre 2026 (Entrada en Vigencia)</option>
-                        </select>
+                            <ChevronLeft size={16} />
+                        </button>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0 6px' }}>
+                            <Calendar size={14} color="#003B71" />
+                            <select
+                                value={periodo}
+                                onChange={(e) => setPeriodo(e.target.value)}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    fontWeight: 800,
+                                    fontSize: '0.82rem',
+                                    color: '#003B71',
+                                    outline: 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <option value="2026-07">Julio 2026 (Histórico)</option>
+                                <option value="2026-08">Agosto 2026 (Liquidación 1 - Curva Érica)</option>
+                                <option value="2026-09">Septiembre 2026 (Liquidación 2 - Cese Antonella)</option>
+                                <option value="2026-10">Octubre 2026 (Mes en Curso)</option>
+                                <option value="2026-11">Noviembre 2026 (Proyección)</option>
+                                <option value="2026-12">Diciembre 2026</option>
+                            </select>
+                        </div>
+
+                        <button
+                            onClick={() => navegarMes(1)}
+                            title="Mes siguiente"
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: '#475569',
+                                borderRadius: '6px'
+                            }}
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+
+                    {/* Badge de Estado / Sincronización */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        background: '#F0FDF4',
+                        border: '1px solid #BBF7D0',
+                        color: '#15803D',
+                        padding: '6px 10px',
+                        borderRadius: '10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700
+                    }}>
+                        <Cloud size={13} color="#16A34A" />
+                        <span>Cloud SALUS</span>
                     </div>
 
                     <button
-                        onClick={() => cargarPeriodo(periodo)}
+                        onClick={() => cargarPeriodo(periodo, true)}
                         disabled={loading}
+                        title="Forzar actualización directa desde SALUS SQL Server"
                         style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
                             background: '#FFFFFF', border: '1px solid #CBD5E1',

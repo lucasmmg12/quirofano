@@ -123,20 +123,66 @@ export function calculateEscalon(valor, tipo) {
 }
 
 /**
- * Obtiene las métricas en vivo de SALUS vía sync-server
+ * Obtiene las métricas oficiales de SALUS para el período seleccionado.
+ * Prioriza la lectura directa de Supabase (Cloud-First), lo que permite que funcione
+ * instantáneamente en Vercel, móviles e intranet sin requerir conexión LAN directa.
  */
-export async function fetchMetricasIncentivosSalus(periodo) {
+export async function fetchMetricasIncentivosSalus(periodo, { forceRefresh = false } = {}) {
+    // 1. Intento Cloud-First: consultar snapshot en Supabase app_config
+    if (!forceRefresh) {
+        try {
+            const { data: row, error } = await supabase
+                .from('app_config')
+                .select('value, updated_at')
+                .eq('key', `cc_incentivo_${periodo}`)
+                .maybeSingle();
+
+            if (!error && row?.value) {
+                const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+                if (parsed && (parsed.turnosGrupales || parsed.agentes)) {
+                    return { success: true, data: parsed, source: 'supabase', updatedAt: row.updated_at };
+                }
+            }
+        } catch (supaErr) {
+            console.warn('[incentivos] Error leyendo snapshot de Supabase:', supaErr);
+        }
+    }
+
+    // 2. Si se fuerza refresh o no está en Supabase, probar endpoint directo si hay sync-server local
     const base = getSalusSyncBaseUrl();
-    const url = `${base}/api/salus/incentivos-contact-center?periodo=${encodeURIComponent(periodo)}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-        throw new Error(`Error en servidor de sincronización SALUS (${res.status})`);
+    if (base) {
+        try {
+            const url = `${base}/api/salus/incentivos-contact-center?periodo=${encodeURIComponent(periodo)}`;
+            const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            const contentType = res.headers.get('content-type') || '';
+            if (res.ok && contentType.includes('application/json')) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    return { success: true, data: json.data, source: 'sync_direct' };
+                }
+            }
+        } catch (directErr) {
+            console.warn('[incentivos] No se pudo conectar al sync-server local:', directErr.message);
+        }
     }
-    const json = await res.json();
-    if (!json.success) {
-        throw new Error(json.error || 'No se pudieron recuperar las métricas de SALUS');
-    }
-    return json;
+
+    // 3. Fallback en Supabase
+    try {
+        const { data: row } = await supabase
+            .from('app_config')
+            .select('value, updated_at')
+            .eq('key', `cc_incentivo_${periodo}`)
+            .maybeSingle();
+
+        if (row?.value) {
+            const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+            if (parsed && (parsed.turnosGrupales || parsed.agentes)) {
+                return { success: true, data: parsed, source: 'supabase', updatedAt: row.updated_at };
+            }
+        }
+    } catch (_) {}
+
+    throw new Error(`Aún no hay métricas sincronizadas para el período ${periodo}. Haz clic en "Actualizar SALUS" o verifica que el servidor central esté operativo.`);
 }
 
 /**
