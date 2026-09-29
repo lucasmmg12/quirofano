@@ -28,6 +28,7 @@ import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
 import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase, parseOnlineComment } from './sync_turnos_online.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 import { syncTurnosActivos } from './sync_turnos_activos.mjs';
+import { getIncentivosContactCenter } from './incentivos_contact_center.mjs';
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -236,9 +237,11 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                         vn.Comentarios
                     FROM Visitas v
                     INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+                    LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
                     LEFT JOIN Agendas a ON v.idAgenda = a.id
                     LEFT JOIN Personal p ON v.idPersonal = p.id
                     WHERE v.Internet = 1
+                      AND (vl.Asistencia IS NULL OR vl.Asistencia = '')
                       AND v.Data >= CAST(GETDATE() AS DATE)
                       AND (vn.Comentarios LIKE '%${resolvedDni}%')
                     ORDER BY v.Data ASC, v.HoraInici ASC
@@ -526,6 +529,19 @@ app.get('/api/salus/paciente-historial-clinico', async (req, res) => {
         res.json({ success: true, ...data });
     } catch (err) {
         console.error('❌ Error consultando historial clínico del paciente:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/incentivos-contact-center', async (req, res) => {
+    try {
+        const pool = await getPool();
+        const { periodo } = req.query; // '2026-08', '2026-09', etc.
+        console.log(`🏆 [Incentivos Contact Center] Calculando métricas de productividad para período: ${periodo || 'actual'}...`);
+        const data = await getIncentivosContactCenter(pool, { periodo });
+        res.json({ success: true, ...data });
+    } catch (err) {
+        console.error('❌ Error calculando incentivos del Contact Center:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });

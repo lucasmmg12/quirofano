@@ -143,9 +143,11 @@ export async function syncTurnosActivos(pool, supabase) {
                     vn.Comentarios
                 FROM Visitas v
                 INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+                LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
                 LEFT JOIN Agendas a ON v.idAgenda = a.id
                 LEFT JOIN Personal p ON v.idPersonal = p.id
                 WHERE v.Internet = 1
+                  AND (vl.Asistencia IS NULL OR vl.Asistencia = '')
                   AND v.Data >= CAST(GETDATE() AS DATE)
                 ORDER BY v.Data ASC, v.HoraInici ASC
             `;
@@ -269,7 +271,7 @@ export async function syncTurnosActivos(pool, supabase) {
             }
         }
 
-        // 5. PURGAR TURNOS PASADOS (< HOY)
+        // 5. PURGAR TURNOS PASADOS (< HOY) Y TURNOS FUTUROS BORRADOS/CANCELADOS EN SALUS
         const { error: delErr } = await supabase
             .from('turnos_activos_pacientes')
             .delete()
@@ -277,6 +279,35 @@ export async function syncTurnosActivos(pool, supabase) {
 
         if (delErr) {
             console.warn('⚠️ [SYNC-TURNOS] Advertencia eliminando turnos vencidos:', delErr.message);
+        }
+
+        // 6. PURGAR TURNOS QUE FUERON BORRADOS EN SALUS PERO QUEDARON EN SUPABASE (>= HOY)
+        try {
+            const { data: futureRows, error: fErr } = await supabase
+                .from('turnos_activos_pacientes')
+                .select('id')
+                .gte('fecha', todayIso);
+
+            if (!fErr && Array.isArray(futureRows) && futureRows.length > 0) {
+                const deletedInSalusIds = futureRows
+                    .map(r => r.id)
+                    .filter(id => !turnosMap.has(id));
+
+                if (deletedInSalusIds.length > 0) {
+                    console.log(`🗑️ [SYNC-TURNOS] Purgando ${deletedInSalusIds.length} turnos borrados/cancelados en SALUS...`);
+                    const PURGE_BATCH = 500;
+                    for (let p = 0; p < deletedInSalusIds.length; p += PURGE_BATCH) {
+                        const pChunk = deletedInSalusIds.slice(p, p + PURGE_BATCH);
+                        await supabase
+                            .from('turnos_activos_pacientes')
+                            .delete()
+                            .in('id', pChunk);
+                    }
+                    console.log(`✅ [SYNC-TURNOS] ${deletedInSalusIds.length} turnos obsoletos purgados correctamente.`);
+                }
+            }
+        } catch (purgeErr) {
+            console.warn('⚠️ [SYNC-TURNOS] Error en purga de turnos cancelados en SALUS:', purgeErr.message);
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);

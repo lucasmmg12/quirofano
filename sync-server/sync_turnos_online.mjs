@@ -98,9 +98,11 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             vn.Comentarios
         FROM Visitas v
         INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+        LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
         LEFT JOIN Agendas a ON v.idAgenda = a.id
         LEFT JOIN Personal p ON v.idPersonal = p.id
         WHERE v.Internet = 1
+          AND (vl.Asistencia IS NULL OR vl.Asistencia = '')
           AND ${dateCondition}
         ORDER BY v.FechaCreacion DESC
     `;
@@ -295,7 +297,11 @@ export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {
                 for (let i = 0; i < visitIdList.length; i += BATCH_SIZE) {
                     const batch = visitIdList.slice(i, i + BATCH_SIZE);
                     const checkRes = await sqlPool.request().query(`
-                        SELECT id FROM Visitas WHERE id IN (${batch.join(',')})
+                        SELECT v.id 
+                        FROM Visitas v
+                        LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
+                        WHERE v.id IN (${batch.join(',')})
+                          AND (vl.Asistencia IS NULL OR vl.Asistencia = '')
                     `);
                     if (checkRes.recordset) {
                         for (const r of checkRes.recordset) {

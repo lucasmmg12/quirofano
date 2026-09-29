@@ -185,6 +185,7 @@ const VIEW_LABELS = {
     contact_center_nueva: 'Contact Center - Nueva Conversación',
     turnos_online: 'Turnos Online Duplicados',
     contact_center_metricas: 'Contact Center - Métricas y Costos',
+    contact_center_incentivos: 'Contact Center - Incentivos y Productividad',
     contact_center_config: 'Contact Center - Configuración',
     gobernanza: 'Gobernanza de Datos',
     gobernanza_indicadores: 'Gobernanza UCI',
@@ -265,7 +266,7 @@ function App({ currentUser, onLogout }) {
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
                 const CC_AND_SIMON_VIEWS = [
-                    'contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_config',
+                    'contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config',
                     'beto', 'simon', 'beto_rules', 'beto_analytics'
                 ];
                 if (activeView === 'inicio' || !CC_AND_SIMON_VIEWS.includes(activeView)) {
@@ -325,7 +326,7 @@ function App({ currentUser, onLogout }) {
     useEffect(() => {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
-        const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_config'];
+        const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
 
         if (isUciOnly) {
             const UCI_ALLOWED_VIEWS = ['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
@@ -908,7 +909,7 @@ function App({ currentUser, onLogout }) {
                     <ActivosPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
-                {['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_config'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
+                {['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_config', 'contact_center_incentivos'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
                     <ContactCenterPanel 
                         currentUser={currentUser} 
                         addToast={addToast} 
@@ -917,6 +918,7 @@ function App({ currentUser, onLogout }) {
                             activeView === 'turnos_online' ? 'turnos_online' :
                             activeView === 'contact_center_metricas' ? 'metricas' :
                             activeView === 'contact_center_config' ? 'configuracion' :
+                            activeView === 'contact_center_incentivos' ? 'incentivos' :
                             'conversaciones'
                         }
                         onTabChange={(tab) => {
@@ -926,6 +928,7 @@ function App({ currentUser, onLogout }) {
                                 turnos_online: 'turnos_online',
                                 metricas: 'contact_center_metricas',
                                 configuracion: 'contact_center_config',
+                                incentivos: 'contact_center_incentivos',
                             };
                             if (tabToView[tab] && activeView !== tabToView[tab]) {
                                 setActiveView(tabToView[tab]);

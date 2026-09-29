@@ -1541,6 +1541,12 @@ export default function ContactCenterChatConsole({
         const val = e.target.value;
         setMessageInput(val);
 
+        // Auto-expand hacia arriba del textarea según contenido
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+            inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`;
+        }
+
         if (val.startsWith('/')) {
             const query = val.slice(1);
             setQuickReplyFilter(query);
@@ -1551,11 +1557,29 @@ export default function ContactCenterChatConsole({
         }
     };
 
+    // Auto-ajustar altura cuando cambia messageInput externamente o se vacía
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.style.height = 'auto';
+            if (messageInput) {
+                inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`;
+            }
+        }
+    }, [messageInput]);
+
     const handleInputKeyDown = (e) => {
         if (!quickRepliesOpen) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                if (!canWriteMessage) {
-                    e.preventDefault();
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    // Shift + Enter: Salto de línea hacia arriba sin enviar (comportamiento natural)
+                    return;
+                }
+                // Enter solo: Enviar mensaje
+                e.preventDefault();
+                if (!canWriteMessage || isLocked || uploadingMedia) {
+                    return;
+                }
+                if (!messageInput.trim() && !selectedFile) {
                     return;
                 }
                 handleSend(e);
@@ -1581,7 +1605,10 @@ export default function ContactCenterChatConsole({
                 setMessageInput(resolveQuickReplyText(targetItem.content));
                 setQuickRepliesOpen(false);
             }
-        } else if (e.key === 'Enter' && !e.shiftKey) {
+        } else if (e.key === 'Enter') {
+            if (e.shiftKey) {
+                return;
+            }
             // Enter envía inmediatamente el atajo
             e.preventDefault();
             const matchedByDirectCmd = findQuickReplyByShortcut(messageInput);
@@ -4062,7 +4089,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
                             {/* Contenedor Principal de Entrada (Texto / Grabador de Audio) */}
                             <div style={{
-                                display: 'flex', alignItems: 'center', gap: '8px',
+                                display: 'flex', alignItems: 'flex-end', gap: '8px',
                                 background: isPrivateNote ? '#FFF7ED' : '#F8FAFC',
                                 border: isPrivateNote ? '1.5px solid #F97316' : '1px solid #CBD5E1',
                                 borderRadius: '12px', padding: '6px 10px'
@@ -4140,10 +4167,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             <Paperclip size={17} />
                                         </button>
 
-                                        {/* Input de Texto */}
-                                        <input 
+                                        {/* Input de Texto / Textarea auto-expandible hacia arriba */}
+                                        <textarea 
                                             ref={inputRef}
-                                            type="text"
+                                            rows={1}
                                             disabled={isLocked || uploadingMedia}
                                             placeholder={isPrivateNote 
                                                 ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
@@ -4153,7 +4180,22 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             value={messageInput}
                                             onChange={handleInputChange}
                                             onKeyDown={handleInputKeyDown}
-                                            style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', color: '#1E293B' }}
+                                            style={{
+                                                flex: 1,
+                                                border: 'none',
+                                                background: 'transparent',
+                                                outline: 'none',
+                                                fontSize: '0.88rem',
+                                                color: '#1E293B',
+                                                resize: 'none',
+                                                minHeight: '24px',
+                                                maxHeight: '160px',
+                                                overflowY: 'auto',
+                                                lineHeight: '1.4',
+                                                padding: '4px 0',
+                                                fontFamily: 'inherit',
+                                                boxSizing: 'border-box'
+                                            }}
                                         />
 
                                         {/* Botón Micrófono para Grabar Nota de Voz */}

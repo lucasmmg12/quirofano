@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
-    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio, Settings
+    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio, Settings, Award
 } from 'lucide-react';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
 import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
@@ -10,6 +10,7 @@ import ContactCenterPermisosTab from './ContactCenterPermisosTab';
 import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
 import ContactCenterMetricsTab from './ContactCenterMetricsTab';
 import ContactCenterConfigTab from './ContactCenterConfigTab';
+import ContactCenterIncentivosTab from './ContactCenterIncentivosTab';
 import { 
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
@@ -639,6 +640,28 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </button>
 
                         <button
+                            onClick={() => handleNavigateTab('incentivos')}
+                            style={{
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                background: activeSubTab === 'incentivos' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'incentivos' ? '#FFFFFF' : '#0D9488',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <Award size={14} />
+                            Incentivos Contact Center
+                            <span style={{
+                                background: activeSubTab === 'incentivos' ? '#0D9488' : '#CCFBF1',
+                                color: activeSubTab === 'incentivos' ? '#FFFFFF' : '#0F766E',
+                                fontSize: '0.65rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 800
+                            }}>
+                                10 Esc.
+                            </span>
+                        </button>
+
+                        <button
                             onClick={() => handleNavigateTab('configuracion')}
                             style={{
                                 padding: '6px 12px', borderRadius: '6px', border: 'none',
@@ -783,6 +806,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 <ContactCenterConfigTab 
                     currentUser={currentUser}
                     addToast={addToast}
+                />
+            )}
+
+            {activeSubTab === 'incentivos' && (
+                <ContactCenterIncentivosTab 
+                    currentUser={currentUser}
+                    activeAgent={activeAgent}
+                    addToast={addToast}
+                    onBackToConsole={() => handleNavigateTab('conversaciones')}
                 />
             )}
 
