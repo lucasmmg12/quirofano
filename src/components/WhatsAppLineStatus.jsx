@@ -122,12 +122,13 @@ export default function WhatsAppLineStatus() {
 
     return (
         <div style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '4px 6px', borderRadius: '10px',
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '2px 5px', borderRadius: '8px',
             background: anyOffline ? '#FEF2F2' : anyAlert ? '#FEF2F2' : '#F0FDF4',
             border: `1px solid ${anyOffline ? '#FECACA' : anyAlert ? '#FECACA' : '#BBF7D0'}`,
             animation: (anyOffline || anyAlert) ? 'pulse-alert 2s ease-in-out infinite' : 'none',
             transition: 'all 0.3s',
+            height: '26px',
         }}>
             {lines.map(line => {
                 const count = counts[line.id] || 0;
@@ -140,8 +141,8 @@ export default function WhatsAppLineStatus() {
                         key={line.id}
                         title={`${line.label}: ${isOnline ? '🟢 Conectado' : '🔴 Desconectado'}${line.updated_at ? ` (${formatLastSeen(line.updated_at)})` : ''} — ${count} conv. iniciadas (24h)`}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: '5px',
-                            padding: '3px 10px', borderRadius: '8px',
+                            display: 'flex', alignItems: 'center', gap: '4px',
+                            padding: '2px 8px', borderRadius: '6px',
                             background: !isOnline ? '#FEE2E2'
                                 : isOver ? '#FEE2E2'
                                 : `${line.color}12`,
@@ -149,6 +150,7 @@ export default function WhatsAppLineStatus() {
                             transition: 'all 0.3s',
                             position: 'relative',
                             overflow: 'hidden',
+                            height: '22px',
                         }}
                     >
                         {/* Progress bar background */}

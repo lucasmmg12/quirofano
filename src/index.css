@@ -66,7 +66,7 @@
   /* Layout */
   --sidebar-width: 260px;
   --sidebar-collapsed: 72px;
-  --header-height: 64px;
+  --header-height: 38px;
 }
 
 /* ===== DARK MODE ===== */
@@ -299,7 +299,9 @@
   }
 
   .topbar {
-    padding: var(--space-3) var(--space-4) !important;
+    padding: 2px var(--space-3) !important;
+    min-height: 38px !important;
+    height: 38px !important;
   }
 
   .content {

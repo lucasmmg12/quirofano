@@ -277,7 +277,7 @@ export default function HelpButton({ moduleId }) {
                 className="help-btn"
                 title={`Ayuda: ${content.title}`}
                 style={{
-                    width: '26px', height: '26px', borderRadius: '50%',
+                    width: '20px', height: '20px', borderRadius: '50%',
                     background: 'linear-gradient(135deg, #EEF2FF, #E0E7FF)',
                     border: '1px solid #C7D2FE',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -289,7 +289,7 @@ export default function HelpButton({ moduleId }) {
                     e.currentTarget.style.background = 'linear-gradient(135deg, #4F46E5, #6366F1)';
                     e.currentTarget.style.color = '#fff';
                     e.currentTarget.style.transform = 'scale(1.1)';
-                    e.currentTarget.style.boxShadow = '0 0 12px rgba(79,70,229,0.4)';
+                    e.currentTarget.style.boxShadow = '0 0 8px rgba(79,70,229,0.4)';
                 }}
                 onMouseOut={e => {
                     e.currentTarget.style.background = 'linear-gradient(135deg, #EEF2FF, #E0E7FF)';
@@ -298,7 +298,7 @@ export default function HelpButton({ moduleId }) {
                     e.currentTarget.style.boxShadow = 'none';
                 }}
             >
-                <HelpCircle size={14} strokeWidth={2.5} />
+                <HelpCircle size={12} strokeWidth={2.5} />
             </button>
 
             {/* Modal Overlay */}

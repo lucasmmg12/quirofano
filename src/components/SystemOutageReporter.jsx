@@ -38,12 +38,12 @@ export default function SystemOutageReporter({ currentUser, addToast }) {
                 onClick={() => setIsOpen(true)}
                 title="Reportar problema técnico o caída del sistema"
                 style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '6px 12px', borderRadius: '8px',
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '2px 8px', borderRadius: '6px',
                     background: '#FEF2F2', border: '1px solid #FCA5A5',
-                    color: '#DC2626', fontSize: '0.8rem', fontWeight: 600,
+                    color: '#DC2626', fontSize: '0.72rem', fontWeight: 600,
                     cursor: 'pointer', transition: 'all 0.2s',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap', height: '26px'
                 }}
                 onMouseOver={(e) => {
                     e.currentTarget.style.background = '#FEE2E2';
@@ -54,7 +54,7 @@ export default function SystemOutageReporter({ currentUser, addToast }) {
                     e.currentTarget.style.borderColor = '#FCA5A5';
                 }}
             >
-                <AlertTriangle size={16} />
+                <AlertTriangle size={13} />
                 <span className="hide-mobile">Reportar Problema</span>
             </button>
 

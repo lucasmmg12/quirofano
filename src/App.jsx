@@ -753,43 +753,43 @@ function App({ currentUser, onLogout }) {
                     <button
                         className="topbar__mobile-menu"
                         onClick={() => setMobileMenuOpen(true)}
-                        style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)', cursor: 'pointer', color: 'var(--neutral-600)', marginRight: '8px' }}
+                        style={{ display: 'none', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)', cursor: 'pointer', color: 'var(--neutral-600)', marginRight: '6px' }}
                     >
-                        <Menu size={18} />
+                        <Menu size={15} />
                     </button>
-                    <div className="topbar__left">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <h1 className="topbar__title topbar__title--wave">
-                                {'Plataforma'.split('').map((char, i) => (
-                                    <span key={`a-${i}`} className="topbar__wave-letter topbar__title-accent" style={{ animationDelay: `${i * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
-                                ))}
-                                <span className="topbar__wave-letter" style={{ animationDelay: `${10 * 0.08}s` }}>&nbsp;</span>
-                                {'Sanatorio Argentino'.split('').map((char, i) => (
-                                    <span key={`s-${i}`} className="topbar__wave-letter" style={{ animationDelay: `${(11 + i) * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
-                                ))}
-                            </h1>
-                            {activeView !== 'inicio' && (
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--neutral-400)', fontWeight: 500 }}>
-                                    <ChevronRight size={14} />
-                                    <span style={{ color: 'var(--primary-500)', fontWeight: 600 }}>{VIEW_LABELS[activeView] || activeView}</span>
-                                    <HelpButton moduleId={activeView} />
-                                </span>
-                            )}
-                        </div>
-                        <span className="topbar__subtitle">Sistema de gestión integral</span>
+                    <div className="topbar__left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <h1 className="topbar__title topbar__title--wave" style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                            {'Plataforma'.split('').map((char, i) => (
+                                <span key={`a-${i}`} className="topbar__wave-letter topbar__title-accent" style={{ animationDelay: `${i * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
+                            ))}
+                            <span className="topbar__wave-letter" style={{ animationDelay: `${10 * 0.08}s` }}>&nbsp;</span>
+                            {'Sanatorio Argentino'.split('').map((char, i) => (
+                                <span key={`s-${i}`} className="topbar__wave-letter" style={{ animationDelay: `${(11 + i) * 0.08}s` }}>{char === ' ' ? '\u00A0' : char}</span>
+                            ))}
+                        </h1>
+                        {activeView !== 'inicio' && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--neutral-400)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                                <ChevronRight size={12} />
+                                <span style={{ color: 'var(--primary-500)', fontWeight: 600 }}>{VIEW_LABELS[activeView] || activeView}</span>
+                                <HelpButton moduleId={activeView} />
+                            </span>
+                        )}
+                        <span className="topbar__subtitle hide-mobile" style={{ fontSize: '0.68rem', color: 'var(--neutral-400)', borderLeft: '1px solid var(--neutral-200)', paddingLeft: '8px', marginLeft: '2px', whiteSpace: 'nowrap', lineHeight: 1 }}>
+                            Sistema de gestión integral
+                        </span>
                     </div>
                     {/* WhatsApp Line Status — centered in topbar */}
                     {(activeView === 'mensajeria' || activeView === 'cirugias' || activeView === 'deudas') && (
                         <WhatsAppLineStatus />
                     )}
-                    <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <SystemOutageReporter currentUser={currentUser} addToast={addToast} />
                         {/* Dark Mode Toggle */}
                         <button
                             onClick={() => setDarkMode(d => !d)}
                             title={darkMode ? 'Modo claro' : 'Modo oscuro'}
                             style={{
-                                width: '34px', height: '34px', borderRadius: '10px',
+                                width: '26px', height: '26px', borderRadius: '6px',
                                 background: darkMode ? '#1E293B' : 'var(--neutral-50)',
                                 border: `1px solid ${darkMode ? '#334155' : 'var(--neutral-200)'}`,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -797,32 +797,34 @@ function App({ currentUser, onLogout }) {
                                 transition: 'all 0.2s',
                             }}
                         >
-                            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+                            {darkMode ? <Sun size={13} /> : <Moon size={13} />}
                         </button>
                         <span className="topbar__date">
                             {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </span>
                         {/* User Badge + Logout */}
                         <div style={{
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            padding: '4px 4px 4px 12px',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '2px 4px 2px 8px',
                             background: 'var(--neutral-50)',
-                            borderRadius: '20px',
+                            borderRadius: '14px',
                             border: '1px solid var(--neutral-200)',
+                            height: '26px',
                         }}>
                             <span style={{
-                                fontSize: '0.78rem', fontWeight: 600,
+                                fontSize: '0.72rem', fontWeight: 600,
                                 color: 'var(--neutral-600)',
+                                whiteSpace: 'nowrap',
                             }}>
                                 {currentUser.nombre?.includes('@')
                                     ? currentUser.nombre.split('@')[0].replace(/^\w/, c => c.toUpperCase())
                                     : currentUser.nombre}
                             </span>
                             <div style={{
-                                width: '28px', height: '28px', borderRadius: '50%',
+                                width: '20px', height: '20px', borderRadius: '50%',
                                 background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.65rem', fontWeight: 800, color: '#fff',
+                                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
                             }}>
                                 {currentUser.iniciales}
                             </div>
@@ -830,7 +832,7 @@ function App({ currentUser, onLogout }) {
                                 onClick={() => setShowChangePassword(true)}
                                 title="Cambiar contraseña"
                                 style={{
-                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    width: '20px', height: '20px', borderRadius: '50%',
                                     background: 'none', border: '1px solid var(--neutral-200)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     cursor: 'pointer', color: 'var(--neutral-400)',
@@ -839,13 +841,13 @@ function App({ currentUser, onLogout }) {
                                 onMouseOver={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.color = '#4F46E5'; e.currentTarget.style.borderColor = '#A5B4FC'; }}
                                 onMouseOut={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--neutral-400)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
                             >
-                                <KeyRound size={13} />
+                                <KeyRound size={11} />
                             </button>
                             <button
                                 onClick={onLogout}
                                 title="Cerrar sesión"
                                 style={{
-                                    width: '28px', height: '28px', borderRadius: '50%',
+                                    width: '20px', height: '20px', borderRadius: '50%',
                                     background: 'none', border: '1px solid var(--neutral-200)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     cursor: 'pointer', color: 'var(--neutral-400)',
@@ -854,7 +856,7 @@ function App({ currentUser, onLogout }) {
                                 onMouseOver={e => { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.color = '#DC2626'; e.currentTarget.style.borderColor = '#FCA5A5'; }}
                                 onMouseOut={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--neutral-400)'; e.currentTarget.style.borderColor = 'var(--neutral-200)'; }}
                             >
-                                <LogOut size={13} />
+                                <LogOut size={11} />
                             </button>
                         </div>
                     </div>
