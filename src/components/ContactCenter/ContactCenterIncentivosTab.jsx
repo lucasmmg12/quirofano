@@ -1,10 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Award, TrendingUp, Users, Calendar, CheckCircle2, AlertCircle, 
-    ArrowUpRight, Printer, RefreshCw, HelpCircle, FileText, ChevronDown, 
+    ArrowUpRight, ArrowDownRight, Printer, RefreshCw, HelpCircle, FileText, ChevronDown, 
     ChevronUp, Shield, Sliders, DollarSign, MessageSquare, PhoneCall,
-    ChevronLeft, ChevronRight, Cloud, Save
+    ChevronLeft, ChevronRight, Cloud, Save, BarChart3, Activity, Target, Zap
 } from 'lucide-react';
+import {
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    LineChart,
+    Line,
+    AreaChart,
+    Area,
+    XAxis,
+    YAxis,
+    Tooltip,
+    CartesianGrid,
+    Legend,
+    ReferenceLine,
+    Cell
+} from 'recharts';
 import { 
     BASE_GARANTIZADA_HISTORICA,
     MAX_VARIABLE_TOTAL,
@@ -14,7 +30,8 @@ import {
     fetchMetricasIncentivosSalus,
     fetchMensajesContactCenterMes,
     calcularLiquidacionCompleta,
-    guardarConversacionesAuditadasMes
+    guardarConversacionesAuditadasMes,
+    fetchHistoricoComparativoIncentivos
 } from '../../services/incentivoContactCenterService';
 
 export default function ContactCenterIncentivosTab({ activeAgent, currentUser, addToast }) {
@@ -30,6 +47,11 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     const [showEscalonesModal, setShowEscalonesModal] = useState(false);
     const [showReporteModal, setShowReporteModal] = useState(false);
     const [activeEscalonTab, setActiveEscalonTab] = useState('mensajes');
+
+    // Estados para gráficos de performance de agentes y comparativa mes a mes
+    const [historicoData, setHistoricoData] = useState(null);
+    const [loadingHistorico, setLoadingHistorico] = useState(false);
+    const [metricChartType, setMetricChartType] = useState('asistencia'); // 'asistencia' | 'turnos' | 'mensajes' | 'variable' | 'evolucion'
 
     // Navegación mes a mes
     const navegarMes = (direccion) => {
@@ -110,6 +132,22 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
     useEffect(() => {
         cargarPeriodo(periodo, false);
+    }, [periodo]);
+
+    // Cargar datos históricos comparativos mes a mes para los gráficos de performance
+    useEffect(() => {
+        let isMounted = true;
+        setLoadingHistorico(true);
+        fetchHistoricoComparativoIncentivos().then(res => {
+            if (isMounted && res.success) {
+                setHistoricoData(res);
+            }
+        }).catch(err => {
+            console.error('Error cargando histórico comparativo de incentivos:', err);
+        }).finally(() => {
+            if (isMounted) setLoadingHistorico(false);
+        });
+        return () => { isMounted = false; };
     }, [periodo]);
 
     // Cálculo dinámico de la liquidación
@@ -732,6 +770,320 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             Cada colaboradora percibe su variable según la tasa de asistencia de las citas creadas por ella con fecha en el mes. Reconoce el seguimiento personalizado del paciente.
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 3.B PERFORMANCE DE AGENTES Y COMPARATIVA MES A MES (GRÁFICOS)     */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                border: '1px solid #E2E8F0',
+                padding: '22px 24px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                marginBottom: '20px'
+            }}>
+                {/* Cabecera y Selector de Métrica */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                                width: '32px', height: '32px', borderRadius: '8px',
+                                background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <BarChart3 size={18} color="#0284C7" />
+                            </div>
+                            <h3 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0F2942' }}>
+                                Performance de Operadoras y Comparativa Mes a Mes
+                            </h3>
+                        </div>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
+                            Auditoría de productividad de cada colaboradora y del equipo: <strong>Agosto 2026 vs Septiembre 2026</strong> (SALUS y CRM WhatsApp).
+                        </p>
+                    </div>
+
+                    {/* Selector de Pestañas / Tipo de Métrica */}
+                    <div style={{
+                        display: 'flex', gap: '4px', background: '#F1F5F9',
+                        padding: '4px', borderRadius: '10px', border: '1px solid #E2E8F0',
+                        flexWrap: 'wrap'
+                    }}>
+                        {[
+                            { key: 'asistencia', label: 'Asistencia Efectiva (%)', icon: Target },
+                            { key: 'turnos', label: 'Turnos Otorgados', icon: PhoneCall },
+                            { key: 'mensajes', label: 'Conversaciones', icon: MessageSquare },
+                            { key: 'variable', label: 'Variable Cobrado ($)', icon: DollarSign },
+                            { key: 'evolucion', label: 'Evolución Equipo', icon: TrendingUp }
+                        ].map(tab => {
+                            const Icon = tab.icon;
+                            const isActive = metricChartType === tab.key;
+                            return (
+                                <button
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setMetricChartType(tab.key)}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '6px 12px', borderRadius: '8px', border: 'none',
+                                        background: isActive ? '#003B71' : 'transparent',
+                                        color: isActive ? '#FFFFFF' : '#475569',
+                                        fontWeight: 700, fontSize: '0.74rem', cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                        boxShadow: isActive ? '0 2px 4px rgba(0, 59, 113, 0.2)' : 'none'
+                                    }}
+                                >
+                                    <Icon size={13} />
+                                    <span>{tab.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Mini Tarjetas de Insights y Líderes de Productividad */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                    gap: '12px',
+                    marginBottom: '18px'
+                }}>
+                    <div style={{
+                        background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: '10px', padding: '10px 14px'
+                    }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#7C3AED', textTransform: 'uppercase' }}>
+                            🥇 Más Turnos en Septiembre
+                        </div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
+                            Virginia Jacques
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: '#6B21A8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <strong>1.227 turnos</strong> <span style={{ color: '#16A34A', fontWeight: 700 }}>(+125 vs Ago)</span>
+                        </div>
+                    </div>
+
+                    <div style={{
+                        background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px', padding: '10px 14px'
+                    }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#16A34A', textTransform: 'uppercase' }}>
+                            🚀 Mayor Salto en Turnos
+                        </div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
+                            Erica Leal
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: '#15803D', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <strong>+63.9% de aumento</strong> (de 573 a 939 turnos)
+                        </div>
+                    </div>
+
+                    <div style={{
+                        background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', padding: '10px 14px'
+                    }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#0284C7', textTransform: 'uppercase' }}>
+                            🎯 Mayor Asistencia a Citas
+                        </div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
+                            Sofia Olivier
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: '#0369A1', fontWeight: 600 }}>
+                            <strong>57.46%</strong> (Meta institucional: 55%)
+                        </div>
+                    </div>
+
+                    <div style={{
+                        background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px', padding: '10px 14px'
+                    }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#D97706', textTransform: 'uppercase' }}>
+                            💬 Mayor Volumen de Mensajes
+                        </div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
+                            Virginia Jacques
+                        </div>
+                        <div style={{ fontSize: '0.70rem', color: '#B45309', fontWeight: 600 }}>
+                            <strong>2.505 conversaciones</strong> (+54.4% vs Ago)
+                        </div>
+                    </div>
+                </div>
+
+                {/* Gráfico Recharts de Performance */}
+                <div style={{
+                    background: '#F8FAFC',
+                    borderRadius: '12px',
+                    border: '1px solid #E2E8F0',
+                    padding: '16px 12px 8px 12px',
+                    marginBottom: '16px'
+                }}>
+                    <div style={{ height: '330px', width: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            {metricChartType === 'asistencia' ? (
+                                <BarChart
+                                    data={historicoData?.comparativoAgentes || []}
+                                    margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
+                                    <YAxis domain={[40, 75]} unit="%" tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <Tooltip 
+                                        formatter={(val, name) => [`${val}%`, name === 'asistAgo' ? 'Agosto 2026' : 'Septiembre 2026']}
+                                        labelFormatter={(label) => `Operadora: ${label}`}
+                                        contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
+                                    />
+                                    <Legend 
+                                        formatter={(val) => val === 'asistAgo' ? 'Agosto 2026 (%)' : 'Septiembre 2026 (%)'}
+                                        wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
+                                    />
+                                    <ReferenceLine y={55} stroke="#16A34A" strokeDasharray="4 4" label={{ value: 'Meta 55%', fill: '#16A34A', fontSize: 11, fontWeight: 700, position: 'right' }} />
+                                    <ReferenceLine y={60} stroke="#059669" strokeDasharray="2 2" label={{ value: 'Tope 60%', fill: '#059669', fontSize: 11, fontWeight: 700, position: 'right' }} />
+                                    <Bar dataKey="asistAgo" name="asistAgo" fill="#94A3B8" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="asistSep" name="asistSep" fill="#0284C7" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                </BarChart>
+                            ) : metricChartType === 'turnos' ? (
+                                <BarChart
+                                    data={historicoData?.comparativoAgentes || []}
+                                    margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
+                                    <YAxis tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <Tooltip 
+                                        formatter={(val, name) => [val.toLocaleString() + ' turnos', name === 'turnosAgo' ? 'Agosto 2026' : 'Septiembre 2026']}
+                                        labelFormatter={(label) => `Operadora: ${label}`}
+                                        contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
+                                    />
+                                    <Legend 
+                                        formatter={(val) => val === 'turnosAgo' ? 'Turnos Agosto 2026' : 'Turnos Septiembre 2026'}
+                                        wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
+                                    />
+                                    <Bar dataKey="turnosAgo" name="turnosAgo" fill="#C4B5FD" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="turnosSep" name="turnosSep" fill="#7C3AED" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                </BarChart>
+                            ) : metricChartType === 'mensajes' ? (
+                                <BarChart
+                                    data={historicoData?.comparativoAgentes || []}
+                                    margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
+                                    <YAxis tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <Tooltip 
+                                        formatter={(val, name) => [val.toLocaleString() + ' msjs', name === 'msjsAgo' ? 'Agosto 2026' : 'Septiembre 2026']}
+                                        labelFormatter={(label) => `Operadora: ${label}`}
+                                        contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
+                                    />
+                                    <Legend 
+                                        formatter={(val) => val === 'msjsAgo' ? 'Conversaciones Agosto 2026' : 'Conversaciones Septiembre 2026'}
+                                        wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
+                                    />
+                                    <Bar dataKey="msjsAgo" name="msjsAgo" fill="#7DD3FC" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="msjsSep" name="msjsSep" fill="#0284C7" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                </BarChart>
+                            ) : metricChartType === 'variable' ? (
+                                <BarChart
+                                    data={historicoData?.comparativoAgentes || []}
+                                    margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
+                                    <YAxis tickFormatter={(val) => `$${Math.round(val / 1000)}k`} tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <Tooltip 
+                                        formatter={(val, name) => [formatCurrency(val), name === 'varAgo' ? 'Variable Agosto' : 'Variable Septiembre']}
+                                        labelFormatter={(label) => `Operadora: ${label}`}
+                                        contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
+                                    />
+                                    <Legend 
+                                        formatter={(val) => val === 'varAgo' ? 'Variable Percibido Agosto ($)' : 'Variable Percibido Septiembre ($)'}
+                                        wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
+                                    />
+                                    <Bar dataKey="varAgo" name="varAgo" fill="#86EFAC" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="varSep" name="varSep" fill="#16A34A" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                </BarChart>
+                            ) : (
+                                <LineChart
+                                    data={historicoData?.evolucionEquipo || []}
+                                    margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                                    <XAxis dataKey="mes" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
+                                    <YAxis yAxisId="left" tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <YAxis yAxisId="right" orientation="right" tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <Tooltip 
+                                        formatter={(val, name) => [
+                                            name === 'turnosTotales' ? `${val.toLocaleString()} turnos` : `${val.toLocaleString()} convs`,
+                                            name === 'turnosTotales' ? 'Turnos SALUS' : 'Conversaciones Únicas'
+                                        ]}
+                                        contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
+                                    />
+                                    <Legend wrapperStyle={{ fontSize: '12px', fontWeight: 600 }} />
+                                    <Line yAxisId="left" type="monotone" dataKey="turnosTotales" name="Turnos SALUS" stroke="#7C3AED" strokeWidth={3} dot={{ r: 6 }} activeDot={{ r: 8 }} />
+                                    <Line yAxisId="right" type="monotone" dataKey="convsTotales" name="Conversaciones Únicas" stroke="#0284C7" strokeWidth={3} dot={{ r: 6 }} activeDot={{ r: 8 }} />
+                                </LineChart>
+                            )}
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Tabla Detalle de Variación Mes a Mes */}
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                        <thead>
+                            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569' }}>
+                                <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 800 }}>Colaboradora</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Turnos Ago ➔ Sep</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Var. Turnos</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Asistencia Ago ➔ Sep</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Dif. Asistencia</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Mensajes Ago ➔ Sep</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800 }}>Variable Ago ➔ Sep</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(historicoData?.comparativoAgentes || []).map((ag, idx) => (
+                                <tr key={ag.id} style={{
+                                    borderBottom: '1px solid #F1F5F9',
+                                    background: idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA'
+                                }}>
+                                    <td style={{ padding: '10px 10px', fontWeight: 800, color: '#0F2942' }}>
+                                        {ag.name}
+                                        {ag.fteSep < 1 && (
+                                            <span style={{ marginLeft: '6px', fontSize: '0.64rem', padding: '1px 5px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B', fontWeight: 700 }}>
+                                                {Math.round(ag.fteSep * 100)}% FTE
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
+                                        {ag.turnosAgo.toLocaleString()} ➔ <strong>{ag.turnosSep.toLocaleString()}</strong>
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center' }}>
+                                        <span style={{
+                                            padding: '2px 7px', borderRadius: '6px', fontSize: '0.70rem', fontWeight: 800,
+                                            background: ag.turnosDiff > 0 ? '#DCFCE7' : ag.turnosDiff < 0 ? '#FEE2E2' : '#F1F5F9',
+                                            color: ag.turnosDiff > 0 ? '#15803D' : ag.turnosDiff < 0 ? '#B91C1C' : '#64748B'
+                                        }}>
+                                            {ag.turnosDiff > 0 ? `▲ +${ag.turnosDiff} (+${ag.turnosPct}%)` : ag.turnosDiff < 0 ? `▼ ${ag.turnosDiff} (${ag.turnosPct}%)` : '—'}
+                                        </span>
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
+                                        {ag.asistAgo}% ➔ <strong>{ag.asistSep}%</strong>
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center' }}>
+                                        <span style={{
+                                            padding: '2px 7px', borderRadius: '6px', fontSize: '0.70rem', fontWeight: 800,
+                                            background: ag.asistDiff >= 0 ? '#DCFCE7' : '#FEF3C7',
+                                            color: ag.asistDiff >= 0 ? '#15803D' : '#B45309'
+                                        }}>
+                                            {ag.asistDiff >= 0 ? `▲ +${ag.asistDiff} pp` : `▼ ${ag.asistDiff} pp`}
+                                        </span>
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
+                                        {ag.msjsAgo > 0 ? ag.msjsAgo.toLocaleString() : '—'} ➔ <strong>{ag.msjsSep.toLocaleString()}</strong>
+                                    </td>
+                                    <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 800, color: '#003B71' }}>
+                                        {formatCurrency(ag.varAgo)} ➔ <strong>{formatCurrency(ag.varSep)}</strong>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 

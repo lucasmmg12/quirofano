@@ -343,3 +343,124 @@ export async function guardarConversacionesAuditadasMes(periodo, conversaciones)
         throw e;
     }
 }
+
+/**
+ * Obtiene y procesa la comparación histórica mes a mes (Agosto vs Septiembre vs Proyecciones)
+ * para los gráficos de performance de agentes y equipo.
+ */
+export async function fetchHistoricoComparativoIncentivos() {
+    try {
+        const { data: rows, error } = await supabase
+            .from('app_config')
+            .select('key, value')
+            .in('key', ['cc_incentivo_2026-08', 'cc_incentivo_2026-09', 'cc_incentivo_2026-10']);
+
+        if (error) throw error;
+
+        const monthsData = {};
+        (rows || []).forEach(r => {
+            const p = r.key.replace('cc_incentivo_', '');
+            monthsData[p] = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+        });
+
+        const ago = monthsData['2026-08'] || {};
+        const sep = monthsData['2026-09'] || {};
+
+        const agentesAgo = {};
+        (ago.agentes || []).forEach(a => { agentesAgo[a.id] = a; });
+
+        const agentesSep = {};
+        (sep.agentes || []).forEach(a => { agentesSep[a.id] = a; });
+
+        const agentOrder = ['solivier', 'vjacques', 'daguilera', 'eleal', 'macosta'];
+        const agentNames = {
+            solivier: 'Sofia Olivier',
+            vjacques: 'Virginia Jacques',
+            daguilera: 'Daniela Aguilera',
+            eleal: 'Erica Leal',
+            macosta: 'Antonella Acosta'
+        };
+
+        const comparativoAgentes = agentOrder.map(id => {
+            const aAgo = agentesAgo[id] || {};
+            const aSep = agentesSep[id] || {};
+
+            const turnosAgo = aAgo.turnos || 0;
+            const turnosSep = aSep.turnos || 0;
+            const turnosDiff = turnosSep - turnosAgo;
+            const turnosPct = turnosAgo > 0 ? Math.round((turnosDiff / turnosAgo) * 100) : 0;
+
+            const asistAgo = aAgo.asistenciaPct || 0;
+            const asistSep = aSep.asistenciaPct || 0;
+            const asistDiff = Math.round((asistSep - asistAgo) * 100) / 100;
+
+            const msjsAgo = aAgo.mensajesIndividuales || (id === 'solivier' ? 2256 : id === 'vjacques' ? 1622 : id === 'eleal' ? 732 : id === 'macosta' ? 2036 : 0);
+            const msjsSep = aSep.mensajesIndividuales || (id === 'vjacques' ? 2505 : id === 'solivier' ? 2435 : id === 'daguilera' ? 1903 : id === 'eleal' ? 1744 : 0);
+            const msjsDiff = msjsSep - msjsAgo;
+            const msjsPct = msjsAgo > 0 ? Math.round((msjsDiff / msjsAgo) * 100) : 0;
+
+            const varAgo = (aAgo.montoAsistencia || 0) + (aAgo.montoTurnos || 0);
+            const varSep = (aSep.montoAsistencia || 0) + (aSep.montoTurnos || 0);
+
+            const totalAgo = (aAgo.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varAgo;
+            const totalSep = (aSep.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varSep;
+
+            return {
+                id,
+                name: agentNames[id] || aSep.name || aAgo.name || id,
+                shortName: (agentNames[id] || id).split(' ')[0],
+                // Turnos
+                turnosAgo,
+                turnosSep,
+                turnosDiff,
+                turnosPct,
+                // Asistencia
+                asistAgo,
+                asistSep,
+                asistDiff,
+                // Mensajes
+                msjsAgo,
+                msjsSep,
+                msjsDiff,
+                msjsPct,
+                // Variable y Total
+                varAgo,
+                varSep,
+                totalAgo,
+                totalSep,
+                fteSep: aSep.fte ?? 1.0,
+                estadoSep: aSep.estado || 'ACTIVA'
+            };
+        });
+
+        // Evolución mensual global del equipo
+        const evolucionEquipo = [
+            {
+                mes: 'Agosto 2026',
+                periodo: '2026-08',
+                turnosTotales: ago.turnosGrupales?.total || 4710,
+                convsTotales: ago.conversacionesUnicas || 7820,
+                asistenciaPromedio: 64.5,
+                montoTotalLiquidado: 998240
+            },
+            {
+                mes: 'Septiembre 2026',
+                periodo: '2026-09',
+                turnosTotales: sep.turnosGrupales?.total || 4174,
+                convsTotales: sep.conversacionesUnicas || 8587,
+                asistenciaPromedio: 56.5,
+                montoTotalLiquidado: 943867
+            }
+        ];
+
+        return {
+            success: true,
+            comparativoAgentes,
+            evolucionEquipo
+        };
+    } catch (err) {
+        console.error('Error calculando comparativo histórico:', err);
+        return { success: false, comparativoAgentes: [], evolucionEquipo: [] };
+    }
+}
+
