@@ -172,20 +172,22 @@ function formatGroupDate(d) {
     return `${dayNames[date.getDay()]} ${date.getDate()} de ${monthNames[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-/** Agrupa y ordena cirugías por fecha (más urgente primero) */
-function groupSurgeriesByDate(surgeries) {
+/** Agrupa y ordena cirugías por fecha */
+function groupSurgeriesByDate(surgeries, sortDescending = false) {
     const groups = {};
     surgeries.forEach(s => {
         const key = s.fecha_cirugia || '_sin_fecha';
         if (!groups[key]) groups[key] = [];
         groups[key].push(s);
     });
-    // Ordenar grupos: fechas más próximas primero
+    // Ordenar grupos:
+    // Próximas: fechas más cercanas primero (ascendente)
+    // Historial: fechas más recientes primero (descendente)
     return Object.entries(groups)
         .sort(([a], [b]) => {
             if (a === '_sin_fecha') return 1;
             if (b === '_sin_fecha') return -1;
-            return a.localeCompare(b);
+            return sortDescending ? b.localeCompare(a) : a.localeCompare(b);
         })
         .map(([date, items]) => ({ date, items, countdown: getCountdown(date === '_sin_fecha' ? null : date) }));
 }
@@ -296,10 +298,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         if (!initialLoadDone) setLoading(true);
         try {
             // Vista activa: mostrar pendientes + suspendidas (las suspendidas siguen visibles con indicador)
-            // Vista historial: mostrar TODAS las cirugías (sin restricción de fecha ni estado)
-            // Si el usuario está filtrando por Hemodinamia, o si es historial, no restringir a fromDate: today ni ausenteFilter: 'active'
-            const isHemoOnly = agendaFilter === 'hemodinamia';
-            const ausenteFilter = (viewMode === 'history' || isHemoOnly) ? 'all' : 'active';
+            // Vista historial: mostrar cirugías finalizadas/históricas
+            const ausenteFilter = viewMode === 'history' ? 'all' : 'active';
             const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'];
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
             const today = new Date().toISOString().split('T')[0];
@@ -314,9 +314,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 historyToDate = `${historyMonth}-${String(lastDay).padStart(2, '0')}`;
             }
 
-            const fromDateParam = isHemoOnly
-                ? (viewMode === 'history' && historyMonth !== 'all' ? historyFromDate : undefined)
-                : (viewMode === 'upcoming' ? today : historyFromDate);
+            const fromDateParam = viewMode === 'upcoming' ? today : historyFromDate;
 
             const [surgeriesData, statsData] = await Promise.all([
                 fetchSurgeries({
@@ -444,10 +442,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         return surgeries.filter(s => s.ausente === '0' || s.ausente === '1' || (s.fecha_cirugia && s.fecha_cirugia < new Date().toISOString().split('T')[0]));
     }, [surgeries]);
 
-    const groups = useMemo(() => groupSurgeriesByDate(filtered), [filtered]);
+    const groups = useMemo(() => groupSurgeriesByDate(filtered, viewMode === 'history'), [filtered, viewMode]);
 
-    // Split: próximos 7 días vs resto (para no sobrecargar DOM)
+    // Split: próximos 7 días vs resto (para no sobrecargar DOM en Próximas)
     const { nearGroups, farGroups } = useMemo(() => {
+        if (viewMode === 'history') {
+            return { nearGroups: groups, farGroups: [] };
+        }
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const cutoff = new Date(today);
@@ -464,7 +465,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             }
         }
         return { nearGroups: near, farGroups: far };
-    }, [groups]);
+    }, [groups, viewMode]);
 
     // Urgency summary
     const urgencySummary = useMemo(() => {
@@ -2204,9 +2205,6 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 <button
                                     onClick={() => {
                                         setAgendaFilter('hemodinamia');
-                                        if (viewMode === 'upcoming') {
-                                            setViewMode('history');
-                                        }
                                     }}
                                     style={{
                                         padding: '6px 12px', borderRadius: 'var(--radius-sm)',
