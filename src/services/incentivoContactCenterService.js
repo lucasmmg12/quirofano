@@ -64,6 +64,15 @@ export const MENSAJES_INDIVIDUALES_REF = {
 };
 export const TOTAL_MENSAJES_REF = 2505 + 2435 + 1903 + 1744; // 8.587 (Escalón 10 / Tope)
 
+/** Mensajes auditados de Agosto 2026 */
+export const MENSAJES_INDIVIDUALES_AGOSTO = {
+    solivier: 2256, // Sofia (fila 2)
+    macosta: 2036,  // Antonella (fila 3)
+    vjacques: 1622, // Virginia (fila 4)
+    eleal: 732,     // Erica (fila 5)
+    daguilera: 0    // Daniela (fila 1 a confirmar)
+};
+
 /**
  * Tabla oficial de escalones progresivos (0 a 10)
  */
@@ -250,9 +259,10 @@ export function calcularLiquidacionCompleta({
         const totalVariable = montoMensajes + montoTurnos + montoAsistencia;
         const totalALiquidar = base + totalVariable;
 
+        const mapaRef = periodo === '2026-08' ? MENSAJES_INDIVIDUALES_AGOSTO : MENSAJES_INDIVIDUALES_REF;
         const mensajesIndiv = ag.mensajesIndividuales !== undefined
             ? ag.mensajesIndividuales
-            : (MENSAJES_INDIVIDUALES_REF[ag.id] || 0);
+            : (mapaRef[ag.id] || 0);
 
         return {
             ...ag,
