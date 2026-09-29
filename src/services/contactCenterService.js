@@ -1213,6 +1213,63 @@ export async function saveCrmPatientCard({
 }
 
 /**
+ * Desvincula la gestión de un tercero/familiar, restituyendo la ficha médica al titular de la línea.
+ */
+export async function unlinkThirdPartyPatient({ phone }) {
+    if (!phone) throw new Error('Teléfono requerido');
+    const norm = normalizeArgentinePhone(phone);
+
+    // 1. Obtener la conversación actual para recuperar datos del titular si existen en ficha_dual
+    const { data: currentConv } = await supabase
+        .from('contact_center_conversations')
+        .select('ai_summary, contact_name, phone')
+        .eq('phone', norm)
+        .maybeSingle();
+
+    const prevAi = currentConv?.ai_summary || {};
+    const titularNombre = prevAi?.ficha_dual?.titular?.nombre || currentConv?.contact_name || 'Titular';
+
+    // Eliminar ficha_dual de ai_summary
+    const updatedAi = { ...prevAi };
+    delete updatedAi.ficha_dual;
+
+    const updatePayload = {
+        nombre_completo: titularNombre,
+        dni: null,
+        obra_social: null,
+        fecha_nacimiento: null,
+        updated_at: new Date().toISOString(),
+        ai_summary: updatedAi
+    };
+
+    // Actualizar contact_center_conversations
+    const { error: convErr } = await supabase
+        .from('contact_center_conversations')
+        .update(updatePayload)
+        .eq('phone', norm);
+
+    if (convErr) {
+        console.error('Error al desvincular en contact_center_conversations:', convErr);
+    }
+
+    // Actualizar crm_contacts
+    try {
+        await supabase
+            .from('crm_contacts')
+            .update({
+                nombre: titularNombre,
+                dni: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('phone', norm);
+    } catch (crmErr) {
+        console.warn('Advertencia actualizando crm_contacts al desvincular:', crmErr);
+    }
+
+    return { success: true, titularNombre };
+}
+
+/**
  * Vinculación EXCLUSIVA por DNI: Se eliminó la resolución de pacientes y grupos familiares por número de teléfono
  * para evitar confusiones de identidad cuando múltiples familiares comparten una misma línea telefónica.
  */

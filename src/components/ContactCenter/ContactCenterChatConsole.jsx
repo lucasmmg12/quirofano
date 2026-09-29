@@ -10,7 +10,7 @@ import {
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
     FileText, FileSpreadsheet, File, Maximize2, Palette,
-    Mic, Square, Trash2, Loader2, Upload
+    Mic, Square, Trash2, Loader2, Upload, Link, Unlink
 } from 'lucide-react';
 
 /**
@@ -113,7 +113,7 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
-    saveCrmPatientCard, lookupPatientFromSalus, resetBotWorkflow,
+    saveCrmPatientCard, unlinkThirdPartyPatient, lookupPatientFromSalus, resetBotWorkflow,
     analyzeMedicalOrderImage, generateChatAiSummary,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
@@ -878,6 +878,51 @@ export default function ContactCenterChatConsole({
         } catch (err) {
             console.error(err);
             alert('Error al buscar paciente en SALUS: ' + (err.message || 'Error'));
+        } finally {
+            setIsSearchingSalus(false);
+        }
+    };
+
+    // Desvincular ficha médica del tercero y volver la atención al titular de la línea
+    const handleUnlinkThirdParty = async () => {
+        if (!selectedChat?.phone) return;
+        const currentTitular = selectedChat.customFields?.fichaDual?.titularNombre || selectedChat.contactName || 'Titular';
+        if (!window.confirm(`¿Deseas desvincular al paciente tercero y restablecer la ficha médica a nombre del titular (${currentTitular})?`)) {
+            return;
+        }
+
+        setIsSearchingSalus(true);
+        try {
+            await unlinkThirdPartyPatient({ phone: selectedChat.phone });
+
+            if (selectedChat.customFields) {
+                delete selectedChat.customFields.fichaDual;
+                selectedChat.customFields.pacienteNombre = currentTitular;
+                selectedChat.customFields.dni = '';
+                selectedChat.customFields.obraSocial = '';
+                selectedChat.customFields.esPacienteExistente = false;
+                selectedChat.contactName = currentTitular;
+            }
+
+            setCrmForm(prev => ({
+                ...prev,
+                pacienteNombre: currentTitular,
+                dni: '',
+                obraSocial: '',
+                fechaNacimiento: '',
+                email: '',
+                notas: (prev.notas ? prev.notas + '\n' : '') + `[Desvinculación] Tercero desvinculado. Atención restablecida al titular ${currentTitular}.`
+            }));
+
+            setActiveDualTab('paciente');
+            showToast(`Se desvinculó al paciente tercero. Atención restablecida a ${currentTitular}.`, 'success');
+
+            if (typeof onReloadChats === 'function') {
+                onReloadChats();
+            }
+        } catch (err) {
+            console.error('Error al desvincular tercero:', err);
+            showToast('Error al desvincular tercero: ' + (err.message || 'Error'), 'error');
         } finally {
             setIsSearchingSalus(false);
         }
@@ -4527,31 +4572,64 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
 
                             {/* CABECERA DE LA FICHA DEL PACIENTE */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Datos del Paciente
                                 </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsSearchingThirdParty(prev => !prev)}
-                                    title="Vincular o conmutar ficha médica por DNI si el titular gestiona para otro paciente (hijo/a, familiar)"
-                                    style={{
-                                        fontSize: '0.66rem',
-                                        fontWeight: 700,
-                                        color: isSearchingThirdParty ? '#DC2626' : (ccTheme.accentColor || '#0284C7'),
-                                        background: isSearchingThirdParty ? (ccTheme.isDark ? '#450A0A' : '#FEF2F2') : themeCardBg,
-                                        border: `1px solid ${isSearchingThirdParty ? '#FCA5A5' : rightCardBorder}`,
-                                        padding: '3px 8px',
-                                        borderRadius: '6px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <Search size={11} />
-                                    {isSearchingThirdParty ? 'Cerrar búsqueda' : 'Gestionar para otro DNI'}
-                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsSearchingThirdParty(prev => !prev)}
+                                        title={selectedChat.customFields?.fichaDual?.esGestionTercero ? "Vincular a otro DNI diferente en SALUS" : "Vincular ficha médica por DNI si gestiona para otro paciente"}
+                                        style={{
+                                            fontSize: '0.66rem',
+                                            fontWeight: 700,
+                                            color: isSearchingThirdParty ? '#DC2626' : (ccTheme.accentColor || '#0284C7'),
+                                            background: isSearchingThirdParty ? (ccTheme.isDark ? '#450A0A' : '#FEF2F2') : themeCardBg,
+                                            border: `1px solid ${isSearchingThirdParty ? '#FCA5A5' : rightCardBorder}`,
+                                            padding: '3px 8px',
+                                            borderRadius: '6px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {isSearchingThirdParty ? (
+                                            <>
+                                                <X size={11} /> Cerrar
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Link size={11} /> {selectedChat.customFields?.fichaDual?.esGestionTercero ? 'Cambiar DNI' : 'Vincular DNI'}
+                                            </>
+                                        )}
+                                    </button>
+
+                                    {/* Botón Desvincular en cabecera si ya tiene tercero vinculado */}
+                                    {selectedChat.customFields?.fichaDual?.esGestionTercero && (
+                                        <button
+                                            type="button"
+                                            onClick={handleUnlinkThirdParty}
+                                            title="Desvincular tercero y restablecer ficha médica al titular"
+                                            style={{
+                                                fontSize: '0.66rem',
+                                                fontWeight: 700,
+                                                color: '#DC2626',
+                                                background: ccTheme.isDark ? '#450A0A' : '#FEF2F2',
+                                                border: '1px solid #FCA5A5',
+                                                padding: '3px 8px',
+                                                borderRadius: '6px',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <Unlink size={11} /> Desvincular
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             {/* BUSCADOR DE TERCEROS / OTRO PACIENTE POR DNI EN SALUS */}
@@ -4596,7 +4674,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 display: 'inline-flex', alignItems: 'center', gap: '4px'
                                             }}
                                         >
-                                            <Search size={11} />
+                                            <Link size={11} />
                                             {isSearchingSalus ? 'Buscando...' : 'Vincular'}
                                         </button>
                                     </div>
@@ -4707,11 +4785,25 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     </div>
 
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>PACIENTE VINCULADO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
-                                            👤 {selectedChat.customFields.fichaDual.pacienteNombre || crmForm.pacienteNombre} (DNI {selectedChat.customFields.fichaDual.pacienteDni || crmForm.dni})
+                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                        <div>
+                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>PACIENTE VINCULADO</div>
+                                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
+                                                👤 {selectedChat.customFields.fichaDual.pacienteNombre || crmForm.pacienteNombre} (DNI {selectedChat.customFields.fichaDual.pacienteDni || crmForm.dni})
+                                            </div>
                                         </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleUnlinkThirdParty}
+                                            title="Desvincular a este paciente"
+                                            style={{
+                                                fontSize: '0.65rem', fontWeight: 700, color: '#DC2626', background: '#FEF2F2',
+                                                border: '1px solid #FCA5A5', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer',
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px', flexShrink: 0
+                                            }}
+                                        >
+                                            <Unlink size={11} /> Desvincular
+                                        </button>
                                     </div>
                                 </div>
                             ) : (
@@ -4722,15 +4814,37 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             background: ccTheme.isDark ? '#064E3B22' : '#F0FDF4',
                                             border: `1px solid ${ccTheme.isDark ? '#059669' : '#86EFAC'}`,
                                             borderRadius: '6px',
-                                            padding: '6px 10px',
+                                            padding: '4px 8px',
                                             fontSize: '0.68rem',
                                             color: ccTheme.isDark ? '#86EFAC' : '#166534',
                                             fontWeight: 700,
                                             display: 'flex',
                                             alignItems: 'center',
+                                            justifyContent: 'space-between',
                                             gap: '5px'
                                         }}>
                                             <span>👥 Gestión por tercero: Titular {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName}</span>
+                                            <button
+                                                type="button"
+                                                onClick={handleUnlinkThirdParty}
+                                                title="Desvincular paciente tercero y regresar la ficha al titular de la línea"
+                                                style={{
+                                                    fontSize: '0.64rem',
+                                                    fontWeight: 700,
+                                                    color: '#DC2626',
+                                                    background: '#FFFFFF',
+                                                    border: '1px solid #FCA5A5',
+                                                    borderRadius: '4px',
+                                                    padding: '2px 6px',
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '3px',
+                                                    flexShrink: 0
+                                                }}
+                                            >
+                                                <Unlink size={10} /> Desvincular
+                                            </button>
                                         </div>
                                     )}
 
