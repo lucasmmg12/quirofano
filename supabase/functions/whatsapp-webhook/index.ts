@@ -2542,10 +2542,12 @@ async function handleChatbotTriage(
     const lastBotMessage = botMessages.length > 0 ? botMessages[botMessages.length - 1] : null;
     const lastBotContent = (lastBotMessage?.content || '').toLowerCase();
 
-    // ¿El bot estaba esperando activamente una foto de orden médica?
+    // ¿El bot estaba esperando activamente una foto de orden médica / autorización?
     const wasWaitingForPhoto = 
         conv?.bot_stage === 'esperando_orden_foto' ||
+        conv?.bot_stage === 'esperando_foto_autorizacion' ||
         lastBotContent.includes('foto clara de la orden') ||
+        lastBotContent.includes('foto de la orden médica') ||
         (lastBotContent.includes('envíanos:') && lastBotContent.includes('orden'));
 
     // ¿La imagen fue enviada de la nada (sin contexto previo del bot ni indicación de trámite en el texto)?
@@ -2806,6 +2808,49 @@ async function handleChatbotTriage(
             updates.status = 'bot';
             updates.bot_active = true;
             nextStage = 'esperando_seleccion_medico';
+        }
+    }
+    // =============================================
+    // FLUJO 0A-2C: ESPERANDO FOTO DE AUTORIZACIÓN DE ORDEN MÉDICA
+    // =============================================
+    else if (currentStage === 'esperando_foto_autorizacion') {
+        const isReferencingPreviousPhoto = /\b(es\s+la\s+(?:foto\s+)?que\s+mand[eé]|ya\s+la\s+mand[eé]|la\s+foto\s+anterior|la\s+que\s+mand[eé]\s+antes|la\s+de\s+arriba|te\s+la\s+mand[eé]\s+reci[eé]n)\b/i.test(cleanText);
+
+        if (isIncomingMedia) {
+            // El paciente envió la foto o documento de la orden médica a autorizar
+            replyText = `¡Muchas gracias${fullName ? ` *${fullName}*` : ''}! 📄 Recibimos la foto de tu orden médica para autorizar.\n\n` +
+                `Un asesor de nuestro equipo de autorizaciones revisará la orden con tu obra social/prepaga y te confirmará la gestión a la brevedad.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.motivo_consulta = 'Foto de Orden Médica Recibida (para Autorización)';
+            updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            return { replyText, updates, nextStage };
+        } else if (isReferencingPreviousPhoto) {
+            // El paciente aclara que la foto enviada previamente es la orden a autorizar
+            replyText = `¡Perfecto${fullName ? ` *${fullName}*` : ''}! 📄 Tomamos la imagen que nos enviaste anteriormente para tramitar tu autorización.\n\n` +
+                `Un asesor de nuestro equipo de autorizaciones gestionará la orden con tu obra social/prepaga y te responderá a la brevedad.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.motivo_consulta = 'Autorización de Orden Médica (orden identificada en foto previa)';
+            updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            return { replyText, updates, nextStage };
+        } else {
+            // El paciente envió datos por texto (ej: DNI, Obra Social) pero aún no la foto
+            const extractedDni = candidateDni || updates.dni || conv?.dni;
+            const dniMsg = extractedDni ? ` Registramos tu DNI *${extractedDni}*.` : '';
+            replyText = `¡Recibido!${dniMsg} Para poder tramitar la autorización con tu obra social, por favor envíanos la *foto clara y legible de la orden médica* 📸.\n\n` +
+                `_(Si la imagen que enviaste anteriormente es la orden que deseás autorizar, simplemente escribí *"es la foto anterior"*)._\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            nextStage = 'esperando_foto_autorizacion';
+            return { replyText, updates, nextStage };
         }
     }
     // =============================================
@@ -3800,8 +3845,6 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         } else {
-            const hasOrderImageMsg = patientSentImageRecently ? '\n\n✅ *Ya recibimos la foto de tu orden médica.*' : '';
-
             const osTurnoInfo = getRegisteredOsInfo(paciente?.coseguro || conv?.obra_social);
             const osTurnoBullet = osTurnoInfo.hasRegisteredOs
                 ? `• *Obra Social y Plan:* En tu ficha figura *${osTurnoInfo.cleanOsName}*. Confirmános si seguís teniendo cobertura allí y qué *plan* tenés (o si es otra/particular).`
@@ -3815,7 +3858,7 @@ async function handleChatbotTriage(
                 ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
                 : `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`;
 
-            replyText = `¡Hola${paciente ? ` *${fullName}*` : ''}! 🏥 Te ayudamos a coordinar tu nuevo turno médico${doctorNoteMsg}.${hasOrderImageMsg}\n\n` +
+            replyText = `¡Hola${paciente ? ` *${fullName}*` : ''}! 🏥 Te ayudamos a coordinar tu nuevo turno médico${doctorNoteMsg}.\n\n` +
                 `Por favor indícanos:\n` +
                 `${dniPrompt}` +
                 `${specOrDocLine}` +
@@ -3835,8 +3878,22 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'autorizacion') {
         updates.motivo_consulta = 'Autorizaciones de Estudios / Cobertura';
 
+        // Si ya estábamos esperando la foto y el paciente acaba de enviar una imagen
+        if (currentStage === 'esperando_foto_autorizacion' && isIncomingMedia) {
+            replyText = `¡Muchas gracias${fullName ? ` *${fullName}*` : ''}! 📄 Recibimos la foto de tu orden médica para autorizar.\n\n` +
+                `Un asesor de nuestro equipo de autorizaciones revisará la orden con tu obra social/prepaga y te confirmará la gestión a la brevedad.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.motivo_consulta = 'Foto de Orden Médica Recibida (para Autorización)';
+            updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            return { replyText, updates, nextStage };
+        }
+
         const alreadyAskedAutorizacion = lastBotMessage?.content?.includes('Te ayudamos con la *autorización* de tu orden médica');
-        if (alreadyAskedAutorizacion) {
+        if (alreadyAskedAutorizacion && conv?.bot_stage === 'esperando_agente' && !isIncomingMedia) {
             console.log(`[triage-bot] Chat ${phone}: Ya se enviaron pautas de autorización previamente. Bot en silencio esperando al agente.`);
             replyText = '';
             updates.status = 'sin_asignar';
@@ -3844,21 +3901,27 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
             updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
         } else if (isExistingPatient) {
-            const hasOrderImageMsg = patientSentImageRecently 
-                ? '✅ *Ya recibimos la foto de tu orden médica.*' 
-                : '📸 *Foto clara de la orden médica*';
+            // NUNCA asumir que una imagen enviada con anterioridad es necesariamente la orden médica a autorizar.
+            // Siempre solicitar la foto clara de la orden médica a autorizar.
+            const orderPhotoPrompt = patientSentImageRecently
+                ? `• 📸 *Foto clara de la orden médica a autorizar:* Si la imagen que enviaste anteriormente corresponde a esta orden médica, confirmánoslo escribiendo *"es la foto anterior"*; si era de otro trámite o documento, por favor envíanos aquí la *foto clara y legible de la orden médica* que precisás autorizar.`
+                : `• 📸 Envianos la *foto clara y legible de la orden médica* que deseás autorizar.`;
+
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\n` +
                 `Por favor indícanos:\n` +
                 `• ¿La orden médica es a tu nombre (*${fullName}*), o de otro paciente/familiar?\n` +
                 `• *DNI* y *Nombre Completo* del paciente titular de la orden médica.\n` +
-                `• ${hasOrderImageMsg}\n\n` +
-                `*(Vigencia de órdenes: 30 días).* ${getAgentHandoffNotice()}`;
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
+                `• *Obra Social o Prepaga* y qué *plan* posee (o si es Particular).\n` +
+                `${orderPhotoPrompt}\n\n` +
+                `*(Vigencia de órdenes médicas: 30 días corridos).*`;
+
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_foto_autorizacion';
+            nextStage = 'esperando_foto_autorizacion';
             updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, true, paciente?.edad);
         } else {
-            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\nCon gusto te ayudamos con tu trámite de *autorización de orden médica*.`;
+            const intro = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\nCon gusto te ayudamos con tu trámite de *autorización de orden médica*.\n📸 _(Recordá que te solicitaremos también la foto clara de la orden médica a autorizar)._`;
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -4329,6 +4392,9 @@ async function handleNewPatientIntake(
 
         const ageNote = mergedPatientData.edad ? ` (${mergedPatientData.edad} años)` : '';
         const docNote = doctorDisplay ? `\n• *Profesional solicitado:* ${doctorDisplay}` : '';
+        const orderNote = intent === 'autorizacion' 
+            ? `\n\n📸 *Para tramitar tu autorización:* Por favor envíanos la *foto clara y legible de la orden médica* a autorizar.` 
+            : '';
         const reply = `¡Excelente *${resolvedName}*! ✅ Registramos todos tus datos para tu alta en Sanatorio Argentino:\n\n` +
             `📋 *Ficha de Admisión Digital:*\n` +
             `• *DNI:* ${updates.dni}\n` +
@@ -4336,7 +4402,7 @@ async function handleNewPatientIntake(
             `• *Obra Social y Plan:* ${updates.obra_social}\n` +
             `• *Nacimiento:* ${updates.fecha_nacimiento || '—'}${ageNote}\n` +
             `• *Departamento:* ${updates.departamento}\n` +
-            `• *Contacto:* ${updates.telefono_contacto}${docNote}\n\n` +
+            `• *Contacto:* ${updates.telefono_contacto}${docNote}${orderNote}\n\n` +
             `Tu ficha ya fue cargada para el equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
             `${getAgentHandoffNotice()}`;
 
