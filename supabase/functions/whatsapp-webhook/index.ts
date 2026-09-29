@@ -2277,6 +2277,17 @@ Devuelve un JSON con:
     };
 }
 
+// Columnas válidas estrictas de contact_center_conversations para evitar fallos de schema cache en Supabase
+const VALID_CONVERSATION_COLUMNS = new Set([
+    'phone', 'status', 'assigned_agent_id', 'assigned_agent_name', 'assigned_at',
+    'bot_active', 'bot_stage', 'dni', 'nombre_completo', 'obra_social',
+    'fecha_nacimiento', 'email', 'telefono_contacto', 'departamento',
+    'es_paciente_existente', 'motivo_consulta', 'medico_o_especialidad',
+    'last_message_text', 'last_message_at', 'created_at', 'updated_at',
+    'ai_summary', 'nhc', 'resolution_reason', 'closed_at',
+    'closed_by_agent_id', 'closed_by_agent_name'
+]);
+
 // =============================================
 // MOTOR DE TRIAGE DEL CHATBOT (AHORRO DE MENSAJES Y EXTRACCIÓN CON IA)
 // =============================================
@@ -2444,6 +2455,58 @@ async function handleChatbotTriage(
         last_message_text: cleanText,
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
+    };
+
+    /**
+     * Helper unificado para garantizar que CUALQUIER salida o bifurcación del chatbot:
+     * 1. Persista el estado limpio en contact_center_conversations
+     * 2. Despache el mensaje por WhatsApp al paciente vía sendBotWhatsAppReply
+     * 3. Evite que el bot quede en silencio o "colgado"
+     */
+    const finalizeAndSend = async (reply: string, stage: string, extraUpdates: Record<string, any> = {}) => {
+        const merged = { ...updates, ...extraUpdates };
+        let finalStage = stage || nextStage || currentStage;
+
+        if (!conv?.assigned_agent_id) {
+            if (merged.bot_active === false || finalStage === 'esperando_agente' || merged.status === 'sin_asignar') {
+                merged.status = 'sin_asignar';
+                merged.bot_active = false;
+                if (!finalStage || finalStage === currentStage || finalStage === 'inicio') {
+                    finalStage = 'esperando_agente';
+                }
+            } else {
+                merged.status = 'bot';
+                merged.bot_active = true;
+            }
+        }
+        merged.bot_stage = finalStage;
+
+        const cleanUpdates: Record<string, any> = {};
+        for (const [key, val] of Object.entries(merged)) {
+            if (VALID_CONVERSATION_COLUMNS.has(key)) {
+                cleanUpdates[key] = val;
+            }
+        }
+
+        const { error: upsertErr } = await supabase
+            .from('contact_center_conversations')
+            .upsert({
+                phone,
+                ...cleanUpdates
+            }, { onConflict: 'phone' });
+
+        if (upsertErr) {
+            console.error('[triage-bot] ❌ Error actualizando contact_center_conversations:', upsertErr);
+        } else {
+            console.log(`[triage-bot] ✅ Conversación ${phone} persistida (stage: ${finalStage}, bot_active: ${cleanUpdates.bot_active})`);
+        }
+
+        // Enviar el mensaje saliente al paciente vía WhatsApp SOLO si hay respuesta explícita
+        if (reply) {
+            await sendBotWhatsAppReply(supabase, phone, reply, lineId);
+        }
+
+        return { replyText: reply, nextStage: finalStage };
     };
 
     if (wasClosed || isSessionExpiredByInactivity || isExplicitGreetingOrMenu) {
@@ -2722,11 +2785,19 @@ async function handleChatbotTriage(
         updates.bot_stage = 'esperando_seleccion_medico';
         nextStage = 'esperando_seleccion_medico';
         updates.motivo_consulta = `Selección de Médico (${analysis.doctorCandidate ? analysis.doctorCandidate.toUpperCase() : 'Homónimo'})`;
+
+        // Preservar datos aportados en el mismo mensaje para no volver a pedirlos
+        if (candidateDni) updates.dni = candidateDni;
+        const autoOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
+        if (autoOs) updates.obra_social = autoOs;
+
         updates.ai_summary = {
             ...(conv?.ai_summary || {}),
-            candidates_medicos: docList
+            candidates_medicos: docList,
+            pending_os: autoOs || updates.obra_social || conv?.obra_social || null,
+            preferencia_horaria: /mañana|tarde|siesta/i.exec(cleanText)?.[0] || null
         };
-        return { replyText, updates, nextStage };
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
 
     // =============================================
@@ -2743,7 +2814,7 @@ async function handleChatbotTriage(
         updates.bot_stage = 'menu_opciones';
         nextStage = 'menu_opciones';
         updates.motivo_consulta = 'Audio no perceptible (solicitud de reenvío)';
-        return { replyText, updates, nextStage };
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
 
     // =============================================
@@ -2930,7 +3001,7 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
             updates.motivo_consulta = 'Foto de Orden Médica Recibida (para Autorización)';
             updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
-            return { replyText, updates, nextStage };
+            return await finalizeAndSend(replyText, nextStage, updates);
         } else if (isReferencingPreviousPhoto) {
             // El paciente aclara que la foto enviada previamente es la orden a autorizar
             replyText = `¡Perfecto${fullName ? ` *${fullName}*` : ''}! 📄 Tomamos la imagen que nos enviaste anteriormente para tramitar tu autorización.\n\n` +
@@ -2942,7 +3013,7 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
             updates.motivo_consulta = 'Autorización de Orden Médica (orden identificada en foto previa)';
             updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
-            return { replyText, updates, nextStage };
+            return await finalizeAndSend(replyText, nextStage, updates);
         } else {
             // El paciente envió datos por texto (ej: DNI, Obra Social) pero aún no la foto
             const extractedDni = candidateDni || updates.dni || conv?.dni;
@@ -2953,7 +3024,7 @@ async function handleChatbotTriage(
             updates.status = 'bot';
             updates.bot_active = true;
             nextStage = 'esperando_foto_autorizacion';
-            return { replyText, updates, nextStage };
+            return await finalizeAndSend(replyText, nextStage, updates);
         }
     }
     // =============================================
@@ -3026,7 +3097,7 @@ async function handleChatbotTriage(
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
-            return { replyText, updates, nextStage };
+            return await finalizeAndSend(replyText, nextStage, updates);
         }
             // 2. Extraer o preservar especialidad o doctor
             const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
@@ -3310,7 +3381,7 @@ async function handleChatbotTriage(
                     conv.bot_active = true;
                 }
                 nextStage = 'menu_bienvenida';
-                return { replyText, updates, nextStage };
+                return await finalizeAndSend(replyText, nextStage, updates);
             }
 
             const osPlanText = cleanText.trim();
@@ -3992,7 +4063,7 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
             updates.motivo_consulta = 'Foto de Orden Médica Recibida (para Autorización)';
             updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
-            return { replyText, updates, nextStage };
+            return await finalizeAndSend(replyText, nextStage, updates);
         }
 
         const alreadyAskedAutorizacion = lastBotMessage?.content?.includes('Te ayudamos con la *autorización* de tu orden médica');
@@ -4160,61 +4231,7 @@ async function handleChatbotTriage(
         }
     }
 
-    // Columnas válidas estrictas de contact_center_conversations para evitar fallos de schema cache en Supabase
-    const VALID_CONVERSATION_COLUMNS = new Set([
-        'phone', 'status', 'assigned_agent_id', 'assigned_agent_name', 'assigned_at',
-        'bot_active', 'bot_stage', 'dni', 'nombre_completo', 'obra_social',
-        'fecha_nacimiento', 'email', 'telefono_contacto', 'departamento',
-        'es_paciente_existente', 'motivo_consulta', 'medico_o_especialidad',
-        'last_message_text', 'last_message_at', 'created_at', 'updated_at',
-        'ai_summary', 'nhc', 'resolution_reason', 'closed_at',
-        'closed_by_agent_id', 'closed_by_agent_name'
-    ]);
-
-    // Determinar status definitivo de la conversación si no tiene agente humano asignado
-    if (!conv?.assigned_agent_id) {
-        if (updates.bot_active === false || nextStage === 'esperando_agente' || updates.status === 'sin_asignar') {
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            if (!nextStage || nextStage === currentStage || nextStage === 'inicio') {
-                nextStage = 'esperando_agente';
-            }
-        } else {
-            // El bot atendió/resolvió o continúa en auto-gestión autónoma (se mantiene en capa "bot")
-            updates.status = 'bot';
-            updates.bot_active = true;
-        }
-    }
-
-    // Persistir o actualizar en contact_center_conversations
-    updates.bot_stage = nextStage;
-
-    const cleanUpdates: Record<string, any> = {};
-    for (const [key, val] of Object.entries(updates)) {
-        if (VALID_CONVERSATION_COLUMNS.has(key)) {
-            cleanUpdates[key] = val;
-        }
-    }
-
-    const { error: upsertErr } = await supabase
-        .from('contact_center_conversations')
-        .upsert({
-            phone,
-            ...cleanUpdates
-        }, { onConflict: 'phone' });
-
-    if (upsertErr) {
-        console.error('[triage-bot] ❌ Error actualizando contact_center_conversations:', upsertErr);
-    } else {
-        console.log(`[triage-bot] ✅ Conversación ${phone} persistida (stage: ${nextStage}, bot_active: ${cleanUpdates.bot_active})`);
-    }
-
-    // Enviar el mensaje saliente al paciente vía WhatsApp SOLO si hay respuesta explícita
-    if (replyText) {
-        await sendBotWhatsAppReply(supabase, phone, replyText, lineId);
-    }
-
-    return { replyText, nextStage };
+    return await finalizeAndSend(replyText, nextStage, updates);
 }
 
 /**
