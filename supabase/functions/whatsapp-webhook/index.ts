@@ -1021,32 +1021,42 @@ function detectSpecialty(text: string): string | null {
     return null;
 }
 
-function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: string } {
-    if (!rawDoc) return { displayName: 'Profesional', specialty: 'Consultorios' };
+function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: string; cleanSurnameAndName: string } {
+    if (!rawDoc) return { displayName: 'Profesional', specialty: 'Consultorios', cleanSurnameAndName: 'Profesional' };
     let name = (rawDoc.profesional_nombre || '').trim();
-    const isFemale = /\b(dra\.?|doctora|ana|sonia|laura|silvia|lucia|julieta|marisa|cintia|paulina|daniela|mariana|maria|valeria|patricia|carolina|veronica|romina|natalia|vanesa|gabriela|lorena|cecilia|marcela|andrea|elena|claudia|bertha)\b/i.test(name);
+    const isFemale = /\b(dra\.?|doctora|agustina|ana|sonia|laura|silvia|lucia|lucía|julieta|marisa|cintia|paulina|daniela|mariana|maria|valeria|patricia|carolina|veronica|romina|natalia|vanesa|gabriela|lorena|cecilia|marcela|andrea|elena|claudia|bertha)\b/i.test(name);
     const prefix = isFemale ? 'Dra.' : 'Dr.';
     
     let cleanName = name
         .replace(/^\([A-Z0-9\s-]+\)\s*/i, '')
         .replace(/\s*\([A-Z0-9\s-]+\)$/i, '')
         .replace(/\b(DRA?\.?|DOCTORA?)\b/gi, '')
-        .replace(/\b(SEDE\s*\d+|SLS|SSLN)\b/gi, '')
+        .replace(/\b(SEDE\s*\d+|SLS|SSLN|SSL\d+|Fertilidad|Sede San Luis)\b/gi, '')
         .trim();
         
+    let cleanSurnameAndName = cleanName;
     if (cleanName.includes(',')) {
         const parts = cleanName.split(',').map((p: string) => p.trim());
+        cleanSurnameAndName = `${parts[0]} ${parts[1]}`;
         cleanName = `${parts[1]} ${parts[0]}`;
     } else {
         const words = cleanName.split(/\s+/);
         if (words.length >= 2) {
             const first = words[0];
             const rest = words.slice(1).join(' ');
+            cleanSurnameAndName = `${first} ${rest}`;
             cleanName = `${rest} ${first}`;
         }
     }
     
     cleanName = cleanName
+        .toLowerCase()
+        .split(' ')
+        .filter(Boolean)
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+        
+    cleanSurnameAndName = cleanSurnameAndName
         .toLowerCase()
         .split(' ')
         .filter(Boolean)
@@ -1089,7 +1099,7 @@ function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: str
         }
     }
     esp = esp.charAt(0).toUpperCase() + esp.slice(1);
-    return { displayName, specialty: esp };
+    return { displayName, specialty: esp, cleanSurnameAndName };
 }
 
 /**
@@ -1989,7 +1999,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
                 // Verificar si en el texto del paciente se incluye además un nombre de pila o especialidad específica
                 const matchingByNameOrSpec = uniqueDocs.find((d: any) => {
-                    const docText = `${d.profesional_nombre} ${d.displayName} ${d.cleanSpecialty}`.toLowerCase();
+                    const docText = `${d.profesional_nombre} ${d.displayName} ${d.cleanSpecialty} ${d.formattedInfo?.cleanSurnameAndName || ''}`.toLowerCase();
                     const words = clean.split(/[\s,]+/);
                     return words.some((w: string) => w.length >= 4 && docText.includes(w) && w !== doctorCandidate?.toLowerCase());
                 });
@@ -2001,23 +2011,11 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                     doctorRecord = uniqueDocs[0];
                     multipleDoctors = null;
                 } else {
-                    let filtered = uniqueDocs;
-                    if (isDoctorMale) {
-                        const mDocs = uniqueDocs.filter((d: any) => !d.displayName.startsWith('Dra.'));
-                        if (mDocs.length > 0) filtered = mDocs;
-                    } else if (isDoctorFemale) {
-                        const fDocs = uniqueDocs.filter((d: any) => d.displayName.startsWith('Dra.'));
-                        if (fDocs.length > 0) filtered = fDocs;
-                    }
-
-                    if (filtered.length === 1) {
-                        doctorRecord = filtered[0];
-                        multipleDoctors = null;
-                    } else {
-                        // Árbol interactivo: múltiples profesionales con el mismo apellido
-                        multipleDoctors = filtered.slice(0, 5);
-                        doctorRecord = null;
-                    }
+                    // Múltiples profesionales con el mismo apellido (ej: Buteler Carlos, Buteler Agustina, Buteler Lucía).
+                    // Si el paciente no indicó nombre de pila o especialidad específica, preguntar siempre cuál necesita
+                    // mediante el menú interactivo (a-, b-, c-).
+                    multipleDoctors = uniqueDocs.slice(0, 5);
+                    doctorRecord = null;
                 }
             }
         } catch (e) {
@@ -2578,22 +2576,24 @@ async function handleChatbotTriage(
     const doctorDisplay = rawDocName ? (hasHonorific ? rawDocName : `Dr. ${rawDocName}`) : null;
     const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
 
-    // Si encontramos múltiples doctores homónimos, consultar al paciente cuál necesita con opciones A, B, C...
+    // Si encontramos múltiples doctores homónimos, consultar al paciente cuál necesita con opciones a-, b-, c-...
     if (analysis.multipleDoctors && analysis.multipleDoctors.length > 1 && analysis.intent !== 'volver_atras') {
         const docList = analysis.multipleDoctors;
-        const letters = ['A', 'B', 'C', 'D', 'E'];
-        const pGreeting = fullName && fullName !== 'Paciente' ? ` *${fullName}*` : '';
-        let menuDocs = `¡Hola${pGreeting}! 🏥 Encontramos más de un profesional con ese apellido en *Sanatorio Argentino*:\n\n`;
+        const letters = ['a', 'b', 'c', 'd', 'e'];
+        const capSurname = analysis.doctorCandidate 
+            ? (analysis.doctorCandidate.charAt(0).toUpperCase() + analysis.doctorCandidate.slice(1).toLowerCase())
+            : '';
+        
+        let menuDocs = `Por favor, ¿qué doctor/a ${capSurname}?\n\n`;
         
         docList.forEach((d: any, idx: number) => {
             const letter = letters[idx] || `${idx + 1}`;
             const info = d.formattedInfo || formatDoctorDisplay(d);
-            menuDocs += `*${letter})* ${info.displayName} — _${info.specialty}_\n`;
+            const nameFormatted = info.cleanSurnameAndName || info.displayName.replace(/^Dr[a]?\.\s*/i, '');
+            menuDocs += `*${letter}-* ${nameFormatted} (${info.specialty})\n`;
         });
         
-        const count = docList.length;
-        const letterPrompt = count > 1 ? `la letra (*A* o *${letters[count - 1] || 'B'}*)` : 'la letra';
-        menuDocs += `\n¿Con cuál de ellos deseás solicitar tu turno? Podés responder con ${letterPrompt} o escribir su nombre.\n\n` +
+        menuDocs += `\nPodés responder con la letra (*a*, *b*...) o escribir el nombre.\n\n` +
             `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
         
         replyText = menuDocs;
@@ -2691,12 +2691,12 @@ async function handleChatbotTriage(
         let selectedDoc: any = null;
         const trimmed = cleanText.trim().toLowerCase();
 
-        // 1. Selección por letra (A, B, C, D, E) o número (1, 2, 3, 4, 5)
-        const isLetterA = /^(a|opci[oó]n\s*a|la\s*a|con\s*a|el\s*a|letra\s*a)[).]?$/i.test(trimmed) || /^(1|1️⃣|opci[oó]n\s*1|la\s*1|el\s*1)[).]?$/i.test(trimmed);
-        const isLetterB = /^(b|opci[oó]n\s*b|la\s*b|con\s*b|el\s*b|letra\s*b)[).]?$/i.test(trimmed) || /^(2|2️⃣|opci[oó]n\s*2|la\s*2|el\s*2)[).]?$/i.test(trimmed);
-        const isLetterC = /^(c|opci[oó]n\s*c|la\s*c|con\s*c|el\s*c|letra\s*c)[).]?$/i.test(trimmed) || /^(3|3️⃣|opci[oó]n\s*3|la\s*3|el\s*3)[).]?$/i.test(trimmed);
-        const isLetterD = /^(d|opci[oó]n\s*d|la\s*d|con\s*d|el\s*d|letra\s*d)[).]?$/i.test(trimmed) || /^(4|4️⃣|opci[oó]n\s*4|la\s*4|el\s*4)[).]?$/i.test(trimmed);
-        const isLetterE = /^(e|opci[oó]n\s*e|la\s*e|con\s*e|el\s*e|letra\s*e)[).]?$/i.test(trimmed) || /^(5|5️⃣|opci[oó]n\s*5|la\s*5|el\s*5)[).]?$/i.test(trimmed);
+        // 1. Selección por letra (a, b, c, d, e) o número (1, 2, 3, 4, 5)
+        const isLetterA = /^(a|opci[oó]n\s*a|la\s*a|con\s*a|el\s*a|letra\s*a)[\).\-_]?(\s+.*)?$/i.test(trimmed) || /^(1|1️⃣|opci[oó]n\s*1|la\s*1|el\s*1)[\).\-_]?(\s+.*)?$/i.test(trimmed);
+        const isLetterB = /^(b|opci[oó]n\s*b|la\s*b|con\s*b|el\s*b|letra\s*b)[\).\-_]?(\s+.*)?$/i.test(trimmed) || /^(2|2️⃣|opci[oó]n\s*2|la\s*2|el\s*2)[\).\-_]?(\s+.*)?$/i.test(trimmed);
+        const isLetterC = /^(c|opci[oó]n\s*c|la\s*c|con\s*c|el\s*c|letra\s*c)[\).\-_]?(\s+.*)?$/i.test(trimmed) || /^(3|3️⃣|opci[oó]n\s*3|la\s*3|el\s*3)[\).\-_]?(\s+.*)?$/i.test(trimmed);
+        const isLetterD = /^(d|opci[oó]n\s*d|la\s*d|con\s*d|el\s*d|letra\s*d)[\).\-_]?(\s+.*)?$/i.test(trimmed) || /^(4|4️⃣|opci[oó]n\s*4|la\s*4|el\s*4)[\).\-_]?(\s+.*)?$/i.test(trimmed);
+        const isLetterE = /^(e|opci[oó]n\s*e|la\s*e|con\s*e|el\s*e|letra\s*e)[\).\-_]?(\s+.*)?$/i.test(trimmed) || /^(5|5️⃣|opci[oó]n\s*5|la\s*5|el\s*5)[\).\-_]?(\s+.*)?$/i.test(trimmed);
 
         if (isLetterA && storedDocs[0]) selectedDoc = storedDocs[0];
         else if (isLetterB && storedDocs[1]) selectedDoc = storedDocs[1];
