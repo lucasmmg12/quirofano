@@ -288,7 +288,7 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
             }
         }
 
-        // C2. Búsqueda complementaria en Supabase turnos_activos_pacientes
+        // C2. Búsqueda complementaria y sincronización bidireccional con Supabase turnos_activos_pacientes
         try {
             const todayIso = new Date().toISOString().split('T')[0];
             const { data: turnosSb } = await supabase
@@ -298,10 +298,22 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                 .gte('fecha', todayIso);
 
             if (turnosSb && turnosSb.length > 0) {
+                const orphanedIds = [];
                 for (const t of turnosSb) {
-                    if (seenOnlineIds.has(t.id) || (t.id && seenOnlineIds.has(t.id.replace('online_', '')))) continue;
-                    seenOnlineIds.add(t.id);
+                    const isKnownInSalus = seenOnlineIds.has(t.id) || (t.id && seenOnlineIds.has(t.id.replace('online_', '')));
+                    
+                    if (isKnownInSalus) {
+                        continue;
+                    }
 
+                    // Si SALUS está conectado en vivo y este turno online/visita no está en SALUS, fue borrado/cancelado en SALUS
+                    if (pool && pool.connected) {
+                        orphanedIds.push(t.id);
+                        continue;
+                    }
+
+                    // Si no había conexión a SALUS, usarlo como fallback de contingencia
+                    seenOnlineIds.add(t.id);
                     onlineTurnosList.push({
                         id_visita: t.id,
                         fecha_visita: t.fecha,
@@ -320,6 +332,15 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                         origen: t.origen === 'turno_online' ? 'online' : 'presencial',
                         tipo: t.origen === 'turno_online' ? 'online' : 'presencial'
                     });
+                }
+
+                // Purgar de inmediato en Supabase los turnos que fueron eliminados de SALUS
+                if (orphanedIds.length > 0) {
+                    console.log(`🗑️ [Historial Clinico] Purgando ${orphanedIds.length} turnos borrados en SALUS para DNI ${resolvedDni}:`, orphanedIds);
+                    await supabase
+                        .from('turnos_activos_pacientes')
+                        .delete()
+                        .in('id', orphanedIds);
                 }
             }
         } catch (e) {

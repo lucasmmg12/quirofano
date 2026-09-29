@@ -283,15 +283,25 @@ export async function syncTurnosActivos(pool, supabase) {
 
         // 6. PURGAR TURNOS QUE FUERON BORRADOS EN SALUS PERO QUEDARON EN SUPABASE (>= HOY)
         try {
-            const { data: futureRows, error: fErr } = await supabase
-                .from('turnos_activos_pacientes')
-                .select('id')
-                .gte('fecha', todayIso);
+            // Paginación exhaustiva para superar el límite estricto de 1.000 registros por query de Supabase
+            let allFutureIds = [];
+            let offset = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                const { data: pageRows, error: pErr } = await supabase
+                    .from('turnos_activos_pacientes')
+                    .select('id')
+                    .gte('fecha', todayIso)
+                    .range(offset, offset + PAGE_SIZE - 1);
 
-            if (!fErr && Array.isArray(futureRows) && futureRows.length > 0) {
-                const deletedInSalusIds = futureRows
-                    .map(r => r.id)
-                    .filter(id => !turnosMap.has(id));
+                if (pErr || !pageRows || pageRows.length === 0) break;
+                for (const r of pageRows) allFutureIds.push(r.id);
+                if (pageRows.length < PAGE_SIZE) break;
+                offset += PAGE_SIZE;
+            }
+
+            if (allFutureIds.length > 0) {
+                const deletedInSalusIds = allFutureIds.filter(id => !turnosMap.has(id));
 
                 if (deletedInSalusIds.length > 0) {
                     console.log(`🗑️ [SYNC-TURNOS] Purgando ${deletedInSalusIds.length} turnos borrados/cancelados en SALUS...`);
