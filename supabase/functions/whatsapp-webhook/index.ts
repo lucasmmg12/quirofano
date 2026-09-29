@@ -3078,11 +3078,12 @@ async function handleChatbotTriage(
         if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
                 `Ya mismo te comunico con un agente de nuestro equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
+                `📝 *Por favor, indícanos el motivo de tu consulta y detallanos qué necesitas* (podés enviarnos mensajes de texto o fotos/imágenes de pedidos médicos, estudios o credenciales) para que en breve te respondamos con la gestión lista.\n\n` +
                 `${getAgentHandoffNotice()}`;
         } else {
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
-                `Ya mismo te comunicamos con un agente de nuestro equipo de atención.\n` +
-                `💡 _(Si deseás agilizar tu atención, podés dejarnos tu Nombre completo y DNI mientras aguardás)._\n\n` +
+                `Ya mismo te comunicamos con un agente de nuestro equipo de atención para asistirte.\n\n` +
+                `📝 *Por favor, indícanos tu Nombre completo, DNI y el motivo de tu consulta* (también podés enviarnos fotos/imágenes de pedidos médicos, estudios o credenciales que necesites gestionar) para que en breve te respondamos con mayor rapidez.\n\n` +
                 `${getAgentHandoffNotice()}`;
         }
         updates.status = 'sin_asignar';
@@ -4209,6 +4210,7 @@ async function handleChatbotTriage(
         if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥 Te pido sinceras disculpas por cualquier inconveniente.\n\n` +
                 `Ya mismo te comunico con un agente de nuestro equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
+                `📝 *Por favor, indícanos el motivo de tu consulta y detallanos qué necesitas* (podés enviarnos mensajes de texto o fotos/imágenes de pedidos médicos, estudios o credenciales) para que en breve te respondamos con la gestión lista.\n\n` +
                 `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
