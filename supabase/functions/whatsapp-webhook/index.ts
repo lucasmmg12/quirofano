@@ -589,8 +589,96 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
 
         if (direction === 'incoming' && phone && isTargetContactCenter) {
             try {
-                const textToTriage = audioTranscriptionText || content || (mediaUrl ? `[${finalMediaType}]` : '');
-                triageResult = await handleChatbotTriage(supabase, phone, textToTriage, senderName, lineId || 'contact_center', finalMediaType, mediaUrl);
+                // =========================================================
+                // DEBOUNCE & MESSAGE BUFFERING (COALESCING DE MENSAJES RÁFAGA)
+                // Espera 3.5 segundos por si el paciente envía varios mensajes seguidos
+                // (ej: mensaje 1 = DNI, mensaje 2 = médico, mensaje 3 = obra social)
+                // para entender todo en un solo contexto y responder una única vez.
+                // =========================================================
+                const DEBOUNCE_WAIT_MS = 3500;
+                await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_WAIT_MS));
+
+                // Verificar si entró otro mensaje más nuevo para este mismo teléfono
+                const currentMsgId = insertedData?.id;
+                if (currentMsgId) {
+                    const { data: latestMsg } = await supabase
+                        .from('whatsapp_messages')
+                        .select('id')
+                        .eq('phone', phone)
+                        .eq('direction', 'incoming')
+                        .order('created_at', { ascending: false })
+                        .order('id', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (latestMsg && latestMsg.id !== currentMsgId) {
+                        console.log(`[webhook-debounce] ⏭️ Se detectó mensaje entrante posterior (${latestMsg.id} vs actual ${currentMsgId}) para ${phone}. Cediendo procesamiento al mensaje final.`);
+                        return new Response(
+                            JSON.stringify({ ok: true, debounced: true, phone, lineId, supersededBy: latestMsg.id }),
+                            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        );
+                    }
+                }
+
+                // Si este es el mensaje ganador (último de la ráfaga), recopilar todos los mensajes
+                // entrantes no respondidos del paciente desde la última respuesta saliente del bot
+                const { data: lastOutgoing } = await supabase
+                    .from('whatsapp_messages')
+                    .select('created_at')
+                    .eq('phone', phone)
+                    .eq('direction', 'outgoing')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                const lastOutgoingTime = lastOutgoing?.created_at 
+                    ? new Date(lastOutgoing.created_at).toISOString() 
+                    : new Date(Date.now() - 60000).toISOString();
+
+                const { data: burstMessages } = await supabase
+                    .from('whatsapp_messages')
+                    .select('id, content, media_type, media_url, created_at')
+                    .eq('phone', phone)
+                    .eq('direction', 'incoming')
+                    .gt('created_at', lastOutgoingTime)
+                    .order('created_at', { ascending: true });
+
+                let consolidatedText = '';
+                let consolidatedMediaType = finalMediaType;
+                let consolidatedMediaUrl = mediaUrl;
+
+                if (burstMessages && burstMessages.length > 0) {
+                    const fragments: string[] = [];
+                    for (const m of burstMessages) {
+                        const t = (m.content || '').trim();
+                        if (m.id === currentMsgId && audioTranscriptionText) {
+                            fragments.push(audioTranscriptionText);
+                        } else if (t && !t.startsWith('[image]') && !t.startsWith('[document]') && !t.startsWith('[audio]') && !t.startsWith('[voice]')) {
+                            fragments.push(t);
+                        }
+                        if (m.media_url && !consolidatedMediaUrl) {
+                            consolidatedMediaUrl = m.media_url;
+                            consolidatedMediaType = m.media_type || 'image';
+                        }
+                    }
+                    consolidatedText = fragments.join('\n').trim();
+                }
+
+                if (!consolidatedText) {
+                    consolidatedText = audioTranscriptionText || content || (consolidatedMediaUrl ? `[${consolidatedMediaType}]` : '');
+                }
+
+                console.log(`[webhook-debounce] 📦 Ráfaga consolidada para ${phone} (${burstMessages?.length || 1} msgs agrupados):\n"${consolidatedText}"`);
+
+                triageResult = await handleChatbotTriage(
+                    supabase, 
+                    phone, 
+                    consolidatedText, 
+                    senderName, 
+                    lineId || 'contact_center', 
+                    consolidatedMediaType, 
+                    consolidatedMediaUrl
+                );
             } catch (triageError: any) {
                 console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
                 triageResult = { error: triageError?.message || String(triageError) };

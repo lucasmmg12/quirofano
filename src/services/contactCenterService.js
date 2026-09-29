@@ -2084,7 +2084,11 @@ DIRECTIVAS PRINCIPALES:
      "Por favor, ¿qué doctor/a [Apellido]?"
      "*a-* [Apellido Nombre] ([Especialidad])"
      "*b-* [Apellido Nombre] ([Especialidad])"
-     "Podés responder con la letra (*a*, *b*...) o escribir el nombre."`;
+     "Podés responder con la letra (*a*, *b*...) o escribir el nombre."
+12. MENSAJES FRAGMENTADOS O RÁFAGAS DE INFORMACIÓN:
+   - Los pacientes habitualmente envían varios mensajes seguidos o un bloque con múltiples datos (por ejemplo: DNI en una línea, médico o especialidad en otra, y obra social o consulta en otra).
+   - Analiza siempre TODO el texto en conjunto, extrayendo de manera simultánea todos los datos provistos (DNI, nombre, médico, especialidad, obra social).
+   - NUNCA vuelvas a pedir un dato que el paciente ya haya proporcionado en cualquier parte del texto o del historial. Si ya tienes los datos necesarios, procede directamente a resolver su consulta o al siguiente paso.`;
 
 export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá a la brevedad.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
 
