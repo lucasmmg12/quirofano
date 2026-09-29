@@ -10,7 +10,7 @@ import {
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
     FileText, FileSpreadsheet, File, Maximize2, Palette,
-    Mic, Square, Trash2, Loader2, Upload, Link, Unlink
+    Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users
 } from 'lucide-react';
 
 /**
@@ -114,7 +114,7 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, unlinkThirdPartyPatient, lookupPatientFromSalus, resetBotWorkflow,
-    analyzeMedicalOrderImage, generateChatAiSummary,
+    analyzeMedicalOrderImage, generateChatAiSummary, getAssociatedPatientsByPhone,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
     transcribeAudioMessage, uploadContactCenterMedia,
@@ -489,6 +489,48 @@ export default function ContactCenterChatConsole({
     const [thirdPartyDniInput, setThirdPartyDniInput] = useState('');
     const [activeDualTab, setActiveDualTab] = useState('paciente'); // 'paciente' | 'titular'
 
+    // Estados Contactos / Pacientes Asociados por Teléfono (Grupo Familiar)
+    const [associatedPatients, setAssociatedPatients] = useState([]);
+    const [isLoadingAssociated, setIsLoadingAssociated] = useState(false);
+    const [showAssociatedDrawer, setShowAssociatedDrawer] = useState(false);
+
+    // Helper para formatear edad a partir de fecha_nacimiento
+    const formatPatientAge = (birthDateStr) => {
+        if (!birthDateStr) return '';
+        try {
+            let d, m, y;
+            if (birthDateStr.includes('/')) {
+                const parts = birthDateStr.split('/');
+                d = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10) - 1;
+                y = parseInt(parts[2], 10);
+            } else if (birthDateStr.includes('-')) {
+                const parts = birthDateStr.split('-');
+                y = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10) - 1;
+                d = parseInt(parts[2], 10);
+            } else {
+                return '';
+            }
+            const birth = new Date(y, m, d);
+            if (isNaN(birth.getTime())) return '';
+            const now = new Date();
+            let years = now.getFullYear() - birth.getFullYear();
+            const mDiff = now.getMonth() - birth.getMonth();
+            if (mDiff < 0 || (mDiff === 0 && now.getDate() < birth.getDate())) {
+                years--;
+            }
+            if (years < 1) {
+                const months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+                if (months <= 0) return 'Recién nacido';
+                return `${months} ${months === 1 ? 'mes' : 'meses'}`;
+            }
+            return `${years} años`;
+        } catch {
+            return '';
+        }
+    };
+
     // Estados Historial Clínico 360°
     const [patientHistory, setPatientHistory] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(false);
@@ -570,6 +612,32 @@ export default function ContactCenterChatConsole({
             }
         }
     }, [selectedChat?.id]);
+
+    // Cargar pacientes asociados al número de teléfono en segundo plano (Grupo Familiar)
+    const loadAssociatedPatients = async (phone) => {
+        if (!phone) {
+            setAssociatedPatients([]);
+            return;
+        }
+        setIsLoadingAssociated(true);
+        try {
+            const list = await getAssociatedPatientsByPhone(phone);
+            setAssociatedPatients(list || []);
+        } catch (err) {
+            console.error('Error al cargar pacientes asociados:', err);
+            setAssociatedPatients([]);
+        } finally {
+            setIsLoadingAssociated(false);
+        }
+    };
+
+    useEffect(() => {
+        if (selectedChat?.phone) {
+            loadAssociatedPatients(selectedChat.phone);
+        } else {
+            setAssociatedPatients([]);
+        }
+    }, [selectedChat?.phone, selectedChat?.id]);
 
     // Rastrear en tiempo real qué conversación está mirando este agente ("El Ojito")
     useEffect(() => {
@@ -923,6 +991,86 @@ export default function ContactCenterChatConsole({
         } catch (err) {
             console.error('Error al desvincular tercero:', err);
             showToast('Error al desvincular tercero: ' + (err.message || 'Error'), 'error');
+        } finally {
+            setIsSearchingSalus(false);
+        }
+    };
+
+    // Seleccionar y conmutar ficha médica al paciente asociado / familiar elegido
+    const handleSelectAssociatedPatient = async (patient) => {
+        if (!patient || !selectedChat) return;
+
+        const birth = patient.fecha_nacimiento || '';
+        const formattedBirth = birth.includes('/') ? birth : (birth.includes('-') ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : birth);
+        const currentTitularName = selectedChat.customFields?.fichaDual?.titularNombre || selectedChat.contactName || `+${selectedChat.phone}`;
+
+        // Si ya está activo exactamente este DNI
+        const currentDni = crmForm.dni || selectedChat.customFields?.dni;
+        if (patient.dni && currentDni && String(patient.dni) === String(currentDni)) {
+            showToast(`El paciente ${patient.nombre} ya se encuentra activo en la ficha.`, 'info');
+            return;
+        }
+
+        setIsSearchingSalus(true);
+        try {
+            setCrmForm(prev => ({
+                ...prev,
+                dni: patient.dni || prev.dni,
+                pacienteNombre: patient.nombre || prev.pacienteNombre,
+                obraSocial: patient.coseguro || prev.obraSocial,
+                fechaNacimiento: formattedBirth || prev.fechaNacimiento,
+                email: patient.email || prev.email,
+                departamento: patient.centro || prev.departamento,
+                notas: (prev.notas ? prev.notas + '\n' : '') + `[Contacto Asociado Seleccionado] Titular de línea: ${currentTitularName} | Paciente: ${patient.nombre} (DNI: ${patient.dni || 'S/D'})`
+            }));
+
+            if (selectedChat?.customFields) {
+                selectedChat.customFields.dni = patient.dni || selectedChat.customFields.dni;
+                selectedChat.customFields.nhc = patient.nhc || selectedChat.customFields.nhc;
+                selectedChat.customFields.pacienteNombre = patient.nombre || selectedChat.customFields.pacienteNombre;
+                selectedChat.customFields.obraSocial = patient.coseguro || selectedChat.customFields.obraSocial;
+                selectedChat.customFields.fechaNacimiento = formattedBirth || selectedChat.customFields.fechaNacimiento;
+                selectedChat.customFields.email = patient.email || selectedChat.customFields.email;
+                selectedChat.customFields.esPacienteExistente = true;
+                selectedChat.customFields.fichaDual = {
+                    esGestionTercero: true,
+                    parentesco: 'Familiar / Asociado',
+                    titularNombre: currentTitularName,
+                    titularTelefono: selectedChat.phone,
+                    pacienteNombre: patient.nombre,
+                    pacienteDni: patient.dni,
+                    pacienteObraSocial: patient.coseguro,
+                    pacienteNhc: patient.nhc
+                };
+            }
+
+            await saveCrmPatientCard({
+                phone: selectedChat.phone,
+                dni: patient.dni,
+                nombreCompleto: patient.nombre,
+                obraSocial: patient.coseguro,
+                fechaNacimiento: formattedBirth,
+                email: patient.email,
+                departamento: patient.centro || 'San Juan',
+                motivoConsulta: crmForm.motivoConsulta,
+                esGestionTercero: true,
+                titularNombre: currentTitularName,
+                parentesco: 'Familiar / Asociado',
+                pacienteNombre: patient.nombre,
+                pacienteDni: patient.dni,
+                pacienteObraSocial: patient.coseguro
+            });
+
+            showToast(`Ficha vinculada: ${patient.nombre} (DNI ${patient.dni || 'S/D'})`, 'success');
+            setActiveDualTab('paciente');
+            setShowAssociatedDrawer(false);
+
+            if (typeof onReloadChats === 'function') {
+                onReloadChats();
+            }
+        } catch (err) {
+            console.error('Error al seleccionar paciente asociado:', err);
+            showToast('Error al vincular paciente asociado: ' + (err.message || 'Error'), 'error');
         } finally {
             setIsSearchingSalus(false);
         }
@@ -4613,12 +4761,87 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
 
 
+                            {/* BANNER RECOMENDACIÓN GRUPO FAMILIAR SI HAY MÚLTIPLES PACIENTES */}
+                            {associatedPatients.length > 1 && !selectedChat.customFields?.fichaDual?.esGestionTercero && !showAssociatedDrawer && (
+                                <div 
+                                    onClick={() => setShowAssociatedDrawer(true)}
+                                    style={{
+                                        background: ccTheme.isDark ? 'rgba(30, 58, 138, 0.25)' : '#F0F9FF',
+                                        border: '1px solid #BAE6FD',
+                                        borderRadius: '8px',
+                                        padding: '7px 10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Haz clic para ver todos los pacientes registrados con este mismo número"
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Users size={13} style={{ color: '#0284C7' }} />
+                                        <span style={{ fontSize: '0.69rem', fontWeight: 600, color: themeCardText }}>
+                                            Línea compartida: <strong>{associatedPatients.length} pacientes</strong> en SALUS
+                                        </span>
+                                    </div>
+                                    <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#0284C7', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                        Ver asociados ➔
+                                    </span>
+                                </div>
+                            )}
+
                             {/* CABECERA DE LA FICHA DEL PACIENTE */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Datos del Paciente
                                 </span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    {/* Botón Ver Contactos / Pacientes Asociados por Teléfono */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAssociatedDrawer(prev => !prev)}
+                                        title="Ver pacientes registrados con este mismo número de teléfono (grupo familiar)"
+                                        style={{
+                                            fontSize: '0.66rem',
+                                            fontWeight: 700,
+                                            color: showAssociatedDrawer ? '#FFFFFF' : (ccTheme.accentColor || '#0284C7'),
+                                            background: showAssociatedDrawer 
+                                                ? (ccTheme.accentColor || '#0284C7') 
+                                                : (ccTheme.isDark ? '#0F172A' : '#EFF6FF'),
+                                            border: `1px solid ${showAssociatedDrawer ? (ccTheme.accentColor || '#0284C7') : '#93C5FD'}`,
+                                            padding: '3px 7px',
+                                            borderRadius: '6px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <Users size={11} />
+                                        <span>Asociados</span>
+                                        {isLoadingAssociated ? (
+                                            <Loader2 size={9} className="animate-spin" />
+                                        ) : (
+                                            <span style={{
+                                                background: showAssociatedDrawer ? 'rgba(255,255,255,0.3)' : (ccTheme.accentColor || '#0284C7'),
+                                                color: '#FFFFFF',
+                                                borderRadius: '9999px',
+                                                padding: '0 4px',
+                                                fontSize: '0.60rem',
+                                                fontWeight: 800,
+                                                lineHeight: '13px',
+                                                height: '13px',
+                                                minWidth: '13px',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}>
+                                                {associatedPatients.length}
+                                            </span>
+                                        )}
+                                    </button>
+
                                     <button
                                         type="button"
                                         onClick={() => setIsSearchingThirdParty(prev => !prev)}
@@ -4673,6 +4896,178 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     )}
                                 </div>
                             </div>
+
+                            {/* PANEL DESPLEGABLE: PACIENTES / FAMILIARES ASOCIADOS POR TELÉFONO */}
+                            {showAssociatedDrawer && (
+                                <div style={{
+                                    background: rightCardBg,
+                                    border: `1.5px solid ${ccTheme.accentColor || '#0284C7'}`,
+                                    borderRadius: '10px',
+                                    padding: '10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
+                                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.12)'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 800, color: ccTheme.accentColor || '#0369A1' }}>
+                                            <Users size={14} />
+                                            <span>Contactos Asociados al Teléfono ({associatedPatients.length})</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => loadAssociatedPatients(selectedChat?.phone)}
+                                                title="Actualizar búsqueda de contactos asociados en SALUS"
+                                                disabled={isLoadingAssociated}
+                                                style={{
+                                                    background: 'transparent', border: 'none', cursor: 'pointer',
+                                                    padding: '2px', color: themeCardSubtext
+                                                }}
+                                            >
+                                                <RefreshCw size={12} className={isLoadingAssociated ? 'animate-spin' : ''} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAssociatedDrawer(false)}
+                                                style={{
+                                                    background: 'transparent', border: 'none', cursor: 'pointer',
+                                                    padding: '2px', color: themeCardSubtext
+                                                }}
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ fontSize: '0.67rem', color: themeCardSubtext, lineHeight: '1.3' }}>
+                                        Pacientes registrados en el padrón de SALUS con el número <strong>+{selectedChat?.phone}</strong>:
+                                    </div>
+
+                                    {isLoadingAssociated ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', gap: '8px', fontSize: '0.72rem', color: themeCardSubtext }}>
+                                            <Loader2 size={14} className="animate-spin text-blue-600" />
+                                            <span>Buscando pacientes en SALUS...</span>
+                                        </div>
+                                    ) : associatedPatients.length === 0 ? (
+                                        <div style={{ padding: '10px', textAlign: 'center', fontSize: '0.71rem', color: themeCardSubtext, background: ccTheme.isDark ? '#1E293B' : '#F8FAFC', borderRadius: '6px' }}>
+                                            No se encontraron otros pacientes con este número en el padrón.
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '250px', overflowY: 'auto' }}>
+                                            {associatedPatients.map((patient) => {
+                                                const isCurrentActive = (crmForm.dni && patient.dni && String(crmForm.dni) === String(patient.dni)) ||
+                                                                        (crmForm.pacienteNombre && patient.nombre && crmForm.pacienteNombre.trim().toLowerCase() === patient.nombre.trim().toLowerCase());
+                                                const ageStr = formatPatientAge(patient.fecha_nacimiento);
+
+                                                return (
+                                                    <div 
+                                                        key={patient.id_paciente || patient.dni || patient.nombre}
+                                                        style={{
+                                                            background: isCurrentActive 
+                                                                ? (ccTheme.isDark ? 'rgba(6, 78, 59, 0.35)' : '#F0FDF4') 
+                                                                : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
+                                                            border: `1px solid ${isCurrentActive ? '#86EFAC' : rightCardBorder}`,
+                                                            borderRadius: '8px',
+                                                            padding: '8px 10px',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '4px',
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '4px' }}>
+                                                            <div style={{ fontWeight: 800, fontSize: '0.74rem', color: themeCardText, lineHeight: '1.2' }}>
+                                                                {patient.nombre}
+                                                            </div>
+                                                            {isCurrentActive && (
+                                                                <span style={{
+                                                                    background: '#16A34A', color: '#FFFFFF',
+                                                                    fontSize: '0.6rem', fontWeight: 800,
+                                                                    padding: '1px 6px', borderRadius: '9999px',
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '2px',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    <Check size={9} /> Activo
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
+                                                            <span style={{
+                                                                fontSize: '0.65rem',
+                                                                background: ccTheme.isDark ? '#334155' : '#F1F5F9',
+                                                                color: themeCardSubtext,
+                                                                padding: '1px 5px',
+                                                                borderRadius: '4px',
+                                                                fontWeight: 600
+                                                            }}>
+                                                                DNI: <strong>{patient.dni || 'Sin DNI'}</strong>
+                                                            </span>
+
+                                                            {ageStr && (
+                                                                <span style={{
+                                                                    fontSize: '0.65rem',
+                                                                    background: ccTheme.isDark ? '#334155' : '#F1F5F9',
+                                                                    color: themeCardSubtext,
+                                                                    padding: '1px 5px',
+                                                                    borderRadius: '4px',
+                                                                    fontWeight: 600
+                                                                }}>
+                                                                    Edad: <strong>{ageStr}</strong>
+                                                                </span>
+                                                            )}
+
+                                                            {patient.coseguro && (
+                                                                <span style={{
+                                                                    fontSize: '0.63rem',
+                                                                    background: '#EFF6FF',
+                                                                    color: '#1D4ED8',
+                                                                    padding: '1px 5px',
+                                                                    borderRadius: '4px',
+                                                                    fontWeight: 700,
+                                                                    maxWidth: '160px',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    {patient.coseguro}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {!isCurrentActive && (
+                                                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSelectAssociatedPatient(patient)}
+                                                                    disabled={isSearchingSalus}
+                                                                    style={{
+                                                                        padding: '4px 10px',
+                                                                        borderRadius: '6px',
+                                                                        border: 'none',
+                                                                        background: ccTheme.accentColor || '#0284C7',
+                                                                        color: '#FFFFFF',
+                                                                        fontSize: '0.68rem',
+                                                                        fontWeight: 700,
+                                                                        cursor: isSearchingSalus ? 'wait' : 'pointer',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px'
+                                                                    }}
+                                                                >
+                                                                    <ArrowRightLeft size={11} />
+                                                                    Seleccionar como Paciente
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* BUSCADOR DE TERCEROS / OTRO PACIENTE POR DNI EN SALUS */}
                             {isSearchingThirdParty && (
