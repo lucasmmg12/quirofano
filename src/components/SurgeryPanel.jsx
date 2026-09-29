@@ -257,7 +257,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
         try {
             // Vista activa: mostrar pendientes + suspendidas (las suspendidas siguen visibles con indicador)
             // Vista historial: mostrar TODAS las cirugías (sin restricción de fecha ni estado)
-            const ausenteFilter = viewMode === 'history' ? 'all' : 'active';
+            // Si el usuario está filtrando por Hemodinamia, o si es historial, no restringir a fromDate: today ni ausenteFilter: 'active'
+            const isHemoOnly = agendaFilter === 'hemodinamia';
+            const ausenteFilter = (viewMode === 'history' || isHemoOnly) ? 'all' : 'active';
             const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'];
             const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
             const today = new Date().toISOString().split('T')[0];
@@ -272,12 +274,15 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 historyToDate = `${historyMonth}-${String(lastDay).padStart(2, '0')}`;
             }
 
+            const fromDateParam = isHemoOnly
+                ? (viewMode === 'history' && historyMonth !== 'all' ? historyFromDate : undefined)
+                : (viewMode === 'upcoming' ? today : historyFromDate);
+
             const [surgeriesData, statsData] = await Promise.all([
                 fetchSurgeries({
                     ...(dbStatus && { status: dbStatus }),
                     ausenteFilter,
-                    ...(viewMode === 'upcoming' && { fromDate: today }),
-                    ...(historyFromDate && { fromDate: historyFromDate }),
+                    ...(fromDateParam && { fromDate: fromDateParam }),
                     ...(historyToDate && { toDate: historyToDate }),
                 }),
                 getSurgeryStats(),
@@ -302,7 +307,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             setLoading(false);
             setInitialLoadDone(true);
         }
-    }, [filter, viewMode, historyMonth, addToast, initialLoadDone]);
+    }, [filter, viewMode, historyMonth, agendaFilter, addToast, initialLoadDone]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -2127,7 +2132,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                             {/* Agenda Filter (Todas / Quirófanos / Hemodinamia) */}
                             <div style={{ display: 'flex', gap: '2px', background: 'var(--neutral-100)', borderRadius: 'var(--radius-md)', padding: '3px' }}>
                                 <button
-                                    onClick={() => setAgendaFilter('all')}
+                                    onClick={() => {
+                                        setAgendaFilter('all');
+                                    }}
                                     style={{
                                         padding: '6px 12px', borderRadius: 'var(--radius-sm)',
                                         fontSize: '0.76rem', fontWeight: 600, border: 'none', cursor: 'pointer',
@@ -2140,7 +2147,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     Todas
                                 </button>
                                 <button
-                                    onClick={() => setAgendaFilter('quirofano')}
+                                    onClick={() => {
+                                        setAgendaFilter('quirofano');
+                                    }}
                                     style={{
                                         padding: '6px 12px', borderRadius: 'var(--radius-sm)',
                                         fontSize: '0.76rem', fontWeight: 600, border: 'none', cursor: 'pointer',
@@ -2153,7 +2162,12 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     🏥 Quirófanos
                                 </button>
                                 <button
-                                    onClick={() => setAgendaFilter('hemodinamia')}
+                                    onClick={() => {
+                                        setAgendaFilter('hemodinamia');
+                                        if (viewMode === 'upcoming') {
+                                            setViewMode('history');
+                                        }
+                                    }}
                                     style={{
                                         padding: '6px 12px', borderRadius: 'var(--radius-sm)',
                                         fontSize: '0.76rem', fontWeight: 700, border: 'none', cursor: 'pointer',
@@ -2220,6 +2234,15 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                         <Calendar size={48} strokeWidth={1.2} />
                         <h3>Sin cirugías</h3>
                         <p>No hay cirugías que coincidan con el filtro actual.</p>
+                        {agendaFilter === 'hemodinamia' && viewMode === 'upcoming' && (
+                            <button
+                                onClick={() => setViewMode('history')}
+                                className="btn btn--primary"
+                                style={{ marginTop: '12px', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                <Clock size={14} /> Ver historial de Hemodinamia ({surgeries.filter(isHemodinamia).length} cirugías)
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="cart__table-wrapper">

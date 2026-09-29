@@ -693,7 +693,7 @@ async function syncUci(db, fastSync = false) {
 async function syncCirugias(db) {
     console.log('📋 [1/7] Extrayendo cirugías de SALUS...');
     const result = await db.request().query(`
-        SELECT TOP 600
+        SELECT TOP 1000
             CAST(A.Data AS DATE) AS Data_Fecha,
             A.idPaciente, A.nombre, A.telefono1, A.Descrip,
             A.mutua, A.Ausente, A.GrupoAgendas,
@@ -722,8 +722,11 @@ async function syncCirugias(db) {
         ) V
         WHERE A.Descrip LIKE '(CX)%'
           AND A.nombre NOT LIKE '%Bloque%'
-          AND A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD', N'HEMODINAMIA')
-          AND CAST(A.Data AS DATE) >= DATEADD(DAY, -14, CAST(GETDATE() AS DATE))
+          AND (
+            (A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD') AND CAST(A.Data AS DATE) >= DATEADD(DAY, -14, CAST(GETDATE() AS DATE)))
+            OR
+            (A.GrupoAgendas = N'HEMODINAMIA' AND CAST(A.Data AS DATE) >= '2026-01-01')
+          )
         ORDER BY A.Data DESC
     `);
     console.log(`   📥 ${result.recordset.length} registros extraídos`);
