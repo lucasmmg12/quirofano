@@ -16,7 +16,7 @@ export const TECHO_MAXIMO_TOTAL = 278941.18;
 export const INCENTIVO_CONFIG = {
     bolsas: {
         mensajes: {
-            nombre: 'Mensajes / Conversaciones Gestionadas',
+            nombre: 'Conversaciones Únicas (Ventana 24 hs)',
             alcance: 'Grupal',
             ponderacion: 0.50,
             maxMonto: 69735.29,
@@ -25,7 +25,7 @@ export const INCENTIVO_CONFIG = {
             tope: 8500,
             paso: 200,
             montoPaso: 6973.53,
-            unidad: 'mensajes'
+            unidad: 'conversaciones'
         },
         turnos: {
             nombre: 'Turnos Otorgados',
@@ -281,4 +281,40 @@ export function calcularLiquidacionCompleta({
             liquidacionTotal: Math.round(totalGeneralLiquidacion * 100) / 100
         }
     };
+}
+
+/**
+ * Guarda el número de conversaciones únicas auditadas para un período en Supabase
+ */
+export async function guardarConversacionesAuditadasMes(periodo, conversaciones) {
+    const num = parseInt(conversaciones, 10) || 0;
+    try {
+        const { data: row } = await supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', `cc_incentivo_${periodo}`)
+            .maybeSingle();
+
+        let parsed = {};
+        if (row?.value) {
+            parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+        }
+
+        parsed.conversacionesUnicas = num;
+        parsed.updated_at = new Date().toISOString();
+
+        await supabase.from('app_config').upsert({
+            key: `cc_incentivo_${periodo}`,
+            value: JSON.stringify(parsed),
+            label: `Métricas de Incentivos Contact Center ${periodo}`,
+            category: 'incentivos_contact_center',
+            updated_at: new Date().toISOString(),
+            updated_by: 'supervisor_auditoria'
+        });
+
+        return { success: true, conversaciones: num };
+    } catch (e) {
+        console.error('Error guardando conversaciones auditadas:', e);
+        throw e;
+    }
 }

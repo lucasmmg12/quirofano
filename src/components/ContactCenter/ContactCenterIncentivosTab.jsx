@@ -3,7 +3,7 @@ import {
     Award, TrendingUp, Users, Calendar, CheckCircle2, AlertCircle, 
     ArrowUpRight, Printer, RefreshCw, HelpCircle, FileText, ChevronDown, 
     ChevronUp, Shield, Sliders, DollarSign, MessageSquare, PhoneCall,
-    ChevronLeft, ChevronRight, Cloud
+    ChevronLeft, ChevronRight, Cloud, Save
 } from 'lucide-react';
 import { 
     BASE_GARANTIZADA_HISTORICA,
@@ -13,7 +13,8 @@ import {
     getEscalonesInfo,
     fetchMetricasIncentivosSalus,
     fetchMensajesContactCenterMes,
-    calcularLiquidacionCompleta
+    calcularLiquidacionCompleta,
+    guardarConversacionesAuditadasMes
 } from '../../services/incentivoContactCenterService';
 
 export default function ContactCenterIncentivosTab({ activeAgent, currentUser, addToast }) {
@@ -25,6 +26,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     const [lastSyncDate, setLastSyncDate] = useState(null);
     const [mensajesManuales, setMensajesManuales] = useState('');
     const [ajustesFte, setAjustesFte] = useState({});
+    const [savingConvs, setSavingConvs] = useState(false);
     const [showEscalonesModal, setShowEscalonesModal] = useState(false);
     const [showReporteModal, setShowReporteModal] = useState(false);
     const [activeEscalonTab, setActiveEscalonTab] = useState('mensajes');
@@ -38,6 +40,19 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
         if (m > 12) { m = 1; y++; }
         const nuevoPeriodo = `${y}-${String(m).padStart(2, '0')}`;
         setPeriodo(nuevoPeriodo);
+    };
+
+    // Guardar conversaciones únicas auditadas para el mes
+    const handleGuardarConversaciones = async () => {
+        setSavingConvs(true);
+        try {
+            await guardarConversacionesAuditadasMes(periodo, mensajesManuales);
+            if (addToast) addToast(`Conversaciones únicas de ${periodo} guardadas exitosamente`, 'success');
+        } catch (err) {
+            if (addToast) addToast(`Error al guardar conversaciones: ${err.message}`, 'error');
+        } finally {
+            setSavingConvs(false);
+        }
     };
 
     // Cargar datos del período seleccionado
@@ -54,13 +69,15 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             setDataSource(salusRes.source || 'cloud');
             setLastSyncDate(salusRes.updatedAt || new Date().toISOString());
 
-            // Valores de referencia o conteo real de mensajes
-            let defaultMsgs = msgsSb || 0;
-            if (p === '2026-08' && defaultMsgs === 0) defaultMsgs = 7820; // Mes completo agosto
-            if (p === '2026-09' && defaultMsgs === 0) defaultMsgs = 7640; // Mes completo septiembre
-            if (defaultMsgs > 0 || !mensajesManuales) {
-                setMensajesManuales(String(defaultMsgs));
+            // Priorizar valor de conversaciones únicas auditadas guardadas en Supabase
+            let defaultMsgs = rawData.conversacionesUnicas;
+            if (!defaultMsgs) {
+                if (p === '2026-08') defaultMsgs = 7820; // Mes completo agosto
+                else if (p === '2026-09') defaultMsgs = 7640; // Mes completo septiembre
+                else if (msgsSb && msgsSb > 3000) defaultMsgs = msgsSb;
+                else defaultMsgs = 7500; // Meta promedio
             }
+            setMensajesManuales(String(defaultMsgs));
 
             // Inicializar ajustes de FTE para casos específicos de altas/bajas
             if (p === '2026-08') {
@@ -353,14 +370,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </div>
                 </div>
 
-                {/* KPI 2: Bolsa 1 Mensajes Grupales */}
+                {/* KPI 2: Bolsa 1 Conversaciones Únicas Grupales */}
                 <div style={{
                     background: '#FFFFFF', padding: '18px 20px', borderRadius: '14px',
                     border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                            Bolsa 1: Mensajes (50%)
+                            Bolsa 1: Conv. Únicas (50%)
                         </span>
                         <MessageSquare size={16} color="#0284C7" />
                     </div>
@@ -368,7 +385,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         {formatCurrency(liquidacion.bolsaMensajes.montoPorFte)}
                     </div>
                     <div style={{ fontSize: '0.70rem', color: '#475569', fontWeight: 700, marginTop: '4px' }}>
-                        Escalón {liquidacion.bolsaMensajes.escalon}/10 • {liquidacion.bolsaMensajes.total.toLocaleString()} msjs
+                        Escalón {liquidacion.bolsaMensajes.escalon}/10 • {liquidacion.bolsaMensajes.total.toLocaleString()} conv. únicas
                     </div>
                 </div>
 
@@ -422,7 +439,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 gap: '14px',
                 marginBottom: '16px'
             }}>
-                {/* TARJETA BOLSA 1: MENSAJES */}
+                {/* TARJETA BOLSA 1: CONVERSACIONES ÚNICAS */}
                 <div style={{
                     background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
                     padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
@@ -433,7 +450,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 Bolsa Grupal • Ponderación 50%
                             </span>
                             <h3 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
-                                Mensajes / Conversaciones
+                                Conversaciones Únicas (Ventana 24 hs)
                             </h3>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -446,7 +463,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '6px' }}>
                         <span style={{ color: '#64748B' }}>
-                            Base: <strong>6.500</strong> | Meta: <strong>7.500</strong> | Tope: <strong>8.500</strong>
+                            Base: <strong>6.500</strong> | Meta: <strong>7.500</strong> | Tope: <strong>8.500</strong> conv.
                         </span>
                         <span style={{ fontWeight: 800, color: '#0284C7' }}>
                             Escalón {liquidacion.bolsaMensajes.escalon}/10 (+{formatCurrency(liquidacion.bolsaMensajes.montoPorFte)})
@@ -464,28 +481,52 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         }} />
                     </div>
 
-                    {/* Control de Mensajes Auditados */}
+                    {/* Control de Conversaciones Auditadas */}
                     <div style={{
                         background: '#F8FAFC', borderRadius: '10px', padding: '10px 12px',
-                        border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Sliders size={15} color="#64748B" />
-                            <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#475569' }}>
-                                Total Mensajes Gestionados:
-                            </span>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Sliders size={15} color="#0284C7" />
+                                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155' }}>
+                                    Conversaciones Únicas Gestionadas:
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <input
+                                    type="number"
+                                    value={mensajesManuales}
+                                    onChange={(e) => setMensajesManuales(e.target.value)}
+                                    placeholder="Ej: 7640"
+                                    style={{
+                                        width: '95px', padding: '5px 8px', borderRadius: '6px',
+                                        border: '1px solid #CBD5E1', fontSize: '0.82rem', fontWeight: 800,
+                                        color: '#003B71', textAlign: 'right', outline: 'none'
+                                    }}
+                                />
+                                <button
+                                    onClick={handleGuardarConversaciones}
+                                    disabled={savingConvs}
+                                    title="Guardar valor para este mes en Supabase"
+                                    style={{
+                                        background: '#0284C7', border: 'none', color: '#FFFFFF',
+                                        padding: '5px 8px', borderRadius: '6px', fontSize: '0.70rem',
+                                        fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                    }}
+                                >
+                                    <Save size={12} />
+                                    {savingConvs ? '...' : 'Guardar'}
+                                </button>
+                            </div>
                         </div>
-                        <input
-                            type="number"
-                            value={mensajesManuales}
-                            onChange={(e) => setMensajesManuales(e.target.value)}
-                            placeholder="Ej: 7500"
-                            style={{
-                                width: '90px', padding: '4px 8px', borderRadius: '6px',
-                                border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 800,
-                                color: '#003B71', textAlign: 'right', outline: 'none'
-                            }}
-                        />
+
+                        <div style={{
+                            fontSize: '0.67rem', color: '#64748B', lineHeight: '1.3',
+                            borderTop: '1px dashed #E2E8F0', paddingTop: '6px'
+                        }}>
+                            💡 <strong>Criterio oficial:</strong> Si un paciente escribió hoy y vuelve a escribir pasadas las 24 horas, se computa como una nueva conversación distinta.
+                        </div>
                     </div>
                 </div>
 
