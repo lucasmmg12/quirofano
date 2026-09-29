@@ -69,13 +69,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             setDataSource(salusRes.source || 'cloud');
             setLastSyncDate(salusRes.updatedAt || new Date().toISOString());
 
-            // Priorizar valor de conversaciones únicas auditadas guardadas en Supabase
+            // Priorizar valor de conversaciones únicas auditadas (Virginia: 2505, Sofia: 2435, Daniela: 1903, Erica: 1744 = 8587)
             let defaultMsgs = rawData.conversacionesUnicas;
-            if (!defaultMsgs) {
-                if (p === '2026-08') defaultMsgs = 7820; // Mes completo agosto
-                else if (p === '2026-09') defaultMsgs = 7640; // Mes completo septiembre
+            if (p === '2026-09' || p === '2026-10') {
+                defaultMsgs = rawData.conversacionesUnicas || 8587;
+            } else if (!defaultMsgs) {
+                if (p === '2026-08') defaultMsgs = 7820;
                 else if (msgsSb && msgsSb > 3000) defaultMsgs = msgsSb;
-                else defaultMsgs = 7500; // Meta promedio
+                else defaultMsgs = 8587;
             }
             setMensajesManuales(String(defaultMsgs));
 
@@ -517,7 +518,9 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                         {ag.name}
                                     </div>
                                     <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
-                                        {ag.fte === 1.0 ? '100% FTE (Plena)' : `${Math.round(ag.fte * 100)}% FTE`} • Asist: {ag.asistenciaPct}%
+                                        {ag.fte === 1.0 ? '100% FTE' : `${Math.round(ag.fte * 100)}% FTE`}
+                                        {ag.mensajesIndividuales > 0 ? ` • 💬 ${ag.mensajesIndividuales.toLocaleString()} msjs` : ''}
+                                        {` • Asist: ${ag.asistenciaPct}%`}
                                     </div>
                                 </div>
                             </div>
@@ -822,7 +825,12 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
                                     {/* Bolsa Mensajes */}
                                     <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
-                                        +{formatCurrency(ag.montoMensajes)}
+                                        <div>+{formatCurrency(ag.montoMensajes)}</div>
+                                        {ag.mensajesIndividuales > 0 && (
+                                            <div style={{ fontSize: '0.64rem', color: '#0369A1', fontWeight: 700 }}>
+                                                {ag.mensajesIndividuales.toLocaleString()} msjs
+                                            </div>
+                                        )}
                                     </td>
 
                                     {/* Bolsa Turnos */}

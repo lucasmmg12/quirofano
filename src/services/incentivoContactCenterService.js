@@ -54,6 +54,16 @@ export const INCENTIVO_CONFIG = {
     }
 };
 
+/** Mensajes auditados de referencia por operadora (Septiembre / Proyección Octubre) */
+export const MENSAJES_INDIVIDUALES_REF = {
+    vjacques: 2505, // Virginia
+    solivier: 2435, // Sofia
+    daguilera: 1903, // Daniela
+    eleal: 1744,     // Erica
+    macosta: 0       // Antonella (baja)
+};
+export const TOTAL_MENSAJES_REF = 2505 + 2435 + 1903 + 1744; // 8.587 (Escalón 10 / Tope)
+
 /**
  * Tabla oficial de escalones progresivos (0 a 10)
  */
@@ -240,9 +250,14 @@ export function calcularLiquidacionCompleta({
         const totalVariable = montoMensajes + montoTurnos + montoAsistencia;
         const totalALiquidar = base + totalVariable;
 
+        const mensajesIndiv = ag.mensajesIndividuales !== undefined
+            ? ag.mensajesIndividuales
+            : (MENSAJES_INDIVIDUALES_REF[ag.id] || 0);
+
         return {
             ...ag,
             fte,
+            mensajesIndividuales: mensajesIndiv,
             baseGarantizadaLiquidada: Math.round(base * 100) / 100,
             montoMensajes: Math.round(montoMensajes * 100) / 100,
             montoTurnos: Math.round(montoTurnos * 100) / 100,
