@@ -137,6 +137,36 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
         }));
     };
 
+    // Métricas para cálculo por agente (100% FTE)
+    const metricasAgentes = useMemo(() => {
+        if (!liquidacion?.agentes?.length) {
+            const basePleno = BASE_GARANTIZADA_HISTORICA;
+            const varPleno = (liquidacion?.bolsaMensajes?.montoPorFte || 0) + (liquidacion?.bolsaTurnos?.montoPorFte || 0);
+            return {
+                promedioPleno: basePleno + varPleno,
+                minPleno: basePleno + varPleno,
+                maxPleno: basePleno + varPleno,
+                totalVariablePleno: varPleno,
+                hayRango: false
+            };
+        }
+        const plenos = liquidacion.agentes.filter(a => a.fte === 1.0);
+        const lista = plenos.length > 0 ? plenos : liquidacion.agentes;
+        const valores = lista.map(a => a.totalALiquidar);
+        const minVal = Math.min(...valores);
+        const maxVal = Math.max(...valores);
+        const prom = valores.reduce((acc, v) => acc + v, 0) / valores.length;
+        const promVar = lista.reduce((acc, a) => acc + a.totalVariable, 0) / lista.length;
+
+        return {
+            promedioPleno: prom,
+            minPleno: minVal,
+            maxPleno: maxVal,
+            totalVariablePleno: promVar,
+            hayRango: Math.abs(maxVal - minVal) > 100
+        };
+    }, [liquidacion]);
+
     return (
         <div style={{ padding: '4px 0 20px 0', maxWidth: '1400px', margin: '0 auto' }}>
             
@@ -408,7 +438,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </div>
                 </div>
 
-                {/* KPI 4: Total Liquidación Equipo */}
+                {/* KPI 4: A Cobrar por Agente (100% FTE) */}
                 <div style={{
                     background: 'linear-gradient(135deg, #003B71 0%, #0F2942 100%)',
                     padding: '18px 20px', borderRadius: '14px',
@@ -417,16 +447,90 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#93C5FD', textTransform: 'uppercase' }}>
-                            Total a Liquidar Equipo
+                            A Cobrar por Agente (100% FTE)
                         </span>
                         <DollarSign size={16} color="#67E8F9" />
                     </div>
                     <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#FFFFFF' }}>
-                        {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
+                        {metricasAgentes.hayRango
+                            ? `${formatCurrency(metricasAgentes.minPleno)} - ${formatCurrency(metricasAgentes.maxPleno)}`
+                            : formatCurrency(metricasAgentes.promedioPleno)
+                        }
                     </div>
                     <div style={{ fontSize: '0.70rem', color: '#BAE6FD', fontWeight: 600, marginTop: '4px' }}>
-                        Variable: +{formatCurrency(liquidacion.totalesEquipo.variableTotal)} sobre histórico
+                        Piso + Variable (+{formatCurrency(metricasAgentes.totalVariablePleno)}) • Equipo: {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
                     </div>
+                </div>
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 2.B MINI-TARJETAS INDIVIDUALES: CUÁNTO COBRA CADA OPERADORA       */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                padding: '16px 20px',
+                marginBottom: '16px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Users size={16} color="#003B71" />
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Liquidación Individual por Operadora
+                        </span>
+                    </div>
+                    <span style={{ fontSize: '0.70rem', color: '#64748B', fontWeight: 600 }}>
+                        Piso base $139.471 + Variable según cumplimiento de bolsas y presentismo
+                    </span>
+                </div>
+
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                    gap: '10px'
+                }}>
+                    {liquidacion.agentes.map(ag => (
+                        <div key={ag.id} style={{
+                            background: '#F8FAFC',
+                            borderRadius: '12px',
+                            border: '1px solid #E2E8F0',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            transition: 'all 0.15s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '34px', height: '34px', borderRadius: '50%',
+                                    background: ag.fte === 1.0 ? '#003B71' : '#475569',
+                                    color: '#FFFFFF',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '0.72rem', fontWeight: 800
+                                }}>
+                                    {ag.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F2942' }}>
+                                        {ag.name}
+                                    </div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
+                                        {ag.fte === 1.0 ? '100% FTE (Plena)' : `${Math.round(ag.fte * 100)}% FTE`} • Asist: {ag.asistenciaPct}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#003B71' }}>
+                                    {formatCurrency(ag.totalALiquidar)}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', color: '#16A34A', fontWeight: 700 }}>
+                                    +{formatCurrency(ag.totalVariable)} variable
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
 
