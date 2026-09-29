@@ -514,24 +514,38 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
 
         // =============================================
         // TRANSCRIPCIÓN Y ENTENDIMIENTO DE AUDIO CON IA (OPENAI WHISPER)
-        // Si el paciente envía un audio/nota de voz, transcribir y analizar en background
-        // para que la agente pueda leer el contenido inmediatamente en la consola
+        // Si el paciente envía un audio/nota de voz, transcribir y analizar antes del triage
+        // para que el bot responda al contenido real del audio y la agente lo lea en consola
         // =============================================
+        let audioTranscriptionText = '';
         if (direction === 'incoming' && mediaUrl && (finalMediaType === 'audio' || finalMediaType === 'voice')) {
             const insertedId = insertedData?.id;
-            console.log(`[webhook] 🎙️ Disparando transcribe-audio para msg ${insertedId}...`);
-            fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                },
-                body: JSON.stringify({
-                    audioUrl: mediaUrl,
-                    messageId: insertedId,
-                    phone: phone,
-                }),
-            }).catch(audioErr => console.error('[webhook] Error triggering transcribe-audio:', audioErr));
+            console.log(`[webhook] 🎙️ Disparando y esperando transcribe-audio para msg ${insertedId}...`);
+            try {
+                const transRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-audio`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    },
+                    body: JSON.stringify({
+                        audioUrl: mediaUrl,
+                        messageId: insertedId,
+                        phone: phone,
+                    }),
+                });
+                if (transRes.ok) {
+                    const transData = await transRes.json();
+                    if (transData?.transcription) {
+                        audioTranscriptionText = transData.transcription.trim();
+                        console.log(`[webhook] 🎙️ Audio transcrito con éxito para triage: "${audioTranscriptionText}"`);
+                    }
+                } else {
+                    console.warn(`[webhook] transcribe-audio devolvió HTTP ${transRes.status}`);
+                }
+            } catch (audioErr) {
+                console.error('[webhook] Error en transcribe-audio:', audioErr);
+            }
         }
 
         // =============================================
@@ -575,7 +589,7 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
 
         if (direction === 'incoming' && phone && isTargetContactCenter) {
             try {
-                const textToTriage = content || (mediaUrl ? `[${finalMediaType}]` : '');
+                const textToTriage = audioTranscriptionText || content || (mediaUrl ? `[${finalMediaType}]` : '');
                 triageResult = await handleChatbotTriage(supabase, phone, textToTriage, senderName, lineId || 'contact_center', finalMediaType, mediaUrl);
             } catch (triageError: any) {
                 console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
@@ -1507,6 +1521,7 @@ DIRECTIVAS PRINCIPALES:
 7. VOLVER ATRÁS O MENÚ PRINCIPAL:
    - Si el paciente manifiesta que se equivocó, desea cambiar de opción o volver, o si le das opciones informativas, recuérdale que puede escribir "Menú" o "Atrás" para regresar al inicio.
 8. FORMATO: Breve y claro, optimizado para lectura en WhatsApp (máximo 2 párrafos cortos, uso de *negrita* para resaltar datos clave, emojis médicos sobrios 🏥 🩺). Al final de respuestas orientativas puedes agregar: "\n\n🔙 *Volver:* Escribí *\"Menú\"* | 👤 *Agente:* Escribí *\"Agente\"*".
+9. AUDIOS Y NOTAS DE VOZ: Los mensajes de voz de los pacientes son transcriptos automáticamente por el sistema de IA a texto. NUNCA digas que no puedes escuchar o procesar audios ni le pidas al paciente que escriba por texto en lugar de enviar audios. Atiende su consulta con total naturalidad como si fuera un mensaje de texto.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -2606,6 +2621,23 @@ async function handleChatbotTriage(
             ...(conv?.ai_summary || {}),
             candidates_medicos: docList
         };
+        return { replyText, updates, nextStage };
+    }
+
+    // =============================================
+    // FLUJO ESPECIAL: AUDIO SIN TRANSCRIPCIÓN DETECTABLE (RUIDO O SILENCIO)
+    // Si el paciente envía un audio pero no se pudo transcribir texto perceptible
+    // =============================================
+    if (cleanText === '[audio]' || cleanText === '[voice]' || (!cleanText.trim() && (mediaType === 'audio' || mediaType === 'voice'))) {
+        console.log(`[triage-bot] Chat ${phone}: Audio recibido sin texto perceptible.`);
+        replyText = `Disculpá, no pudimos escuchar con claridad tu audio por el ruido de fondo o volumen bajo 🎧.\n\n` +
+            `Por favor, ¿nos podrías reenviar tu consulta o escribirla por este medio para poder orientarte?\n\n` +
+            `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+        updates.status = 'bot';
+        updates.bot_active = true;
+        updates.bot_stage = 'menu_opciones';
+        nextStage = 'menu_opciones';
+        updates.motivo_consulta = 'Audio no perceptible (solicitud de reenvío)';
         return { replyText, updates, nextStage };
     }
 
