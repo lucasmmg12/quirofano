@@ -64,14 +64,54 @@ function getEffectiveStatus(surgery) {
     return surgery.status || 'lila';
 }
 
-/** Identifica si una cirugía corresponde a Hemodinamia */
+/** Palabras clave y procedimientos oficiales de Hemodinamia y Cardiología Intervencionista */
+export const HEMODINAMIA_PATTERNS = [
+    'HEMODINAMIA',
+    'CATETERISMO',
+    'ANGIOPLAST',
+    'CORONARIOGRAF',
+    'CINECORONARIOGRAF',
+    'CINE CORONARIOGRAF',
+    'ARTERIOGRAF',
+    'AORTOGRAMA',
+    'FLEBOGRAF',
+    'VALVULOPLAST',
+    'TAVI',
+    'TAVR',
+    'MITRACLIP',
+    'TRICLIP',
+    'MARCAPASO',
+    'ELECTROFISIOLOG',
+    'ABLACION',
+    'CARDIOVERSION',
+    'DEFIBRILADOR',
+    'DESFIBRILADOR',
+    'RESINCRONIZADOR',
+    'EMBOLIZAC',
+    'ENDOPROTESIS',
+    'STENT',
+    'FORAMEN OVAL',
+    'DUCTUS',
+    'CIERRE DE CIA',
+    'CIERRE DE CIV',
+    'TROMBECTOM'
+];
+
+/** Identifica si una cirugía corresponde a Hemodinamia / Cardiología Intervencionista */
 export function isHemodinamia(surgery) {
     if (!surgery) return false;
     const ga = (surgery.grupo_agendas || '').toUpperCase();
-    if (ga.includes('HEMODINAMIA')) return true;
     const desc = (surgery.descripcion || '').toUpperCase();
-    if (desc.includes('HEMODINAMIA')) return true;
-    return false;
+    const mod = (surgery.modulo || '').toUpperCase();
+    const cir = (surgery.cirugia || '').toUpperCase();
+    const textToCheck = `${ga} ${desc} ${mod} ${cir}`;
+
+    // Excepciones que no son hemodinamia aunque tengan la palabra catéter o stent (ej: catéter doble J en urología, stent vía biliar)
+    if (textToCheck.includes('DOBLE J') || textToCheck.includes('VIA BILIAR') || textToCheck.includes('BILIAR')) {
+        return false;
+    }
+
+    return HEMODINAMIA_PATTERNS.some(pattern => textToCheck.includes(pattern));
 }
 
 const URGENCY_THRESHOLDS = {
