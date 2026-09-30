@@ -70,9 +70,17 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
 
         const rows = data || [];
         // Filtro por frontend: No mostrar admisiones con especialidad CHEQUEO que empiecen con A
-        const filteredRows = rows.filter(row => 
-            !(row.numero_admision?.toUpperCase().startsWith('A') && row.especialidad?.toUpperCase() === 'CHEQUEO')
-        );
+        // REGLA NUEVO CIRCUITO FICHAS FÍSICAS (01/10/2026 en adelante):
+        // Toda admisión con fecha_ingreso >= 01/10/2026 solo ingresa a Control de Altas si ya fue entregada formalmente por Recepción (7:00 hs)
+        const filteredRows = rows.filter(row => {
+            if (row.numero_admision?.toUpperCase().startsWith('A') && row.especialidad?.toUpperCase() === 'CHEQUEO') {
+                return false;
+            }
+            if (row.fecha_ingreso && row.fecha_ingreso >= '2026-10-01') {
+                return row.ficha_estado === 'entregada';
+            }
+            return true;
+        });
         allData = allData.concat(filteredRows);
         hasMore = rows.length === PAGE_SIZE;
         from += PAGE_SIZE;

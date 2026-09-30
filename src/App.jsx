@@ -373,6 +373,7 @@ function App({ currentUser, onLogout }) {
             // Simon IA: Acceso completo y público para todos los usuarios
             else if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) isVisible = true;
             else if (['gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
+            else if (activeView === 'entrega_fichas') isVisible = selectedModules.includes('altas') || selectedModules.includes('facturacion') || selectedModules.includes('entrega_fichas');
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }

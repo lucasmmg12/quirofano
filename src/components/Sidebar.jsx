@@ -66,6 +66,11 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
         }
 
+        // Entrega de Fichas — visible para todos los usuarios de administración (altas / facturación)
+        if (id === 'entrega_fichas') {
+            return selectedModules.includes('altas') || selectedModules.includes('facturacion') || selectedModules.includes('entrega_fichas');
+        }
+
         return selectedModules.includes(id);
     };
     const [pedidosOpen, setPedidosOpen] = useState(false);
