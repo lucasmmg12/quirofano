@@ -2359,3 +2359,60 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt, limit =
         return [];
     }
 }
+
+/**
+ * Elimina por completo el historial de mensajes y el contexto acumulado de una conversación.
+ * EXCLUSIVO: Solo permitido para el usuario lmarinero.
+ */
+export async function deleteChatHistoryAndContext({ phone, currentUser }) {
+    if (!phone) throw new Error('Número de teléfono requerido');
+
+    // 1. Verificación estricta de permisos: Solo lmarinero
+    const username = (currentUser?.usuario || '').toLowerCase().trim().split('@')[0];
+    if (username !== 'lmarinero' && username !== 'lucas') {
+        throw new Error('Permiso denegado: Esta acción está reservada exclusivamente para el usuario lmarinero.');
+    }
+
+    const norm = normalizeArgentinePhone(phone);
+    const cleanDigits = (norm || phone).replace(/\D/g, '');
+    const last8 = cleanDigits.slice(-8);
+
+    // 2. Intentar llamar al backend autónomo (sync-server) que ejecuta con service_role
+    let backendSuccess = false;
+    try {
+        const syncUrl = import.meta.env?.VITE_SALUS_SYNC_URL || 'http://localhost:3456/api/salus';
+        const baseUrl = syncUrl.replace(/\/api\/salus\/?$/, '');
+        const res = await fetch(`${baseUrl}/api/contact-center/delete-chat-context`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: norm, user: username })
+        });
+        if (res.ok) {
+            backendSuccess = true;
+            console.log(`[contactCenterService] ✅ Historial de chat ${phone} eliminado vía sync-server.`);
+        }
+    } catch (e) {
+        console.warn('[contactCenterService] No se pudo conectar con sync-server, ejecutando vía Supabase directo:', e.message);
+    }
+
+    // 3. Ejecutar borrado directo en Supabase por redundancia
+    try {
+        await Promise.all([
+            supabase
+                .from('whatsapp_messages')
+                .delete()
+                .or(`phone.eq.${norm},phone.eq.${phone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`),
+            supabase
+                .from('contact_center_conversations')
+                .delete()
+                .or(`phone.eq.${norm},phone.eq.${phone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`)
+        ]);
+        console.log(`[contactCenterService] ✅ Conversación y mensajes purgados en Supabase para ${phone}.`);
+    } catch (dbErr) {
+        console.warn('[contactCenterService] Error en borrado directo Supabase:', dbErr.message);
+        if (!backendSuccess) throw dbErr;
+    }
+
+    return { success: true };
+}
+

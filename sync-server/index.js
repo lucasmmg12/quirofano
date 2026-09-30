@@ -158,6 +158,63 @@ app.get('/api/contact-center/check-queue-alerts', async (req, res) => {
     }
 });
 
+// ─── Borrado de Historial y Contexto de Chat (Exclusivo lmarinero) ───
+app.post('/api/contact-center/delete-chat-context', async (req, res) => {
+    try {
+        const { phone, user } = req.body;
+        const cleanUser = String(user || '').toLowerCase().trim().split('@')[0];
+
+        // REGLA ESTRICTA: Solo el usuario lmarinero puede ejecutar este borrado
+        if (cleanUser !== 'lmarinero' && cleanUser !== 'lucas') {
+            console.warn(`⛔ [Borrado Chat] Intento no autorizado por usuario: ${user}`);
+            return res.status(403).json({
+                success: false,
+                error: 'Permiso denegado: Esta función está reservada exclusivamente para el usuario lmarinero.'
+            });
+        }
+
+        if (!phone) {
+            return res.status(400).json({ success: false, error: 'Teléfono requerido' });
+        }
+
+        const rawPhone = String(phone).trim();
+        const cleanDigits = rawPhone.replace(/\D/g, '');
+        const last8 = cleanDigits.slice(-8);
+
+        console.log(`🗑️ [Borrado Chat] Usuario lmarinero solicitó borrar historial y contexto para: ${rawPhone}`);
+
+        // 1. Borrar mensajes en whatsapp_messages
+        const { error: errMsgs } = await supabase
+            .from('whatsapp_messages')
+            .delete()
+            .or(`phone.eq.${rawPhone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`);
+
+        if (errMsgs) {
+            console.warn('⚠️ [Borrado Chat] Error borrando whatsapp_messages:', errMsgs.message);
+        }
+
+        // 2. Borrar conversación en contact_center_conversations (elimina todo el contexto de IA, memorias y estado del bot)
+        const { error: errConv } = await supabase
+            .from('contact_center_conversations')
+            .delete()
+            .or(`phone.eq.${rawPhone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`);
+
+        if (errConv) {
+            console.warn('⚠️ [Borrado Chat] Error borrando contact_center_conversations:', errConv.message);
+        }
+
+        console.log(`✅ [Borrado Chat] Chat de ${rawPhone} eliminado con éxito por lmarinero.`);
+        res.json({
+            success: true,
+            message: `Historial y contexto del chat ${rawPhone} eliminados correctamente.`
+        });
+    } catch (err) {
+        console.error('❌ Error en delete-chat-context:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
 
 // ─── Historial Clínico Completo + Turnos Próximos & Online de un Paciente ───
 async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre }) {

@@ -114,6 +114,7 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, unlinkThirdPartyPatient, lookupPatientFromSalus, resetBotWorkflow,
+    deleteChatHistoryAndContext,
     analyzeMedicalOrderImage, generateChatAiSummary, getAssociatedPatientsByPhone,
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
@@ -545,6 +546,44 @@ export default function ContactCenterChatConsole({
     const [isResettingBot, setIsResettingBot] = useState(false);
     const [systemToast, setSystemToast] = useState(null);
 
+    // Modal Exclusivo para lmarinero: Borrado de Historial y Eliminación de Contexto de IA
+    const [deleteContextModalOpen, setDeleteContextModalOpen] = useState(false);
+    const [chatTargetToDelete, setChatTargetToDelete] = useState(null);
+    const [isDeletingChatContext, setIsDeletingChatContext] = useState(false);
+
+    const isStrictLMarinero = useMemo(() => {
+        const u = String(currentUser?.usuario || activeAgent?.username || activeAgent?.id || '').toLowerCase().trim().split('@')[0];
+        return u === 'lmarinero' || u === 'lucas';
+    }, [currentUser?.usuario, activeAgent?.username, activeAgent?.id]);
+
+    const handleConfirmDeleteChatContext = async () => {
+        if (!chatTargetToDelete?.phone) return;
+        setIsDeletingChatContext(true);
+        try {
+            await deleteChatHistoryAndContext({
+                phone: chatTargetToDelete.phone,
+                currentUser
+            });
+
+            if (selectedChat?.phone === chatTargetToDelete.phone) {
+                selectedChat.messages = [];
+                selectedChat.lastMessage = '';
+            }
+
+            setDeleteContextModalOpen(false);
+            showToast(`✅ Historial y contexto de IA eliminados correctamente para ${chatTargetToDelete.contactName || chatTargetToDelete.phone}.`, 'success');
+
+            if (typeof onReloadChats === 'function') {
+                onReloadChats();
+            }
+        } catch (err) {
+            console.error('Error borrando chat y contexto:', err);
+            showToast('Error al borrar chat: ' + (err.message || 'Error desconocido'), 'error');
+        } finally {
+            setIsDeletingChatContext(false);
+        }
+    };
+
     const showToast = (message, type = 'success') => {
         setSystemToast({ message, type });
         setTimeout(() => {
@@ -559,6 +598,7 @@ export default function ContactCenterChatConsole({
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
+
 
     // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo (Vinculación EXCLUSIVA por DNI)
     useEffect(() => {
@@ -2395,9 +2435,39 @@ export default function ContactCenterChatConsole({
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                                            <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
-                                                {chat.timeAgo}
-                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                {isStrictLMarinero && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setChatTargetToDelete(chat);
+                                                            setDeleteContextModalOpen(true);
+                                                        }}
+                                                        title="Solo lmarinero: Borrar historial y eliminar contexto de IA"
+                                                        style={{
+                                                            border: 'none',
+                                                            background: 'transparent',
+                                                            color: '#EF4444',
+                                                            cursor: 'pointer',
+                                                            padding: '2px 4px',
+                                                            borderRadius: '4px',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            opacity: 0.6,
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = '#FEE2E2'; }}
+                                                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.background = 'transparent'; }}
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                )}
+                                                <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
+                                                    {chat.timeAgo}
+                                                </span>
+                                            </div>
+
                                             {isSearching && searchScope === 'all' && (
                                                 <span style={{
                                                     fontSize: '0.6rem',
@@ -2768,6 +2838,28 @@ export default function ContactCenterChatConsole({
                                     <RefreshCw size={10} />
                                     Reiniciar
                                 </button>
+                                {isStrictLMarinero && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (selectedChat?.phone) {
+                                                setChatTargetToDelete(selectedChat);
+                                                setDeleteContextModalOpen(true);
+                                            }
+                                        }}
+                                        title="Solo lmarinero: Borrar todos los mensajes y eliminar por completo el contexto acumulado de la IA"
+                                        style={{
+                                            padding: '1px 6px', borderRadius: '4px', fontSize: '0.64rem', fontWeight: 700,
+                                            border: '1px solid #FECACA', cursor: 'pointer',
+                                            background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', gap: '3px',
+                                            height: '20px', lineHeight: 1
+                                        }}
+                                    >
+                                        <Trash2 size={10} color="#DC2626" />
+                                        Borrar Contexto
+                                    </button>
+                                )}
+
                                 {TEST_BOT_RESET_INDICATOR_ENABLED && (
                                     <span
                                         title="Modo de prueba activo: El bot reinicia automáticamente su conversación a 'inicio' tras 3 minutos de inactividad"
@@ -6798,8 +6890,142 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                 </div>
             )}
 
+            {/* Modal Exclusivo para lmarinero: Borrado de Historial y Eliminación de Contexto de IA */}
+
+            {deleteContextModalOpen && chatTargetToDelete && isStrictLMarinero && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 120,
+                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                    backdropFilter: 'blur(5px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '16px'
+                }}>
+                    <div style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: '16px',
+                        maxWidth: '480px',
+                        width: '100%',
+                        boxShadow: '0 25px 50px -12px rgba(220, 38, 38, 0.25)',
+                        border: '1px solid #FECACA',
+                        overflow: 'hidden'
+                    }}>
+                        {/* Cabecera Peligro */}
+                        <div style={{
+                            padding: '16px 20px',
+                            background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 800, fontSize: '0.95rem' }}>
+                                <Trash2 size={20} />
+                                <div>
+                                    <div>Borrar Chat y Eliminar Contexto</div>
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 500, opacity: 0.9 }}>Acceso Exclusivo: @lmarinero</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDeleteContextModalOpen(false)}
+                                style={{ border: 'none', background: 'transparent', color: '#FFFFFF', cursor: 'pointer' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Cuerpo */}
+                        <div style={{ padding: '20px' }}>
+                            <div style={{
+                                background: '#FEF2F2',
+                                border: '1px solid #FCA5A5',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                marginBottom: '14px',
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '10px'
+                            }}>
+                                <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div style={{ fontSize: '0.78rem', color: '#991B1B', lineHeight: 1.4 }}>
+                                    <strong>¡Acción destructiva e irreversible!</strong>
+                                    <div style={{ marginTop: '4px' }}>
+                                        Se eliminarán <strong>todos los mensajes de WhatsApp</strong> y se reseteará por completo el <strong>contexto acumulado de la IA</strong> (resumen clínico, variables de triage, memoria previa y asignación).
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                marginBottom: '16px'
+                            }}>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+                                    Detalle de la Conversación:
+                                </div>
+                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {getCleanChatName(chatTargetToDelete)}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700, marginTop: '2px' }}>
+                                    Teléfono: +{chatTargetToDelete.phone}
+                                </div>
+                                {chatTargetToDelete.customFields?.dni && chatTargetToDelete.customFields?.dni !== 'A verificar' && (
+                                    <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '2px' }}>
+                                        DNI: {chatTargetToDelete.customFields.dni}
+                                    </div>
+                                )}
+                            </div>
+
+                            <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
+                                Cuando este paciente vuelva a escribir, ingresará como una conversación completamente nueva desde el menú inicial de autogestión sin historial contaminado.
+                            </p>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteContextModalOpen(false)}
+                                    disabled={isDeletingChatContext}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmDeleteChatContext}
+                                    disabled={isDeletingChatContext}
+                                    style={{
+                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                        background: '#DC2626', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 800,
+                                        cursor: isDeletingChatContext ? 'wait' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 4px 6px -1px rgba(220, 38, 38, 0.3)'
+                                    }}
+                                >
+                                    {isDeletingChatContext ? (
+                                        <>
+                                            <Loader2 size={14} className="animate-spin" />
+                                            <span>Eliminando...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Trash2 size={14} />
+                                            <span>Sí, borrar chat y contexto</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Modal de Personalización Visual (Presets, Nano Banana, Opacidad y Sidebars) */}
             <ContactCenterThemeModal
+
                 isOpen={themeModalOpen}
                 onClose={() => setThemeModalOpen(false)}
                 currentTheme={ccTheme}
