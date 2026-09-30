@@ -29,6 +29,8 @@ import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSup
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 import { syncTurnosActivos } from './sync_turnos_activos.mjs';
 import { getIncentivosContactCenter } from './incentivos_contact_center.mjs';
+import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
+
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -139,6 +141,23 @@ app.get('/api/salus/turnos-activos/sync', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+
+// ─── Avisos Automáticos de Cola Contact Center (Demoras 20m & Fuera de Horario) ───
+app.get('/api/contact-center/check-queue-alerts', async (req, res) => {
+    try {
+        console.log('📢 [Avisos Cola] Ejecución manual de escaneo de cola...');
+        await processQueueWaitingAlerts({
+            supabaseClient: supabase,
+            supabaseUrl,
+            serviceKey: supabaseKey
+        });
+        res.json({ success: true, message: 'Escaneo de cola completado' });
+    } catch (err) {
+        console.error('❌ Error en escaneo de cola:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 
 // ─── Historial Clínico Completo + Turnos Próximos & Online de un Paciente ───
 async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre }) {
@@ -4039,8 +4058,24 @@ app.listen(PORT, '0.0.0.0', () => {
         }
         setTimeout(syncIncentivosCiclo, 6000);
         setInterval(syncIncentivosCiclo, 15 * 60 * 1000);
+
+        // 6. AVISOS AUTOMÁTICOS COLA CONTACT CENTER (Demoras 20 min y Fuera de Horario)
+        async function runQueueAlertsCycle() {
+            try {
+                await processQueueWaitingAlerts({
+                    supabaseClient: supabase,
+                    supabaseUrl,
+                    serviceKey: supabaseKey
+                });
+            } catch (e) {
+                console.warn('⚠️ [Avisos Cola Auto] Error en ciclo:', e.message);
+            }
+        }
+        setTimeout(runQueueAlertsCycle, 10000); // 10 segundos tras inicio
+        setInterval(runQueueAlertsCycle, 2 * 60 * 1000); // cada 2 minutos
     }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
 });
+
 
 process.on('SIGINT', async () => {
     console.log('\n🔒 Cerrando...');

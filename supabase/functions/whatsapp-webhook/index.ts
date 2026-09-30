@@ -1207,10 +1207,16 @@ function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: str
 /**
  * Verifica si el Contact Center se encuentra dentro del horario de atención:
  * Lunes a Viernes de 7:30 a 21:00 hs
- * Sábados de 8:00 a 12:00 hs
+/**
+ * Determina el estado del Contact Center y el próximo horario de apertura:
+ * - Lunes a Viernes de 7:30 a 21:00 hs
+ * - Sábados de 8:00 a 12:00 hs
  * Hora oficial de San Juan, Argentina (UTC-3)
  */
-function isContactCenterOpen(now: Date = new Date()): boolean {
+function getContactCenterScheduleInfo(now: Date = new Date()): {
+    isOpen: boolean;
+    nextOpeningText: string;
+} {
     const timeStr = now.toLocaleString('en-US', { timeZone: 'America/Argentina/San_Juan' });
     const local = new Date(timeStr);
     const day = local.getDay(); // 0 = Dom, 1 = Lun, ..., 6 = Sab
@@ -1218,14 +1224,61 @@ function isContactCenterOpen(now: Date = new Date()): boolean {
     const min = local.getMinutes();
     const currentMin = hour * 60 + min;
 
+    let isOpen = false;
+    let nextOpeningText = 'el próximo día hábil a partir de las 7:30 hs';
+
     if (day >= 1 && day <= 5) {
         // Lunes a Viernes: 7:30 a 21:00 hs
-        return currentMin >= 450 && currentMin < 1260;
+        if (currentMin >= 450 && currentMin < 1260) {
+            isOpen = true;
+        } else if (currentMin < 450) {
+            nextOpeningText = 'hoy a partir de las 7:30 hs';
+        } else {
+            // Pasadas las 21:00 hs
+            if (day === 5) {
+                // Viernes a la noche -> Sábado 8:00 hs
+                nextOpeningText = 'mañana sábado a partir de las 8:00 hs';
+            } else {
+                nextOpeningText = 'mañana a partir de las 7:30 hs';
+            }
+        }
     } else if (day === 6) {
-        // Sábados: 8:00 a 12:00 hs
-        return currentMin >= 480 && currentMin < 720;
+        // Sábado: 8:00 a 12:00 hs
+        if (currentMin >= 480 && currentMin < 720) {
+            isOpen = true;
+        } else if (currentMin < 480) {
+            nextOpeningText = 'hoy sábado a partir de las 8:00 hs';
+        } else {
+            // Sábado después de las 12:00 hs -> Lunes 7:30 hs
+            nextOpeningText = 'el próximo lunes a partir de las 7:30 hs';
+        }
+    } else {
+        // Domingo -> Lunes 7:30 hs
+        nextOpeningText = 'el próximo lunes a partir de las 7:30 hs';
     }
-    return false; // Domingos y fuera de horario
+
+    return { isOpen, nextOpeningText };
+}
+
+function isContactCenterOpen(now: Date = new Date()): boolean {
+    return getContactCenterScheduleInfo(now).isOpen;
+}
+
+function getAfterHoursMessage(nextOpeningText: string): string {
+    return `¡Hola! 🏥 Te informamos que en este momento nuestro equipo de atención se encuentra *fuera del horario laboral*.\n\n` +
+        `⏰ *Nuestros horarios de atención son:*\n` +
+        `• *Lunes a Viernes:* 7:30 a 21:00 hs\n` +
+        `• *Sábados:* 8:00 a 12:00 hs\n` +
+        `_(Domingos y Feriados cerrado)_\n\n` +
+        `Tu mensaje quedó registrado y un asesor te responderá *${nextOpeningText}* en nuestro horario habitual.\n\n` +
+        `🚨 *Guardia Médica 24 hs:* Si presentás una urgencia, recordá que nuestra Guardia en Sede Central (San Luis 432 Oeste) atiende las *24 horas*.`;
+}
+
+function getDelayWaitNoticeMessage(): string {
+    return `¡Hola! 🏥 Estamos con algunas demoras en la atención debido a la alta demanda. Te pedimos disculpas por la espera.\n\n` +
+        `En breve un agente estará respondiendo tu consulta por orden de llegada.\n\n` +
+        `⏰ *Horarios de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
+        `💡 _Si deseás volver a consultar opciones con el menú virtual, podés escribir *"Menú"* en cualquier momento._`;
 }
 
 let cachedHandoffSettings: {
@@ -2381,9 +2434,10 @@ async function handleChatbotTriage(
         }
     }
 
-    // 1.1 Si la conversación está asignada a un agente humano en vivo (y no expiró por inactividad): el bot se mantiene en silencio absoluto
+    // 1.1 Si la conversación está asignada a un agente humano en vivo (y no expiró por inactividad)
     if (conv && !wasClosed && !isSessionExpiredByInactivity && conv.assigned_agent_id) {
-        console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}. Bot en silencio.`);
+        console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}.`);
+        const schedule = getContactCenterScheduleInfo();
         const silentUpdates: Record<string, any> = {
             last_message_text: cleanText,
             last_message_at: new Date().toISOString(),
@@ -2394,6 +2448,22 @@ async function handleChatbotTriage(
         if (candidateDni && !conv.dni) {
             silentUpdates.dni = candidateDni;
         }
+
+        // Si el paciente escribe fuera de horario laboral, notificarle cuándo retoma la atención
+        if (!schedule.isOpen) {
+            const aiSummary = typeof conv?.ai_summary === 'object' && conv?.ai_summary !== null ? { ...conv.ai_summary } : {};
+            const lastAfterHoursAt = aiSummary.last_after_hours_notice_at ? Number(aiSummary.last_after_hours_notice_at) : 0;
+            if (Date.now() - lastAfterHoursAt >= 60 * 60 * 1000) {
+                const offHoursReply = getAfterHoursMessage(schedule.nextOpeningText);
+                aiSummary.last_after_hours_notice_at = Date.now();
+                silentUpdates.ai_summary = aiSummary;
+                await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
+                await sendBotWhatsAppReply(supabase, phone, offHoursReply, lineId);
+                console.log(`[triage-bot] 🌙 Chat ${phone} (asignado): Enviado aviso de FUERA DE HORARIO LABORAL.`);
+                return;
+            }
+        }
+
         await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
         return;
     }
@@ -2401,14 +2471,14 @@ async function handleChatbotTriage(
     // 1.2 Si el bot fue silenciado o está esperando agente (y no expiró por inactividad)
     if (conv && !wasClosed && !isSessionExpiredByInactivity && (conv.bot_active === false || conv.bot_stage === 'esperando_agente')) {
         if (!isExplicitGreetingOrMenu) {
-            console.log(`[triage-bot] Chat ${phone} en espera de asesor (bot_active=false o bot_stage=${conv.bot_stage}). Bot en silencio.`);
+            console.log(`[triage-bot] Chat ${phone} en espera de asesor (bot_active=false o bot_stage=${conv.bot_stage}).`);
             const silentUpdates: Record<string, any> = {
                 last_message_text: cleanText,
                 last_message_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
             const extractedDni = cleanText.match(/\b\d{7,8}\b/)?.[0] || (cleanText.replace(/\D/g, '').length >= 7 && cleanText.replace(/\D/g, '').length <= 9 ? cleanText.replace(/\D/g, '') : null);
-            if (extractedDni) {
+            if (extractedDni && !conv.dni) {
                 silentUpdates.dni = extractedDni;
                 try {
                     const { data: pFound } = await supabase
@@ -2422,12 +2492,49 @@ async function handleChatbotTriage(
                         silentUpdates.obra_social = pFound.coseguro || conv?.obra_social;
                         silentUpdates.nhc = pFound.nhc || conv?.nhc;
                         silentUpdates.es_paciente_existente = true;
-                        await sendBotWhatsAppReply(supabase, phone, `¡Recibido! 🏥 Registramos tu DNI *${extractedDni}* (${pFound.nombre}). En breve un asesor continuará con tu atención.`, lineId);
-                    } else {
-                        await sendBotWhatsAppReply(supabase, phone, `¡Recibido! 🏥 Registramos tu DNI *${extractedDni}*. En breve un asesor continuará con tu atención.`, lineId);
                     }
                 } catch (_) {}
             }
+
+            const schedule = getContactCenterScheduleInfo();
+            const nowMs = Date.now();
+            const aiSummary = typeof conv?.ai_summary === 'object' && conv?.ai_summary !== null ? { ...conv.ai_summary } : {};
+
+            // 1.2.A: REGLA FUERA DE HORARIO LABORAL (MÁS IMPORTANTE)
+            // Si el paciente escribe fuera del horario de atención, notificarle de inmediato
+            if (!schedule.isOpen) {
+                const lastAfterHoursAt = aiSummary.last_after_hours_notice_at ? Number(aiSummary.last_after_hours_notice_at) : 0;
+                // Si nunca se le avisó o pasaron más de 60 minutos desde el último aviso de fuera de horario:
+                if (nowMs - lastAfterHoursAt >= 60 * 60 * 1000) {
+                    const offHoursReply = getAfterHoursMessage(schedule.nextOpeningText);
+                    aiSummary.last_after_hours_notice_at = nowMs;
+                    silentUpdates.ai_summary = aiSummary;
+                    await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
+                    await sendBotWhatsAppReply(supabase, phone, offHoursReply, lineId);
+                    console.log(`[triage-bot] 🌙 Chat ${phone}: Enviado aviso de FUERA DE HORARIO LABORAL.`);
+                    return;
+                }
+            } else {
+                // 1.2.B: REGLA DE ESPERA / DEMORA EN HORARIO LABORAL (CADA 20 MIN)
+                // Se envía si pasaron al menos 20 minutos desde el último aviso de demora o mensaje saliente
+                const lastDelayAt = aiSummary.last_delay_notice_at ? Number(aiSummary.last_delay_notice_at) : 0;
+                const DELAY_INTERVAL_MS = 20 * 60 * 1000; // 20 minutos
+
+                // También verificar cuándo fue el último mensaje de la conversación si no hay last_delay_at
+                const lastConvMsgAt = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
+                const referenceTime = lastDelayAt > 0 ? lastDelayAt : lastConvMsgAt;
+
+                if (nowMs - referenceTime >= DELAY_INTERVAL_MS) {
+                    const delayReply = getDelayWaitNoticeMessage();
+                    aiSummary.last_delay_notice_at = nowMs;
+                    silentUpdates.ai_summary = aiSummary;
+                    await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
+                    await sendBotWhatsAppReply(supabase, phone, delayReply, lineId);
+                    console.log(`[triage-bot] ⏳ Chat ${phone}: Enviado aviso de DEMORA EN ATENCIÓN (intervalo 20m cumplido).`);
+                    return;
+                }
+            }
+
             await supabase.from('contact_center_conversations').update(silentUpdates).eq('phone', phone);
             return;
         } else {
