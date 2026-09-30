@@ -498,6 +498,89 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
+    // Traspaso masivo de conversaciones / Pase de guardia entre agentes o a cola general
+    const handleBulkTransferChats = async (chatIds, toAgentIdOrUnassign, note = '') => {
+        if (!chatIds || !chatIds.length) return;
+        const targetChats = chats.filter(c => chatIds.includes(c.id));
+        if (!targetChats.length) return;
+
+        const isUnassign = toAgentIdOrUnassign === 'unassign' || !toAgentIdOrUnassign;
+        const targetAgent = !isUnassign ? getAgentById(toAgentIdOrUnassign) : null;
+        const now = new Date();
+        const fromAgentName = activeAgent?.name || currentUser?.nombre || 'Agente';
+        const targetAgentName = targetAgent ? targetAgent.name : 'Cola General (Sin Asignar)';
+
+        const noteText = isUnassign
+            ? `🔓 [Pase de Guardia - Fin de Turno]: ${fromAgentName} liberó la conversación a la cola general por cambio de turno.${note ? ` Detalle: ${note}` : ''}`
+            : `🔄 [Pase de Guardia - Fin de Turno]: Conversación traspasada por fin de turno de ${fromAgentName} a ${targetAgentName}.${note ? ` Detalle: ${note}` : ''}`;
+
+        try {
+            for (const chat of targetChats) {
+                // 1. Registrar nota privada interna en cada conversación
+                try {
+                    await handleSendMessage(chat.id, noteText, true);
+                } catch (e) {
+                    console.warn('[bulk-transfer] Error registrando nota interna:', e);
+                }
+
+                // 2. Persistir en Supabase
+                if (chat.phone) {
+                    const norm = normalizeArgentinePhone(chat.phone);
+                    const updatePayload = isUnassign ? {
+                        phone: norm,
+                        status: 'sin_asignar',
+                        assigned_agent_id: null,
+                        assigned_agent_name: null,
+                        assigned_at: null,
+                        bot_active: false,
+                        updated_at: now.toISOString()
+                    } : {
+                        phone: norm,
+                        status: 'abierto',
+                        assigned_agent_id: targetAgent.id,
+                        assigned_agent_name: targetAgent.name,
+                        assigned_at: now.toISOString(),
+                        bot_active: false,
+                        updated_at: now.toISOString()
+                    };
+
+                    await supabase.from('contact_center_conversations').upsert(updatePayload, { onConflict: 'phone' });
+                }
+            }
+
+            // 3. Actualizar estado local de los chats
+            setChats(prev => prev.map(c => {
+                if (!chatIds.includes(c.id)) return c;
+                if (isUnassign) {
+                    return {
+                        ...c,
+                        status: 'sin_asignar',
+                        assignedTo: null,
+                        assignedToName: null,
+                        assignedAt: null
+                    };
+                } else {
+                    return {
+                        ...c,
+                        status: 'abierto',
+                        assignedTo: targetAgent.id,
+                        assignedToName: targetAgent.name,
+                        assignedAt: now.toISOString()
+                    };
+                }
+            }));
+
+            if (addToast) {
+                addToast(`Pase de guardia exitoso: ${targetChats.length} conversaciones traspasadas a ${targetAgentName}`, 'success');
+            }
+        } catch (err) {
+            console.error('Error en traspaso masivo de guardia:', err);
+            if (addToast) addToast('Error al traspasar conversaciones: ' + (err.message || 'Error'), 'error');
+            throw err;
+        }
+    };
+
+
     // Cambiar permisos de un usuario (solo lmarinero)
     const handleToggleUser = async (username) => {
         if (!isLMarinero) return;
@@ -787,7 +870,9 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onTransferChat={handleTransferChat}
                     onCloseChat={handleCloseChat}
                     onBulkCloseChats={handleBulkCloseChats}
+                    onBulkTransferChats={handleBulkTransferChats}
                     activeSubTab={activeSubTab}
+
                     onNavigateTab={handleNavigateTab}
                     onSwitchAgent={setActiveAgent}
                     soundEnabled={soundEnabled}

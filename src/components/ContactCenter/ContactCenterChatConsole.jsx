@@ -151,6 +151,7 @@ export default function ContactCenterChatConsole({
     onTransferChat,
     onCloseChat,
     onBulkCloseChats,
+    onBulkTransferChats,
     activeSubTab = 'conversaciones',
     onNavigateTab,
     onSwitchAgent,
@@ -165,6 +166,16 @@ export default function ContactCenterChatConsole({
     const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
     const [bulkResolutionReason, setBulkResolutionReason] = useState('Cierre masivo de cola');
     const [isBulkClosing, setIsBulkClosing] = useState(false);
+
+    // Pase de Guardia Masivo / Traspaso de Fin de Turno
+    const [handoverModalOpen, setHandoverModalOpen] = useState(false);
+    const [handoverTargetAgent, setHandoverTargetAgent] = useState(() => {
+        const other = CONTACT_CENTER_AGENTS.find(a => a.id !== activeAgent.id);
+        return other ? other.id : 'unassign';
+    });
+    const [handoverNote, setHandoverNote] = useState('');
+    const [isExecutingHandover, setIsExecutingHandover] = useState(false);
+
 
     // Personalización de Temas y Ergonomía Visual (Presets, Fondos, Nano Banana, Sidebars)
     const [ccTheme, setCcTheme] = useState(getStoredTheme);
@@ -806,13 +817,20 @@ export default function ContactCenterChatConsole({
         if (!confirmTransferAgent || !selectedChat?.id) return;
         setIsTransferring(true);
         try {
-            if (transferNote.trim() && onSendMessage) {
-                await onSendMessage(selectedChat.id, `📋 [Pase Clínico a ${confirmTransferAgent.name}]: ${transferNote.trim()}`, true);
+            const fromAgentName = activeAgent?.name || currentUser?.nombre || 'Agente';
+            const toAgentName = confirmTransferAgent.fullName || confirmTransferAgent.name;
+            const noteText = transferNote.trim()
+                ? `🔄 [Pase de Guardia / Transferencia a ${toAgentName}]: ${transferNote.trim()}`
+                : `🔄 [Pase de Guardia / Fin de Turno]: Conversación transferida por fin de turno de ${fromAgentName} a ${toAgentName}.`;
+
+            // Registrar nota interna obligatoria en la conversación (no se envía a WhatsApp)
+            if (onSendMessage) {
+                await onSendMessage(selectedChat.id, noteText, true);
             }
             if (onTransferChat) {
                 onTransferChat(selectedChat.id, confirmTransferAgent.id);
             }
-            showToast(`Conversación transferida a ${confirmTransferAgent.name}`, 'success');
+            showToast(`Conversación transferida a ${toAgentName} y registrada en auditoría`, 'success');
             setConfirmTransferAgent(null);
             setTransferNote('');
         } catch (err) {
@@ -822,6 +840,56 @@ export default function ContactCenterChatConsole({
             setIsTransferring(false);
         }
     };
+
+    // Liberación individual de chat con auditoría automática de cambio de turno
+    const handleUnassignWithAudit = async () => {
+        if (!selectedChat?.id) return;
+        try {
+            const agentName = activeAgent?.name || currentUser?.nombre || 'Agente';
+            const noteText = `🔓 [Pase de Guardia / Liberación]: ${agentName} liberó la conversación a la cola general (Sin Asignar) por cambio de turno / fin de jornada.`;
+            if (onSendMessage) {
+                await onSendMessage(selectedChat.id, noteText, true);
+            }
+            if (onUnassignChat) {
+                onUnassignChat(selectedChat.id);
+            }
+            showToast('Conversación liberada a la cola general y registrada en auditoría.', 'info');
+        } catch (err) {
+            console.error('Error al liberar chat:', err);
+            if (onUnassignChat) onUnassignChat(selectedChat.id);
+        }
+    };
+
+    // Ejecución del Pase de Guardia Masivo (Traspaso de todos los chats asignados a la agente al irse)
+    const handleConfirmHandover = async () => {
+        const chatsToHandover = myAssignedChats.map(c => c.id);
+        if (!chatsToHandover.length) {
+            showToast('No tienes conversaciones activas para traspasar.', 'info');
+            setHandoverModalOpen(false);
+            return;
+        }
+
+        setIsExecutingHandover(true);
+        try {
+            if (onBulkTransferChats) {
+                await onBulkTransferChats(chatsToHandover, handoverTargetAgent, handoverNote.trim());
+            }
+
+            setHandoverModalOpen(false);
+            setHandoverNote('');
+            showToast(`Pase de guardia completado con éxito (${chatsToHandover.length} conversaciones registradas).`, 'success');
+
+            if (typeof onReloadChats === 'function') {
+                onReloadChats();
+            }
+        } catch (err) {
+            console.error('Error en Pase de Guardia:', err);
+            showToast('Error en Pase de Guardia: ' + (err.message || 'Error'), 'error');
+        } finally {
+            setIsExecutingHandover(false);
+        }
+    };
+
 
     const handleLoadOlderMessages = async () => {
         if (!selectedChat?.phone || loadingOlder) return;
@@ -1519,6 +1587,19 @@ export default function ContactCenterChatConsole({
     const selectableChats = useMemo(() => {
         return filteredChats.filter(c => !isClosedOrArchived(c.status));
     }, [filteredChats]);
+
+    // Conversaciones activas asignadas exclusivamente a la agente actual (para Pase de Guardia)
+    const myAssignedChats = useMemo(() => {
+        return chats.filter(chat => {
+            const chatAssigned = (chat.assignedTo || '').toLowerCase();
+            const isMine = chatAssigned && (
+                myAliases.includes(chatAssigned) ||
+                (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
+            );
+            return isMine && !isClosedOrArchived(chat.status);
+        });
+    }, [chats, myAliases, activeAgent.name]);
+
 
     const toggleSelectChat = (chatId) => {
         setSelectedChatIds(prev => {
@@ -2277,6 +2358,7 @@ export default function ContactCenterChatConsole({
                         onClick={() => setTriageFilter('con_orden')}
                         title="Pacientes con orden médica adjuntada"
                         style={{
+
                             padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
                             border: triageFilter === 'con_orden' ? '1px solid #16A34A' : '1px solid transparent',
                             background: triageFilter === 'con_orden' ? '#DCFCE7' : 'transparent',
@@ -2286,7 +2368,36 @@ export default function ContactCenterChatConsole({
                     >
                         📎 Orden
                     </button>
+
+                    {/* BOTÓN RÁPIDO DE PASE DE GUARDIA / TRASPASO AL TERMINAR TURNO */}
+                    {myAssignedChats.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setHandoverModalOpen(true)}
+                            title="Traspaso de Turno / Pase de Guardia: reasigna todas tus conversaciones al terminar tu horario y registra nota interna en cada una"
+                            style={{
+                                marginLeft: 'auto',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                color: '#FFFFFF',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
+                            }}
+                        >
+                            <ArrowRightLeft size={11} />
+                            <span>Pase de Guardia ({myAssignedChats.length})</span>
+                        </button>
+                    )}
                 </div>
+
 
                 {/* BARRA DE SELECCIÓN Y CIERRE MASIVO SILENCIOSO */}
                 <div style={{
@@ -2995,8 +3106,8 @@ export default function ContactCenterChatConsole({
                                 </span>
 
                                 <button
-                                    onClick={() => onUnassignChat && onUnassignChat(selectedChat.id)}
-                                    title="Liberar chat a la cola general"
+                                    onClick={handleUnassignWithAudit}
+                                    title="Liberar chat a la cola general (registra nota de pase en auditoría)"
                                     style={{
                                         padding: '2px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
                                         background: '#FFFFFF', color: '#475569', fontWeight: 600, fontSize: '0.68rem',
@@ -3005,6 +3116,7 @@ export default function ContactCenterChatConsole({
                                 >
                                     <Unlock size={11} /> Liberar
                                 </button>
+
 
                                 <button
                                     onClick={() => setTransferMenuOpen(!transferMenuOpen)}
@@ -3978,11 +4090,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             );
                                         })()}
 
-                                        {msg.text && !msg.text.startsWith('[') && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && (
+                                        {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && (
                                             <div style={{ whiteSpace: 'pre-line' }}>
                                                 {msg.text}
                                             </div>
                                         )}
+
 
                                         <div style={{
                                             fontSize: '0.68rem', color: '#94A3B8', marginTop: '6px',
@@ -7098,6 +7211,188 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                     </div>
                 </div>
             )}
+
+            {/* Modal de Pase de Guardia / Fin de Turno */}
+            {handoverModalOpen && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 110,
+                    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '16px'
+                }}>
+                    <div style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: '16px',
+                        maxWidth: '520px',
+                        width: '100%',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        border: '1px solid #E2E8F0',
+                        overflow: 'hidden'
+                    }}>
+                        {/* Cabecera */}
+                        <div style={{
+                            padding: '16px 20px',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <ArrowRightLeft size={20} />
+                                <div>
+                                    <div style={{ fontWeight: 800, fontSize: '1rem' }}>Pase de Guardia / Fin de Turno</div>
+                                    <div style={{ fontSize: '0.72rem', opacity: 0.9 }}>Traspaso institucional de conversaciones activas</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setHandoverModalOpen(false)}
+                                disabled={isExecutingHandover}
+                                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '4px' }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Cuerpo */}
+                        <div style={{ padding: '20px' }}>
+                            <div style={{
+                                background: '#F0F9FF',
+                                border: '1px solid #BAE6FD',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                marginBottom: '16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                            }}>
+                                <Clock size={22} color="#0284C7" style={{ flexShrink: 0 }} />
+                                <div style={{ fontSize: '0.8rem', color: '#0369A1', lineHeight: 1.45 }}>
+                                    Vas a realizar el traspaso de <strong>{myAssignedChats.length} conversaciones activas</strong> que tenés asignadas actualmente a nombre de <strong>{activeAgent.name}</strong>.
+                                </div>
+                            </div>
+
+                            {/* Selector de Destino */}
+                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                🎯 Destino del Pase de Guardia:
+                            </label>
+                            <select
+                                value={handoverTargetAgent}
+                                onChange={(e) => setHandoverTargetAgent(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '9px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 600,
+                                    outline: 'none',
+                                    marginBottom: '16px',
+                                    background: '#FFFFFF',
+                                    color: '#1E293B'
+                                }}
+                            >
+                                <option value="unassign">🔓 Liberar a la Cola General (Sin Asignar - Cualquier compañera)</option>
+                                <optgroup label="Asignar directamente a una compañera de guardia:">
+                                    {CONTACT_CENTER_AGENTS.filter(a => a.id !== activeAgent.id).map(a => (
+                                        <option key={a.id} value={a.id}>
+                                            👤 {a.name} ({a.role})
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            </select>
+
+                            {/* Nota de Auditoría */}
+                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                📝 Nota de Pase (se registrará automáticamente como nota interna de auditoría en cada chat):
+                            </label>
+                            <textarea
+                                value={handoverNote}
+                                onChange={(e) => setHandoverNote(e.target.value)}
+                                placeholder="Ej: Fin de jornada 14:00 hs. Quedan 2 pacientes esperando confirmación de turnos..."
+                                rows={3}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.8rem',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                    fontFamily: 'inherit',
+                                    resize: 'vertical',
+                                    marginBottom: '8px'
+                                }}
+                            />
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: '16px' }}>
+                                🔒 <em>Esta nota es de uso interno exclusivo del Sanatorio; no se le envía al paciente por WhatsApp.</em>
+                            </div>
+
+                            {/* Resumen de Chats Involucrados */}
+                            <div style={{
+                                maxHeight: '110px',
+                                overflowY: 'auto',
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                fontSize: '0.74rem',
+                                color: '#475569'
+                            }}>
+                                <div style={{ fontWeight: 700, marginBottom: '4px', color: '#1E293B' }}>Conversaciones que se traspasarán:</div>
+                                {myAssignedChats.map(c => (
+                                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px dashed #E2E8F0' }}>
+                                        <span>• {getCleanChatName(c)}</span>
+                                        <span style={{ color: '#94A3B8' }}>{c.phone || ''}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Botones de Acción */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setHandoverModalOpen(false)}
+                                    disabled={isExecutingHandover}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmHandover}
+                                    disabled={isExecutingHandover || myAssignedChats.length === 0}
+                                    style={{
+                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                        color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 800,
+                                        cursor: isExecutingHandover ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 4px rgba(2, 132, 199, 0.3)'
+                                    }}
+                                >
+                                    {isExecutingHandover ? (
+                                        <>
+                                            <RefreshCw size={14} className="animate-spin" />
+                                            <span>Traspasando...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle2 size={14} />
+                                            <span>Confirmar Pase de Guardia</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
 
             {/* Modal Exclusivo para lmarinero: Borrado de Historial y Eliminación de Contexto de IA */}
             {deleteContextModalOpen && chatTargetToDelete && isStrictLMarinero && (
