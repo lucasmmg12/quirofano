@@ -29,6 +29,8 @@ import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import PublicRecepcionView from './components/PublicRecepcionView.jsx';
+import PublicFichasAdmisionesView from './components/PublicFichasAdmisionesView.jsx';
+import FichasAdmisionesPanel from './components/FichasAdmisionesPanel.jsx';
 import DeudasPanel from './components/DeudasPanel.jsx';
 import AltasPanel from './components/AltasPanel.jsx';
 import FacturacionPanel from './components/FacturacionPanel.jsx';
@@ -124,6 +126,8 @@ export default function AppRoot() {
             <Route path="/recepcion" element={<RecepcionView />} />
             <Route path="/turno" element={<TurnoKiosco />} />
             <Route path="/recepcion/garantias" element={<PublicRecepcionView />} />
+            <Route path="/recepcion/fichas" element={<PublicFichasAdmisionesView />} />
+            <Route path="/entrega-fichas-publico" element={<PublicFichasAdmisionesView />} />
             <Route path="/recepcion/equipo/:equipoId" element={<EquipoAuditoriaViewWrapper />} />
             <Route path="/share/*" element={<PublicRecordView />} />
             <Route path="/lab/:labSlug" element={<LabPortalWrapper />} />
@@ -171,6 +175,7 @@ const VIEW_LABELS = {
     beto: 'Simon IA',
     beto_rules: 'Gestión de Reglas',
     asociaciones_entrega: 'Asociaciones Entrega',
+    entrega_fichas: 'Entrega de Fichas',
     laboratorios: 'Laboratorios',
     pedidos_marcela: 'Pedidos Especiales',
     beto_analytics: 'Beto Analytics',
@@ -1150,6 +1155,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'asociaciones_entrega' && (
                     <AsociacionesEntregaPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {(activeView === 'entrega_fichas' || activeView === 'fichas_admisiones') && (
+                    <FichasAdmisionesPanel currentUser={currentUser} />
                 )}
 
                 {activeView === 'laboratorios' && (
