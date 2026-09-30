@@ -661,7 +661,12 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                             consolidatedMediaType = m.media_type || 'image';
                         }
                     }
-                    consolidatedText = fragments.join('\n').trim();
+                    const lastFragment = fragments[fragments.length - 1] || '';
+                    if (/\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar)\b/i.test(lastFragment)) {
+                        consolidatedText = lastFragment;
+                    } else {
+                        consolidatedText = fragments.join('\n').trim();
+                    }
                 }
 
                 if (!consolidatedText) {
@@ -1785,8 +1790,9 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
     // 0.0b VOLVER ATRÁS / MENÚ PRINCIPAL / REINICIO DE GESTIÓN
     const isVolverAtras = 
-        /^(volver|atras|atrás|regresar|volver\s+atras|volver\s+atrás|menu|menú|menu\s+principal|menú\s+principal|inicio|reiniciar|cancelar|no\s+era\s+eso|me\s+equivoque|me\s+equivoqué|otra\s+cosa|opciones|ver\s+opciones|salir)[!.\s]*$/i.test(clean) ||
-        /\b(?:quiero\s+)?(?:volver|regresar)\s+(?:al\s+|a\s+)?(?:menu|menú|inicio|atras|atrás)\b/i.test(clean) ||
+        /\b(volver|atras|atrás|atrs|regresar|menu|menú|inicio|reiniciar|cancelar)\b/i.test(clean) ||
+        /^(volver|atras|atrás|atrs|regresar|volver\s+atras|volver\s+atrás|menu|menú|menu\s+principal|menú\s+principal|inicio|reiniciar|cancelar|no\s+era\s+eso|me\s+equivoque|me\s+equivoqué|otra\s+cosa|opciones|ver\s+opciones|salir)[!.\s]*$/im.test(clean) ||
+        /\b(?:quiero\s+)?(?:volver|regresar)\s+(?:al\s+|a\s+)?(?:menu|menú|inicio|atras|atrás|atrs)\b/i.test(clean) ||
         /\b(?:volver\s+al\s+menu\s+principal|ir\s+al\s+menu|ver\s+menu)\b/i.test(clean);
     if (isVolverAtras) {
         return { intent: 'volver_atras', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
@@ -2395,8 +2401,11 @@ async function handleChatbotTriage(
         minutesSinceLastMsg >= INACTIVITY_TIMEOUT_MINUTES
     );
 
-    // Saludo o reinicio explícito del usuario ("hola", "menu", "inicio", etc.)
-    const isExplicitGreetingOrMenu = /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/i.test(cleanText);
+    // Saludo o reinicio explícito del usuario ("hola", "menu", "atras", "volver", etc.)
+    const isExplicitGreetingOrMenu = 
+        /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(cleanText) ||
+        /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|atras+|atr[aá]s+|atrs+|volver|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/im.test(cleanText);
+
 
     // Si el chat estaba cerrado o expiró por inactividad:
     // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVA SESIÓN
@@ -2968,10 +2977,12 @@ async function handleChatbotTriage(
     // =============================================
     else if (analysis.intent === 'saludo_inicial') {
         replyText = getWelcomeMenuMessage(fullName);
+        updates.status = 'bot';
         updates.bot_stage = 'menu_bienvenida';
         updates.bot_active = true;
         nextStage = 'menu_bienvenida';
         updates.motivo_consulta = 'Menú de Bienvenida (esperando selección)';
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
     // FLUJO 0A-1: SALUDO DENTRO DE FLUJO ACTIVO (SIN RESETEAR)
@@ -2982,11 +2993,12 @@ async function handleChatbotTriage(
         updates.status = 'bot';
         updates.bot_active = true;
         nextStage = currentStage;
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
     // FLUJO 0A-2: VOLVER ATRÁS / MENÚ PRINCIPAL (REACTIVACIÓN OBLIGATORIA A ESTADO 'BOT')
     // =============================================
-    else if (analysis.intent === 'volver_atras') {
+    else if (analysis.intent === 'volver_atras' || /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar)\b/i.test(cleanText)) {
         replyText = `¡Entendido! Te muestro nuevamente nuestras opciones principales de atención:\n\n` + getWelcomeMenuMessage(whatsappName);
         updates.status = 'bot'; // OBLIGATORIO: volver al estado 'bot', NUNCA 'sin_asignar'
         updates.bot_active = true;
@@ -3006,6 +3018,7 @@ async function handleChatbotTriage(
             conv.bot_active = true;
         }
         nextStage = 'menu_bienvenida';
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
     // FLUJO 0A-2B: SELECCIÓN DE MÉDICO HOMÓNIMO
