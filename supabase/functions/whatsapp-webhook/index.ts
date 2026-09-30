@@ -1081,7 +1081,11 @@ const STOPWORDS_MEDICOS = new Set([
     'radiografia', 'radiografía', 'orden', 'receta', 'como', 'para', 'buen', 'dia', 'días', 'bienvenido',
     'prevenir', 'prevencion', 'prevención', 'guardia', 'guardias', 'vacuna', 'vacunas', 'registro',
     'presupuesto', 'presupuestos', 'informe', 'informes', 'reclamo', 'reclamos',
-    'familiar', 'familiares', 'paciente', 'pacientes', 'tercero', 'persona', 'personas'
+    'familiar', 'familiares', 'paciente', 'pacientes', 'tercero', 'persona', 'personas',
+    'quiero', 'queria', 'quería', 'quisiera', 'deseo', 'necesito', 'busco', 'tengo', 'puedo',
+    'otra', 'otro', 'otras', 'otros', 'cambiar', 'cambio', 'ningun', 'ninguna', 'ninguno',
+    'cualquiera', 'quien', 'quién', 'cuando', 'cuándo', 'dame', 'pasame', 'mandame', 'enviame',
+    'atender', 'atenderme', 'coordinar', 'agendar', 'cita', 'citas', 'nueva', 'nuevo', 'nuevos'
 ]);
 
 const SPECIALTY_MAP: [RegExp, string][] = [
@@ -2285,7 +2289,7 @@ Intenciones posibles:
 Devuelve un JSON con:
 {
   "intent": string,
-  "doctor": string o null
+  "doctor": string o null (SOLO si el paciente menciona un nombre o apellido real de persona. Si dice "quiero con otra", "otra doctora", "otro", "cualquiera", "no esa", devuelve null)
 }`
                             },
                             {
@@ -2307,8 +2311,8 @@ Devuelve un JSON con:
                     if (parsed.doctor && !doctorCandidate) {
                         const docWord = parsed.doctor.toLowerCase().trim();
                         const isOnlyDigits = /^\d+$/.test(clean.replace(/[\s.-]/g, ''));
-                        // NUNCA aceptar un doctor retornado por OpenAI si el mensaje actual son solo números/DNI o si el texto del paciente no contiene esa palabra
-                        if (!isOnlyDigits && docWord.length >= 3 && clean.toLowerCase().includes(docWord)) {
+                        // NUNCA aceptar un doctor retornado por OpenAI si es stopword, verbo, o si son solo números
+                        if (!isOnlyDigits && docWord.length >= 3 && !STOPWORDS_MEDICOS.has(docWord) && clean.toLowerCase().includes(docWord)) {
                             doctorCandidate = docWord;
                         }
                     }
@@ -2316,6 +2320,7 @@ Devuelve un JSON con:
             } catch (err) {
                 console.warn('[intent-detector] Fallback OpenAI contextual error:', err);
             }
+
         }
     }
 
@@ -2855,16 +2860,19 @@ async function handleChatbotTriage(
     // Construir etiqueta de doctor SOLO si fue verificado en base de datos o venía con Dr./Dra. explícito y no es stopword
     let rawDocName = analysis.doctorRecord?.profesional_nombre || null;
     if (!rawDocName && analysis.doctorCandidate && !STOPWORDS_MEDICOS.has(analysis.doctorCandidate.toLowerCase())) {
-        if (/\b(doctor|doctora|dr|dra)\.?\s+/i.test(cleanText)) {
+        const explicitDocRegex = new RegExp(`\\b(?:doctor|doctora|dr|dra)\\.?\\s+${analysis.doctorCandidate}\\b`, 'i');
+        if (explicitDocRegex.test(cleanText)) {
             rawDocName = analysis.doctorCandidate.charAt(0).toUpperCase() + analysis.doctorCandidate.slice(1).toLowerCase();
         }
     }
     if (rawDocName) {
         rawDocName = rawDocName.replace(/^\([^)]+\)\s*/, '').replace(/\s*\([^)]+\)$/, '').replace(/\s+SSLN$/i, '').replace(/\s+SEDE\s+\d+/i, '').trim();
     }
+    const isDocFemale = rawDocName && /\b(dra\.?|doctora|agustina|ana|sonia|laura|silvia|lucia|lucía|julieta|marisa|cintia|paulina|daniela|mariana|maria|valeria|patricia|carolina|veronica|romina|natalia|vanesa|gabriela|lorena|cecilia|marcela|andrea|elena|claudia|bertha)\b/i.test(rawDocName);
     const hasHonorific = rawDocName && /^(dr|dra)\.?/i.test(rawDocName);
-    const doctorDisplay = rawDocName ? (hasHonorific ? rawDocName : `Dr. ${rawDocName}`) : null;
+    const doctorDisplay = rawDocName ? (hasHonorific ? rawDocName : (isDocFemale ? `Dra. ${rawDocName}` : `Dr. ${rawDocName}`)) : null;
     const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
+
 
     // Si encontramos múltiples doctores homónimos, consultar al paciente cuál necesita con opciones a-, b-, c-...
     if (analysis.multipleDoctors && analysis.multipleDoctors.length > 1 && analysis.intent !== 'volver_atras') {
@@ -3257,17 +3265,49 @@ async function handleChatbotTriage(
                 /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|tercero|tercera\s+persona|alguien\s+m[aá]s)\b/i.test(cleanText) ||
                 Boolean(conv?.motivo_consulta?.toLowerCase().includes('familiar') || conv?.motivo_consulta?.toLowerCase().includes('tercero'));
 
+            // Detección de rechazo o cambio de profesional ("no quiero turno esa doctora quiero con otra", "otra doctora", "otro médico", "cambiar de médico")
+            const isRechazoOCambioDoc = 
+                /\b(no\s+(?:la\s+|lo\s+)?quiero|no\s+con\s+(?:esa|ese|ella|el|este|esta)|con\s+otr[ao]|otr[ao]\s+(?:doctor[ao]?|m[eé]dic[ao]|profesional)|cambiar\s+(?:de\s+)?(?:doctor[ao]?|m[eé]dic[ao]|profesional)|no\s+deseo\s+(?:con\s+)?(?:esa|ese|ella|el)|no\s+(?:es\s+)?con\s+esa|otra\s+opci[oó]n|buscar\s+otr[ao]|alg[uú]n\s+otr[ao]|otra\s+profesional|otro\s+profesional|con\s+otra|con\s+otro)\b/i.test(cleanText);
+
+            if (isRechazoOCambioDoc) {
+                console.log(`[triage-bot] Chat ${phone}: Paciente solicitó cambio o rechazo del profesional previo.`);
+                const newDoc = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : null;
+                const newSpec = specialtyFromMsg;
+
+                if (newDoc || newSpec) {
+                    updates.medico_o_especialidad = newDoc || newSpec;
+                    if (conv) conv.medico_o_especialidad = updates.medico_o_especialidad;
+                } else {
+                    updates.medico_o_especialidad = null;
+                    if (conv) conv.medico_o_especialidad = null;
+                    
+                    const pFirstName = fullName ? ` *${fullName}*` : (whatsappName ? ` *${whatsappName}*` : '');
+                    replyText = `¡Entendido${pFirstName}! 🏥 Con gusto te ayudamos a coordinar con otra profesional o médico.\n\n` +
+                        `Por favor indícanos:\n` +
+                        `• ¿Con qué *profesional* o para qué *especialidad médica* preferís tu atención?\n` +
+                        `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_datos_turno';
+                    nextStage = 'esperando_datos_turno';
+                    updates.motivo_consulta = 'Solicitud de Turno: Cambio de profesional requerido';
+                    return await finalizeAndSend(replyText, nextStage, updates);
+                }
+            }
+
             // Acumulación de médico/especialidad: si vino en este mensaje o ya estaba guardado en la conversación previa dentro de este mismo flujo
             const effectiveDocOrSpec = 
-                doctorDisplay || 
+                (!isRechazoOCambioDoc && doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase()) ? doctorDisplay : null) || 
                 specialtyFromMsg || 
                 updates.medico_o_especialidad || 
-                (conv?.bot_stage === 'esperando_datos_turno' && conv?.medico_o_especialidad ? conv.medico_o_especialidad : null) ||
+                (!isRechazoOCambioDoc && conv?.bot_stage === 'esperando_datos_turno' && conv?.medico_o_especialidad ? conv.medico_o_especialidad : null) ||
                 null;
 
             if (effectiveDocOrSpec) {
                 updates.medico_o_especialidad = effectiveDocOrSpec;
             }
+
 
             // 3. Extraer obra social y plan si vino en el texto o preservar de la previa
             const extractedOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
@@ -3313,8 +3353,11 @@ async function handleChatbotTriage(
 
             // CASO A: SI TENEMOS TODAS LAS VARIABLES (DNI + Médico + Obra Social) -> CONFIRMACIÓN INMEDIATA
             if (hasDni && hasDoctor && hasOs) {
-                const docMsg = ` con el *${effectiveDocOrSpec}*`;
+                const docArticle = effectiveDocOrSpec.startsWith('Dra.') ? 'con la' : 'con el';
+                const docMsg = ` ${docArticle} *${effectiveDocOrSpec}*`;
                 const osMsg = `\n• *Cobertura informada:* ${updates.obra_social}`;
+
+
                 const horMsg = preferenciaHoraria ? `\n• *Preferencia horaria:* ${preferenciaHoraria}` : '';
 
                 if (isForOtherPatient) {
@@ -4160,11 +4203,16 @@ async function handleChatbotTriage(
             nextStage = 'esperando_confirmacion_turno';
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
         } else if (lastBotContent.includes('te ayudamos a coordinar tu turno') || lastBotContent.includes('¿el turno es para vos') || currentStage === 'esperando_datos_turno') {
-            const docMsg = updates.medico_o_especialidad ? ` con *${updates.medico_o_especialidad}*` : (doctorDisplay ? ` con el *${doctorDisplay}*` : '');
+            const validDisplay = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : '';
+            const docArticle = validDisplay.startsWith('Dra.') ? 'con la' : 'con el';
+            const docMsg = updates.medico_o_especialidad 
+                ? ` con *${updates.medico_o_especialidad}*` 
+                : (validDisplay ? ` ${docArticle} *${validDisplay}*` : '');
             replyText = `¡Muchas gracias *${fullName}*! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
                 `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
                 `${getAgentHandoffNotice()}\n\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             nextStage = 'esperando_agente';
