@@ -5,7 +5,8 @@ import {
     Inbox, Stethoscope, CalendarCheck, Clock, FileCheck, ShieldAlert,
     ChevronRight, ChevronDown, ChevronUp, Check, AlertCircle, AlertTriangle, 
     FileText, HelpCircle, PhoneCall, DollarSign, TrendingUp, X, 
-    Calculator, Info, ShieldCheck, Zap, Award
+    Calculator, Info, ShieldCheck, Zap, Award, UserCheck, Timer,
+    CheckSquare, TrendingDown, Smile, UserX, Layers, Target
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -112,6 +113,37 @@ export default function ContactCenterMetricsTab({ addToast }) {
             de1ha4h: 0,
             mas4h: 0,
             totalActivas: 0
+        },
+        // ── Métricas de Calidad de Atención al Paciente ──
+        patientQuality: {
+            // 1. Tiempo de Espera en Cola (Queue Wait Time: desde solicitud hasta toma de asesora)
+            queueWaitAvgMin: 0,
+            queueWaitMedianMin: 0,
+            queueWaitUnder5mPct: 100,
+            queueWaitUnder15mPct: 100,
+            totalQueuedCases: 0,
+
+            // 2. Tiempo hasta 1er Contacto con la Asesora (FRT: tiempo de redacción tras asignación)
+            agentFRTAvgMin: 0,
+            agentFRTMedianMin: 0,
+            agentFRTUnder3mPct: 100,
+            totalFRTCases: 0,
+
+            // 3. Tiempo Promedio de Resolución neta por Chat (AHT: entre que lo toma y lo finaliza)
+            handleTimeAvgMin: 0,
+            handleTimeMedianMin: 0,
+            handleTimeUnder10mPct: 0,
+            totalHandleCases: 0,
+
+            // 4. Retención y Resolución
+            fcrPct: 100, // First Contact Resolution (% resueltos sin reingreso en 24h)
+            abandonmentRate: 0, // % de abandono de pacientes en cola
+            totalAbandoned: 0,
+
+            // 5. Curva horaria de minutos de espera promedio por hora
+            hourlyWaitCurve: [],
+            peakWaitHour: null,
+            peakWaitValMin: 0
         }
     });
 
@@ -155,12 +187,12 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 .order('created_at', { ascending: true })
                 .limit(4000); // Límite de seguridad para no agotar la RAM
 
-            // Consultar conversaciones
+            // Consultar conversaciones con datos completos de asignación y cierre
             let convQuery = supabase
                 .from('contact_center_conversations')
-                .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, motivo_consulta, ai_summary, created_at, last_message_at')
+                .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, motivo_consulta, ai_summary, created_at, updated_at, last_message_at')
                 .order('created_at', { ascending: true })
-                .limit(2000);
+                .limit(2500);
 
             if (filterStart) {
                 msgQuery = msgQuery.gte('created_at', filterStart.toISOString());
@@ -213,10 +245,13 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     color: ag.color,
                     avatar: ag.avatar,
                     count: 0,
+                    assignedCount: 0,
                     resolvedCount: 0,
                     hourlyMap: Array(24).fill(0),
                     dayOfWeekMap: Array(7).fill(0),
                     responseTimesMin: [],
+                    firstResponseTimesMin: [], // Desde toma de caso hasta 1er mensaje saliente
+                    handleTimesMin: [],        // Desde toma de caso hasta finalización (AHT)
                     categoriesTally: {
                         turnos: 0,
                         autorizaciones: 0,
@@ -233,10 +268,13 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 color: '#64748B',
                 avatar: 'OP',
                 count: 0,
+                assignedCount: 0,
                 resolvedCount: 0,
                 hourlyMap: Array(24).fill(0),
                 dayOfWeekMap: Array(7).fill(0),
                 responseTimesMin: [],
+                firstResponseTimesMin: [],
+                handleTimesMin: [],
                 categoriesTally: { turnos: 0, autorizaciones: 0, guardias: 0, informes: 0, otros: 0 }
             };
 
@@ -246,6 +284,14 @@ export default function ContactCenterMetricsTab({ addToast }) {
             const responseTimesByDay = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
             const allFirstResponseTimes = [];
             const allResolutionTimes = [];
+
+            // ── Estructuras para Métricas de Calidad de Atención al Paciente ──
+            const allQueueWaitTimes = [];     // Minutos en cola (solicitud -> toma asesora)
+            const allAgentFRTTimes = [];      // Minutos hasta 1er contacto de la asesora (toma -> 1er msg)
+            const allAgentHandleTimes = [];   // Minutos netos de gestión de chat (toma -> cierre)
+            const hourlyWaitMap = Array.from({ length: 24 }, () => []); // Espera por hora del día
+            let abandonedCount = 0;           // Pacientes que abandonaron en cola sin atención
+            const resolvedPhonesWithCloseDate = []; // Registro para verificar FCR (sin reingreso en 24h)
 
             // Agrupar mensajes por teléfono para analizar conversaciones y tiempos
             const msgsByPhone = {};
@@ -409,8 +455,84 @@ export default function ContactCenterMetricsTab({ addToast }) {
             const reasonsMap = {};
             MOTIVOS_FINALIZACION_CATALOGO.forEach(c => { reasonsMap[c.key] = 0; });
 
+            // Helper estadístico para mediana (P50)
+            const calcMedian = (arr) => {
+                if (!arr || arr.length === 0) return 0;
+                const sorted = [...arr].sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                return sorted.length % 2 !== 0 
+                    ? Number(sorted[mid].toFixed(1)) 
+                    : Number(((sorted[mid - 1] + sorted[mid]) / 2).toFixed(1));
+            };
+
             filteredConvs.forEach(c => {
                 const isClosed = isClosedOrArchived(c) || !!c.closed_at || !!c.resolution_reason;
+                const normPhone = c.phone;
+                const pMsgs = msgsByPhone[normPhone] || [];
+
+                // Identificar agente asignado
+                const assignedAgentId = (c.assigned_agent_id || '').toLowerCase();
+                const assignedAgentName = (c.assigned_agent_name || '').toLowerCase();
+                let matchedAssignedAgentId = null;
+                for (const ag of ALL_AGENTS_METRICS) {
+                    if (
+                        assignedAgentId === ag.id || 
+                        assignedAgentId === (ag.username || '').toLowerCase() ||
+                        (ag.legacyId && assignedAgentId === ag.legacyId) ||
+                        assignedAgentName.includes(ag.id) ||
+                        assignedAgentName.includes((ag.name || '').toLowerCase())
+                    ) {
+                        matchedAssignedAgentId = ag.id;
+                        agentDataMap[ag.id].assignedCount++;
+                        break;
+                    }
+                }
+
+                // Determinar fecha de asignación efectiva
+                let assignedDate = c.assigned_at ? new Date(c.assigned_at) : null;
+                if (!assignedDate) {
+                    // Fallback para chats anteriores: primer mensaje saliente humano
+                    const firstHumanMsg = pMsgs.find(m => m.direction === 'outgoing' && !isBotMsg(m));
+                    if (firstHumanMsg) assignedDate = new Date(firstHumanMsg.created_at);
+                }
+
+                // ── 1. TIEMPO DE ESPERA EN COLA (QUEUE WAIT TIME) ──
+                // Desde que entra la consulta hasta que un agente toma/se asigna el chat
+                if (assignedDate && c.created_at) {
+                    const createdDate = new Date(c.created_at);
+                    const waitMin = (assignedDate - createdDate) / 60000;
+                    if (waitMin >= 0 && waitMin < 2880) { // filtrar outliers > 48hs
+                        const valWait = Number(waitMin.toFixed(1));
+                        allQueueWaitTimes.push(valWait);
+                        const hr = createdDate.getHours();
+                        if (hr >= 0 && hr < 24) {
+                            hourlyWaitMap[hr].push(valWait);
+                        }
+                    }
+                }
+
+                // ── 2. TIEMPO HASTA 1ER CONTACTO CON LA ASESORA (AGENT FRT) ──
+                // Desde que la asesora toma el chat (assigned_at) hasta que emite su 1er mensaje humano
+                if (assignedDate) {
+                    const assignedTimeMs = assignedDate.getTime();
+                    const firstOutAfterAssign = pMsgs.find(m => 
+                        m.direction === 'outgoing' && 
+                        !isBotMsg(m) && 
+                        new Date(m.created_at).getTime() >= (assignedTimeMs - 30000)
+                    );
+                    if (firstOutAfterAssign) {
+                        const frtMin = Math.max(0, (new Date(firstOutAfterAssign.created_at).getTime() - assignedTimeMs) / 60000);
+                        if (frtMin < 1440) { // menos de 24 hs
+                            const valFRT = Number(frtMin.toFixed(1));
+                            allAgentFRTTimes.push(valFRT);
+                            if (matchedAssignedAgentId) {
+                                agentDataMap[matchedAssignedAgentId].firstResponseTimesMin.push(valFRT);
+                            }
+                        }
+                    }
+                }
+
+                // ── 3. RESOLUCIÓN DE CASOS & AHT NETO DEL AGENTE ──
                 if (isClosed) {
                     closedCount++;
                     const r = c.resolution_reason || 'Otro / Aclaración en Nota';
@@ -426,7 +548,26 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         reasonsMap['Otro / Aclaración en Nota'] = (reasonsMap['Otro / Aclaración en Nota'] || 0) + 1;
                     }
 
-                    // Tiempos de resolución total
+                    // AHT Neto: Específicamente entre que lo agarra el agente y lo finaliza
+                    if (assignedDate && c.closed_at) {
+                        const closedDate = new Date(c.closed_at);
+                        const handleMin = (closedDate - assignedDate) / 60000;
+                        if (handleMin >= 0 && handleMin < 1440) { // menos de 24 hs
+                            const valHandle = Number(handleMin.toFixed(1));
+                            allAgentHandleTimes.push(valHandle);
+                            
+                            // Atribuir a la asesora que cerró o a la que estuvo asignada
+                            const closedAgent = (c.closed_by_agent_name || c.assigned_agent_name || '').toLowerCase();
+                            for (const ag of ALL_AGENTS_METRICS) {
+                                if (closedAgent.includes(ag.id) || closedAgent.includes((ag.name || '').toLowerCase())) {
+                                    agentDataMap[ag.id].handleTimesMin.push(valHandle);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Tiempos de resolución total histórica (desde created_at hasta closed_at)
                     if (c.created_at && c.closed_at) {
                         const totalResMin = Math.round((new Date(c.closed_at) - new Date(c.created_at)) / 60000);
                         if (totalResMin > 0 && totalResMin < 10080) { // menos de 7 días
@@ -442,9 +583,62 @@ export default function ContactCenterMetricsTab({ addToast }) {
                             break;
                         }
                     }
+
+                    // Guardar para cálculo de First Contact Resolution (FCR)
+                    if (c.closed_at) {
+                        resolvedPhonesWithCloseDate.push({
+                            phone: normPhone,
+                            closedAt: new Date(c.closed_at).getTime()
+                        });
+                    }
                 } else {
                     activeCount++;
                 }
+
+                // ── 4. DETECCIÓN DE ABANDONO EN COLA ──
+                // Paciente que nunca fue atendido por un humano o timeout sin asignación
+                const hasAgentMsg = pMsgs.some(m => m.direction === 'outgoing' && !isBotMsg(m));
+                const isAbandonedTimeout = (c.resolution_reason || '').toLowerCase().includes('no responde');
+                if ((!hasAgentMsg && isClosed) || (isAbandonedTimeout && !c.assigned_at)) {
+                    abandonedCount++;
+                }
+            });
+
+            // ── Cómputo de FCR (First Contact Resolution en 24h) ──
+            let fcrSuccessCount = 0;
+            resolvedPhonesWithCloseDate.forEach(item => {
+                const pMsgs = msgsByPhone[item.phone] || [];
+                const nextIncomingWithin24h = pMsgs.find(m => {
+                    if (m.direction !== 'incoming') return false;
+                    const msgTime = new Date(m.created_at).getTime();
+                    return msgTime > item.closedAt && msgTime <= (item.closedAt + 24 * 3600 * 1000);
+                });
+                if (!nextIncomingWithin24h) {
+                    fcrSuccessCount++;
+                }
+            });
+            const fcrPct = resolvedPhonesWithCloseDate.length > 0
+                ? Math.round((fcrSuccessCount / resolvedPhonesWithCloseDate.length) * 100)
+                : 100;
+
+            const abandonmentRate = filteredConvs.length > 0
+                ? Number(((abandonedCount / filteredConvs.length) * 100).toFixed(1))
+                : 0;
+
+            // ── Cómputo de Curva Horaria de Espera ──
+            let peakWaitHour = null;
+            let peakWaitValMin = 0;
+            const hourlyWaitCurveData = hourlyWaitMap.map((times, hour) => {
+                const avg = times.length > 0 ? Number((times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)) : 0;
+                if (avg > peakWaitValMin && times.length >= 2) {
+                    peakWaitValMin = avg;
+                    peakWaitHour = `${hour.toString().padStart(2, '0')}:00 hs`;
+                }
+                return {
+                    hora: `${hour.toString().padStart(2, '0')}:00`,
+                    esperaMin: avg,
+                    casos: times.length
+                };
             });
 
             // ── E. Triage Inicial de Pacientes ──
@@ -500,7 +694,6 @@ export default function ContactCenterMetricsTab({ addToast }) {
             let runningOut = 0;
             const dailyTrendData = Object.entries(dailyOutTally).map(([fecha, enviados]) => {
                 runningOut += enviados;
-                // Costo: a partir del mensaje 1001 se factura $0.026 USD
                 const billableAcc = Math.max(0, runningOut - MENSAJES_GRATIS_MENSUALES);
                 const costoAccUsd = +(billableAcc * COSTO_POR_MENSAJE_USD).toFixed(2);
                 
@@ -536,7 +729,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 };
             });
 
-            // Promedios generales
+            // Promedios y Medianas Generales
             const firstResponseAvg = allFirstResponseTimes.length > 0 
                 ? Number((allFirstResponseTimes.reduce((a, b) => a + b, 0) / allFirstResponseTimes.length).toFixed(1)) 
                 : 0;
@@ -549,12 +742,45 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 ? Math.round(allResolutionTimes.reduce((a, b) => a + b, 0) / allResolutionTimes.length) 
                 : 0;
 
+            // Estadísticos de Calidad al Paciente
+            const queueWaitAvg = allQueueWaitTimes.length > 0
+                ? Number((allQueueWaitTimes.reduce((a, b) => a + b, 0) / allQueueWaitTimes.length).toFixed(1))
+                : 0;
+            const queueWaitMedian = calcMedian(allQueueWaitTimes);
+            const queueUnder5m = allQueueWaitTimes.filter(t => t <= 5).length;
+            const queueUnder5mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder5m / allQueueWaitTimes.length) * 100) : 100;
+            const queueUnder15m = allQueueWaitTimes.filter(t => t <= 15).length;
+            const queueUnder15mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder15m / allQueueWaitTimes.length) * 100) : 100;
+
+            const agentFRTAvg = allAgentFRTTimes.length > 0
+                ? Number((allAgentFRTTimes.reduce((a, b) => a + b, 0) / allAgentFRTTimes.length).toFixed(1))
+                : 0;
+            const agentFRTMedian = calcMedian(allAgentFRTTimes);
+            const agentFRTUnder3m = allAgentFRTTimes.filter(t => t <= 3).length;
+            const agentFRTUnder3mPct = allAgentFRTTimes.length > 0 ? Math.round((agentFRTUnder3m / allAgentFRTTimes.length) * 100) : 100;
+
+            const handleTimeAvg = allAgentHandleTimes.length > 0
+                ? Number((allAgentHandleTimes.reduce((a, b) => a + b, 0) / allAgentHandleTimes.length).toFixed(1))
+                : 0;
+            const handleTimeMedian = calcMedian(allAgentHandleTimes);
+            const handleUnder10m = allAgentHandleTimes.filter(t => t <= 10).length;
+            const handleUnder10mPct = allAgentHandleTimes.length > 0 ? Math.round((handleUnder10m / allAgentHandleTimes.length) * 100) : 0;
+
+            // Rendimiento detallado por asesora
             const agentList = Object.values(agentDataMap)
                 .filter(a => a.id !== 'otros_operadores' || a.count > 0)
                 .map(a => {
                     const avgTime = a.responseTimesMin.length > 0
                         ? Number((a.responseTimesMin.reduce((x, y) => x + y, 0) / a.responseTimesMin.length).toFixed(1))
                         : 0;
+                    const avgFRT = a.firstResponseTimesMin.length > 0
+                        ? Number((a.firstResponseTimesMin.reduce((x, y) => x + y, 0) / a.firstResponseTimesMin.length).toFixed(1))
+                        : 0;
+                    const avgHandle = a.handleTimesMin.length > 0
+                        ? Number((a.handleTimesMin.reduce((x, y) => x + y, 0) / a.handleTimesMin.length).toFixed(1))
+                        : 0;
+                    const medianHandle = calcMedian(a.handleTimesMin);
+
                     // Encontrar su horario pico
                     let maxH = 0;
                     let maxHIdx = 0;
@@ -568,9 +794,13 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     return {
                         ...a,
                         avgResponseTimeMin: avgTime,
+                        avgAgentFRTMin: avgFRT,
+                        avgHandleTimeMin: avgHandle,
+                        medianHandleTimeMin: medianHandle,
                         peakHour: `${maxHIdx.toString().padStart(2, '0')}:00 hs`,
                         slaCumplimientoPct: agentSlaPct,
-                        totalAtendidos: a.responseTimesMin.length
+                        totalAtendidos: a.responseTimesMin.length,
+                        assignedCount: a.assignedCount || a.resolvedCount || a.responseTimesMin.length
                     };
                 })
                 .sort((a, b) => b.count - a.count);
@@ -631,7 +861,28 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     totalCasos: totalSlaCases,
                     cumplimientoPct: slaCumplimientoPct
                 },
-                queueAging
+                queueAging,
+                patientQuality: {
+                    queueWaitAvgMin: queueWaitAvg,
+                    queueWaitMedianMin: queueWaitMedian,
+                    queueWaitUnder5mPct,
+                    queueWaitUnder15mPct,
+                    totalQueuedCases: allQueueWaitTimes.length,
+                    agentFRTAvgMin: agentFRTAvg,
+                    agentFRTMedianMin: agentFRTMedian,
+                    agentFRTUnder3mPct,
+                    totalFRTCases: allAgentFRTTimes.length,
+                    handleTimeAvgMin: handleTimeAvg,
+                    handleTimeMedianMin: handleTimeMedian,
+                    handleTimeUnder10mPct: handleUnder10mPct,
+                    totalHandleCases: allAgentHandleTimes.length,
+                    fcrPct,
+                    abandonmentRate,
+                    totalAbandoned: abandonedCount,
+                    hourlyWaitCurve: hourlyWaitCurveData,
+                    peakWaitHour,
+                    peakWaitValMin
+                }
             });
 
         } catch (err) {
@@ -1186,36 +1437,37 @@ export default function ContactCenterMetricsTab({ addToast }) {
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 3.B TABLERO DE SLA & TIEMPOS DE RESPUESTA (PROPUESTA 10 APROBADA)  */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 3.B PANEL DE CALIDAD DE ATENCIÓN AL PACIENTE & TIEMPOS OPERATIVOS */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{
                 background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
-                padding: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '18px'
+                padding: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '20px'
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{
-                            width: '36px', height: '36px', borderRadius: '10px',
+                            width: '38px', height: '38px', borderRadius: '10px',
                             background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
                             color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
                         }}>
-                            <ShieldCheck size={20} />
+                            <ShieldCheck size={22} />
                         </div>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 800, color: '#0F2942' }}>
-                                    Tablero de SLA y Tiempos de Respuesta Institucionales
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Panel Clínico de Tiempos & Calidad de Atención al Paciente
                                 </h3>
                                 <span style={{
                                     fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
                                     background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0'
                                 }}>
-                                    Meta: &lt; 15 min
+                                    Meta SLA: &lt; 15 min
                                 </span>
                             </div>
                             <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                Auditoría de Acuerdos de Nivel de Servicio (SLA), envejecimiento de cola activa y resolución integral
+                                Medición exhaustiva de tiempos de espera en cola, velocidad de 1er contacto humano, resolución neta (AHT) y retención del paciente
                             </p>
                         </div>
                     </div>
@@ -1232,104 +1484,210 @@ export default function ContactCenterMetricsTab({ addToast }) {
                             <AlertTriangle size={16} color="#D97706" />
                         )}
                         <span style={{ fontSize: '0.8rem', fontWeight: 800, color: metrics.slaStats?.cumplimientoPct >= 85 ? '#166534' : '#92400E' }}>
-                            {metrics.slaStats?.cumplimientoPct || 0}% Cumplimiento de SLA Objetivo
+                            {metrics.slaStats?.cumplimientoPct || 0}% Cumplimiento General de SLA
                         </span>
                     </div>
                 </div>
 
-                {/* TARJETAS KPI DE SLA Y RESOLUCIÓN */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-                    {/* KPI 1: % Cumplimiento SLA */}
+                {/* ── CUADRÍCULA DE 4 TARJETAS PRINCIPALES DE CALIDAD AL PACIENTE ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                    
+                    {/* 1. TIEMPO DE ESPERA EN COLA (QUEUE WAIT TIME) */}
                     <div style={{
-                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
-                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
+                        background: '#FFFFFF', borderRadius: '12px', padding: '16px 18px',
+                        border: '1.5px solid #BAE6FD', display: 'flex', flexDirection: 'column', gap: '8px',
+                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.05)'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                                Cumplimiento SLA (&lt; 15 min)
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                Espera en Cola (Cola a Asesora)
                             </span>
-                            <Award size={15} color="#0284C7" />
+                            <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#F0F9FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Clock size={16} />
+                            </div>
                         </div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0F2942' }}>
-                            {loading ? '...' : `${metrics.slaStats?.cumplimientoPct || 0}%`}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942' }}>
+                                {loading ? '...' : (metrics.patientQuality?.queueWaitAvgMin === 0 ? '< 1 min' : `${metrics.patientQuality?.queueWaitAvgMin} min`)}
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0284C7' }}>
+                                Promedio
+                            </span>
                         </div>
-                        <div style={{ width: '100%', height: '6px', background: '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{
-                                width: `${Math.min(100, metrics.slaStats?.cumplimientoPct || 0)}%`,
-                                height: '100%',
-                                background: metrics.slaStats?.cumplimientoPct >= 85 ? '#059669' : '#D97706',
-                                borderRadius: '3px', transition: 'width 0.4s ease'
-                            }} />
+                        <div style={{ fontSize: '0.72rem', color: '#475569', background: '#F8FAFC', padding: '4px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                            Mediana: <strong>{metrics.patientQuality?.queueWaitMedianMin || 0} min</strong> • {metrics.patientQuality?.queueWaitUnder5mPct || 0}% en &lt; 5 min
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                            {metrics.slaStats?.optimo || 0} de {metrics.slaStats?.totalCasos || 0} respuestas humanas a tiempo
+                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                            Desde que el paciente pide atención hasta que una asesora toma el chat
                         </div>
                     </div>
 
-                    {/* KPI 2: TME (Tiempo Medio de Espera / 1ra Respuesta Humana) */}
+                    {/* 2. TIEMPO HASTA 1ER CONTACTO CON LA ASESORA (AGENT FRT) */}
                     <div style={{
-                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
-                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
+                        background: '#FFFFFF', borderRadius: '12px', padding: '16px 18px',
+                        border: '1.5px solid #A7F3D0', display: 'flex', flexDirection: 'column', gap: '8px',
+                        boxShadow: '0 2px 6px rgba(5, 150, 105, 0.05)'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                                TME (1ra Respuesta Asesora)
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                1er Contacto con Asesora (FRT)
                             </span>
-                            <Clock size={15} color="#0284C7" />
+                            <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <UserCheck size={16} />
+                            </div>
                         </div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0284C7' }}>
-                            {loading ? '...' : (metrics.agentFirstResponseAvgMin === 0 ? '&lt; 1 min' : `${metrics.agentFirstResponseAvgMin} min`)}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942' }}>
+                                {loading ? '...' : (metrics.patientQuality?.agentFRTAvgMin === 0 ? '< 1 min' : `${metrics.patientQuality?.agentFRTAvgMin} min`)}
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
+                                Promedio
+                            </span>
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                            Demora promedio desde mensaje del paciente hasta contestación de asesora
+                        <div style={{ fontSize: '0.72rem', color: '#166534', background: '#F0FDF4', padding: '4px 8px', borderRadius: '6px', border: '1px solid #BBF7D0' }}>
+                            Mediana: <strong>{metrics.patientQuality?.agentFRTMedianMin || 0} min</strong> • {metrics.patientQuality?.agentFRTUnder3mPct || 0}% en &lt; 3 min
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                            Tiempo de respuesta de la operadora tras auto-asignarse la ficha
                         </div>
                     </div>
 
-                    {/* KPI 3: TMR (Tiempo Medio de Resolución) */}
+                    {/* 3. TIEMPO PROMEDIO DE RESOLUCIÓN POR CHAT (AHT - HANDLE TIME) */}
                     <div style={{
-                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
-                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px'
+                        background: '#FFFFFF', borderRadius: '12px', padding: '16px 18px',
+                        border: '1.5px solid #DDD6FE', display: 'flex', flexDirection: 'column', gap: '8px',
+                        boxShadow: '0 2px 6px rgba(139, 92, 246, 0.05)'
                     }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                                TMR (Tiempo Medio de Resolución)
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#5B21B6', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                Resolución Neta (AHT Operativo)
                             </span>
-                            <Activity size={15} color="#8B5CF6" />
+                            <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#F5F3FF', color: '#8B5CF6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <CheckSquare size={16} />
+                            </div>
                         </div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#8B5CF6' }}>
-                            {loading ? '...' : (metrics.resolutionTimeAvgMin === 0 ? '&lt; 5 min' : `${metrics.resolutionTimeAvgMin} min`)}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942' }}>
+                                {loading ? '...' : (metrics.patientQuality?.handleTimeAvgMin === 0 ? '< 5 min' : `${metrics.patientQuality?.handleTimeAvgMin} min`)}
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#8B5CF6' }}>
+                                Promedio
+                            </span>
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                            Duración promedio desde inicio hasta cierre de trámite o turno
+                        <div style={{ fontSize: '0.72rem', color: '#5B21B6', background: '#F5F3FF', padding: '4px 8px', borderRadius: '6px', border: '1px solid #DDD6FE' }}>
+                            Mediana: <strong>{metrics.patientQuality?.handleTimeMedianMin || 0} min</strong> • {metrics.patientQuality?.totalHandleCases || 0} casos analizados
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                            Específicamente entre que lo agarra el agente y lo finaliza
                         </div>
                     </div>
 
-                    {/* KPI 4: Segmentación de Respuesta */}
+                    {/* 4. CALIDAD, RETENCIÓN & FCR */}
                     <div style={{
-                        background: '#F8FAFC', borderRadius: '10px', padding: '14px 16px',
-                        border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+                        background: '#FFFFFF', borderRadius: '12px', padding: '16px 18px',
+                        border: '1.5px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
                     }}>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                            Desglose de Tiempos
-                        </span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                <span style={{ color: '#047857', fontWeight: 700 }}>🟢 &lt; 15 min (Óptimo):</span>
-                                <span style={{ fontWeight: 800 }}>{metrics.slaStats?.optimo || 0}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                <span style={{ color: '#B45309', fontWeight: 700 }}>🟡 15 - 60 min (Aceptable):</span>
-                                <span style={{ fontWeight: 800 }}>{metrics.slaStats?.aceptable || 0}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                <span style={{ color: '#B91C1C', fontWeight: 700 }}>🔴 &gt; 60 min (Fuera de SLA):</span>
-                                <span style={{ fontWeight: 800 }}>{metrics.slaStats?.demorado || 0}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                Resolución 1er Contacto (FCR)
+                            </span>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#F8FAFC', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Target size={16} />
                             </div>
                         </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#059669' }}>
+                                {loading ? '...' : `${metrics.patientQuality?.fcrPct || 100}%`}
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
+                                Éxito FCR
+                            </span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569', background: '#F8FAFC', padding: '4px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                            Abandono en Cola: <strong style={{ color: (metrics.patientQuality?.abandonmentRate || 0) > 8 ? '#DC2626' : '#059669' }}>{metrics.patientQuality?.abandonmentRate || 0}%</strong> ({metrics.patientQuality?.totalAbandoned || 0} casos)
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                            Pacientes cuya consulta fue resuelta sin reingreso en 24 hs
+                        </div>
+                    </div>
+
+                </div>
+
+                {/* ── GRÁFICO: CURVA HORARIA DE DEMORA DE ESPERA (¿A QUÉ HORA ESPERAN MÁS?) ── */}
+                <div style={{
+                    background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0',
+                    padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Timer size={16} />
+                            </div>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Curva Horaria de Demora del Paciente (Minutos de Espera en Cola según Hora de Ingreso)
+                                </h4>
+                                <p style={{ margin: '1px 0 0', fontSize: '0.72rem', color: '#64748B' }}>
+                                    Permite detectar en qué franjas horarias se generan los cuellos de botella para reasignar turnos de operadoras
+                                </p>
+                            </div>
+                        </div>
+
+                        {metrics.patientQuality?.peakWaitHour && (
+                            <span style={{
+                                fontSize: '0.72rem', fontWeight: 800, padding: '4px 10px', borderRadius: '20px',
+                                background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '6px'
+                            }}>
+                                <AlertTriangle size={13} />
+                                Pico de Demora: {metrics.patientQuality.peakWaitHour} (~{metrics.patientQuality.peakWaitValMin} min)
+                            </span>
+                        )}
+                    </div>
+
+                    <div style={{ width: '100%', height: '210px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={metrics.patientQuality?.hourlyWaitCurve || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                <XAxis dataKey="hora" tick={{ fontSize: 10, fill: '#64748B' }} interval={1} />
+                                <YAxis tick={{ fontSize: 10, fill: '#64748B' }} unit="m" allowDecimals={false} />
+                                <Tooltip 
+                                    cursor={{ fill: 'rgba(2, 132, 199, 0.06)', radius: 4 }}
+                                    contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem' }}
+                                    formatter={(val, name, item) => [`${val} minutos promedio (${item.payload.casos || 0} pacientes)`, 'Espera en Cola']}
+                                />
+                                <Bar dataKey="esperaMin" name="Minutos de Espera" radius={[4, 4, 0, 0]}>
+                                    {(metrics.patientQuality?.hourlyWaitCurve || []).map((entry, index) => (
+                                        <Cell 
+                                            key={`bar-${index}`} 
+                                            fill={entry.esperaMin >= 15 ? '#DC2626' : (entry.esperaMin >= 8 ? '#D97706' : '#0284C7')} 
+                                        />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '0.7rem', color: '#64748B', borderTop: '1px dashed #CBD5E1', paddingTop: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284C7', display: 'inline-block' }}></span>
+                                &lt; 8 min (Excelente)
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#D97706', display: 'inline-block' }}></span>
+                                8 - 15 min (Atención)
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#DC2626', display: 'inline-block' }}></span>
+                                &gt; 15 min (Refuerzo necesario)
+                            </span>
+                        </div>
+                        <span>Cómputo en base a {metrics.patientQuality?.totalQueuedCases || 0} esperas registradas</span>
                     </div>
                 </div>
 
-                {/* ENVEJECIMIENTO DE COLA ACTIVA (QUEUE AGING EN TIEMPO REAL) */}
+                {/* ── ENVEJECIMIENTO DE COLA ACTIVA (QUEUE AGING EN TIEMPO REAL) ── */}
                 <div style={{
                     background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0',
                     padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px'
@@ -1338,7 +1696,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <Zap size={14} color="#0284C7" />
                             <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F2942' }}>
-                                Envejecimiento de la Cola Activa ({metrics.queueAging?.totalActivas || 0} conversaciones abiertas)
+                                Envejecimiento de la Cola Activa ({metrics.queueAging?.totalActivas || 0} conversaciones abiertas en este instante)
                             </span>
                         </div>
                         <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
@@ -1370,7 +1728,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     </div>
                 </div>
 
-                {/* CUMPLIMIENTO DE SLA POR ASESORA */}
+                {/* ── CUMPLIMIENTO DE SLA POR ASESORA ── */}
                 {metrics.byAgentList && metrics.byAgentList.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
@@ -1393,7 +1751,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                         <div>
                                             <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F2942' }}>{ag.name}</div>
                                             <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                {ag.avgResponseTimeMin > 0 ? `Promedio: ${ag.avgResponseTimeMin}m` : 'Respuesta inmediata'} • {ag.totalAtendidos || 0} casos
+                                                {ag.avgResponseTimeMin > 0 ? `Promedio: ${ag.avgResponseTimeMin}m` : 'Respuesta inmediata'} • {ag.assignedCount || 0} tomados
                                             </div>
                                         </div>
                                     </div>
@@ -1429,10 +1787,10 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         </div>
                         <div>
                             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F2942' }}>
-                                Rendimiento Desplegable por Asesora y Automatización del Bot
+                                Rendimiento Desplegable por Asesora y Tiempos de Atención
                             </h3>
                             <p style={{ margin: '1px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                Despliega cada asesora para inspeccionar su actividad detallada, tiempos y casos resueltos
+                                Despliega cada asesora para auditar su volumen, velocidad de 1er contacto (FRT) y tiempo neto de resolución (AHT)
                             </p>
                         </div>
                     </div>
@@ -1474,10 +1832,10 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <div style={{
-                                            width: '32px', height: '32px', borderRadius: '50%',
+                                            width: '34px', height: '34px', borderRadius: '50%',
                                             background: ag.color, color: '#FFFFFF',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '0.76rem', fontWeight: 800, flexShrink: 0
+                                            fontSize: '0.78rem', fontWeight: 800, flexShrink: 0
                                         }}>
                                             {ag.avatar}
                                         </div>
@@ -1491,21 +1849,35 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                         </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                                         <div style={{ textAlign: 'right' }}>
                                             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F2942' }}>
                                                 {ag.count} msgs
                                             </div>
                                             <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                {pct}% del total humano
+                                                {pct}% del total
                                             </div>
+                                        </div>
+
+                                        <div style={{
+                                            padding: '4px 8px', borderRadius: '6px', background: '#F0F9FF',
+                                            color: '#0369A1', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #BAE6FD'
+                                        }}>
+                                            📥 {ag.assignedCount || ag.resolvedCount} tomados
                                         </div>
 
                                         <div style={{
                                             padding: '4px 8px', borderRadius: '6px', background: '#F1F5F9',
                                             color: '#475569', fontSize: '0.7rem', fontWeight: 700
                                         }}>
-                                            ⏱ {ag.avgResponseTimeMin} min promedio
+                                            ⚡ FRT: {ag.avgAgentFRTMin || ag.avgResponseTimeMin}m
+                                        </div>
+
+                                        <div style={{
+                                            padding: '4px 8px', borderRadius: '6px', background: '#F5F3FF',
+                                            color: '#6D28D9', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #DDD6FE'
+                                        }}>
+                                            🎯 AHT: {ag.avgHandleTimeMin > 0 ? `${ag.avgHandleTimeMin}m` : '< 5m'}
                                         </div>
 
                                         <div style={{ color: '#94A3B8' }}>
@@ -1527,7 +1899,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                         {/* TARJETAS INTERNAS */}
                                         <div style={{
                                             display: 'grid',
-                                            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
                                             gap: '10px'
                                         }}>
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
@@ -1535,16 +1907,30 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0F2942', marginTop: '2px' }}>{ag.count}</div>
                                             </div>
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Chats Tomados</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0284C7', marginTop: '2px' }}>{ag.assignedCount || ag.resolvedCount}</div>
+                                            </div>
+                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Casos Finalizados</div>
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.resolvedCount}</div>
                                             </div>
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Demora Respuesta</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0284C7', marginTop: '2px' }}>{ag.avgResponseTimeMin} min</div>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>1er Contacto (FRT)</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.avgAgentFRTMin || ag.avgResponseTimeMin} min</div>
                                             </div>
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Horario de Pico</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#8B5CF6', marginTop: '2px' }}>{ag.peakHour}</div>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Resolución Neta AHT</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#8B5CF6', marginTop: '2px' }}>
+                                                    {ag.avgHandleTimeMin > 0 ? `${ag.avgHandleTimeMin}m` : '< 5m'}
+                                                </div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mediana: {ag.medianHandleTimeMin || 0}m</div>
+                                            </div>
+                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Cumplimiento SLA</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: ag.slaCumplimientoPct >= 85 ? '#059669' : '#D97706', marginTop: '2px' }}>
+                                                    {ag.slaCumplimientoPct}%
+                                                </div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Pico: {ag.peakHour}</div>
                                             </div>
                                         </div>
 
