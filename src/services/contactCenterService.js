@@ -285,21 +285,22 @@ export function isChatLockedForUser(chat, currentAgentId, currentUser) {
  * Asigna una conversación a una agente.
  * Si ya está asignada a otra persona, arroja un error para evitar colisiones.
  */
-export function assignChatExclusively(chat, targetAgent, currentUser) {
+export function assignChatExclusively(chat, targetAgent, currentUser, { forceReassign = false, reassignNote = '' } = {}) {
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     
-    // Si ya está asignado a otra persona y no es supervisor
+    // Si ya está asignado a otra persona y no es supervisor ni reasignación confirmada
     const currentAssigned = chat.assignedTo ? chat.assignedTo.toLowerCase() : null;
     const currentOwner = currentAssigned ? getAgentById(currentAssigned) : null;
     const isSameAgent = currentOwner && currentOwner.id === targetAgent.id;
 
-    if (currentAssigned && !isSameAgent && !isSupervisor) {
+    if (currentAssigned && !isSameAgent && !isSupervisor && !forceReassign) {
         const ownerName = currentOwner?.name || chat.assignedTo;
         throw new Error(`Esta conversación ya está asignada a ${ownerName}. Mientras la tenga asignada, nadie más puede asociársela.`);
     }
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
 
     // Persistir en Supabase contact_center_conversations y APAGAR BOT
     if (chat.phone) {

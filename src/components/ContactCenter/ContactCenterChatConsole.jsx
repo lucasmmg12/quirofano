@@ -584,7 +584,53 @@ export default function ContactCenterChatConsole({
         }
     };
 
+    // Modal de Reasignación a mí misma (Disponible para todas las agentes con advertencia previa)
+    const [reassignModalOpen, setReassignModalOpen] = useState(false);
+    const [reassignNote, setReassignNote] = useState('');
+    const [isReassigning, setIsReassigning] = useState(false);
+
+    const handleConfirmReassignToMe = async () => {
+        if (!selectedChat?.id) return;
+        setIsReassigning(true);
+        try {
+            const previousAgentName = assignedAgentObj?.name || selectedChat.assignedToName || selectedChat.assignedTo || 'otra agente';
+            const myAgentName = activeAgent?.name || currentUser?.nombre || 'Agente';
+            const noteText = `🔄 [Reasignación de Atención]: Conversación reasignada de ${previousAgentName} a ${myAgentName}.${reassignNote.trim() ? ` Motivo: ${reassignNote.trim()}` : ''}`;
+
+            // 1. Registrar nota privada interna en el chat (no se envía a WhatsApp del paciente)
+            if (onSendMessage) {
+                await onSendMessage(selectedChat.id, noteText, true);
+            }
+
+            // 2. Reasignar en la lógica general de ContactCenterPanel
+            if (onAssignChat) {
+                await onAssignChat(selectedChat.id, activeAgent.id, { forceReassign: true, reassignNote: reassignNote.trim() });
+            }
+
+            if (selectedChat) {
+                selectedChat.assignedTo = activeAgent.id;
+                selectedChat.assignedToName = activeAgent.name;
+                selectedChat.status = 'asignada';
+                selectedChat.botActive = false;
+            }
+
+            setReassignModalOpen(false);
+            setReassignNote('');
+            showToast(`Conversación reasignada a tu nombre. Ya podés responder al paciente.`, 'success');
+
+            if (typeof onReloadChats === 'function') {
+                onReloadChats();
+            }
+        } catch (err) {
+            console.error('Error al reasignar chat:', err);
+            showToast('Error al reasignar conversación: ' + (err.message || 'Error'), 'error');
+        } finally {
+            setIsReassigning(false);
+        }
+    };
+
     const showToast = (message, type = 'success') => {
+
         setSystemToast({ message, type });
         setTimeout(() => {
             setSystemToast(null);
@@ -2989,9 +3035,9 @@ export default function ContactCenterChatConsole({
                             </div>
                         )}
 
-                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO ESTRICTO (Solo si NO está cerrado) */}
+                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO CON OPCIÓN DE REASIGNACIÓN (Solo si NO está cerrado) */}
                         {!isClosedOrArchived(selectedChat.status) && !isUnassigned && !isAssignedToMe && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '4px',
                                     padding: '2px 8px', borderRadius: '6px',
@@ -3002,7 +3048,29 @@ export default function ContactCenterChatConsole({
                                     Asignada a {assignedAgentObj?.name || selectedChat.assignedTo} (Bloqueada)
                                 </div>
 
-                                {/* Solo supervisor lmarinero puede forzar reasignación */}
+                                {/* Botón para que CUALQUIER agente pueda reasignarse el chat a sí misma tras aceptar advertencia */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setReassignNote('');
+                                        setReassignModalOpen(true);
+                                    }}
+                                    style={{
+                                        padding: '2px 9px', borderRadius: '6px', border: 'none',
+                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                        color: '#FFFFFF', fontWeight: 800, fontSize: '0.68rem',
+                                        cursor: 'pointer', height: '24px',
+                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                    title={`Reasignar esta conversación a ${activeAgent.name}`}
+                                >
+                                    <ArrowRightLeft size={11} />
+                                    Reasignar a mí
+                                </button>
+
+                                {/* Solo supervisor lmarinero puede transferir a terceros */}
                                 {isSupervisor && (
                                     <button
                                         onClick={() => setTransferMenuOpen(!transferMenuOpen)}
@@ -3017,6 +3085,7 @@ export default function ContactCenterChatConsole({
                                 )}
                             </div>
                         )}
+
 
                         {/* Menú de Transferencia entre las 4 agentes */}
                         {transferMenuOpen && (
@@ -6890,9 +6959,149 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                 </div>
             )}
 
-            {/* Modal Exclusivo para lmarinero: Borrado de Historial y Eliminación de Contexto de IA */}
+            {/* Modal de Reasignación con Advertencia Obligatoria (Disponible para todas las agentes) */}
+            {reassignModalOpen && selectedChat && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 110,
+                    backgroundColor: 'rgba(15, 23, 42, 0.70)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '16px'
+                }}>
+                    <div style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: '16px',
+                        maxWidth: '470px',
+                        width: '100%',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        border: '1px solid #E2E8F0',
+                        overflow: 'hidden'
+                    }}>
+                        {/* Cabecera */}
+                        <div style={{
+                            padding: '16px 20px',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '0.95rem' }}>
+                                <ArrowRightLeft size={18} />
+                                <span>Reasignar Conversación a mí</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReassignModalOpen(false)}
+                                style={{ border: 'none', background: 'transparent', color: '#FFFFFF', cursor: 'pointer' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
 
+                        {/* Cuerpo con Advertencia Destacada */}
+                        <div style={{ padding: '20px' }}>
+                            <div style={{
+                                background: '#FEF3C7',
+                                border: '1px solid #FCD34D',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                marginBottom: '16px',
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '10px'
+                            }}>
+                                <AlertTriangle size={24} color="#D97706" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div style={{ fontSize: '0.8rem', color: '#92400E', lineHeight: 1.45 }}>
+                                    <strong style={{ fontSize: '0.85rem' }}>¡Atención! Este chat ya tiene una agente asignada.</strong>
+                                    <div style={{ marginTop: '5px' }}>
+                                        Actualmente está en la bandeja de <strong style={{ color: '#B45309' }}>{assignedAgentObj?.name || selectedChat.assignedTo}</strong>.
+                                        Si te asignás este chat, <strong>se le quitará inmediatamente a ella</strong> y pasará a tu nombre para que puedas responderle al paciente.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                padding: '10px 14px',
+                                marginBottom: '14px',
+                                fontSize: '0.78rem',
+                                color: '#475569'
+                            }}>
+                                <div><strong>Paciente:</strong> {getCleanChatName(selectedChat)}</div>
+                                <div style={{ marginTop: '3px' }}><strong>Nueva agente responsable:</strong> <span style={{ color: activeAgent.color || '#0284C7', fontWeight: 700 }}>{activeAgent.name} (Vos)</span></div>
+                                <div style={{ marginTop: '3px', fontSize: '0.72rem', color: '#64748B' }}>
+                                    🔒 <em>Quedará registrada automáticamente una nota privada de auditoría en el chat.</em>
+                                </div>
+                            </div>
+
+                            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                                📝 Motivo o comentario adicional (Opcional):
+                            </label>
+                            <textarea
+                                value={reassignNote}
+                                onChange={(e) => setReassignNote(e.target.value)}
+                                placeholder="Ej: Tomo el chat por solicitud de la compañera / atención de guardia..."
+                                rows={2}
+                                style={{
+                                    width: '100%',
+                                    borderRadius: '8px',
+                                    border: '1px solid #CBD5E1',
+                                    padding: '8px 12px',
+                                    fontSize: '0.8rem',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                    fontFamily: 'inherit',
+                                    resize: 'vertical'
+                                }}
+                            />
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setReassignModalOpen(false)}
+                                    disabled={isReassigning}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmReassignToMe}
+                                    disabled={isReassigning}
+                                    style={{
+                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 800,
+                                        cursor: isReassigning ? 'wait' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.3)'
+                                    }}
+                                >
+                                    {isReassigning ? (
+                                        <>
+                                            <Loader2 size={14} className="animate-spin" />
+                                            <span>Reasignando...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle2 size={14} />
+                                            <span>Aceptar y Reasignar a mí</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Exclusivo para lmarinero: Borrado de Historial y Eliminación de Contexto de IA */}
             {deleteContextModalOpen && chatTargetToDelete && isStrictLMarinero && (
+
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 120,
                     backgroundColor: 'rgba(15, 23, 42, 0.75)',

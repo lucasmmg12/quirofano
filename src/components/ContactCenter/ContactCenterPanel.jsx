@@ -395,22 +395,26 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
-    // Asignar chat exclusivamente a una agente (bloqueo contra colisión)
-    const handleAssignChat = (chatId, targetAgentId = activeAgent.id) => {
+    // Asignar chat exclusivamente a una agente (bloqueo contra colisión o reasignación confirmada)
+    const handleAssignChat = (chatId, targetAgentId = activeAgent.id, options = {}) => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
         try {
             const targetAgent = getAgentById(targetAgentId);
-            const updated = assignChatExclusively(targetChat, targetAgent, currentUser);
+            const updated = assignChatExclusively(targetChat, targetAgent, currentUser, options);
             setChats(prev => prev.map(c => c.id === chatId ? updated : c));
             if (addToast) {
-                addToast(`Conversación asignada exclusivamente a ${targetAgent.name}`, 'success');
+                const toastMsg = options?.forceReassign 
+                    ? `Conversación reasignada exitosamente a ${targetAgent.name}` 
+                    : `Conversación asignada exclusivamente a ${targetAgent.name}`;
+                addToast(toastMsg, 'success');
             }
         } catch (err) {
             if (addToast) addToast(err.message, 'error');
         }
     };
+
 
     // Liberar conversación a la cola general
     const handleUnassignChat = (chatId) => {
