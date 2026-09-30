@@ -606,17 +606,11 @@ export default function ContactCenterChatConsole({
         try {
             const previousAgentName = assignedAgentObj?.name || selectedChat.assignedToName || selectedChat.assignedTo || 'otra agente';
             const myAgentName = activeAgent?.name || currentUser?.nombre || 'Agente';
-            const noteText = `🔄 [Reasignación de Atención]: Conversación reasignada de ${previousAgentName} a ${myAgentName}.${reassignNote.trim() ? ` Motivo: ${reassignNote.trim()}` : ''}`;
-
-            // 1. Registrar nota privada interna en el chat (no se envía a WhatsApp del paciente)
-            if (onSendMessage) {
-                await onSendMessage(selectedChat.id, noteText, true);
-            }
-
-            // 2. Reasignar en la lógica general de ContactCenterPanel
+            // Reasignar en la lógica general de ContactCenterPanel (registra la nota privada de auditoría automáticamente)
             if (onAssignChat) {
                 await onAssignChat(selectedChat.id, activeAgent.id, { forceReassign: true, reassignNote: reassignNote.trim() });
             }
+
 
             if (selectedChat) {
                 selectedChat.assignedTo = activeAgent.id;
@@ -3459,8 +3453,9 @@ export default function ContactCenterChatConsole({
                         }
 
                         const isPatient = msg.sender === 'patient';
-                        const isNote = msg.isNote;
+                        const isNote = Boolean(msg.isNote || msg.direction === 'note' || msg.sender === 'note' || msg.is_note);
                         const agentObj = !isPatient ? getAgentById(msg.senderAgentId || msg.senderName) : null;
+
 
                         return (
                             <div 
@@ -4185,8 +4180,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             {isSupervisor && (
                                 <button
                                     type="button"
-                                    onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                    onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id, { forceReassign: true })}
                                     style={{
+
                                         padding: '6px 14px', borderRadius: '6px', border: '1px solid #DC2626',
                                         background: '#FFFFFF', color: '#DC2626', fontWeight: 700, fontSize: '0.74rem',
                                         cursor: 'pointer', whiteSpace: 'nowrap'

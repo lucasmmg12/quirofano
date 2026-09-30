@@ -396,16 +396,42 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     };
 
     // Asignar chat exclusivamente a una agente (bloqueo contra colisión o reasignación confirmada)
-    const handleAssignChat = (chatId, targetAgentId = activeAgent.id, options = {}) => {
+    const handleAssignChat = async (chatId, targetAgentId = activeAgent.id, options = {}) => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
         try {
             const targetAgent = getAgentById(targetAgentId);
+            const fromAgentName = targetChat.assignedToName || (targetChat.assignedTo ? getAgentById(targetChat.assignedTo)?.name : null);
+            const isReassign = !!(fromAgentName && fromAgentName.toLowerCase() !== targetAgent.name.toLowerCase());
+
+            // 1. Generar texto de auditoría según contexto
+            let auditNote = '';
+            if (isReassign) {
+                auditNote = `🔄 [Reasignación de Atención]: Conversación reasignada de ${fromAgentName} a ${targetAgent.name}.${options.reassignNote ? ` Motivo: ${options.reassignNote}` : ''}`;
+            } else if (targetChat.status === 'finalizados' || targetChat.status === 'archivado' || targetChat.closedAt) {
+                auditNote = `🔄 [Reapertura de Atención]: Conversación reabierta y asignada a ${targetAgent.name}.`;
+            } else if (targetChat.status === 'bot' || targetChat.botActive) {
+                auditNote = `🤖 [Toma de Chat]: ${targetAgent.name} tomó la conversación del asistente virtual (Bot pausado).`;
+            } else {
+                auditNote = `👤 [Asignación de Atención]: Conversación asignada a ${targetAgent.name}.`;
+            }
+
+            // 2. Registrar nota privada de auditoría (persiste en Supabase whatsapp_messages con direction note y agrega a mensajes)
+            await handleSendMessage(chatId, auditNote, true);
+
+            // 3. Persistir asignación en base de datos y actualizar estado local
             const updated = assignChatExclusively(targetChat, targetAgent, currentUser, options);
-            setChats(prev => prev.map(c => c.id === chatId ? updated : c));
+            setChats(prev => prev.map(c => {
+                if (c.id !== chatId) return c;
+                return {
+                    ...updated,
+                    messages: c.messages // preserva los mensajes que ya tienen la nota privada agregada por handleSendMessage
+                };
+            }));
+
             if (addToast) {
-                const toastMsg = options?.forceReassign 
+                const toastMsg = options?.forceReassign || isReassign
                     ? `Conversación reasignada exitosamente a ${targetAgent.name}` 
                     : `Conversación asignada exclusivamente a ${targetAgent.name}`;
                 addToast(toastMsg, 'success');
@@ -417,13 +443,23 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
 
     // Liberar conversación a la cola general
-    const handleUnassignChat = (chatId) => {
+    const handleUnassignChat = async (chatId, note = '') => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
         try {
+            const fromName = activeAgent?.name || currentUser?.nombre || 'Agente';
+            const auditNote = `🔓 [Liberación de Atención]: ${fromName} liberó la conversación a la cola general (Sin Asignar).${note ? ` Motivo: ${note}` : ''}`;
+            await handleSendMessage(chatId, auditNote, true);
+
             const updated = unassignChat(targetChat, activeAgent, currentUser);
-            setChats(prev => prev.map(c => c.id === chatId ? updated : c));
+            setChats(prev => prev.map(c => {
+                if (c.id !== chatId) return c;
+                return {
+                    ...updated,
+                    messages: c.messages
+                };
+            }));
             if (addToast) {
                 addToast(`Conversación liberada a "Sin Asignar"`, 'info');
             }
@@ -433,14 +469,24 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     };
 
     // Transferir chat a otra agente
-    const handleTransferChat = (chatId, toAgentId) => {
+    const handleTransferChat = async (chatId, toAgentId, note = '') => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
         try {
             const toAgent = getAgentById(toAgentId);
+            const fromName = activeAgent?.name || currentUser?.nombre || 'Agente';
+            const auditNote = `🔄 [Transferencia de Chat]: Conversación transferida de ${fromName} a ${toAgent.name}.${note ? ` Motivo: ${note}` : ''}`;
+            await handleSendMessage(chatId, auditNote, true);
+
             const updated = transferChatToAgent(targetChat, activeAgent, toAgent, currentUser);
-            setChats(prev => prev.map(c => c.id === chatId ? updated : c));
+            setChats(prev => prev.map(c => {
+                if (c.id !== chatId) return c;
+                return {
+                    ...updated,
+                    messages: c.messages
+                };
+            }));
             if (addToast) {
                 addToast(`Conversación transferida a ${toAgent.name}`, 'success');
             }
@@ -448,6 +494,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             if (addToast) addToast(err.message, 'error');
         }
     };
+
 
     // Finalizar y archivar chat con motivo de resolución
     const handleCloseChat = async (chatId, resolutionReason) => {
