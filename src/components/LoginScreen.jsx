@@ -132,7 +132,7 @@ export default function LoginScreen({ onLogin }) {
                             color: '#1E293B',
                             letterSpacing: '-0.02em',
                         }}>
-                            Acceso Administrativo
+                            Ingresa con tu usuario
                         </h1>
                         <p style={{
                             margin: 0,
@@ -140,7 +140,7 @@ export default function LoginScreen({ onLogin }) {
                             color: '#94A3B8',
                             fontWeight: 500,
                         }}>
-                            Panel de Administración Quirúrgica
+                            Plataforma integral de Sanatorio Argentino
                         </p>
                     </div>
 
@@ -325,13 +325,17 @@ export default function LoginScreen({ onLogin }) {
                         fontWeight: 500,
                         lineHeight: 1.5,
                     }}>
-                        ¿No tenés cuenta? Comunicáte con el{' '}
+                        ¿No tenés cuenta?{' '}
                         <a
-                            href="mailto:lmarinero@sanatorioargentino.com.ar?subject=Solicitud%20de%20cuenta%20-%20Sistema%20Control%20de%20Cirug%C3%ADas"
+                            href="https://wa.me/5492645438114?text=Estoy%20en%20la%20plataforma%20del%20sanatorio%20argentino%20y%20necesito%20crear%20un%20usuario"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             style={{ color: '#1E4078', fontWeight: 600, textDecoration: 'none' }}
                             onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
                             onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
-                        >Administrador</a>
+                        >
+                            Comunicáte con el Administrador
+                        </a>
                     </p>
                 </form>
 
