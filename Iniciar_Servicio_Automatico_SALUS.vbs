@@ -15,5 +15,7 @@ WshShell.Run "cmd /c for /f ""tokens=5"" %p in ('netstat -ano ^| findstr :3456 ^
 WshShell.CurrentDirectory = strSyncDir
 WshShell.Run "cmd /c node index.js", 0, False
 
-WScript.Echo "Servidor SALUS Sync iniciado en segundo plano con exito." & vbCrLf & _
-             "Escuchando en http://128.223.17.60:3456 y sincronizando con Supabase."
+If WScript.Arguments.Count = 0 Then
+    WScript.Echo "Servidor SALUS Sync iniciado en segundo plano con exito." & vbCrLf & _
+                 "Escuchando en http://128.223.17.60:3456 y sincronizando con Supabase."
+End If

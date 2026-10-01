@@ -1136,6 +1136,61 @@ function detectSpecialty(text: string): string | null {
     return null;
 }
 
+/**
+ * Determina si un texto representa una especialidad médica o servicio hospitalario en lugar de un profesional
+ */
+function isMedicalSpecialty(text: string): boolean {
+    if (!text) return false;
+    const clean = text.trim();
+    if (/^dr[a]?\.\s*/i.test(clean) || /^(doctor|doctora)\b/i.test(clean)) {
+        return false;
+    }
+    for (const [_, name] of SPECIALTY_MAP) {
+        if (name.toLowerCase() === clean.toLowerCase()) return true;
+    }
+    return /\b(especialidad|servicio|departamento|traumatolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|cardiolog[ií]a|dermatolog[ií]a|neurolog[ií]a|urolog[ií]a|oftalmolog[ií]a|otorrino|otorrinolaringolog[ií]a|gastroenterolog[ií]a|endocrinolog[ií]a|reumatolog[ií]a|neumonolog[ií]a|nefrolog[ií]a|hematolog[ií]a|infectolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|psicolog[ií]a|psiquiatr[ií]a|cirug[ií]a|flebolog[ií]a|alergia|mastolog[ií]a|fertilidad|ecograf[ií]a|radiograf[ií]a|cl[ií]nica\s+m[eé]dica|salud\s+mental|medicina\s+interna)\b/i.test(clean);
+}
+
+/**
+ * Formatea la cláusula gramatical para coordinar el turno, distinguiendo limpiamente entre:
+ *  - Especialidad médica: "en la especialidad de *Traumatología*"
+ *  - Doctora: "con la *Dra. Apellido*"
+ *  - Doctor: "con el *Dr. Apellido*"
+ *  - Programas / Circuitos: "para el *Programa Prevenir*"
+ *  - Profesional genérico sin título: "con *Nombre*"
+ */
+function formatTurnoTargetPhrase(target: string | null | undefined): string {
+    if (!target) return '';
+    const clean = target.trim();
+    if (!clean) return '';
+
+    if (/\b(programa|circuito|chequeo)\b/i.test(clean)) {
+        return ` para el *${clean}*`;
+    }
+
+    if (isMedicalSpecialty(clean)) {
+        if (/^(en\s+la\s+especialidad|especialidad|servicio)\b/i.test(clean)) {
+            return ` en ${clean.replace(/^[eE]n\s+/, '')}`;
+        }
+        return ` en la especialidad de *${clean}*`;
+    }
+
+    if (/^dra\.?\s*/i.test(clean) || /\b(doctora)\b/i.test(clean)) {
+        return ` con la *${clean}*`;
+    }
+
+    if (/^dr\.?\s*/i.test(clean) || /\b(doctor)\b/i.test(clean)) {
+        return ` con el *${clean}*`;
+    }
+
+    if (clean.includes('(')) {
+        const isDra = /\b(dra\.?|doctora)\b/i.test(clean);
+        return isDra ? ` con la *${clean}*` : ` con el *${clean}*`;
+    }
+
+    return ` con *${clean}*`;
+}
+
 function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: string; cleanSurnameAndName: string } {
     if (!rawDoc) return { displayName: 'Profesional', specialty: 'Consultorios', cleanSurnameAndName: 'Profesional' };
     let name = (rawDoc.profesional_nombre || '').trim();
@@ -3479,8 +3534,7 @@ async function handleChatbotTriage(
 
             // CASO A: SI TENEMOS TODAS LAS VARIABLES (DNI + Médico + Obra Social) -> CONFIRMACIÓN INMEDIATA
             if (hasDni && hasDoctor && hasOs) {
-                const docArticle = effectiveDocOrSpec.startsWith('Dra.') ? 'con la' : 'con el';
-                const docMsg = ` ${docArticle} *${effectiveDocOrSpec}*`;
+                const docMsg = formatTurnoTargetPhrase(effectiveDocOrSpec);
                 const osMsg = `\n• *Cobertura informada:* ${updates.obra_social}`;
 
 
@@ -3511,7 +3565,10 @@ async function handleChatbotTriage(
             }
             // CASO B: TENEMOS DNI Y MÉDICO, PERO FALTA OBRA SOCIAL -> PREGUNTAR SOLO POR LA OBRA SOCIAL
             else if (hasDni && hasDoctor && !hasOs) {
-                replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Ya registramos tu DNI *${targetDni}* y tu solicitud con *${effectiveDocOrSpec}*.` +
+                const targetPhrase = isMedicalSpecialty(effectiveDocOrSpec)
+                    ? `para la especialidad de *${effectiveDocOrSpec}*`
+                    : (effectiveDocOrSpec.startsWith('Dra.') ? `con la *${effectiveDocOrSpec}*` : `con el *${effectiveDocOrSpec}*`);
+                replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Ya registramos tu DNI *${targetDni}* y tu solicitud ${targetPhrase}.` +
                     (preferenciaHoraria ? ` (${preferenciaHoraria})` : '') +
                     `\n\n📋 Para verificar tu cobertura en nuestro sistema y confirmar la cita, por favor indícanos tu *Obra Social / Prepaga y Plan* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):\n\n` +
                     `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
@@ -4330,10 +4387,8 @@ async function handleChatbotTriage(
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
         } else if (lastBotContent.includes('te ayudamos a coordinar tu turno') || lastBotContent.includes('¿el turno es para vos') || currentStage === 'esperando_datos_turno') {
             const validDisplay = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : '';
-            const docArticle = validDisplay.startsWith('Dra.') ? 'con la' : 'con el';
-            const docMsg = updates.medico_o_especialidad 
-                ? ` con *${updates.medico_o_especialidad}*` 
-                : (validDisplay ? ` ${docArticle} *${validDisplay}*` : '');
+            const targetForMsg = updates.medico_o_especialidad || validDisplay || null;
+            const docMsg = formatTurnoTargetPhrase(targetForMsg);
             replyText = `¡Muchas gracias *${fullName}*! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
                 `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
                 `${getAgentHandoffNotice()}\n\n` +
