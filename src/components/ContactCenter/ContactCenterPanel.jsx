@@ -627,6 +627,76 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
+    // Asignación masiva de conversaciones seleccionadas al agente actual ("Asignármelos a todos")
+    const handleBulkAssignChats = async (chatIds) => {
+        if (!chatIds || !chatIds.length) return;
+        const targetChats = chats.filter(c => chatIds.includes(c.id));
+        if (!targetChats.length) return;
+
+        const now = new Date();
+        const targetAgent = activeAgent;
+        let assignedCount = 0;
+
+        try {
+            for (const chat of targetChats) {
+                // 1. Auditoría interna
+                const fromAgentName = chat.assignedToName || (chat.assignedTo ? getAgentById(chat.assignedTo)?.name : null);
+                const isReassign = !!(fromAgentName && fromAgentName.toLowerCase() !== targetAgent.name.toLowerCase());
+                const noteText = isReassign
+                    ? `🔄 [Asignación Masiva]: Reasignada de ${fromAgentName} a ${targetAgent.name}.`
+                    : `👤 [Asignación Masiva]: ${targetAgent.name} se asignó esta conversación.`;
+
+                try {
+                    await handleSendMessage(chat.id, noteText, true);
+                } catch (e) {
+                    console.warn('[bulk-assign] Error registrando nota interna:', e);
+                }
+
+                // 2. Persistir en Supabase contact_center_conversations
+                if (chat.phone) {
+                    const norm = normalizeArgentinePhone(chat.phone);
+                    await supabase.from('contact_center_conversations').upsert({
+                        phone: norm,
+                        status: 'abierto',
+                        assigned_agent_id: targetAgent.id,
+                        assigned_agent_name: targetAgent.name,
+                        assigned_at: now.toISOString(),
+                        bot_active: false,
+                        closed_at: null,
+                        resolution_reason: null,
+                        closed_by_agent_id: null,
+                        closed_by_agent_name: null,
+                        updated_at: now.toISOString()
+                    }, { onConflict: 'phone' });
+                }
+                assignedCount++;
+            }
+
+            // 3. Actualizar estado local de los chats
+            setChats(prev => prev.map(c => {
+                if (!chatIds.includes(c.id)) return c;
+                return {
+                    ...c,
+                    status: 'abierto',
+                    assignedTo: targetAgent.id,
+                    assignedToName: targetAgent.name,
+                    assignedAt: now.toISOString(),
+                    botActive: false,
+                    closedAt: null,
+                    resolutionReason: null
+                };
+            }));
+
+            if (addToast) {
+                addToast(`Te asignaste exitosamente ${assignedCount} ${assignedCount === 1 ? 'conversación' : 'conversaciones'}`, 'success');
+            }
+        } catch (err) {
+            console.error('Error en asignación masiva:', err);
+            if (addToast) addToast('Error al asignarte conversaciones: ' + (err.message || 'Error'), 'error');
+            throw err;
+        }
+    };
+
 
     // Cambiar permisos de un usuario (solo lmarinero)
     const handleToggleUser = async (username) => {
@@ -918,6 +988,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onCloseChat={handleCloseChat}
                     onBulkCloseChats={handleBulkCloseChats}
                     onBulkTransferChats={handleBulkTransferChats}
+                    onBulkAssignChats={handleBulkAssignChats}
                     activeSubTab={activeSubTab}
 
                     onNavigateTab={handleNavigateTab}

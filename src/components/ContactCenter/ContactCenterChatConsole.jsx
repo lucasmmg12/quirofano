@@ -152,6 +152,7 @@ export default function ContactCenterChatConsole({
     onCloseChat,
     onBulkCloseChats,
     onBulkTransferChats,
+    onBulkAssignChats,
     activeSubTab = 'conversaciones',
     onNavigateTab,
     onSwitchAgent,
@@ -1630,6 +1631,21 @@ export default function ContactCenterChatConsole({
         setSelectedChatIds(new Set());
     };
 
+    const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+
+    const handleConfirmBulkAssign = async () => {
+        if (!selectedChatIds.size || !onBulkAssignChats) return;
+        setIsBulkAssigning(true);
+        try {
+            await onBulkAssignChats(Array.from(selectedChatIds));
+            setSelectedChatIds(new Set());
+        } catch (err) {
+            console.error('Error asignando masivamente:', err);
+        } finally {
+            setIsBulkAssigning(false);
+        }
+    };
+
     const handleConfirmBulkClose = async () => {
         if (!selectedChatIds.size || !onBulkCloseChats) return;
         setIsBulkClosing(true);
@@ -2563,6 +2579,30 @@ export default function ContactCenterChatConsole({
                                     }}
                                 >
                                     Deseleccionar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmBulkAssign}
+                                    disabled={isBulkAssigning}
+                                    style={{
+                                        background: '#2563EB',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        cursor: isBulkAssigning ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
+                                        opacity: isBulkAssigning ? 0.7 : 1
+                                    }}
+                                    title={`Asignar todas las conversaciones seleccionadas a ${activeAgent.name}`}
+                                >
+                                    <UserCheck size={13} />
+                                    {isBulkAssigning ? 'Asignando...' : `Asignarme (${selectedChatIds.size})`}
                                 </button>
                                 <button
                                     type="button"
