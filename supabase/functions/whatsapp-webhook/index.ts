@@ -1080,17 +1080,21 @@ const STOPWORDS_MEDICOS = new Set([
     'controles', 'estudio', 'estudios', 'turno', 'turnos', 'consulta', 'atencion',
     'atención', 'manana', 'mañana', 'tarde', 'hoy', 'lunes', 'martes', 'miercoles', 'miércoles',
     'jueves', 'viernes', 'sabado', 'sábado', 'domingo', 'semana', 'mes', 'algun', 'alguna',
-    'alguno', 'favor', 'hola', 'buenas', 'buenos', 'ustedes', 'sanatorio', 'argentino',
+    'alguno', 'algunos', 'algunas', 'favor', 'hola', 'buenas', 'buenos', 'ustedes', 'sanatorio', 'argentino',
     'salud', 'clinica', 'clínica', 'medico', 'médico', 'medica', 'médica', 'doctor', 'doctora',
     'profesional', 'especialista', 'analisis', 'análisis', 'laboratorio', 'ecografia', 'ecografía',
-    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'para', 'buen', 'dia', 'días', 'bienvenido',
+    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'cómo', 'para', 'buen', 'dia', 'días', 'bienvenido',
     'prevenir', 'prevencion', 'prevención', 'guardia', 'guardias', 'vacuna', 'vacunas', 'registro',
     'presupuesto', 'presupuestos', 'informe', 'informes', 'reclamo', 'reclamos',
     'familiar', 'familiares', 'paciente', 'pacientes', 'tercero', 'persona', 'personas',
     'quiero', 'queria', 'quería', 'quisiera', 'deseo', 'necesito', 'busco', 'tengo', 'puedo',
     'otra', 'otro', 'otras', 'otros', 'cambiar', 'cambio', 'ningun', 'ninguna', 'ninguno',
     'cualquiera', 'quien', 'quién', 'cuando', 'cuándo', 'dame', 'pasame', 'mandame', 'enviame',
-    'atender', 'atenderme', 'coordinar', 'agendar', 'cita', 'citas', 'nueva', 'nuevo', 'nuevos'
+    'atender', 'atenderme', 'coordinar', 'agendar', 'cita', 'citas', 'nueva', 'nuevo', 'nuevos',
+    'que', 'qué', 'paso', 'pasó', 'esto', 'esta', 'este', 'estos', 'estas', 'cual', 'cuál',
+    'donde', 'dónde', 'por', 'con', 'del', 'los', 'las', 'una', 'uno', 'unos', 'unas',
+    'sino', 'pero', 'mas', 'más', 'porque', 'hacia', 'desde', 'hasta', 'sobre', 'tras',
+    'nada', 'nadie', 'algo', 'alguien', 'bien', 'mal', 'chau', 'adios', 'adiós'
 ]);
 
 const SPECIALTY_MAP: [RegExp, string][] = [
@@ -2120,12 +2124,12 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         ]);
 
         for (const w of wordsInText) {
-            if (!nonDoctorWords.has(w)) {
+            if (!nonDoctorWords.has(w) && !STOPWORDS_MEDICOS.has(w) && w.length >= 4) {
                 try {
                     const { data: dMatch } = await supabase
                         .from('contact_center_doctor_parameters')
                         .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                        .ilike('profesional_nombre', `%${w}%`)
+                        .or(`profesional_nombre.ilike.${w} %,profesional_nombre.ilike.% ${w} %,profesional_nombre.ilike.% ${w}`)
                         .limit(5);
 
                     if (dMatch && dMatch.length > 0) {
@@ -3145,14 +3149,123 @@ async function handleChatbotTriage(
                 updates.bot_stage = 'esperando_datos_turno';
             }
         } else {
-            const letters = ['A', 'B', 'C', 'D', 'E'];
-            const count = storedDocs.length;
-            const letterRange = count > 0 ? `*A* o *${letters[count - 1] || 'B'}*` : `*A* o *B*`;
-            replyText = `Por favor seleccioná una de las opciones respondiendo con la letra (${letterRange}) o escribí el nombre del profesional para continuar.\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-            updates.status = 'bot';
-            updates.bot_active = true;
-            nextStage = 'esperando_seleccion_medico';
+            // VERIFICACIÓN INTELIGENTE DE RESPUESTAS DISTINTAS A LAS OPCIONES OFRECIDAS:
+            
+            // A) El paciente indica que es para otra persona / familiar (ej: "Es para otro", "para un familiar", etc.)
+            const isFamiliarOTercero = /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|es\s+para\s+otro|es\s+para\s+otra|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|mi\s+marido|mi\s+se[nñ]ora|para\s+alguien\s+mas)\b/i.test(trimmed);
+            
+            // B) El paciente rechaza las opciones ofrecidas (ej: "ninguno", "no es ninguno", "otro médico", "no figura", etc.)
+            const isRechazoOpciones = /\b(ningun[ao]s?|no\s+es\s+ningun[ao]|ninguna\s+de\s+las\s+opciones|ninguna\s+opcion|otro\s+m[eé]dico|otra\s+doctora|otro\s+doctor|busco\s+a\s+otro|no\s+est[aá]|no\s+figura|no\s+aparece|no\s+es\s+ese|no\s+es\s+esa|no\s+es\s+el|no\s+es\s+la|no\s+era\s+ese|no\s+era\s+esa)\b/i.test(trimmed) || /^(no|no\s+se|ninguno|ninguna|otro|otra)$/i.test(trimmed);
+
+            // C) El paciente pide explícitamente un agente o ayuda
+            const isPideAgente = /\b(agente|asesor|asesora|operador|operadora|humano|persona|hablar\s+con\s+alguien)\b/i.test(trimmed);
+
+            // Contador de intentos fallidos en esta etapa
+            const previousAttempts = Number(conv?.ai_summary?.intentos_seleccion_medico || 0);
+
+            if (isPideAgente || previousAttempts >= 2) {
+                // Derivación directa a asesor humano tras 2 intentos o pedido explícito
+                replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 👤 Para que puedas coordinar tu turno sin demoras y con el profesional exacto que necesitás, ya mismo te comunico con un asesor de nuestro equipo de atención.\n\n` +
+                    `${getAgentHandoffNotice()}\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"*`;
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                nextStage = 'esperando_agente';
+                updates.motivo_consulta = `Solicitud de Turno: Derivación tras selección de profesional (${cleanText.substring(0, 50)})`;
+                updates.ai_summary = {
+                    ...(conv?.ai_summary || {}),
+                    triage_reason: 'Derivación por profesional no encontrado en opciones de homónimos',
+                    texto_paciente: cleanText
+                };
+            } else if (isFamiliarOTercero) {
+                // El turno es para otra persona / familiar
+                replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Si el turno es para otra persona o un familiar, por favor indícanos:\n\n` +
+                    `• *Nombre y Apellido* del paciente\n` +
+                    `• *DNI* del paciente (sin puntos ni espacios)\n` +
+                    `• *Profesional o Especialidad* que necesita\n` +
+                    `• *Obra Social / Prepaga*\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_datos_nuevo';
+                updates.bot_stage = 'esperando_datos_nuevo';
+                updates.motivo_consulta = 'Solicitud de Turno para Tercero / Familiar';
+                updates.ai_summary = {
+                    ...(conv?.ai_summary || {}),
+                    es_familiar: true,
+                    intentos_seleccion_medico: 0
+                };
+            } else if (isRechazoOpciones) {
+                // Ninguno de los profesionales ofrecidos coincide
+                replyText = `¡Entendido! Si el profesional que buscás no figura en la lista anterior, por favor escribí el *Nombre y Apellido* del médico o la *Especialidad* médica que necesitás.\n\n` +
+                    `👤 _Si preferís coordinarlo directamente con nuestro equipo, escribí *\"Agente\"* y te derivamos de inmediato._\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_seleccion_medico';
+                updates.ai_summary = {
+                    ...(conv?.ai_summary || {}),
+                    intentos_seleccion_medico: previousAttempts + 1,
+                    rechazo_opciones_previas: true
+                };
+            } else {
+                // Intentar búsqueda abierta de médico con el texto que escribió el paciente
+                let newFoundDoc: any = null;
+                const searchWords = trimmed.split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 4 && !STOPWORDS_MEDICOS.has(w));
+                
+                if (searchWords.length > 0) {
+                    try {
+                        for (const sw of searchWords) {
+                            const { data: altDocs } = await supabase
+                                .from('contact_center_doctor_parameters')
+                                .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                                .or(`profesional_nombre.ilike.${sw} %,profesional_nombre.ilike.% ${sw} %,profesional_nombre.ilike.% ${sw}`)
+                                .limit(5);
+
+                            if (altDocs && altDocs.length === 1) {
+                                newFoundDoc = altDocs[0];
+                                break;
+                            }
+                        }
+                    } catch (_) {}
+                }
+
+                if (newFoundDoc) {
+                    // Encontró un nuevo médico
+                    const info = formatDoctorDisplay(newFoundDoc);
+                    updates.medico_o_especialidad = `${info.displayName} (${info.specialty})`;
+                    updates.motivo_consulta = `Solicitud de Turno: ${info.displayName} (${info.specialty})`;
+                    
+                    const effectiveDni = candidateDni || updates.dni || conv?.dni || paciente?.dni || null;
+                    const extractedOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
+                    const effectiveOs = extractedOs || updates.obra_social || conv?.obra_social || paciente?.coseguro || null;
+
+                    replyText = `¡Perfecto *${whatsappName}*! Registramos tu preferencia para atenderte con *${info.displayName}* (${info.specialty}).\n\n` +
+                        `Para coordinar tu cita, por favor indícanos:\n` +
+                        (effectiveDni ? '' : `• Número de *DNI del paciente* (sin puntos ni espacios)\n`) +
+                        (effectiveOs ? '' : `• *Obra Social / Prepaga* y plan (o si tu atención será Particular)\n`) +
+                        `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    nextStage = 'esperando_datos_turno';
+                    updates.bot_stage = 'esperando_datos_turno';
+                } else {
+                    const letters = ['A', 'B', 'C', 'D', 'E'];
+                    const count = storedDocs.length;
+                    const letterRange = count > 0 ? `*A* o *${letters[count - 1] || 'B'}*` : `*A* o *B*`;
+                    replyText = `Por favor seleccioná una de las opciones respondiendo con la letra (${letterRange}), o escribí el nombre del profesional que buscás.\n\n` +
+                        `💡 _Si el turno es para otra persona o no encontrás el médico, escribí *\"Es para otro\"* o *\"Agente\"*._\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    nextStage = 'esperando_seleccion_medico';
+                    updates.ai_summary = {
+                        ...(conv?.ai_summary || {}),
+                        intentos_seleccion_medico: previousAttempts + 1
+                    };
+                }
+            }
         }
     }
     // =============================================

@@ -36,6 +36,7 @@ import { bulkUpsertBudgets } from '../services/budgetService';
 import { fetchUnreadCounts, saveOutgoingMessage, subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
 import BudgetCollapsible from './BudgetCollapsible';
+import DescartablesModuleCollapsible from './DescartablesModuleCollapsible';
 import { fetchPatientsByIds } from '../services/patientService';
 import SalusSyncButton from './SalusSyncButton';
 import { SkeletonTable } from './SkeletonLoader';
@@ -1829,6 +1830,15 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* ── MÓDULO DE DESCARTABLES QUIRÚRGICOS (TOP 50 SALUS) ── */}
+                            <div style={{ gridColumn: '1 / -1', marginTop: '4px' }}>
+                                <DescartablesModuleCollapsible
+                                    surgery={surgery}
+                                    patient={patientDataMap[surgery.id_paciente]}
+                                    currentUser={currentUser}
+                                />
                             </div>
                         </div>
                     </td>

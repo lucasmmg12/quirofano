@@ -142,6 +142,64 @@ app.get('/api/salus/turnos-activos/sync', async (req, res) => {
     }
 });
 
+// ─── Módulos de Descartables para Cirugías (Top 50) ───
+app.get('/api/salus/modulos-descartables-top50', async (req, res) => {
+    try {
+        const filePath = resolve(__dirname, 'data', 'modulos_descartables_top50.json');
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, error: 'Datos no generados aún. Ejecutar calculate_top50_modulos.mjs' });
+        }
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const data = JSON.parse(fileContent);
+        
+        const { search, limit } = req.query;
+        let result = data;
+        if (search) {
+            const s = search.toLowerCase();
+            result = result.filter(c => c.nombre_cirugia.toLowerCase().includes(s));
+        }
+        if (limit) {
+            result = result.slice(0, parseInt(limit, 10));
+        }
+        
+        res.json({
+            success: true,
+            total_cirugias: result.length,
+            fecha_calculo: '2026-09-30',
+            data: result
+        });
+    } catch (err) {
+        console.error('❌ Error sirviendo módulos de descartables:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/modulos-descartables-top50/:idOrName', async (req, res) => {
+    try {
+        const filePath = resolve(__dirname, 'data', 'modulos_descartables_top50.json');
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ success: false, error: 'Datos no generados aún.' });
+        }
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const param = req.params.idOrName.toLowerCase();
+        
+        const found = data.find(c => 
+            c.ranking.toString() === param || 
+            c.nombre_cirugia.toLowerCase().includes(param)
+        );
+        
+        if (!found) {
+            return res.status(404).json({ success: false, error: 'Cirugía no encontrada en el Top 50' });
+        }
+        
+        res.json({ success: true, data: found });
+    } catch (err) {
+        console.error('❌ Error buscando cirugía:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
 // ─── Avisos Automáticos de Cola Contact Center (Demoras 20m & Fuera de Horario) ───
 app.get('/api/contact-center/check-queue-alerts', async (req, res) => {
     try {
