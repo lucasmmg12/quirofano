@@ -1094,7 +1094,28 @@ const STOPWORDS_MEDICOS = new Set([
     'que', 'qué', 'paso', 'pasó', 'esto', 'esta', 'este', 'estos', 'estas', 'cual', 'cuál',
     'donde', 'dónde', 'por', 'con', 'del', 'los', 'las', 'una', 'uno', 'unos', 'unas',
     'sino', 'pero', 'mas', 'más', 'porque', 'hacia', 'desde', 'hasta', 'sobre', 'tras',
-    'nada', 'nadie', 'algo', 'alguien', 'bien', 'mal', 'chau', 'adios', 'adiós'
+    'nada', 'nadie', 'algo', 'alguien', 'bien', 'mal', 'chau', 'adios', 'adiós',
+    // Expresiones conversacionales, verbos y marcadores discursivos comunes en español
+    'mira', 'mirá', 'mire', 'miren', 'miras', 'mirás', 'mirando', 'mirar',
+    'sabes', 'sabés', 'sabe', 'saben', 'sabemos', 'sabia', 'sabía',
+    'autorizar', 'autorizacion', 'autorización', 'autorizarme', 'autorizarse', 'autorizo', 'autorizame', 'autoriza',
+    'pedido', 'pedidos',
+    'fijate', 'fíjate', 'fijense', 'fíjense', 've', 'ves', 'veo', 'vemos', 'viendo',
+    'decir', 'dice', 'dijo', 'digo', 'decime', 'decíme', 'decia', 'decía',
+    'mandar', 'mando', 'mandó', 'mande', 'mandé', 'mandas', 'mandás', 'enviar', 'envio', 'envió', 'envie', 'envié',
+    'foto', 'fotos', 'imagen', 'imagenes', 'imágenes', 'captura', 'capturas', 'adjunto', 'adjuntos', 'archivo', 'archivos',
+    'comprobante', 'comprobantes', 'papel', 'papeles',
+    'tambien', 'también', 'ademas', 'además', 'igualmente', 'igual',
+    'bueno', 'buena', 'che', 'dale', 'listo', 'oka', 'okay', 'ok',
+    'poder', 'puedo', 'puede', 'pueden', 'podria', 'podría', 'podrian', 'podrían', 'podemos',
+    'tener', 'tengo', 'tiene', 'tienen', 'tenia', 'tenía', 'tenemos', 'tenes', 'tenés',
+    'haber', 'hay', 'habia', 'había', 'hubo',
+    'estar', 'estoy', 'estan', 'están', 'estaba', 'estaban',
+    'dejar', 'dejo', 'dejó', 'deja', 'dejan', 'dejame', 'dejáme',
+    'quedar', 'quedo', 'quedó', 'queda', 'quedan',
+    'pasar', 'pasa', 'pasas', 'pasás', 'pasan', 'pasale', 'pasalo',
+    'avisar', 'aviso', 'avisó', 'avisa', 'avisan', 'avisame', 'avisáme',
+    'ah', 'eh', 'oh', 'uh', 'em'
 ]);
 
 const SPECIALTY_MAP: [RegExp, string][] = [
@@ -2184,7 +2205,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                     const { data: dMatch } = await supabase
                         .from('contact_center_doctor_parameters')
                         .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                        .or(`profesional_nombre.ilike.${w} %,profesional_nombre.ilike.% ${w} %,profesional_nombre.ilike.% ${w}`)
+                        .ilike('profesional_nombre', `${w} %`)
                         .limit(5);
 
                     if (dMatch && dMatch.length > 0) {
@@ -3263,8 +3284,19 @@ async function handleChatbotTriage(
                     intentos_seleccion_medico: previousAttempts + 1,
                     rechazo_opciones_previas: true
                 };
+            } else if (/\b(autoriz|autorizar|orden|ordenes|órdenes|pedido|pedidos|receta|recetas|coseguro|auditoria|estudio|ecograf[ií]a|laboratorio)\b/i.test(trimmed)) {
+                // El paciente solicita autorizar una orden médica o estudio mientras estaba en el menú de médicos
+                const capDoc = conv?.medico_o_especialidad?.replace(/^Homónimos:\s*/i, '') || '';
+                replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 📄 Para tramitar la *autorización de tu orden médica o estudio*, por favor envíanos la *foto clara y legible de la orden* 📸.\n\n` +
+                    (capDoc ? `_(Un asesor de nuestro equipo gestionará la orden y la coordinación de tu turno con ${capDoc})._\n\n` : `_(Un asesor de nuestro equipo de autorizaciones revisará la orden con tu cobertura)._\n\n`) +
+                    `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                nextStage = 'esperando_foto_autorizacion';
+                updates.bot_stage = 'esperando_foto_autorizacion';
+                updates.motivo_consulta = `Autorización de Orden Médica / Estudio${capDoc ? ` (${capDoc})` : ''}`;
             } else {
-                // Intentar búsqueda abierta de médico con el texto que escribió el paciente
+                // Intentar búsqueda abierta de médico con el texto que escribió el paciente (únicamente por apellido)
                 let newFoundDoc: any = null;
                 const searchWords = trimmed.split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 4 && !STOPWORDS_MEDICOS.has(w));
                 
@@ -3274,7 +3306,7 @@ async function handleChatbotTriage(
                             const { data: altDocs } = await supabase
                                 .from('contact_center_doctor_parameters')
                                 .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                                .or(`profesional_nombre.ilike.${sw} %,profesional_nombre.ilike.% ${sw} %,profesional_nombre.ilike.% ${sw}`)
+                                .ilike('profesional_nombre', `${sw} %`)
                                 .limit(5);
 
                             if (altDocs && altDocs.length === 1) {

@@ -287,10 +287,11 @@ export default function ContactCenterChatConsole({
     const [messageInput, setMessageInput] = useState('');
     const [isPrivateNote, setIsPrivateNote] = useState(false);
 
-    // Estado para adjuntos (Excel, Word, PDF, TXT, imágenes, audio)
+    // Estado para adjuntos (Excel, Word, PDF, TXT, imágenes, audio, capturas de pantalla)
     const [selectedFile, setSelectedFile] = useState(null);
     const [uploadingMedia, setUploadingMedia] = useState(false);
     const [uploadError, setUploadError] = useState(null);
+    const [isDraggingOver, setIsDraggingOver] = useState(false);
     const attachmentInputRef = useRef(null);
 
     // Estado para grabación de notas de voz (audio)
@@ -1643,11 +1644,9 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // === Gestión de archivos adjuntos (Excel, Word, PDF, TXT, Imágenes, Audios) ===
-    const handleFileSelected = (e) => {
-        const file = e.target.files?.[0];
+    // === Gestión de archivos adjuntos (Excel, Word, PDF, TXT, Imágenes, Audios, Capturas de Pantalla) ===
+    const processAttachmentFile = (file, customName = null) => {
         if (!file) return;
-        e.target.value = '';
 
         if (file.size > 50 * 1024 * 1024) {
             alert('El archivo seleccionado supera el límite de 50 MB.');
@@ -1655,19 +1654,45 @@ export default function ContactCenterChatConsole({
         }
 
         let detectedType = 'document';
-        if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(file.name)) {
+        if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(file.name || '')) {
             detectedType = 'image';
-        } else if (file.type.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(file.name)) {
+        } else if (file.type.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(file.name || '')) {
             detectedType = 'audio';
         }
 
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const defaultCapName = `captura_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
+
+        const rawName = customName || file.name || defaultCapName;
+        const finalName = (rawName === 'image.png' || rawName === 'blob') ? defaultCapName : rawName;
+
+        const finalFile = (finalName !== file.name)
+            ? new File([file], finalName, { type: file.type || (detectedType === 'image' ? 'image/png' : 'application/octet-stream') })
+            : file;
+
+        if (selectedFile?.previewUrl) {
+            URL.revokeObjectURL(selectedFile.previewUrl);
+        }
+
         setSelectedFile({
-            file,
-            name: file.name,
-            size: (file.size / 1024).toFixed(1) + ' KB',
+            file: finalFile,
+            name: finalName,
+            size: (finalFile.size / 1024).toFixed(1) + ' KB',
             type: detectedType,
-            previewUrl: detectedType === 'image' ? URL.createObjectURL(file) : null
+            previewUrl: detectedType === 'image' ? URL.createObjectURL(finalFile) : null
         });
+
+        setTimeout(() => {
+            inputRef.current?.focus();
+        }, 60);
+    };
+
+    const handleFileSelected = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+        processAttachmentFile(file);
     };
 
     const handleRemoveSelectedFile = () => {
@@ -1676,6 +1701,106 @@ export default function ContactCenterChatConsole({
         }
         setSelectedFile(null);
     };
+
+    // === Pegar captura de pantalla (Print Screen / Snipping Tool / Ctrl+V) ===
+    const handlePaste = (e) => {
+        const clipboardItems = e.clipboardData?.items;
+        if (!clipboardItems) return;
+
+        let imageItem = null;
+        for (let i = 0; i < clipboardItems.length; i++) {
+            const item = clipboardItems[i];
+            if (item.type && item.type.indexOf('image') !== -1) {
+                imageItem = item;
+                break;
+            }
+        }
+
+        let imageFile = null;
+        if (imageItem) {
+            imageFile = imageItem.getAsFile();
+        } else if (e.clipboardData?.files?.length > 0) {
+            const f = e.clipboardData.files[0];
+            if (f.type && f.type.startsWith('image/')) {
+                imageFile = f;
+            }
+        }
+
+        if (imageFile) {
+            e.preventDefault();
+
+            if (isLocked) {
+                alert(`Esta conversación está asignada a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+                return;
+            }
+
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob') 
+                ? imageFile.name 
+                : `captura_${timeStr}.png`;
+
+            processAttachmentFile(imageFile, fileName);
+        }
+    };
+
+    // === Arrastrar y soltar archivos / capturas (Drag & Drop) ===
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDraggingOver) setIsDraggingOver(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+        const file = e.dataTransfer?.files?.[0];
+        if (file) {
+            if (isLocked) {
+                alert(`Esta conversación está asignada a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+                return;
+            }
+            processAttachmentFile(file);
+        }
+    };
+
+    // Escuchar Ctrl+V globalmente en la ventana cuando hay un chat abierto y se pega una captura
+    useEffect(() => {
+        const handleGlobalPaste = (e) => {
+            if (!selectedChat || isLocked) return;
+
+            // Verificar si el portapapeles contiene una imagen
+            const items = e.clipboardData?.items;
+            if (!items) return;
+
+            let hasImage = false;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image') !== -1) {
+                    hasImage = true;
+                    break;
+                }
+            }
+
+            if (!hasImage && !e.clipboardData?.files?.[0]?.type?.startsWith('image/')) {
+                // Si es texto, no interferimos: se pegará donde esté el cursor normalmente
+                return;
+            }
+
+            // Es una imagen (captura de pantalla) -> procesar
+            handlePaste(e);
+        };
+
+        window.addEventListener('paste', handleGlobalPaste);
+        return () => window.removeEventListener('paste', handleGlobalPaste);
+    }, [selectedChat, isLocked, assignedAgentObj, selectedFile]);
 
     // === Grabación de notas de voz (Audio) ===
     const startAudioRecording = async () => {
@@ -4460,7 +4585,13 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                                         {selectedFile.type === 'image' && selectedFile.previewUrl ? (
-                                            <img src={selectedFile.previewUrl} alt="Preview" style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }} />
+                                            <img 
+                                                src={selectedFile.previewUrl} 
+                                                alt="Preview" 
+                                                onClick={() => window.open(selectedFile.previewUrl, '_blank')}
+                                                title="Clic para ver captura en tamaño completo"
+                                                style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', cursor: 'pointer', border: '1.5px solid #0284C7', boxShadow: '0 1px 3px rgba(2,132,199,0.2)' }} 
+                                            />
                                         ) : selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? (
                                             <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16A34A' }}>
                                                 <FileSpreadsheet size={20} />
@@ -4487,7 +4618,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 {selectedFile.name}
                                             </div>
                                             <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                {selectedFile.size} • Adjunto listo (opcional: escribe un mensaje de acompañamiento)
+                                                {selectedFile.size} • {selectedFile.type === 'image' ? 'Captura / Imagen lista (opcional: escribe un texto antes de enviar)' : 'Adjunto listo'}
                                             </div>
                                         </div>
                                     </div>
@@ -4506,12 +4637,18 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             )}
 
                             {/* Contenedor Principal de Entrada (Texto / Grabador de Audio) */}
-                            <div style={{
-                                display: 'flex', alignItems: 'flex-end', gap: '8px',
-                                background: isPrivateNote ? '#FFF7ED' : '#F8FAFC',
-                                border: isPrivateNote ? '1.5px solid #F97316' : '1px solid #CBD5E1',
-                                borderRadius: '12px', padding: '6px 10px'
-                            }}>
+                            <div 
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                style={{
+                                    display: 'flex', alignItems: 'flex-end', gap: '8px',
+                                    background: isDraggingOver ? '#E0F2FE' : (isPrivateNote ? '#FFF7ED' : '#F8FAFC'),
+                                    border: isDraggingOver ? '2px dashed #0284C7' : (isPrivateNote ? '1.5px solid #F97316' : '1px solid #CBD5E1'),
+                                    borderRadius: '12px', padding: '6px 10px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
                                 {isRecordingAudio ? (
                                     /* Modo Grabador de Audio Activo */
                                     <div style={{
@@ -4565,12 +4702,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             style={{ display: 'none' }}
                                         />
 
-                                        {/* Botón Clip para adjuntar cualquier archivo */}
+                                        {/* Botón Clip para adjuntar cualquier archivo o pegar capturas */}
                                         <button
                                             type="button"
                                             onClick={() => !uploadingMedia && attachmentInputRef.current?.click()}
                                             disabled={isLocked || uploadingMedia}
-                                            title="Adjuntar archivo (Excel, Word, PDF, TXT, Fotos, Audios)"
+                                            title="Adjuntar archivo o pegar capturas de pantalla con Ctrl+V (Fotos, Excel, Word, PDF)"
                                             style={{
                                                 background: selectedFile ? '#E0F2FE' : '#FFFFFF',
                                                 border: selectedFile ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
@@ -4593,11 +4730,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             placeholder={isPrivateNote 
                                                 ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
                                                 : selectedFile
-                                                    ? `Mensaje opcional para acompañar ${selectedFile.name}...`
-                                                    : `Escribe respuesta a ${selectedChat.contactName} (o / para atajos rápidos)...`}
+                                                    ? (selectedFile.type === 'image' ? `Mensaje opcional para la imagen (o Enter para enviar)...` : `Mensaje opcional para acompañar ${selectedFile.name}...`)
+                                                    : `Escribe respuesta a ${selectedChat.contactName} (o pega una captura con Ctrl+V)...`}
                                             value={messageInput}
                                             onChange={handleInputChange}
                                             onKeyDown={handleInputKeyDown}
+                                            onPaste={handlePaste}
                                             style={{
                                                 flex: 1,
                                                 border: 'none',

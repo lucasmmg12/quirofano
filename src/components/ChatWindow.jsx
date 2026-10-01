@@ -624,14 +624,10 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     }, [inputText, sending, patientPhone, addToast, assignedLineId, isMetaLine, isWindowExpired]);
 
     // ==========================================
-    // ENVIAR IMAGEN
+    // ENVIAR IMAGEN / CAPTURA DE PANTALLA
     // ==========================================
-    const handleImageSelect = async (e) => {
-        const file = e.target.files?.[0];
+    const sendImageFile = async (file) => {
         if (!file || !patientPhone) return;
-
-        // Reset file input
-        if (fileInputRef.current) fileInputRef.current.value = '';
 
         // Validar tipo y tamaño
         if (!file.type.startsWith('image/')) {
@@ -667,6 +663,32 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             addToast?.('Error enviando imagen', 'error');
         } finally {
             setUploadingMedia(false);
+        }
+    };
+
+    const handleImageSelect = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !patientPhone) return;
+
+        // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+
+        await sendImageFile(file);
+    };
+
+    const handlePaste = (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type && items[i].type.indexOf('image') !== -1) {
+                const blob = items[i].getAsFile();
+                if (blob) {
+                    e.preventDefault();
+                    const file = new File([blob], `captura_${Date.now()}.png`, { type: blob.type || 'image/png' });
+                    sendImageFile(file);
+                    break;
+                }
+            }
         }
     };
 
@@ -1674,7 +1696,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                                     value={inputText}
                                     onChange={handleInputChange}
                                     onKeyDown={handleKeyDown}
-                                    placeholder="Escribí un mensaje... (/ para atajos)"
+                                    onPaste={handlePaste}
+                                    placeholder="Escribí un mensaje... (/ para atajos o Ctrl+V para capturas)"
                                     rows={1}
                                     style={{
                                         width: '100%', resize: 'none',
