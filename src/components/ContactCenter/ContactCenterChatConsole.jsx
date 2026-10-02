@@ -262,8 +262,8 @@ export default function ContactCenterChatConsole({
     const [bulkResolutionReason, setBulkResolutionReason] = useState('Cierre masivo de cola');
     const [isBulkClosing, setIsBulkClosing] = useState(false);
 
-    // Tracking de chats leídos (abiertos) durante esta sesión
-    const readChatIdsRef = useRef(new Set());
+    // Tracking de chats leídos: Map<chatId, incomingMsgCount al momento de leer>
+    const readChatMsgCountRef = useRef(new Map());
 
     // Pase de Guardia Masivo / Traspaso de Fin de Turno
     const [handoverModalOpen, setHandoverModalOpen] = useState(false);
@@ -3005,29 +3005,39 @@ export default function ContactCenterChatConsole({
                             const chatIsLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
                             const chatIsMine = chat.assignedTo && chat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
 
+                            const incomingMsgs = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
+                            const readAtCount = readChatMsgCountRef.current.get(chat.id);
+                            const chatUnreadCount = (chat.unread && readAtCount === undefined) 
+                                ? Math.max(1, incomingMsgs)
+                                : (readAtCount !== undefined ? Math.max(0, incomingMsgs - readAtCount) : 0);
+                            const isChatUnread = chatUnreadCount > 0 && !isClosedOrArchived(chat.status);
+
                             return (
                                 <div 
                                     key={chat.id}
                                     onClick={() => {
-                                        readChatIdsRef.current.add(chat.id);
+                                        const currentIncoming = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
+                                        readChatMsgCountRef.current.set(chat.id, currentIncoming);
                                         onSelectChat(chat.id);
                                     }}
                                     style={{
                                         padding: '12px 14px',
                                         borderBottom: `1px solid ${themeCardBorder}`,
                                         cursor: 'pointer',
-                                        background: (() => {
-                                            if (isSelected) return themeCardSelectedBg;
-                                            if (isChecked) return ccTheme.isDark ? '#064E3B' : '#F0FDF4';
-                                            const isUnread = chat.unread && !readChatIdsRef.current.has(chat.id) && !isClosedOrArchived(chat.status);
-                                            return isUnread ? (ccTheme.isDark ? '#0C1B2E' : '#EFF6FF') : themeCardBg;
-                                        })(),
-                                        borderLeft: (() => {
-                                            if (isSelected) return `4px solid ${ccTheme.accentColor || '#1E40AF'}`;
-                                            if (isChecked) return '4px solid #16A34A';
-                                            const isUnread = chat.unread && !readChatIdsRef.current.has(chat.id) && !isClosedOrArchived(chat.status);
-                                            return isUnread ? '4px solid #3B82F6' : '4px solid transparent';
-                                        })(),
+                                        background: isSelected 
+                                            ? themeCardSelectedBg 
+                                            : isChecked 
+                                                ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
+                                                : isChatUnread
+                                                    ? (ccTheme.isDark ? '#172554' : '#DBEAFE')
+                                                    : themeCardBg,
+                                        borderLeft: isSelected 
+                                            ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
+                                            : isChecked 
+                                                ? '4px solid #16A34A' 
+                                                : isChatUnread
+                                                    ? '4px solid #2563EB'
+                                                    : '4px solid transparent',
                                         transition: 'background 0.15s',
                                         position: 'relative'
                                     }}
@@ -3100,10 +3110,31 @@ export default function ContactCenterChatConsole({
                                                         <Trash2 size={12} />
                                                     </button>
                                                 )}
-                                                <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
+                                                <span style={{ fontSize: '0.68rem', color: isChatUnread ? '#1D4ED8' : themeCardSubtext, fontWeight: isChatUnread ? 700 : 400 }}>
                                                     {chat.timeAgo}
                                                 </span>
                                             </div>
+
+                                            {/* Badge de mensajes sin leer estilo WhatsApp */}
+                                            {isChatUnread && chatUnreadCount > 0 && (
+                                                <span style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    minWidth: '18px',
+                                                    height: '18px',
+                                                    padding: '0 5px',
+                                                    borderRadius: '10px',
+                                                    background: '#25D366',
+                                                    color: '#FFFFFF',
+                                                    fontSize: '0.62rem',
+                                                    fontWeight: 800,
+                                                    lineHeight: 1,
+                                                    boxShadow: '0 1px 3px rgba(37, 211, 102, 0.4)'
+                                                }}>
+                                                    {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                                                </span>
+                                            )}
 
                                             {isSearching && searchScope === 'all' && (
                                                 <span style={{
