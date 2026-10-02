@@ -1204,7 +1204,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                         Guía de Operación: Auditoría de Turnos Duplicados
                                     </h3>
                                     <div style={{ fontSize: '0.78rem', color: '#93C5FD', marginTop: '2px' }}>
-                                        Instructivo operativo para Daniela Aguilera, Sofia Olivieri, Virginia Jacques y Erica Leal
+                                        Instructivo operativo para Daniela Aguilera, Sofia Olivier, Virginia Jacques y Erica Leal
                                     </div>
                                 </div>
                             </div>

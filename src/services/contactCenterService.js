@@ -58,7 +58,7 @@ export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
     { id: 'daguilera', username: 'daguilera', legacyId: 'daniela', name: 'Daniela Aguilera', fullName: 'Daniela Aguilera', role: 'Atención al Paciente', color: '#E11D48', avatar: 'DA' },
-    { id: 'solivier', username: 'solivier', legacyId: 'sofia', name: 'Sofia Olivieri', fullName: 'Sofia Olivieri', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
+    { id: 'solivier', username: 'solivier', legacyId: 'sofia', name: 'Sofia Olivier', fullName: 'Sofia Olivier', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
     { id: 'vjacques', username: 'vjacques', legacyId: 'virginia', name: 'Virginia Jacques', fullName: 'Virginia Jacques', role: 'Atención al Paciente', color: '#059669', avatar: 'VJ' },
     { id: 'eleal', username: 'eleal', legacyId: 'erica', name: 'Erica Leal', fullName: 'Erica Leal', role: 'Atención al Paciente', color: '#D97706', avatar: 'EL' },
     { id: 'lmarinero', username: 'lmarinero', legacyId: 'lucas', name: 'Lucas Marinero', fullName: 'Lucas Marinero', role: 'Supervisor Contact Center', color: '#0284C7', avatar: 'LM' },
@@ -102,8 +102,8 @@ export function isUserAuthorizedForContactCenter(user) {
         return true;
     }
 
-    // 3. Sofia Olivieri
-    if (username.includes('sofia') || username.includes('olivieri') || username.includes('solivier') || username.includes('olivier') || nombre.includes('sofia')) {
+    // 3. Sofia Olivier
+    if (username.includes('sofia') || username.includes('olivier') || username.includes('solivier') || username.includes('olivier') || nombre.includes('sofia')) {
         return true;
     }
 
@@ -283,7 +283,7 @@ export const SYSTEM_KNOWN_USERS = [
     { usuario: 'mrodriguez', nombre: 'M. Rodriguez', rol: 'Administrador General', avatar: 'MR' },
     { usuario: 'dsantaella', nombre: 'D. Santaella', rol: 'Administrador General', avatar: 'DS' },
     { usuario: 'daniela', nombre: 'Daniela Aguilera', rol: 'Atención al Paciente / Contact Center', avatar: 'DA' },
-    { usuario: 'sofia', nombre: 'Sofia Olivieri', rol: 'Atención al Paciente / Contact Center', avatar: 'SO' },
+    { usuario: 'sofia', nombre: 'Sofia Olivier', rol: 'Atención al Paciente / Contact Center', avatar: 'SO' },
     { usuario: 'virginia', nombre: 'Virginia Jacques', rol: 'Atención al Paciente / Contact Center', avatar: 'VJ' },
     { usuario: 'erica', nombre: 'Erica Leal', rol: 'Atención al Paciente / Contact Center', avatar: 'EL' },
     { usuario: 'jcorrea', nombre: 'Javier Correa', rol: 'Jefatura de Facturación y Altas', avatar: 'JC' },

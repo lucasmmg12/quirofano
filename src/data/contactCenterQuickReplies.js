@@ -63,32 +63,32 @@ export const DEFAULT_QUICK_REPLIES = Object.freeze([
     {
         id: 'sof',
         shortcut: 'sof',
-        title: 'Saludo Sofia Olivieri',
-        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        title: 'Saludo Sofia Olivier',
+        content: '¡Hola! Mi nombre es Sofia Olivier de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'solivier'
     },
     {
         id: 'sofi',
         shortcut: 'sofi',
-        title: 'Saludo Sofia Olivieri (sofi)',
-        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        title: 'Saludo Sofia Olivier (sofi)',
+        content: '¡Hola! Mi nombre es Sofia Olivier de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'solivier'
     },
     {
         id: 'sofia',
         shortcut: 'sofia',
-        title: 'Saludo Sofia Olivieri (sofia)',
-        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        title: 'Saludo Sofia Olivier (sofia)',
+        content: '¡Hola! Mi nombre es Sofia Olivier de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'solivier'
     },
     {
         id: 'sil',
         shortcut: 'sil',
-        title: 'Saludo Sofia Olivieri (alias sil)',
-        content: '¡Hola! Mi nombre es Sofia Olivieri de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
+        title: 'Saludo Sofia Olivier (alias sil)',
+        content: '¡Hola! Mi nombre es Sofia Olivier de Sanatorio Argentino, ¿en qué puedo ayudarte hoy?',
         category: 'saludo',
         agentId: 'solivier'
     },
