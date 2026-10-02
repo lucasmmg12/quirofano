@@ -1024,15 +1024,12 @@ export default function ContactCenterChatConsole({
     };
 
 
-    // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo si no tiene mensajes en memoria
+    // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo
+    // SIEMPRE recarga al cambiar de chat para mostrar el historial completo,
+    // ya que el fetch global (limit 800) puede incluir solo los 2-3 mensajes más recientes
+    // de este paciente sin traer la conversación completa.
     useEffect(() => {
         if (!selectedChat?.phone) return;
-
-        // Si ya tiene mensajes en memoria, no es necesario recargar inicialmente
-        if (Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0) {
-            setNoMoreOlder(false);
-            return;
-        }
 
         let isCancelled = false;
         setLoadingChatMessages(true);
@@ -1042,26 +1039,31 @@ export default function ContactCenterChatConsole({
             .then(msgs => {
                 if (isCancelled) return;
                 if (msgs && msgs.length > 0) {
-                    selectedChat.messages = msgs;
+                    // Fusionar con mensajes ya en memoria (ej: llegados por RealTime mientras cargaba)
+                    const existingIds = new Set((selectedChat.messages || []).map(m => m.id || m.realId));
+                    const realtimeOnly = (selectedChat.messages || []).filter(m => !msgs.some(
+                        loaded => (loaded.id === m.id) || (loaded.realId === m.realId)
+                    ));
+                    selectedChat.messages = [...msgs, ...realtimeOnly];
                     setForceUpdate(n => n + 1);
                 } else {
-                    selectedChat.messages = [];
-                    setNoMoreOlder(true);
+                    // Sin mensajes en BD: preservar los que llegaron por RealTime
+                    if (!selectedChat.messages || selectedChat.messages.length === 0) {
+                        selectedChat.messages = [];
+                        setNoMoreOlder(true);
+                    }
                 }
             })
             .catch(err => {
                 console.error('[ContactCenter] Error al auto-cargar mensajes del chat:', err);
             })
             .finally(() => {
-                if (!isCancelled) {
-                    setLoadingChatMessages(false);
-                }
+                if (!isCancelled) setLoadingChatMessages(false);
             });
 
-        return () => {
-            isCancelled = true;
-        };
+        return () => { isCancelled = true; };
     }, [selectedChat?.id, selectedChat?.phone]);
+
 
     const handleLoadOlderMessages = async () => {
         if (!selectedChat?.phone || loadingOlder) return;
