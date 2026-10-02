@@ -95,8 +95,10 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const isLMarinero = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim().split('@')[0]);
 
     // =========================================================================
-    // applyMessageEvent: Aplica un evento RealTime de mensaje sobre el array de chats.
-    // Extraido como función pura para ser reutilizado por flushMessageBatch (Fase 4).
+    // applyMessageEvent: Función PURA que transforma el array de chats.
+    // NO debe tener side-effects (audio, network, etc.) porque React puede
+    // ejecutar updaters de setChats() múltiples veces en Strict Mode.
+    // El sonido se dispara en flushMessageBatch ANTES de llamar setChats.
     // =========================================================================
     function applyMessageEvent(prevChats, newMsg, eventType) {
         if (!newMsg) return prevChats;
@@ -124,12 +126,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             const updated = [...prevChats];
             updated[chatIdx] = { ...existingChat, messages: updatedMessages };
             return updated;
-        }
-
-        // Reproducir sonido para mensajes entrantes
-        if (isIncoming) {
-            const isUrgent = /\b(guardia|urgencia|emergencia|dolor|grave|hemorragia|urgente)\b/i.test(newMsg.content || '');
-            if (soundEnabledRef.current) playContactCenterChime(isUrgent ? 'urgent' : 'normal');
         }
 
         const sanitizedRaw = newMsg.raw_payload ? {
@@ -180,7 +176,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
             return [updatedChat, ...otherChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
         } else {
-            // Nuevo chat en vivo no registrado previamente
             const newRealChat = {
                 id: 'REAL_' + normPhone,
                 contactName: newMsg.sender_name || `Paciente (${normPhone.slice(-4)})`,
@@ -342,6 +337,18 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         function flushMessageBatch() {
             if (pendingMsgUpdates.length === 0) return;
             const batch = pendingMsgUpdates.splice(0);
+
+            // IMPORTANTE: disparar sonido AQUI, antes del setChats updater.
+            // applyMessageEvent es función pura — NO puede tener side-effects
+            // porque React puede ejecutar updaters múltiples veces (Strict Mode / Concurrent).
+            for (const { newMsg, eventType } of batch) {
+                if (eventType !== 'UPDATE' && newMsg?.direction === 'incoming') {
+                    const isUrgent = /\b(guardia|urgencia|emergencia|dolor|grave|hemorragia|urgente)\b/i
+                        .test(newMsg.content || '');
+                    if (soundEnabledRef.current) playContactCenterChime(isUrgent ? 'urgent' : 'normal');
+                }
+            }
+
             setChats(prevChats => {
                 let updated = [...prevChats];
                 for (const { newMsg, eventType } of batch) {
