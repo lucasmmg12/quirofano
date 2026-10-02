@@ -484,13 +484,14 @@ export async function fetchLiveAndDemoChats() {
         });
 
         // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
-        // Proyectamos columnas esenciales y limitamos mensajes iniciales activos
+        // Limit incrementado a 800 para cubrir chats concurrentes sin truncar conversaciones activas.
+        // NOTA: El índice idx_whatsapp_messages_line_created garantiza que esta query sea O(log n).
         const { data: rawMessages, error } = await supabase
             .from('whatsapp_messages')
             .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
             .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
-            .limit(300);
+            .limit(800);
 
         if (error) {
             console.warn('[contact-center] Error consultando mensajes:', error);
@@ -753,7 +754,7 @@ export async function fetchLiveAndDemoChats() {
             };
 
             realChats.push({
-                id: 'REAL_' + phone.slice(-6),
+                id: 'REAL_' + phone.replace(/\D/g, '').slice(-12),
                 contactName: resolvedContactName,
                 phone: phone,
                 channel: 'WHATSAPP',
@@ -1662,31 +1663,34 @@ export function playContactCenterChime(priority = 'normal') {
  * - Escucha altas y modificaciones en contact_center_conversations (reasignaciones, ficha, estado)
  */
 export function subscribeToContactCenterRealtime({ onNewMessage, onConversationChange }) {
-    const channel = supabase
-        .channel('contact-center-onlive-hub')
+    // Canal 1: mensajes de WhatsApp filtrados en servidor (line_id = contact_center)
+    // Al usar filter server-side, Supabase sólo envía por WebSocket los eventos relevantes,
+    // reduciendo drásticamente el tráfico en picos de carga.
+    const msgChannel = supabase
+        .channel('cc-messages-live')
         .on(
             'postgres_changes',
             {
                 event: '*',
                 schema: 'public',
-                table: 'whatsapp_messages'
+                table: 'whatsapp_messages',
+                filter: 'line_id=eq.contact_center'
             },
             (payload) => {
                 const msg = payload.new;
                 if (!msg) return;
-                // Aislamiento estricto: ignorar mensajes de otras líneas de la clínica
-                if (['line_recepciones', 'line_a', 'line_b', 'line_c', 'line_meta'].includes(msg.line_id)) {
-                    return;
-                }
-                if (msg.line_id && msg.line_id !== 'contact_center') {
-                    return;
-                }
+                // Filtro extra en cliente: descartar números de prueba/newsletter
                 if (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203'))) {
                     return;
                 }
                 if (onNewMessage) onNewMessage(msg, payload.eventType);
             }
         )
+        .subscribe();
+
+    // Canal 2: cambios en conversaciones (sin filtro: la tabla es pequeña y todos los cambios son relevantes)
+    const convChannel = supabase
+        .channel('cc-conversations-live')
         .on(
             'postgres_changes',
             {
@@ -1704,7 +1708,8 @@ export function subscribeToContactCenterRealtime({ onNewMessage, onConversationC
         .subscribe();
 
     return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(msgChannel);
+        supabase.removeChannel(convChannel);
     };
 }
 

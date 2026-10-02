@@ -99,18 +99,35 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         if (!isSilent) setLoadingLive(true);
         try {
             const loaded = await fetchLiveAndDemoChats();
+
+            // PROTECCIÓN CRÍTICA: Si el fetch retorna vacío pero ya teníamos chats cargados,
+            // es un error transitorio (timeout / sobrecarga del servidor). NO sobreescribir.
+            if (Array.isArray(loaded) && loaded.length === 0) {
+                setChats(prevChats => {
+                    if (prevChats.length > 0) {
+                        console.warn('[contact-center] fetch devolvió 0 chats pero hay datos previos — manteniendo estado actual.');
+                        return prevChats; // Proteger estado
+                    }
+                    return loaded;
+                });
+                if (!isSilent) setLoadingLive(false);
+                return;
+            }
+
             setChats(prevChats => {
-                // Si la cantidad de chats y propiedades clave son idénticas, preservar la referencia previa para evitar re-renderizados
+                // Comparar por ID (no por índice) para detectar cambios correctamente
+                // aunque el orden del array haya variado entre reloads.
                 if (isSilent && Array.isArray(prevChats) && prevChats.length === loaded.length) {
-                    const hasChange = loaded.some((newChat, idx) => {
-                        const oldChat = prevChats[idx];
-                        if (!oldChat || oldChat.id !== newChat.id) return true;
+                    const prevMap = new Map(prevChats.map(c => [c.id, c]));
+                    const hasChange = loaded.some(newChat => {
+                        const oldChat = prevMap.get(newChat.id);
+                        if (!oldChat) return true; // Chat nuevo o con ID diferente
                         if (oldChat.messages?.length !== newChat.messages?.length) return true;
                         if (oldChat.status !== newChat.status) return true;
                         if (oldChat.unreadCount !== newChat.unreadCount) return true;
                         if (oldChat.assignedTo !== newChat.assignedTo) return true;
                         if (oldChat.botActive !== newChat.botActive) return true;
-                        if (oldChat.lastMessageAt !== newChat.lastMessageAt) return true;
+                        if (oldChat.lastMessageTimestamp !== newChat.lastMessageTimestamp) return true;
                         if (oldChat.customFields?.dni !== newChat.customFields?.dni) return true;
                         if (oldChat.customFields?.pacienteNombre !== newChat.customFields?.pacienteNombre) return true;
                         return false;
@@ -129,7 +146,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 return firstActive?.id || loaded[0]?.id || null;
             });
         } catch (err) {
-            console.warn('Error cargando chats:', err);
+            // Error transitorio: NO limpiar el estado existente. Solo loguear.
+            console.warn('[contact-center] Error cargando chats (estado preservado):', err?.message || err);
         } finally {
             if (!isSilent) setLoadingLive(false);
         }
@@ -142,7 +160,21 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             }
         });
 
-        reloadChats();
+        // Retardo inicial de 800ms para evitar colisión con otras queries
+        // que se lanzan al montar la app (altas_administrativas, auth, etc.).
+        // Esto evita saturar el pool de conexiones de Supabase al inicio.
+        const initialLoadTimer = setTimeout(() => {
+            reloadChats().then(() => {
+                // Red de seguridad: si el primer load trajo 0 chats,
+                // reintentamos una vez a los 3 segundos (timeout transitorio).
+                setChats(currentChats => {
+                    if (currentChats.length === 0) {
+                        setTimeout(() => reloadChats(), 3000);
+                    }
+                    return currentChats;
+                });
+            });
+        }, 800);
 
         // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
         // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
@@ -345,11 +377,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         });
 
         return () => {
+            clearTimeout(initialLoadTimer);
             clearInterval(heartbeatInterval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (unsubscribe) unsubscribe();
         };
     }, []);
+
 
     // Manejar envío de mensaje en la consola de chat (texto, notas y archivos multimedia)
     const handleSendMessage = async (chatId, text, isNote = false, mediaUrl = null, mediaType = null, fileName = null) => {
