@@ -3272,7 +3272,9 @@ export default function ContactCenterChatConsole({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     flexWrap: 'wrap',
-                    gap: '6px'
+                    gap: '6px',
+                    position: 'relative',
+                    zIndex: 30
                 }}>
                     {/* Izquierda: Nombre del paciente y datos */}
                     <div style={{ minWidth: 0 }}>
@@ -3404,13 +3406,13 @@ export default function ContactCenterChatConsole({
                                     <div style={{
                                         position: 'absolute',
                                         top: 'calc(100% + 4px)',
-                                        right: 0,
-                                        zIndex: 100,
-                                        width: '230px',
+                                        left: 0,
+                                        zIndex: 150,
+                                        width: '240px',
                                         background: '#FFFFFF',
                                         borderRadius: '10px',
                                         border: '1px solid #E2E8F0',
-                                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.08)',
+                                        boxShadow: '0 12px 30px -4px rgba(0,0,0,0.18), 0 4px 8px -2px rgba(0,0,0,0.06)',
                                         padding: '6px',
                                         display: 'flex',
                                         flexDirection: 'column',
