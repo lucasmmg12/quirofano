@@ -333,14 +333,63 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
         // Crear cliente Supabase con service_role para bypass de RLS
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-        const direction = eventName === 'message.incoming' ? 'incoming' : 'outgoing';
+        // Detectar si el mensaje fue enviado por NOSOTROS desde WhatsApp Web o el dispositivo conectado
+        const isFromMe = Boolean(
+            data?.fromMe === true ||
+            data?.key?.fromMe === true ||
+            payload?.fromMe === true ||
+            payload?.data?.fromMe === true
+        );
+
+        // Teléfonos conocidos de las líneas institucionales del Sanatorio
+        const KNOWN_LINE_PHONES = new Set([
+            '5492645825637', '2645825637',
+            '5492644182603', '2644182603',
+            '5492644827166', '2644827166',
+            '5492644809077', '2644809077',
+            '5492644774612', '2644774612',
+        ]);
+
+        // Si es fromMe, es un mensaje saliente enviado por el equipo humano desde WhatsApp Web
+        const direction = isFromMe ? 'outgoing' : (eventName === 'message.incoming' ? 'incoming' : 'outgoing');
 
         // Extraer datos según la dirección
-        const rawContent = direction === 'incoming' ? (data.body || '') : (data.answer || '');
-        // Para incoming, data.from = who sent (paciente). 
-        // Para outgoing, data.from = bot number, data.to = destinatario (paciente)
-        const phone = normalizePhone(direction === 'incoming' ? (data.from || '') : (data.to || data.from || ''));
-        const senderName = data.name || null;
+        const rawContent = (direction === 'incoming' || isFromMe) ? (data.body || '') : (data.answer || '');
+
+        // Resolver el teléfono del PACIENTE:
+        // Cuando es fromMe, data.from o data.to es el paciente y el otro es la línea del Sanatorio.
+        let targetPhoneRaw = direction === 'incoming' ? (data.from || '') : (data.to || data.from || '');
+        if (isFromMe) {
+            const normFrom = normalizePhone(data.from || '');
+            const normTo = normalizePhone(data.to || '');
+            if (KNOWN_LINE_PHONES.has(normFrom) && normTo) {
+                targetPhoneRaw = normTo;
+            } else if (normFrom && !KNOWN_LINE_PHONES.has(normFrom)) {
+                targetPhoneRaw = normFrom;
+            } else {
+                targetPhoneRaw = normTo || normFrom;
+            }
+        }
+        const phone = normalizePhone(targetPhoneRaw);
+
+        // Resolver nombre del remitente:
+        // Si es fromMe (enviado por operador desde WhatsApp Web), detectar el nombre del agente en el texto si existe
+        let senderName: string | null = null;
+        let extractedAgentName: string | null = null;
+        if (isFromMe) {
+            const matchName = String(rawContent).match(/(?:soy|habla|te saluda|comunica)\s+\*?([A-Za-zÁ-ú]+)\*?/i);
+            if (matchName && matchName[1]) {
+                const rawMatch = matchName[1].trim();
+                if (!['de', 'el', 'la', 'un', 'una', 'sanatorio', 'asistente', 'bot'].includes(rawMatch.toLowerCase())) {
+                    extractedAgentName = `${rawMatch.charAt(0).toUpperCase() + rawMatch.slice(1).toLowerCase()} (WhatsApp Web)`;
+                }
+            }
+            senderName = extractedAgentName || 'Operador (WhatsApp Web)';
+        } else {
+            // Mensaje entrante de paciente: NUNCA usar "Unknown"
+            const rawName = String(data.name || data.pushName || '').trim();
+            senderName = (rawName && rawName.toLowerCase() !== 'unknown') ? rawName : null;
+        }
 
         // =============================================
         // EXTRAER MEDIA — búsqueda exhaustiva en el payload
@@ -579,138 +628,198 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
         console.log(`[webhook] Mensaje ${direction} guardado — line: ${lineId}, phone: ${phone}, media: ${finalMediaType}, persisted: ${mediaUrl !== originalMediaUrl}`);
 
         // =============================================
-        // CHATBOT TRIAGE ULTRA-COST-SAVING (ASISTECLICK STYLE)
-        // Solo para mensajes entrantes de pacientes EXCLUSIVAMENTE en la línea de Contact Center
-        // NUNCA ejecutar en line_a, line_b, line_c (Cirugías / Admisión) ni line_recepciones
+        // MANEJO DE MENSAJES SALIENTES DE WHATSAPP WEB (isFromMe)
+        // Registra la respuesta del operador humano y pausa el bot
+        // para que no interfiera en la atención ni le responda al operador
         // =============================================
-        let triageResult: any = null;
+        if (isFromMe) {
+            console.log(`[webhook] 📤 Mensaje saliente de WhatsApp Web detectado (${senderName}) hacia ${phone}. Omitiendo bot triage.`);
+            if (phone) {
+                try {
+                    const nowIso = new Date().toISOString();
+                    const { data: existingConv } = await supabase
+                        .from('contact_center_conversations')
+                        .select('id, patient_name, status, assigned_agent_name, bot_active')
+                        .eq('phone', phone)
+                        .maybeSingle();
+
+                    const convUpdates: Record<string, any> = {
+                        phone,
+                        last_message_at: nowIso,
+                        last_message_text: content,
+                        last_message_sender: 'agent',
+                        last_agent_message_at: nowIso,
+                        bot_active: false, // PAUSAR BOT porque el operador humano está respondiendo en WhatsApp Web
+                        unread_count: 0,
+                        updated_at: nowIso
+                    };
+
+                    if (!existingConv || existingConv.status === 'bot' || existingConv.status === 'sin_asignar') {
+                        convUpdates.status = 'asignado';
+                    }
+
+                    if (extractedAgentName && (!existingConv?.assigned_agent_name || existingConv.assigned_agent_name === 'Bot Sanatorio')) {
+                        convUpdates.assigned_agent_name = extractedAgentName.replace(' (WhatsApp Web)', '');
+                        convUpdates.assigned_at = nowIso;
+                    }
+
+                    // Asegurar que no quede como 'Unknown'
+                    if (!existingConv?.patient_name || existingConv.patient_name.toLowerCase() === 'unknown') {
+                        const { data: dbPac } = await supabase
+                            .from('hospital_pacientes')
+                            .select('nombre')
+                            .eq('telefono', phone)
+                            .maybeSingle();
+                        if (dbPac?.nombre) {
+                            convUpdates.patient_name = dbPac.nombre;
+                        }
+                    }
+
+                    await supabase
+                        .from('contact_center_conversations')
+                        .upsert(convUpdates, { onConflict: 'phone' });
+
+                    console.log(`[webhook] ✅ Conversación actualizada para ${phone} por mensaje de WhatsApp Web.`);
+                } catch (convErr: any) {
+                    console.error('[webhook] Error actualizando conversación por mensaje WhatsApp Web:', convErr?.message || convErr);
+                }
+            }
+
+            return new Response(
+                JSON.stringify({ ok: true, outgoing_from_me: true, phone, senderName, lineId }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        // =============================================
+        // =============================================
+        // CHATBOT TRIAGE & AI SUMMARY EN SEGUNDO PLANO (NON-BLOCKING)
+        // Para que BuilderBot reciba HTTP 200 en ~50ms y NO encole ni demore los mensajes entrantes
+        // =============================================
         const nonContactCenterLines = ['line_a', 'line_b', 'line_c', 'line_recepciones', 'line_meta'];
         const isTargetContactCenter = lineId === 'contact_center' || (!nonContactCenterLines.includes(lineId || ''));
 
         if (direction === 'incoming' && phone && isTargetContactCenter) {
-            try {
-                // =========================================================
-                // DEBOUNCE & MESSAGE BUFFERING (COALESCING DE MENSAJES RÁFAGA)
-                // Espera 3.5 segundos por si el paciente envía varios mensajes seguidos
-                // (ej: mensaje 1 = DNI, mensaje 2 = médico, mensaje 3 = obra social)
-                // para entender todo en un solo contexto y responder una única vez.
-                // =========================================================
-                const DEBOUNCE_WAIT_MS = 3500;
-                await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_WAIT_MS));
+            const backgroundTriagePromise = (async () => {
+                try {
+                    // =========================================================
+                    // DEBOUNCE & MESSAGE BUFFERING (COALESCING DE MENSAJES RÁFAGA)
+                    // Espera 3.5 segundos por si el paciente envía varios mensajes seguidos
+                    // =========================================================
+                    const DEBOUNCE_WAIT_MS = 3500;
+                    await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_WAIT_MS));
 
-                // Verificar si entró otro mensaje más nuevo para este mismo teléfono
-                const currentMsgId = insertedData?.id;
-                if (currentMsgId) {
-                    const { data: latestMsg } = await supabase
+                    // Verificar si entró otro mensaje más nuevo para este mismo teléfono
+                    const currentMsgId = insertedData?.id;
+                    if (currentMsgId) {
+                        const { data: latestMsg } = await supabase
+                            .from('whatsapp_messages')
+                            .select('id')
+                            .eq('phone', phone)
+                            .eq('direction', 'incoming')
+                            .order('created_at', { ascending: false })
+                            .order('id', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (latestMsg && latestMsg.id !== currentMsgId) {
+                            console.log(`[webhook-debounce] ⏭️ Se detectó mensaje entrante posterior (${latestMsg.id} vs actual ${currentMsgId}) para ${phone}. Cediendo procesamiento al mensaje final.`);
+                            return;
+                        }
+                    }
+
+                    // Si este es el mensaje ganador (último de la ráfaga), recopilar todos los mensajes
+                    // entrantes no respondidos del paciente desde la última respuesta saliente del bot
+                    const { data: lastOutgoing } = await supabase
                         .from('whatsapp_messages')
-                        .select('id')
+                        .select('created_at')
                         .eq('phone', phone)
-                        .eq('direction', 'incoming')
+                        .eq('direction', 'outgoing')
                         .order('created_at', { ascending: false })
-                        .order('id', { ascending: false })
                         .limit(1)
                         .maybeSingle();
 
-                    if (latestMsg && latestMsg.id !== currentMsgId) {
-                        console.log(`[webhook-debounce] ⏭️ Se detectó mensaje entrante posterior (${latestMsg.id} vs actual ${currentMsgId}) para ${phone}. Cediendo procesamiento al mensaje final.`);
-                        return new Response(
-                            JSON.stringify({ ok: true, debounced: true, phone, lineId, supersededBy: latestMsg.id }),
-                            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-                        );
-                    }
-                }
+                    const lastOutgoingTime = lastOutgoing?.created_at 
+                        ? new Date(lastOutgoing.created_at).toISOString() 
+                        : new Date(Date.now() - 60000).toISOString();
 
-                // Si este es el mensaje ganador (último de la ráfaga), recopilar todos los mensajes
-                // entrantes no respondidos del paciente desde la última respuesta saliente del bot
-                const { data: lastOutgoing } = await supabase
-                    .from('whatsapp_messages')
-                    .select('created_at')
-                    .eq('phone', phone)
-                    .eq('direction', 'outgoing')
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
+                    const { data: burstMessages } = await supabase
+                        .from('whatsapp_messages')
+                        .select('id, content, media_type, media_url, created_at')
+                        .eq('phone', phone)
+                        .eq('direction', 'incoming')
+                        .gt('created_at', lastOutgoingTime)
+                        .order('created_at', { ascending: true });
 
-                const lastOutgoingTime = lastOutgoing?.created_at 
-                    ? new Date(lastOutgoing.created_at).toISOString() 
-                    : new Date(Date.now() - 60000).toISOString();
+                    let consolidatedText = '';
+                    let consolidatedMediaType = finalMediaType;
+                    let consolidatedMediaUrl = mediaUrl;
 
-                const { data: burstMessages } = await supabase
-                    .from('whatsapp_messages')
-                    .select('id, content, media_type, media_url, created_at')
-                    .eq('phone', phone)
-                    .eq('direction', 'incoming')
-                    .gt('created_at', lastOutgoingTime)
-                    .order('created_at', { ascending: true });
-
-                let consolidatedText = '';
-                let consolidatedMediaType = finalMediaType;
-                let consolidatedMediaUrl = mediaUrl;
-
-                if (burstMessages && burstMessages.length > 0) {
-                    const fragments: string[] = [];
-                    for (const m of burstMessages) {
-                        const t = (m.content || '').trim();
-                        if (m.id === currentMsgId && audioTranscriptionText) {
-                            fragments.push(audioTranscriptionText);
-                        } else if (t && !t.startsWith('[image]') && !t.startsWith('[document]') && !t.startsWith('[audio]') && !t.startsWith('[voice]')) {
-                            fragments.push(t);
+                    if (burstMessages && burstMessages.length > 0) {
+                        const fragments: string[] = [];
+                        for (const m of burstMessages) {
+                            const t = (m.content || '').trim();
+                            if (m.id === currentMsgId && audioTranscriptionText) {
+                                fragments.push(audioTranscriptionText);
+                            } else if (t && !t.startsWith('[image]') && !t.startsWith('[document]') && !t.startsWith('[audio]') && !t.startsWith('[voice]')) {
+                                fragments.push(t);
+                            }
+                            if (m.media_url && !consolidatedMediaUrl) {
+                                consolidatedMediaUrl = m.media_url;
+                                consolidatedMediaType = m.media_type || 'image';
+                            }
                         }
-                        if (m.media_url && !consolidatedMediaUrl) {
-                            consolidatedMediaUrl = m.media_url;
-                            consolidatedMediaType = m.media_type || 'image';
+                        const lastFragment = fragments[fragments.length - 1] || '';
+                        if (/\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar)\b/i.test(lastFragment)) {
+                            consolidatedText = lastFragment;
+                        } else {
+                            consolidatedText = fragments.join('\n').trim();
                         }
                     }
-                    const lastFragment = fragments[fragments.length - 1] || '';
-                    if (/\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar)\b/i.test(lastFragment)) {
-                        consolidatedText = lastFragment;
-                    } else {
-                        consolidatedText = fragments.join('\n').trim();
+
+                    if (!consolidatedText) {
+                        consolidatedText = audioTranscriptionText || content || (consolidatedMediaUrl ? `[${consolidatedMediaType}]` : '');
                     }
+
+                    console.log(`[webhook-debounce] 📦 Ráfaga consolidada para ${phone} (${burstMessages?.length || 1} msgs agrupados):\n"${consolidatedText}"`);
+
+                    await handleChatbotTriage(
+                        supabase, 
+                        phone, 
+                        consolidatedText, 
+                        senderName, 
+                        lineId || 'contact_center', 
+                        consolidatedMediaType, 
+                        consolidatedMediaUrl
+                    );
+                } catch (triageError: any) {
+                    console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
                 }
 
-                if (!consolidatedText) {
-                    consolidatedText = audioTranscriptionText || content || (consolidatedMediaUrl ? `[${consolidatedMediaType}]` : '');
+                // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador
+                try {
+                    const r = await fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                        },
+                        body: JSON.stringify({ phone })
+                    });
+                    const text = await r.text();
+                    console.log(`[webhook] ✅ Resumen IA generado automáticamente para ${phone}:`, text.slice(0, 120));
+                } catch (aiErr: any) {
+                    console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr);
                 }
-
-                console.log(`[webhook-debounce] 📦 Ráfaga consolidada para ${phone} (${burstMessages?.length || 1} msgs agrupados):\n"${consolidatedText}"`);
-
-                triageResult = await handleChatbotTriage(
-                    supabase, 
-                    phone, 
-                    consolidatedText, 
-                    senderName, 
-                    lineId || 'contact_center', 
-                    consolidatedMediaType, 
-                    consolidatedMediaUrl
-                );
-            } catch (triageError: any) {
-                console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
-                triageResult = { error: triageError?.message || String(triageError) };
-            }
-
-            // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador
-            const summaryPromise = fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-                },
-                body: JSON.stringify({ phone })
-            }).then(async r => {
-                const text = await r.text();
-                console.log(`[webhook] ✅ Resumen IA generado automáticamente para ${phone}:`, text.slice(0, 120));
-            }).catch(aiErr => console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr));
+            })();
 
             if (typeof (globalThis as any).EdgeRuntime !== 'undefined' && (globalThis as any).EdgeRuntime?.waitUntil) {
-                (globalThis as any).EdgeRuntime.waitUntil(summaryPromise);
-            } else {
-                await summaryPromise;
+                (globalThis as any).EdgeRuntime.waitUntil(backgroundTriagePromise);
             }
         }
 
         return new Response(
-            JSON.stringify({ ok: true, direction, phone, mediaType: finalMediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId, triageResult }),
+            JSON.stringify({ ok: true, direction, phone, mediaType: finalMediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
 

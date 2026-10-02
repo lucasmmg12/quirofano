@@ -685,6 +685,7 @@ export async function fetchLiveAndDemoChats() {
                 if (!name) return true;
                 const norm = String(name).trim().toLowerCase();
                 return (
+                    norm === 'unknown' ||
                     norm === 'bot sanatorio' ||
                     norm === 'bot' ||
                     norm === 'sanatorio' ||
