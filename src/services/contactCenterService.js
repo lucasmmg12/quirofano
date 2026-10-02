@@ -492,29 +492,18 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
-        // FASE 3: Columnas explícitas en lugar de SELECT * para reducir payload.
-        // ai_summary (texto largo) solo se carga en el detalle del chat, no en el listado.
-        const CONV_COLUMNS = [
-            'id', 'phone', 'status', 'updated_at', 'created_at',
-            'assigned_agent_id', 'assigned_agent_name', 'assigned_at',
-            'bot_active', 'nombre_completo', 'dni', 'nhc', 'obra_social',
-            'fecha_nacimiento', 'email', 'departamento', 'motivo_consulta',
-            'medico_o_especialidad', 'ficha_dual', 'ai_summary',
-            'unread_count', 'last_message_at', 'resolution_reason'
-        ].join(', ');
-
         // Prioridad Crítica: Primero todas las conversaciones activas (abierto, sin_asignar, bot)
         // para que NINGÚN paciente en espera sea ocultado por límite de corte.
         const [activeConvRes, archivedConvRes] = await Promise.all([
             supabase
                 .from('contact_center_conversations')
-                .select(CONV_COLUMNS)
+                .select('*')
                 .in('status', ['abierto', 'sin_asignar', 'bot'])
                 .order('updated_at', { ascending: false })
                 .limit(200),
             supabase
                 .from('contact_center_conversations')
-                .select(CONV_COLUMNS)
+                .select('*')
                 .in('status', ['archivado', 'cerrado', 'finalizado'])
                 .order('updated_at', { ascending: false })
                 .limit(100)

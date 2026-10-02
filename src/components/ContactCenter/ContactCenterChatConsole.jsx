@@ -913,25 +913,31 @@ export default function ContactCenterChatConsole({
     };
 
     // Auto-generar Resumen IA automáticamente tras cada mensaje entrante del paciente
-    const lastMsgInChat = selectedChat?.messages && selectedChat.messages.length > 0 
-        ? selectedChat.messages[selectedChat.messages.length - 1] 
+    // IMPORTANTE: useMemo previene que lastMsgId cambie referencia en cada render,
+    // lo que causaba re-ejecuciones innecesarias del useEffect de IA (parte del loop #321).
+    const lastMsgInChat = useMemo(() => {
+        const msgs = selectedChat?.messages;
+        return (msgs && msgs.length > 0) ? msgs[msgs.length - 1] : null;
+    }, [selectedChat?.id, selectedChat?.messages?.length]);
+
+    const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId || null;
+    const lastMsgSender = lastMsgInChat
+        ? (lastMsgInChat.sender || (lastMsgInChat.direction === 'incoming' ? 'patient' : 'agent'))
         : null;
-    const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId;
-    const lastMsgSender = lastMsgInChat?.sender || (lastMsgInChat?.direction === 'incoming' ? 'patient' : 'agent');
 
     const lastAiSummaryTimeRef = useRef({});
 
     useEffect(() => {
-        if (!selectedChat?.phone || !lastMsgInChat) return;
+        if (!selectedChat?.phone || !lastMsgInChat || !lastMsgId) return;
 
-        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente con cooldown estricto (3 min)
-        // Si la conversación ya tiene resumen generado, no sobrecargar el servidor
+        // Solo si el último mensaje es del paciente, con cooldown de 3 min estricto.
         if (lastMsgSender === 'patient') {
             const phone = selectedChat.phone;
             const lastRun = lastAiSummaryTimeRef.current[phone] || 0;
             const cooldownPassed = (Date.now() - lastRun) > 180000;
-            
-            if (!cooldownPassed || selectedChat.aiSummary || aiSummaryData) {
+
+            // Guard triple: cooldown + resumen existente + en proceso
+            if (!cooldownPassed || selectedChat.aiSummary || aiSummaryData || isGeneratingSummary) {
                 return;
             }
 
@@ -939,7 +945,6 @@ export default function ContactCenterChatConsole({
             lastAiSummaryTimeRef.current[phone] = Date.now();
 
             const timer = setTimeout(() => {
-                console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA...');
                 handleRunAiSummary(true);
             }, 2000);
             return () => clearTimeout(timer);
