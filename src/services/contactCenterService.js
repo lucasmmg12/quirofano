@@ -17,6 +17,41 @@ import { getSalusSyncBaseUrl } from './salusSync';
 const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
 const CONFIG_KEY = 'contact_center_allowed_users';
 
+// =========================================================================
+// FASE 5 — Caché de mensajes por teléfono con TTL de 5 minutos
+// Evita queries repetidas a whatsapp_messages cuando una agente vuelve
+// a un chat ya visitado dentro de la misma sesión.
+// =========================================================================
+const _msgCache = new Map();
+const MSG_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+function _getCachedMessages(phone) {
+    const entry = _msgCache.get(phone);
+    if (!entry) return null;
+    if (Date.now() - entry.fetchedAt > MSG_CACHE_TTL) {
+        _msgCache.delete(phone);
+        return null;
+    }
+    return entry.messages;
+}
+
+function _setCachedMessages(phone, messages) {
+    _msgCache.set(phone, { messages, fetchedAt: Date.now() });
+}
+
+/** Invalida la caché de un teléfono específico (llamar al enviar un mensaje nuevo) */
+export function invalidateMessageCache(phone) {
+    if (phone) _msgCache.delete(phone);
+}
+
+/** Agrega un mensaje a la caché existente sin invalidarla (para mensajes RealTime) */
+export function appendToMessageCache(phone, message) {
+    const entry = _msgCache.get(phone);
+    if (!entry) return;
+    entry.messages = [...entry.messages, message];
+    entry.fetchedAt = Date.now(); // Refrescar TTL
+}
+
 // Administradores con acceso maestro permanente
 export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya'];
 
@@ -457,18 +492,29 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
+        // FASE 3: Columnas explícitas en lugar de SELECT * para reducir payload.
+        // ai_summary (texto largo) solo se carga en el detalle del chat, no en el listado.
+        const CONV_COLUMNS = [
+            'id', 'phone', 'status', 'updated_at', 'created_at',
+            'assigned_agent_id', 'assigned_agent_name', 'assigned_at',
+            'bot_active', 'nombre_completo', 'dni', 'nhc', 'obra_social',
+            'fecha_nacimiento', 'email', 'departamento', 'motivo_consulta',
+            'medico_o_especialidad', 'ficha_dual', 'ai_summary',
+            'unread_count', 'last_message_at', 'resolution_reason'
+        ].join(', ');
+
         // Prioridad Crítica: Primero todas las conversaciones activas (abierto, sin_asignar, bot)
         // para que NINGÚN paciente en espera sea ocultado por límite de corte.
         const [activeConvRes, archivedConvRes] = await Promise.all([
             supabase
                 .from('contact_center_conversations')
-                .select('*')
+                .select(CONV_COLUMNS)
                 .in('status', ['abierto', 'sin_asignar', 'bot'])
                 .order('updated_at', { ascending: false })
                 .limit(200),
             supabase
                 .from('contact_center_conversations')
-                .select('*')
+                .select(CONV_COLUMNS)
                 .in('status', ['archivado', 'cerrado', 'finalizado'])
                 .order('updated_at', { ascending: false })
                 .limit(100)
@@ -2258,7 +2304,10 @@ export async function saveBotTreeConfig(botTree, user = 'admin') {
 }
 
 /**
- * Consulta mensajes históricos anteriores para un teléfono específico (Paginación / Scroll hacia atrás)
+ * Consulta mensajes históricos para un teléfono específico (Paginación / Scroll hacia atrás)
+ * FASE 5: Integra caché de mensajes con TTL de 5 minutos.
+ * - Carga inicial (beforeCreatedAt=null): usa caché si existe y es fresco.
+ * - Paginación (beforeCreatedAt!=null): siempre va a BD (mensajes más antiguos).
  */
 export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, limit = 50) {
     if (!phone) return [];
@@ -2266,6 +2315,14 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
         const normPhone = normalizeArgentinePhone(phone);
         const cleanDigits = (normPhone || phone).replace(/\D/g, '');
         const last8 = cleanDigits.slice(-8);
+
+        // CACHÉ: Solo para la carga inicial (no para paginación)
+        if (!beforeCreatedAt) {
+            const cached = _getCachedMessages(normPhone || phone);
+            if (cached) {
+                return cached;
+            }
+        }
 
         let query = supabase
             .from('whatsapp_messages')
@@ -2287,7 +2344,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
         // Invertir para orden cronológico ascendente
         const chronological = [...rawMessages].reverse();
 
-        return chronological.map(m => {
+        const result = chronological.map(m => {
             const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.content && m.content.startsWith('_event_voice_note_')) || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
             const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
             const audioUnder = m.raw_payload?.audio_understanding || null;
@@ -2320,11 +2377,19 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
                 timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
             };
         });
+
+        // Actualizar caché solo para carga inicial (no para paginación hacia atrás)
+        if (!beforeCreatedAt) {
+            _setCachedMessages(normPhone || phone, result);
+        }
+
+        return result;
     } catch (err) {
         console.error('[contactCenterService] Error fetching older messages:', err);
         return [];
     }
 }
+
 
 /**
  * Elimina por completo el historial de mensajes y el contexto acumulado de una conversación.

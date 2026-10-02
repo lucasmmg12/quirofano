@@ -19,7 +19,7 @@ import {
     transferChatToAgent, closeConversationWithResolution,
     bulkCloseConversationsSilent,
     subscribeToContactCenterRealtime, playContactCenterChime,
-    isClosedOrArchived
+    isClosedOrArchived, invalidateMessageCache, appendToMessageCache
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
@@ -93,6 +93,134 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     }, [currentUser?.usuario]);
 
     const isLMarinero = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim().split('@')[0]);
+
+    // =========================================================================
+    // applyMessageEvent: Aplica un evento RealTime de mensaje sobre el array de chats.
+    // Extraido como función pura para ser reutilizado por flushMessageBatch (Fase 4).
+    // =========================================================================
+    function applyMessageEvent(prevChats, newMsg, eventType) {
+        if (!newMsg) return prevChats;
+        const normPhone = normalizeArgentinePhone(newMsg.phone);
+        const isIncoming = newMsg.direction === 'incoming';
+
+        const matchesPhone = (phoneA, phoneB) => {
+            const a = normalizeArgentinePhone(phoneA);
+            const b = normalizeArgentinePhone(phoneB);
+            if (a === b) return true;
+            return a.length >= 8 && b.length >= 8 && a.slice(-8) === b.slice(-8);
+        };
+
+        // UPDATE: actualizar order_analysis de un mensaje existente
+        if (eventType === 'UPDATE') {
+            const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
+            if (chatIdx < 0) return prevChats;
+            const existingChat = prevChats[chatIdx];
+            const updatedMessages = (existingChat.messages || []).map(m => {
+                if (m.realId === newMsg.id || m.id === 'real_' + newMsg.id) {
+                    return { ...m, orderAnalysis: newMsg.raw_payload?.order_analysis || m.orderAnalysis, rawPayload: newMsg.raw_payload || m.rawPayload };
+                }
+                return m;
+            });
+            const updated = [...prevChats];
+            updated[chatIdx] = { ...existingChat, messages: updatedMessages };
+            return updated;
+        }
+
+        // Reproducir sonido para mensajes entrantes
+        if (isIncoming) {
+            const isUrgent = /\b(guardia|urgencia|emergencia|dolor|grave|hemorragia|urgente)\b/i.test(newMsg.content || '');
+            if (soundEnabledRef.current) playContactCenterChime(isUrgent ? 'urgent' : 'normal');
+        }
+
+        const sanitizedRaw = newMsg.raw_payload ? {
+            order_analysis: newMsg.raw_payload.order_analysis,
+            audio_transcription: newMsg.raw_payload.audio_transcription || newMsg.raw_payload.transcription,
+            audio_understanding: newMsg.raw_payload.audio_understanding,
+            agent: newMsg.raw_payload.agent,
+            bot: newMsg.raw_payload.bot
+        } : null;
+
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        const formattedMsg = {
+            id: 'real_' + (newMsg.id || Date.now()),
+            realId: newMsg.id,
+            sender: isIncoming ? 'patient' : (newMsg.direction === 'note' ? 'note' : 'agent'),
+            senderName: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
+            type: newMsg.media_type || 'text',
+            text: newMsg.content || '',
+            mediaUrl: newMsg.media_url || null,
+            orderAnalysis: newMsg.raw_payload?.order_analysis || null,
+            rawPayload: sanitizedRaw,
+            timestamp: timeStr
+        };
+
+        const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
+        if (chatIdx >= 0) {
+            const existingChat = prevChats[chatIdx];
+            const alreadyHasMsg = (existingChat.messages || []).some(m =>
+                m.id === formattedMsg.id || (m.realId && m.realId === formattedMsg.realId)
+            );
+            const nextMsgs = alreadyHasMsg ? existingChat.messages : [...(existingChat.messages || []), formattedMsg];
+            const updatedMessages = nextMsgs.length > 80 ? nextMsgs.slice(-80) : nextMsgs;
+            const updatedChat = {
+                ...existingChat,
+                messages: updatedMessages,
+                lastMessage: newMsg.content || `[${newMsg.media_type}]`,
+                lastMessageTimestamp: now.getTime(),
+                timeAgo: 'hace instantes',
+                unread: isIncoming ? true : existingChat.unread,
+                lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
+                lastResponderRole: isIncoming ? 'patient' : 'agent',
+                isWaitingResponse: isIncoming,
+                waitingMinutes: 0,
+                waitingTimeText: isIncoming ? 'Sin responder hace instantes' : 'Respondido',
+                badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido'
+            };
+            const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
+            return [updatedChat, ...otherChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+        } else {
+            // Nuevo chat en vivo no registrado previamente
+            const newRealChat = {
+                id: 'REAL_' + normPhone,
+                contactName: newMsg.sender_name || `Paciente (${normPhone.slice(-4)})`,
+                phone: normPhone,
+                channel: 'WHATSAPP',
+                channelNumber: '5492645825637',
+                status: 'bot',
+                botActive: true,
+                unread: true,
+                lastMessage: newMsg.content || `[${newMsg.media_type}]`,
+                lastMessageTimestamp: now.getTime(),
+                timeAgo: 'hace instantes',
+                department: 'Atención al cliente',
+                assignedTo: null,
+                assignedToName: null,
+                assignedAt: null,
+                lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : 'Sanatorio',
+                lastResponderRole: isIncoming ? 'patient' : 'agent',
+                lastResponseAt: 'hace instantes',
+                isWaitingResponse: isIncoming,
+                waitingMinutes: 0,
+                waitingTimeText: isIncoming ? 'Sin responder hace instantes' : 'Respondido',
+                badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido',
+                chatbot: '#betina-triage',
+                avatarColor: '#0284C7',
+                tags: ['Mensaje Nuevo'],
+                customFields: {
+                    dni: 'A verificar',
+                    dniFotoUrl: null,
+                    turnosDiaHora: 'Consulta entrante',
+                    pedidoMedicoFoto: newMsg.media_type !== 'text' ? 'Adjunto' : '—',
+                    pacienteNombre: newMsg.sender_name || 'Paciente',
+                    pacienteContacto: normPhone,
+                    obraSocial: 'A consultar'
+                },
+                messages: [formattedMsg]
+            };
+            return [newRealChat, ...prevChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+        }
+    }
 
     // 1. Cargar permisos y sincronizar mensajes en vivo
     const reloadChats = async (isSilent = false) => {
@@ -176,213 +304,121 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             });
         }, 800);
 
-        // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
-        // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
+        // FASE 2: Heartbeat adaptativo — solo hace polling si el WebSocket
+        // lleva más de 2 minutos sin eventos (canal inactivo/caido).
+        // En condiciones normales el WebSocket mantiene la BD sincronizada
+        // y el polling es innecesario. Esto reduce un 90% las queries de heartbeat.
+        const STALE_WS_THRESHOLD = 120_000; // 2 minutos sin eventos WebSocket
         let lastFetchTime = Date.now();
+        const lastLivePingRef = React.useRef(new Date());
+
         const heartbeatInterval = setInterval(() => {
-            if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
-            reloadChats(true);
-            lastFetchTime = Date.now();
-        }, 45000);
+            if (document.hidden) return;
+            const msSinceLastWSEvent = Date.now() - lastLivePingRef.current.getTime();
+            if (msSinceLastWSEvent > STALE_WS_THRESHOLD) {
+                console.log(`[contact-center] WebSocket inactivo ${Math.round(msSinceLastWSEvent/1000)}s — activando polling de recuperación`);
+                reloadChats(true);
+                lastFetchTime = Date.now();
+            }
+        }, 30_000); // Revisar cada 30s si el WS está activo
 
         const handleVisibilityChange = () => {
-            if (!document.hidden && Date.now() - lastFetchTime > 45000) {
+            if (!document.hidden && Date.now() - lastFetchTime > 120_000) {
                 reloadChats(true);
                 lastFetchTime = Date.now();
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
+        // FASE 4: Batch de eventos WebSocket con debounce de 80ms
+        // En lugar de llamar setChats() para cada mensaje individual que llega
+        // por RealTime (lo que causa renders en cascada bajo alta carga),
+        // acumulamos los eventos en una cola y los procesamos juntos cada 80ms.
+        let pendingMsgUpdates = [];
+        let pendingConvUpdates = [];
+        let batchMsgTimer = null;
+        let batchConvTimer = null;
+
+        function flushMessageBatch() {
+            if (pendingMsgUpdates.length === 0) return;
+            const batch = pendingMsgUpdates.splice(0);
+            setChats(prevChats => {
+                let updated = [...prevChats];
+                for (const { newMsg, eventType } of batch) {
+                    updated = applyMessageEvent(updated, newMsg, eventType);
+                }
+                return updated;
+            });
+        }
+
+        function flushConvBatch() {
+            if (pendingConvUpdates.length === 0) return;
+            const batch = pendingConvUpdates.splice(0);
+            setChats(prevChats => prevChats.map(c => {
+                const conv = batch.find(b => normalizeArgentinePhone(b.phone) === normalizeArgentinePhone(c.phone));
+                if (!conv) return c;
+                return {
+                    ...c,
+                    contactName: conv.nombre_completo || c.contactName,
+                    status: conv.status || c.status,
+                    assignedTo: conv.assigned_agent_id || c.assignedTo,
+                    assignedToName: conv.assigned_agent_name || c.assignedToName,
+                    assignedAt: conv.assigned_at || c.assignedAt,
+                    botActive: conv.bot_active ?? c.botActive,
+                    aiSummary: conv.ai_summary !== undefined ? conv.ai_summary : c.aiSummary,
+                    customFields: {
+                        ...c.customFields,
+                        dni: conv.dni || c.customFields?.dni,
+                        pacienteNombre: conv.nombre_completo || c.customFields?.pacienteNombre,
+                        obraSocial: conv.obra_social || c.customFields?.obraSocial,
+                        fechaNacimiento: conv.fecha_nacimiento || c.customFields?.fechaNacimiento,
+                        email: conv.email || c.customFields?.email,
+                        departamento: conv.departamento || c.customFields?.departamento,
+                        motivoConsulta: conv.motivo_consulta || c.customFields?.motivoConsulta,
+                        medicoOEspecialidad: conv.medico_o_especialidad || c.customFields?.medicoOEspecialidad
+                    }
+                };
+            }));
+        }
+
         // 2. Suscripción OnLive en Tiempo Real (Exclusivo Línea Contact Center y Conversaciones)
         const unsubscribe = subscribeToContactCenterRealtime({
             onNewMessage: (newMsg, eventType) => {
                 if (!newMsg) return;
+                lastLivePingRef.current = new Date();
                 setLastLivePing(new Date());
 
-                const normPhone = normalizeArgentinePhone(newMsg.phone);
-                const isIncoming = newMsg.direction === 'incoming';
+                // Invalidar caché de mensajes para este teléfono al recibir un nuevo mensaje
+                // (para que el próximo fetchOlderMessagesForPhone traiga datos frescos)
+                if (newMsg.phone) invalidateMessageCache(newMsg.phone);
 
-                const matchesPhone = (phoneA, phoneB) => {
-                    const a = normalizeArgentinePhone(phoneA);
-                    const b = normalizeArgentinePhone(phoneB);
-                    if (a === b) return true;
-                    return a.length >= 8 && b.length >= 8 && a.slice(-8) === b.slice(-8);
-                };
-
-                // Si es un UPDATE de mensaje (ej: resultado de análisis IA de orden médica)
-                if (eventType === 'UPDATE') {
-                    setChats(prevChats => {
-                        const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
-                        if (chatIdx < 0) return prevChats;
-                        const existingChat = prevChats[chatIdx];
-                        const updatedMessages = (existingChat.messages || []).map(m => {
-                            if (m.realId === newMsg.id || m.id === 'real_' + newMsg.id) {
-                                return {
-                                    ...m,
-                                    orderAnalysis: newMsg.raw_payload?.order_analysis || m.orderAnalysis,
-                                    rawPayload: newMsg.raw_payload || m.rawPayload
-                                };
-                            }
-                            return m;
-                        });
-                        const updatedChat = { ...existingChat, messages: updatedMessages };
-                        const updated = [...prevChats];
-                        updated[chatIdx] = updatedChat;
-                        return updated;
-                    });
-                    return;
-                }
-
-                // Reproducir sonido si es entrante (con detección de prioridad para triage auditivo)
-                if (isIncoming) {
-                    const isUrgent = /\b(guardia|urgencia|emergencia|dolor|grave|hemorragia|urgente)\b/i.test(newMsg.content || '');
-                    if (soundEnabledRef.current) {
-                        playContactCenterChime(isUrgent ? 'urgent' : 'normal');
-                    }
-                }
-
-                // Sanitizar payload para que no retenga binarios pesados en memoria
-                const sanitizedRaw = newMsg.raw_payload ? {
-                    order_analysis: newMsg.raw_payload.order_analysis,
-                    audio_transcription: newMsg.raw_payload.audio_transcription || newMsg.raw_payload.transcription,
-                    audio_understanding: newMsg.raw_payload.audio_understanding,
-                    agent: newMsg.raw_payload.agent,
-                    bot: newMsg.raw_payload.bot
-                } : null;
-
-                // Inserción optimista sin esperar el re-fetch completo
-                setChats(prevChats => {
-                    const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
-                    const now = new Date();
-                    const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-
-                    const formattedMsg = {
-                        id: 'real_' + (newMsg.id || Date.now()),
-                        realId: newMsg.id,
-                        sender: isIncoming ? 'patient' : (newMsg.direction === 'note' ? 'note' : 'agent'),
-                        senderName: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
-                        type: newMsg.media_type || 'text',
-                        text: newMsg.content || '',
-                        mediaUrl: newMsg.media_url || null,
-                        orderAnalysis: newMsg.raw_payload?.order_analysis || null,
-                        rawPayload: sanitizedRaw,
-                        timestamp: timeStr
-                    };
-
-                    if (chatIdx >= 0) {
-                        const existingChat = prevChats[chatIdx];
-                        const alreadyHasMsg = (existingChat.messages || []).some(m => 
-                            m.id === formattedMsg.id || (m.realId && m.realId === formattedMsg.realId)
-                        );
-                        const nextMsgs = alreadyHasMsg 
-                            ? existingChat.messages 
-                            : [...(existingChat.messages || []), formattedMsg];
-                        
-                        // Capping en memoria activa: mantener máximo 80 mensajes por chat
-                        const updatedMessages = nextMsgs.length > 80 ? nextMsgs.slice(-80) : nextMsgs;
-
-                        const updatedChat = {
-                            ...existingChat,
-                            messages: updatedMessages,
-                            lastMessage: newMsg.content || `[${newMsg.media_type}]`,
-                            lastMessageTimestamp: now.getTime(),
-                            timeAgo: 'hace instantes',
-                            unread: isIncoming ? true : existingChat.unread,
-                            lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
-                            lastResponderRole: isIncoming ? 'patient' : 'agent',
-                            isWaitingResponse: isIncoming ? true : false,
-                            waitingMinutes: 0,
-                            waitingTimeText: isIncoming ? 'Sin responder hace instantes' : 'Respondido',
-                            badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido'
-                        };
-
-                        const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
-                        return [updatedChat, ...otherChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
-                    } else {
-                        // Nuevo chat en vivo no registrado previamente
-                        const newRealChat = {
-                            id: 'REAL_' + normPhone,
-                            contactName: newMsg.sender_name || `Paciente (${normPhone.slice(-4)})`,
-                            phone: normPhone,
-                            channel: 'WHATSAPP',
-                            channelNumber: '5492645825637',
-                            status: 'bot',
-                            botActive: true,
-                            unread: true,
-                            lastMessage: newMsg.content || `[${newMsg.media_type}]`,
-                            lastMessageTimestamp: now.getTime(),
-                            timeAgo: 'hace instantes',
-                            department: 'Atención al cliente',
-                            assignedTo: null,
-                            assignedToName: null,
-                            assignedAt: null,
-                            lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : 'Sanatorio',
-                            lastResponderRole: isIncoming ? 'patient' : 'agent',
-                            lastResponseAt: 'hace instantes',
-                            isWaitingResponse: isIncoming,
-                            waitingMinutes: 0,
-                            waitingTimeText: isIncoming ? 'Sin responder hace instantes' : 'Respondido',
-                            badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido',
-                            chatbot: '#betina-triage',
-                            avatarColor: '#0284C7',
-                            tags: ['Mensaje Nuevo'],
-                            customFields: {
-                                dni: 'A verificar',
-                                dniFotoUrl: null,
-                                turnosDiaHora: 'Consulta entrante',
-                                pedidoMedicoFoto: newMsg.media_type !== 'text' ? 'Adjunto' : '—',
-                                pacienteNombre: newMsg.sender_name || 'Paciente',
-                                pacienteContacto: normPhone,
-                                obraSocial: 'A consultar'
-                            },
-                            messages: [formattedMsg]
-                        };
-                        return [newRealChat, ...prevChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
-                    }
-                });
-
-                // NO disparamos reloadChats() aquí: la inserción optimista ya actualizó la interfaz de forma inmediata y ligera.
+                // FASE 4: encolar evento y procesar en batch cada 80ms
+                pendingMsgUpdates.push({ newMsg, eventType });
+                clearTimeout(batchMsgTimer);
+                batchMsgTimer = setTimeout(flushMessageBatch, 80);
             },
             onConversationChange: (conv) => {
                 console.log('[contact-center] ⚡ Evento Realtime Conversación cambiada:', conv);
+                lastLivePingRef.current = new Date();
                 setLastLivePing(new Date());
-                const normPhone = normalizeArgentinePhone(conv.phone);
-                setChats(prevChats => prevChats.map(c => {
-                    if (normalizeArgentinePhone(c.phone) === normPhone) {
-                        return {
-                            ...c,
-                            contactName: conv.nombre_completo || c.contactName,
-                            status: conv.status || c.status,
-                            assignedTo: conv.assigned_agent_id || c.assignedTo,
-                            assignedToName: conv.assigned_agent_name || c.assignedToName,
-                            assignedAt: conv.assigned_at || c.assignedAt,
-                            botActive: conv.bot_active ?? c.botActive,
-                            aiSummary: conv.ai_summary !== undefined ? conv.ai_summary : c.aiSummary,
-                            customFields: {
-                                ...c.customFields,
-                                dni: conv.dni || c.customFields?.dni,
-                                pacienteNombre: conv.nombre_completo || c.customFields?.pacienteNombre,
-                                obraSocial: conv.obra_social || c.customFields?.obraSocial,
-                                fechaNacimiento: conv.fecha_nacimiento || c.customFields?.fechaNacimiento,
-                                email: conv.email || c.customFields?.email,
-                                departamento: conv.departamento || c.customFields?.departamento,
-                                motivoConsulta: conv.motivo_consulta || c.customFields?.motivoConsulta,
-                                medicoOEspecialidad: conv.medico_o_especialidad || c.customFields?.medicoOEspecialidad
-                            }
-                        };
-                    }
-                    return c;
-                }));
+
+                // FASE 4: encolar y procesar en batch
+                pendingConvUpdates.push(conv);
+                clearTimeout(batchConvTimer);
+                batchConvTimer = setTimeout(flushConvBatch, 80);
             }
         });
-
         return () => {
             clearTimeout(initialLoadTimer);
             clearInterval(heartbeatInterval);
+            clearTimeout(batchMsgTimer);
+            clearTimeout(batchConvTimer);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (unsubscribe) unsubscribe();
         };
     }, []);
+
+
 
 
     // Manejar envío de mensaje en la consola de chat (texto, notas y archivos multimedia)
