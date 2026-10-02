@@ -1780,6 +1780,14 @@ export default function ContactCenterChatConsole({
             if (triageFilter === 'con_orden') {
                 return chat.customFields?.pedidoMedicoFoto && chat.customFields.pedidoMedicoFoto !== 'No adjuntado';
             }
+            // Filtro por agente específico (usado desde el sub-panel de Otras)
+            if (triageFilter.startsWith('agent_')) {
+                const agentId = triageFilter.replace('agent_', '').toLowerCase();
+                const agent = CONTACT_CENTER_AGENTS.find(a => a.id.toLowerCase() === agentId);
+                if (!agent) return true;
+                const a = (chat.assignedTo || '').toLowerCase();
+                return a === agentId || (chat.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase());
+            }
             return true;
         }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
     }, [chats, isSearching, searchScope, searchedChats, filterTab, triageFilter, myAliases, activeAgent.name]);
@@ -2516,6 +2524,7 @@ export default function ContactCenterChatConsole({
                             type="button"
                             onClick={() => {
                                 setFilterTab('sin_asignar');
+                                setTriageFilter('all');
                                 const first = chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
                                 if (first && onSelectChat) onSelectChat(first.id);
                             }}
@@ -2719,82 +2728,23 @@ export default function ContactCenterChatConsole({
                     </div>
                 </div>
 
-                {/* SUB-FILTROS DE TRIAGE CLÍNICO Y DEMORAS */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '4px 8px',
-                    background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
-                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
-                    overflowX: 'auto'
-                }}>
-                    <button
-                        type="button"
-                        onClick={() => setTriageFilter('all')}
-                        style={{
-                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
-                            border: triageFilter === 'all' ? '1px solid #0284C7' : '1px solid transparent',
-                            background: triageFilter === 'all' ? '#E0F2FE' : 'transparent',
-                            color: triageFilter === 'all' ? '#0284C7' : '#64748B',
-                            cursor: 'pointer', whiteSpace: 'nowrap'
-                        }}
-                    >
-                        Todos
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setTriageFilter('demora_15')}
-                        title="Pacientes esperando respuesta hace más de 15 minutos"
-                        style={{
-                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
-                            border: triageFilter === 'demora_15' ? '1px solid #EA580C' : '1px solid transparent',
-                            background: triageFilter === 'demora_15' ? '#FFEDD5' : 'transparent',
-                            color: triageFilter === 'demora_15' ? '#C2410C' : '#64748B',
-                            cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px'
-                        }}
-                    >
-                        ⏳ &gt;15m
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setTriageFilter('guardia')}
-                        title="Consultas que mencionan guardia, urgencia o dolor agudo"
-                        style={{
-                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
-                            border: triageFilter === 'guardia' ? '1px solid #DC2626' : '1px solid transparent',
-                            background: triageFilter === 'guardia' ? '#FEE2E2' : 'transparent',
-                            color: triageFilter === 'guardia' ? '#DC2626' : '#64748B',
-                            cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px'
-                        }}
-                    >
-                        🚨 Urgencias
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setTriageFilter('con_orden')}
-                        title="Pacientes con orden médica adjuntada"
-                        style={{
 
-                            padding: '2px 7px', borderRadius: '10px', fontSize: '0.66rem', fontWeight: 700,
-                            border: triageFilter === 'con_orden' ? '1px solid #16A34A' : '1px solid transparent',
-                            background: triageFilter === 'con_orden' ? '#DCFCE7' : 'transparent',
-                            color: triageFilter === 'con_orden' ? '#15803D' : '#64748B',
-                            cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '2px'
-                        }}
-                    >
-                        📎 Orden
-                    </button>
-
-                    {/* BOTÓN RÁPIDO DE PASE DE GUARDIA / TRASPASO AL TERMINAR TURNO */}
-                    {myAssignedChats.length > 0 && (
+                {/* PASE DE GUARDIA - solo cuando hay chats asignados */}
+                {myAssignedChats.length > 0 && (
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        padding: '4px 8px',
+                        background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
+                        borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`
+                    }}>
                         <button
                             type="button"
                             onClick={() => setHandoverModalOpen(true)}
-                            title="Traspaso de Turno / Pase de Guardia: reasigna todas tus conversaciones al terminar tu horario y registra nota interna en cada una"
+                            title="Traspaso de Turno / Pase de Guardia: reasigna todas tus conversaciones al terminar tu horario"
                             style={{
-                                marginLeft: 'auto',
-                                padding: '2px 8px',
+                                padding: '3px 10px',
                                 borderRadius: '6px',
                                 border: 'none',
                                 background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
@@ -2812,8 +2762,80 @@ export default function ContactCenterChatConsole({
                             <ArrowRightLeft size={11} />
                             <span>Pase de Guardia ({myAssignedChats.length})</span>
                         </button>
-                    )}
-                </div>
+                    </div>
+                )}
+
+                {/* SUB-FILTROS DE AGENTES (solo visibles en tab Otras) */}
+                {filterTab === 'asignadas_otros' && (() => {
+                    const otherAgents = CONTACT_CENTER_AGENTS.filter(a => a.id !== activeAgent?.id);
+                    if (otherAgents.length === 0) return null;
+                    return (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '5px 8px',
+                            background: ccTheme.isDark ? '#0F172A' : '#F8FAFC',
+                            borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                            overflowX: 'auto',
+                            flexWrap: 'nowrap'
+                        }}>
+                            {/* Chip "Todos" para ver de todas las otras agentes */}
+                            <button
+                                type="button"
+                                onClick={() => setTriageFilter('all')}
+                                style={{
+                                    padding: '2px 8px', borderRadius: '10px', fontSize: '0.63rem', fontWeight: 700,
+                                    border: triageFilter === 'all' ? '1px solid #0284C7' : `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                                    background: triageFilter === 'all' ? '#E0F2FE' : 'transparent',
+                                    color: triageFilter === 'all' ? '#0284C7' : '#64748B',
+                                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
+                                }}
+                            >
+                                Todas
+                            </button>
+
+                            {/* Un chip por agente */}
+                            {otherAgents.map(agent => {
+                                const agentChats = chats.filter(c => {
+                                    const a = (c.assignedTo || '').toLowerCase();
+                                    return (a === agent.id.toLowerCase() || (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+                                });
+                                const isActive = triageFilter === `agent_${agent.id}`;
+                                return (
+                                    <button
+                                        key={agent.id}
+                                        type="button"
+                                        onClick={() => setTriageFilter(isActive ? 'all' : `agent_${agent.id}`)}
+                                        style={{
+                                            padding: '2px 8px', borderRadius: '10px', fontSize: '0.63rem', fontWeight: 700,
+                                            border: isActive ? `1px solid ${agent.color || '#0284C7'}` : `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                                            background: isActive ? (agent.color || '#0284C7') + '22' : 'transparent',
+                                            color: isActive ? (agent.color || '#0284C7') : '#64748B',
+                                            cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                                            display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}
+                                    >
+                                        <span style={{
+                                            width: '6px', height: '6px', borderRadius: '50%',
+                                            background: agent.color || '#0284C7',
+                                            display: 'inline-block', flexShrink: 0
+                                        }} />
+                                        {agent.name.split(' ')[0]}
+                                        {agentChats.length > 0 && (
+                                            <span style={{
+                                                fontSize: '0.60rem', fontWeight: 800,
+                                                padding: '0px 4px', borderRadius: '7px',
+                                                background: isActive ? (agent.color || '#0284C7') : '#E2E8F0',
+                                                color: isActive ? '#fff' : '#475569'
+                                            }}>{agentChats.length}</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
 
 
                 {/* BARRA DE SELECCIÓN Y CIERRE MASIVO SILENCIOSO */}
