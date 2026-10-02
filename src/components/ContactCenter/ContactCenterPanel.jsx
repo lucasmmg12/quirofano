@@ -144,17 +144,17 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         reloadChats();
 
-        // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
+        // Heartbeat adaptativo: cada 10 segundos para verificar consistencia si la pestaña está visible.
         // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
         let lastFetchTime = Date.now();
         const heartbeatInterval = setInterval(() => {
             if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
             reloadChats(true);
             lastFetchTime = Date.now();
-        }, 45000);
+        }, 10000);
 
         const handleVisibilityChange = () => {
-            if (!document.hidden && Date.now() - lastFetchTime > 30000) {
+            if (!document.hidden && Date.now() - lastFetchTime > 10000) {
                 reloadChats(true);
                 lastFetchTime = Date.now();
             }
@@ -170,10 +170,17 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 const normPhone = normalizeArgentinePhone(newMsg.phone);
                 const isIncoming = newMsg.direction === 'incoming';
 
+                const matchesPhone = (phoneA, phoneB) => {
+                    const a = normalizeArgentinePhone(phoneA);
+                    const b = normalizeArgentinePhone(phoneB);
+                    if (a === b) return true;
+                    return a.length >= 8 && b.length >= 8 && a.slice(-8) === b.slice(-8);
+                };
+
                 // Si es un UPDATE de mensaje (ej: resultado de análisis IA de orden médica)
                 if (eventType === 'UPDATE') {
                     setChats(prevChats => {
-                        const chatIdx = prevChats.findIndex(c => normalizeArgentinePhone(c.phone) === normPhone);
+                        const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
                         if (chatIdx < 0) return prevChats;
                         const existingChat = prevChats[chatIdx];
                         const updatedMessages = (existingChat.messages || []).map(m => {
@@ -213,7 +220,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
                 // Inserción optimista sin esperar el re-fetch completo
                 setChats(prevChats => {
-                    const chatIdx = prevChats.findIndex(c => normalizeArgentinePhone(c.phone) === normPhone);
+                    const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
                     const now = new Date();
                     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
@@ -233,7 +240,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     if (chatIdx >= 0) {
                         const existingChat = prevChats[chatIdx];
                         const alreadyHasMsg = (existingChat.messages || []).some(m => 
-                            m.id === formattedMsg.id || (m.text === formattedMsg.text && m.timestamp === formattedMsg.timestamp)
+                            m.id === formattedMsg.id || (m.realId && m.realId === formattedMsg.realId)
                         );
                         const nextMsgs = alreadyHasMsg 
                             ? existingChat.messages 
