@@ -3192,18 +3192,6 @@ export default function ContactCenterChatConsole({
                                             );
                                         })()}
 
-                                        {/* Tag: Nombre del agente que respondió último (solo si fue agente) */}
-                                        {chat.lastResponder && chat.lastResponderRole === 'agent' && (
-                                            <span style={{
-                                                fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                                background: ccTheme.isDark ? '#1E3A5F' : '#EFF6FF',
-                                                color: ccTheme.isDark ? '#93C5FD' : '#1E40AF',
-                                                border: `1px solid ${themeCardBorder}`,
-                                                display: 'flex', alignItems: 'center', gap: '3px'
-                                            }}>
-                                                {chat.lastResponder}
-                                            </span>
-                                        )}
                                     </div>
 
                                     {/* Snippet de Coincidencia de Búsqueda */}
