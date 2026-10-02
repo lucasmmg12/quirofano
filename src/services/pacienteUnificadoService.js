@@ -420,8 +420,9 @@ export async function fetchPacienteDetalle(paciente) {
                 }
             }
 
-            // Si no obtuvimos turnos próximos de SALUS, consultar turnos_activos_pacientes en Supabase
-            if (turnosProximosData.length === 0 && (dni || telefono)) {
+            // 4.3 Consulta de turnos próximos (SIEMPRE activa, independiente de consultas históricas)
+            // Se fusionan y deduplican turnos de SALUS sync-server con turnos_activos_pacientes y contact_center_turnos_online en Supabase
+            if (dni || telefono) {
                 try {
                     const todayIso = new Date().toISOString().split('T')[0];
                     let q = supabase
@@ -465,8 +466,8 @@ export async function fetchPacienteDetalle(paciente) {
                     console.warn('[pacienteUnificado] error fallback turnos_activos_pacientes:', e);
                 }
 
-                // Fallback secundario a contact_center_turnos_online si sigue vacío
-                if (turnosProximosData.length === 0 && dni) {
+                // Complemento con contact_center_turnos_online
+                if (dni) {
                     try {
                         const { data: turnosOnlineSb } = await supabase
                             .from('contact_center_turnos_online')
@@ -500,6 +501,21 @@ export async function fetchPacienteDetalle(paciente) {
                         console.warn('[pacienteUnificado] error fallback turnos online:', e);
                     }
                 }
+
+                // Deduplicar turnos próximos por fecha, hora y profesional para garantizar consistencia total
+                const uniqueTurnos = [];
+                const seenKeys = new Set();
+                for (const tp of turnosProximosData) {
+                    const normDate = String(tp.fecha_iso || tp.fecha_visita || '').replace(/\D/g, '').slice(0, 8);
+                    const normTime = String(tp.hora_visita || '').slice(0, 5).replace(':', '');
+                    const normDoc = String(tp.medico || '').toLowerCase().trim().slice(0, 15);
+                    const key = `${normDate}_${normTime}_${normDoc}`;
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        uniqueTurnos.push(tp);
+                    }
+                }
+                turnosProximosData = uniqueTurnos;
             }
 
             return [

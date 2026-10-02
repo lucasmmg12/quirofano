@@ -139,6 +139,100 @@ import ContactCenterThemeModal from './ContactCenterThemeModal';
 // =========================================================================
 const TEST_BOT_RESET_INDICATOR_ENABLED = false;
 
+/**
+ * Pantalla de carga clínica para la columna lateral (Ficha CRM / Historial).
+ * Evita confusiones entre operadores ocultando de inmediato los datos del paciente anterior
+ * mientras se sincroniza la identidad clínica, padrón SALUS y turnos activos del nuevo paciente.
+ */
+function SidebarLoadingSkeleton({ ccTheme, rightCardBg, rightCardBorder, themeCardText, themeCardSubtext }) {
+    const isDark = ccTheme?.isDark;
+    const pulseBg = isDark ? '#334155' : '#E2E8F0';
+    const subPulseBg = isDark ? '#1E293B' : '#F1F5F9';
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Banner institucional de carga clínica */}
+            <div style={{
+                padding: '12px 14px',
+                borderRadius: '10px',
+                background: isDark ? '#082F49' : '#F0F9FF',
+                border: `1.5px solid ${isDark ? '#0284C7' : '#BAE6FD'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)'
+            }}>
+                <Loader2 size={22} className="animate-spin" color={ccTheme?.accentColor || '#0284C7'} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ fontSize: '0.80rem', fontWeight: 800, color: isDark ? '#E0F2FE' : '#0369A1' }}>
+                        Cargando ficha del paciente...
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: isDark ? '#93C5FD' : '#0284C7', fontWeight: 600 }}>
+                        Sincronizando datos clínicos, padrón SALUS y turnos
+                    </div>
+                </div>
+            </div>
+
+            {/* Skeleton Card 1: Resumen IA */}
+            <div style={{
+                background: rightCardBg,
+                border: `1.5px solid ${rightCardBorder}`,
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="animate-pulse" style={{ height: '14px', width: '150px', background: pulseBg, borderRadius: '4px' }} />
+                    <div className="animate-pulse" style={{ height: '22px', width: '80px', background: pulseBg, borderRadius: '6px' }} />
+                </div>
+                <div className="animate-pulse" style={{ height: '48px', width: '100%', background: subPulseBg, borderRadius: '8px', border: `1px solid ${rightCardBorder}` }} />
+                <div className="animate-pulse" style={{ height: '56px', width: '100%', background: subPulseBg, borderRadius: '8px', border: `1px solid ${rightCardBorder}` }} />
+            </div>
+
+            {/* Skeleton Card 2: Prestador detectado */}
+            <div style={{
+                background: isDark ? '#064E3B15' : '#F0FDF4',
+                border: `1.5px solid ${isDark ? '#065F46' : '#BBF7D0'}`,
+                borderRadius: '10px',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+            }}>
+                <div className="animate-pulse" style={{ height: '12px', width: '130px', background: isDark ? '#065F46' : '#86EFAC', borderRadius: '4px' }} />
+                <div className="animate-pulse" style={{ height: '18px', width: '75%', background: isDark ? '#065F46' : '#86EFAC', borderRadius: '4px' }} />
+            </div>
+
+            {/* Skeleton Card 3: Datos del Paciente (DNI, NHC, Nombre, Obra Social) */}
+            <div style={{
+                background: rightCardBg,
+                border: `1.5px solid ${rightCardBorder}`,
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="animate-pulse" style={{ height: '12px', width: '130px', background: pulseBg, borderRadius: '4px' }} />
+                    <div className="animate-pulse" style={{ height: '20px', width: '70px', background: pulseBg, borderRadius: '6px' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div className="animate-pulse" style={{ height: '44px', background: subPulseBg, borderRadius: '8px' }} />
+                    <div className="animate-pulse" style={{ height: '44px', background: subPulseBg, borderRadius: '8px' }} />
+                </div>
+                <div className="animate-pulse" style={{ height: '44px', background: subPulseBg, borderRadius: '8px' }} />
+                <div className="animate-pulse" style={{ height: '44px', background: subPulseBg, borderRadius: '8px' }} />
+                <div className="animate-pulse" style={{ height: '44px', background: subPulseBg, borderRadius: '8px' }} />
+            </div>
+        </div>
+    );
+}
+
 export default function ContactCenterChatConsole({ 
     chats = [], 
     activeChatId, 
@@ -662,6 +756,8 @@ export default function ContactCenterChatConsole({
     // Estados Resumen IA del Paciente y Prestador
     const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
     const [aiSummaryData, setAiSummaryData] = useState(null);
+    const [isSidebarLoading, setIsSidebarLoading] = useState(false);
+    const lastChatIdRef = useRef(null);
     const patientHistoryCache = useRef({});
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
@@ -670,7 +766,18 @@ export default function ContactCenterChatConsole({
 
     // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo (Vinculación EXCLUSIVA por DNI)
     useEffect(() => {
-        if (selectedChat) {
+        if (selectedChat?.id) {
+            const isNewChat = lastChatIdRef.current !== selectedChat.id;
+            lastChatIdRef.current = selectedChat.id;
+
+            if (isNewChat) {
+                // Activar pantalla de carga y purgar inmediatamente los datos del paciente anterior
+                setIsSidebarLoading(true);
+                setPatientHistory(null);
+                setAiSummaryData(null);
+                setAssociatedPatients([]);
+            }
+
             const initialDni = (selectedChat.customFields?.dni && selectedChat.customFields?.dni !== 'A verificar') ? selectedChat.customFields?.dni : '';
             const initialNombre = selectedChat.customFields?.pacienteNombre || selectedChat.contactName || '';
 
@@ -686,6 +793,11 @@ export default function ContactCenterChatConsole({
             });
             setIsEditingCrm(false);
             setAiSummaryData(selectedChat.aiSummary || null);
+
+            // Temporizador suave para finalizar la animación de carga clínica
+            const minTimer = setTimeout(() => {
+                setIsSidebarLoading(false);
+            }, 380);
 
             // Si ya tiene un DNI específico pero faltan datos esenciales (fecha de nacimiento, email), resolver en background con SALUS
             const currentFechaNac = selectedChat.customFields?.fechaNacimiento;
@@ -716,8 +828,12 @@ export default function ContactCenterChatConsole({
                             selectedChat.customFields.esPacienteExistente = true;
                         }
                     }
-                }).catch(() => {});
+                }).catch(() => {}).finally(() => {
+                    setIsSidebarLoading(false);
+                });
             }
+
+            return () => clearTimeout(minTimer);
         }
     }, [selectedChat?.id]);
 
@@ -1019,6 +1135,8 @@ export default function ContactCenterChatConsole({
                 .then(det => {
                     if (det) {
                         patientHistoryCache.current[cacheKey] = det;
+                        if (det.dni) patientHistoryCache.current[`dni_${det.dni}`] = det;
+                        if (det.nhc) patientHistoryCache.current[`nhc_${det.nhc}`] = det;
                     }
                     setPatientHistory(det);
                     // Si encontramos NHC o DNI en el historial y no estaban en crmForm, enriquecer ficha
@@ -5258,8 +5376,18 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                 </div>
 
                 <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {/* TAB 1: FICHA CRM DEL PACIENTE */}
-                    {activeDetailTab === 'info' && (
+                    {isSidebarLoading ? (
+                        <SidebarLoadingSkeleton 
+                            ccTheme={ccTheme} 
+                            rightCardBg={rightCardBg} 
+                            rightCardBorder={rightCardBorder} 
+                            themeCardText={themeCardText} 
+                            themeCardSubtext={themeCardSubtext} 
+                        />
+                    ) : (
+                        <>
+                            {/* TAB 1: FICHA CRM DEL PACIENTE */}
+                            {activeDetailTab === 'info' && (
                         <>
                             {/* WIDGET PRINCIPAL: RESUMEN INTELIGENTE IA (OPENAI) & PRESTADOR DETECTADO */}
                             <div style={{
@@ -6493,6 +6621,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 </div>
                             )}
                         </div>
+                    )}
+                        </>
                     )}
                 </div>
             </div>
