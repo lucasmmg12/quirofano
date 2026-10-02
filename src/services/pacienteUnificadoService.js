@@ -177,8 +177,9 @@ export async function fetchPacienteDetalle(paciente) {
                     .limit(20);
                 data = byId || [];
             }
-            if (data.length === 0 && nombre) {
-                const tokens = getNameTokens(nombre);
+            // Búsqueda por nombre SOLO si no hay id_paciente ni DNI ni NHC (evita full table scan bajo carga)
+            if (data.length === 0 && nombre && !id_paciente && !dni && !nhc) {
+                const tokens = getNameTokens(nombre).filter(t => t.length >= 3);
                 if (tokens.length >= 2) {
                     let q = supabase
                         .from('altas_administrativas')
@@ -186,7 +187,7 @@ export async function fetchPacienteDetalle(paciente) {
                     tokens.forEach(tok => {
                         q = q.ilike('paciente', `%${tok}%`);
                     });
-                    const { data: byName } = await q.order('fecha_ingreso', { ascending: false }).limit(20);
+                    const { data: byName } = await q.order('fecha_ingreso', { ascending: false }).limit(10);
                     data = byName || [];
                 }
             }
@@ -244,11 +245,16 @@ export async function fetchPacienteDetalle(paciente) {
                         qVis = qVis.eq('nhc', String(nhc));
                     } else if (dni) {
                         qVis = qVis.eq('nif', String(dni));
-                    } else if (nombre) {
-                        const tokens = getNameTokens(nombre);
+                    } else if (nombre && !nhc && !dni) {
+                        // ILIKE solo como último recurso cuando no hay DNI ni NHC
+                        const tokens = getNameTokens(nombre).filter(t => t.length >= 3);
                         if (tokens.length >= 2) {
                             tokens.forEach(tok => { qVis = qVis.ilike('paciente', `%${tok}%`); });
+                        } else {
+                            return; // Sin suficientes tokens: no ejecutar query
                         }
+                    } else {
+                        return; // Sin identificadores válidos: no ejecutar query
                     }
 
                     const { data: svVisitas } = await qVis.order('fecha_visita', { ascending: false }).limit(50);
@@ -312,7 +318,8 @@ export async function fetchPacienteDetalle(paciente) {
                         cgData = byDni || [];
                     }
                     if (cgData.length === 0 && !dni && !nhc && nombre) {
-                        const tokens = getNameTokens(nombre);
+                        // ILIKE solo como último recurso cuando no hay DNI ni NHC
+                        const tokens = getNameTokens(nombre).filter(t => t.length >= 3);
                         if (tokens.length >= 2) {
                             let q = supabase
                                 .from('consultas_guardia')
@@ -320,7 +327,7 @@ export async function fetchPacienteDetalle(paciente) {
                             tokens.forEach(tok => {
                                 q = q.ilike('paciente', `%${tok}%`);
                             });
-                            const { data: byNom } = await q.order('fecha_visita', { ascending: false }).limit(30);
+                            const { data: byNom } = await q.order('fecha_visita', { ascending: false }).limit(15);
                             cgData = byNom || [];
                         }
                     }

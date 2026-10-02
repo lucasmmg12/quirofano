@@ -763,6 +763,8 @@ export default function ContactCenterChatConsole({
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
 
+    // Ref para rastrear por cuál chat ya se solicitó el historial (evita refetch en re-renders)
+    const historyRequestedForChat = useRef(null);
 
     // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo (Vinculación EXCLUSIVA por DNI)
     useEffect(() => {
@@ -1113,47 +1115,72 @@ export default function ContactCenterChatConsole({
         }
     }, [selectedChat?.id, selectedChat?.phone, selectedChat?.messages?.length]);
 
-    // Cargar Historial 360° y Turnos Próximos del paciente
-    // Cargar Historial 360° y Turnos Próximos del paciente EXCLUSIVAMENTE por DNI o NHC
+    // =========================================================================
+    // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA
+    // Se ejecuta SOLO cuando la agente abre la pestaña "Historial" (activeDetailTab === 'historial').
+    // Antes se cargaba automáticamente al cambiar de chat, lo que disparaba queries pesadas
+    // a salus_visitas, consultas_guardia, altas_administrativas y laboratorios en CADA cambio de chat,
+    // aunque la agente nunca abriera la pestaña. Eso generaba los 500 errors bajo carga.
+    // =========================================================================
     useEffect(() => {
+        // Solo disparar si la pestaña activa es 'historial'
+        if (activeDetailTab !== 'historial') return;
+
         const targetDni = (crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
         const targetNhc = selectedChat?.customFields?.nhc || '';
         const targetNombre = crmForm.pacienteNombre || selectedChat?.contactName || '';
+        const chatId = selectedChat?.id;
 
-        // Vinculación exclusiva por DNI: NO buscar nunca por teléfono
-        if (targetDni.length >= 6 || targetNhc) {
-            const cacheKey = targetNhc ? `nhc_${targetNhc}` : `dni_${targetDni}`;
-            if (patientHistoryCache.current[cacheKey]) {
-                setPatientHistory(patientHistoryCache.current[cacheKey]);
-                setLoadingHistory(false);
-                return;
-            }
-
-            setLoadingHistory(true);
-            fetchPacienteDetalle({ 
-                dni: targetDni || null, 
-                nhc: targetNhc || null, 
-                telefono: null, 
-                nombre: targetNombre 
-            })
-                .then(det => {
-                    if (det) {
-                        patientHistoryCache.current[cacheKey] = det;
-                        if (det.dni) patientHistoryCache.current[`dni_${det.dni}`] = det;
-                        if (det.nhc) patientHistoryCache.current[`nhc_${det.nhc}`] = det;
-                    }
-                    setPatientHistory(det);
-                    // Si encontramos NHC o DNI en el historial y no estaban en crmForm, enriquecer ficha
-                    if (det?.nhc && !crmForm.dni && det.dni) {
-                        setCrmForm(prev => ({ ...prev, dni: det.dni }));
-                    }
-                })
-                .catch(err => console.warn('Error al cargar historial 360:', err))
-                .finally(() => setLoadingHistory(false));
-        } else {
+        // Sin identificadores válidos: no buscar
+        if (!chatId || (targetDni.length < 6 && !targetNhc)) {
             setPatientHistory(null);
+            return;
         }
-    }, [crmForm.dni, selectedChat?.id]);
+
+        // Revisar caché primero (evita refetch para el mismo paciente)
+        const cacheKey = targetNhc ? `nhc_${targetNhc}` : `dni_${targetDni}`;
+        if (patientHistoryCache.current[cacheKey]) {
+            setPatientHistory(patientHistoryCache.current[cacheKey]);
+            setLoadingHistory(false);
+            return;
+        }
+
+        // Evitar refetch si ya se solicitó para este chat (ej: agente cierra y reabre la pestaña)
+        if (historyRequestedForChat.current === `${chatId}_${cacheKey}`) return;
+        historyRequestedForChat.current = `${chatId}_${cacheKey}`;
+
+        setLoadingHistory(true);
+        fetchPacienteDetalle({
+            dni: targetDni || null,
+            nhc: targetNhc || null,
+            telefono: null,
+            nombre: targetNombre
+        })
+            .then(det => {
+                if (det) {
+                    patientHistoryCache.current[cacheKey] = det;
+                    if (det.dni) patientHistoryCache.current[`dni_${det.dni}`] = det;
+                    if (det.nhc) patientHistoryCache.current[`nhc_${det.nhc}`] = det;
+                }
+                setPatientHistory(det);
+                // Si encontramos NHC o DNI en el historial y no estaban en crmForm, enriquecer ficha
+                if (det?.nhc && !crmForm.dni && det.dni) {
+                    setCrmForm(prev => ({ ...prev, dni: det.dni }));
+                }
+            })
+            .catch(err => {
+                console.warn('[historial-lazy] Error al cargar historial 360°:', err);
+                historyRequestedForChat.current = null; // Permitir reintento ante error
+            })
+            .finally(() => setLoadingHistory(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeDetailTab, selectedChat?.id, crmForm.dni]);
+
+    // Limpiar el tracking al cambiar de chat para que se pueda recargar si vuelve al mismo
+    useEffect(() => {
+        historyRequestedForChat.current = null;
+        setPatientHistory(null);
+    }, [selectedChat?.id]);
 
     // Búsqueda en Padrón SALUS (EXCLUSIVA por DNI o NHC)
     const handleLookupSalus = async () => {
