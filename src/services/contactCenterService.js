@@ -772,10 +772,66 @@ export async function fetchLiveAndDemoChats() {
                 (conv?.motivo_consulta && (conv.motivo_consulta.toLowerCase().includes('familiar') || conv.motivo_consulta.toLowerCase().includes('tercero')))
             );
 
+            // =====================================================================
+            // C. Extracción de DNI y Nombre desde mensajes del bot de triage
+            // El bot pide los datos al paciente y éste responde en el formato:
+            //   "Melisa Vanesa Bustos/31871182/40años/Provincia"  (slash)
+            // También detecta: "DNI: 31871182", "mi DNI es 31871182", o un número solo.
+            // FALLBACK: solo se ejecuta si conv.dni está vacío en la BD.
+            // =====================================================================
+            function extractPatientDataFromMessages(msgs) {
+                const out = { dni: null, nombre: null };
+                if (!Array.isArray(msgs)) return out;
+                for (const m of msgs) {
+                    const text = String(m.content || '').trim();
+                    if (!text || text.startsWith('_event_')) continue;
+
+                    // Patrón 1: formato slash del bot de triage
+                    // "Melisa Vanesa Bustos/31871182/40años/San Juan"
+                    const slashMatch = text.match(
+                        /^([A-Za-záéíóúÁÉÍÓÚñÑüÜ\s]{3,60})\/([0-9]{7,9})(?:\/[^\/]*){0,3}$/
+                    );
+                    if (slashMatch) {
+                        out.nombre = slashMatch[1].trim();
+                        out.dni = slashMatch[2].trim();
+                        return out;
+                    }
+
+                    // Patrón 2: etiqueta explícita "DNI: 31871182" / "mi DNI es 31.871.182"
+                    const labelMatch = text.match(
+                        /(?:dni|d\.n\.i|documento|doc)[:\s.]+([0-9][0-9.\s]{5,10}[0-9])/i
+                    );
+                    if (labelMatch) {
+                        const candidate = labelMatch[1].replace(/[\s.]/g, '');
+                        if (candidate.length >= 7 && candidate.length <= 9) {
+                            out.dni = candidate;
+                            return out;
+                        }
+                    }
+
+                    // Patrón 3: mensaje que ES EXACTAMENTE un número de DNI (7-9 dígitos)
+                    const onlyDni = text.match(/^\s*([0-9]{7,9})\s*$/);
+                    if (onlyDni) {
+                        out.dni = onlyDni[1];
+                        return out;
+                    }
+                }
+                return out;
+            }
+
+            // Ejecutar solo si la conv no tiene DNI guardado en BD
+            const extracted = (!conv?.dni) ? extractPatientDataFromMessages(messages) : { dni: null, nombre: null };
+            const effectiveDni = conv?.dni || extracted.dni || null;
+
+            // Nombre resuelto: preferir conv.nombre_completo (validado), luego del triage, luego pushName
+            const resolvedNombre = (conv?.nombre_completo && !isGenericName(conv.nombre_completo))
+                ? conv.nombre_completo
+                : (extracted.nombre || resolvedContactName);
+
             const patientFields = {
-                dni: conv?.dni || null,
+                dni: effectiveDni,
                 nhc: conv?.nhc || null,
-                pacienteNombre: conv?.nombre_completo || resolvedContactName,
+                pacienteNombre: resolvedNombre,
                 obraSocial: conv?.obra_social || null,
                 fechaNacimiento: formatBirthDate(conv?.fecha_nacimiento),
                 email: conv?.email || null,
@@ -790,10 +846,10 @@ export async function fetchLiveAndDemoChats() {
                 fichaDual: {
                     esGestionTercero: isThirdParty,
                     parentesco: aiDual?.parentesco || 'Familiar',
-                    titularNombre: aiDual?.titular?.nombre || incomingSenderName || resolvedContactName,
+                    titularNombre: aiDual?.titular?.nombre || incomingSenderName || resolvedNombre,
                     titularTelefono: phone,
-                    pacienteNombre: aiDual?.paciente?.nombre || conv?.nombre_completo || resolvedContactName,
-                    pacienteDni: aiDual?.paciente?.dni || conv?.dni || null,
+                    pacienteNombre: aiDual?.paciente?.nombre || resolvedNombre,
+                    pacienteDni: aiDual?.paciente?.dni || effectiveDni,
                     pacienteObraSocial: aiDual?.paciente?.obra_social || conv?.obra_social || null,
                     pacienteNhc: aiDual?.paciente?.nhc || conv?.nhc || null
                 }
@@ -801,7 +857,7 @@ export async function fetchLiveAndDemoChats() {
 
             realChats.push({
                 id: 'REAL_' + phone.replace(/\D/g, '').slice(-12),
-                contactName: resolvedContactName,
+                contactName: resolvedNombre,
                 phone: phone,
                 channel: 'WHATSAPP',
                 channelNumber: '5492645825637',
