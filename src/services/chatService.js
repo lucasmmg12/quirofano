@@ -152,24 +152,34 @@ export async function markAllAsRead() {
  */
 export async function fetchUnreadCounts() {
     try {
-        const { data, error } = await supabase
+        // 1. Prioridad: Consulta atómica agregada mediante RPC en PostgreSQL (ultrarrápida y sin transferir filas)
+        const { data, error } = await supabase.rpc('get_unread_message_counts');
+        if (!error && data && typeof data === 'object') {
+            const normalizedCounts = {};
+            Object.entries(data).forEach(([phone, count]) => {
+                const norm = normalizeArgentinePhone(phone) || phone;
+                normalizedCounts[norm] = (normalizedCounts[norm] || 0) + Number(count || 0);
+            });
+            return normalizedCounts;
+        }
+
+        // 2. Fallback resiliente sin ordenamiento pesado si el RPC no responde
+        const { data: rawRows, error: rawErr } = await supabase
             .from('whatsapp_messages')
             .select('phone, line_id')
             .eq('direction', 'incoming')
             .eq('is_read', false)
             .in('line_id', ['line_a', 'line_b', 'line_c', 'line_meta'])
-            .order('id', { ascending: false })
-            .limit(500);
+            .limit(1000);
 
-        if (error) {
-            console.warn('[chatService] Advertencia consultando no leídos:', error?.message || error);
+        if (rawErr) {
+            console.warn('[chatService] Advertencia consultando no leídos:', rawErr?.message || rawErr);
             return {};
         }
 
         const counts = {};
-        (data || []).forEach(msg => {
-            const normalizedPhone = normalizeArgentinePhone(msg.phone);
-            const key = normalizedPhone || msg.phone;
+        (rawRows || []).forEach(msg => {
+            const key = normalizeArgentinePhone(msg.phone) || msg.phone;
             counts[key] = (counts[key] || 0) + 1;
         });
         return counts;
