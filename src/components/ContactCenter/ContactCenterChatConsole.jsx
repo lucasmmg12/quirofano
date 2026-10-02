@@ -1025,11 +1025,11 @@ export default function ContactCenterChatConsole({
 
 
     // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo
-    // SIEMPRE recarga al cambiar de chat para mostrar el historial completo,
-    // ya que el fetch global (limit 800) puede incluir solo los 2-3 mensajes más recientes
-    // de este paciente sin traer la conversación completa.
+    // SIEMPRE recarga al cambiar de chat para mostrar el historial completo.
+    // IMPORTANTE: NO mutar selectedChat.messages directamente (causaba React #321).
+    // Se usa onUpdateChatMessages para actualizar el estado en el padre correctamente.
     useEffect(() => {
-        if (!selectedChat?.phone) return;
+        if (!selectedChat?.phone || !selectedChat?.id) return;
 
         let isCancelled = false;
         setLoadingChatMessages(true);
@@ -1039,19 +1039,22 @@ export default function ContactCenterChatConsole({
             .then(msgs => {
                 if (isCancelled) return;
                 if (msgs && msgs.length > 0) {
-                    // Fusionar con mensajes ya en memoria (ej: llegados por RealTime mientras cargaba)
-                    const existingIds = new Set((selectedChat.messages || []).map(m => m.id || m.realId));
-                    const realtimeOnly = (selectedChat.messages || []).filter(m => !msgs.some(
-                        loaded => (loaded.id === m.id) || (loaded.realId === m.realId)
-                    ));
-                    selectedChat.messages = [...msgs, ...realtimeOnly];
-                    setForceUpdate(n => n + 1);
-                } else {
-                    // Sin mensajes en BD: preservar los que llegaron por RealTime
-                    if (!selectedChat.messages || selectedChat.messages.length === 0) {
-                        selectedChat.messages = [];
-                        setNoMoreOlder(true);
+                    // Fusionar: mensajes de BD + los que llegaron por RealTime mientras cargaba
+                    const realtimeOnly = (selectedChat.messages || []).filter(m =>
+                        !msgs.some(loaded => (loaded.id === m.id) || (loaded.realId === m.realId))
+                    );
+                    const merged = [...msgs, ...realtimeOnly];
+
+                    // Actualizar a través del padre (correcto) si el callback existe
+                    if (typeof onUpdateChatMessages === 'function') {
+                        onUpdateChatMessages(selectedChat.id, merged);
+                    } else {
+                        // Fallback: mutación directa solo si no hay callback
+                        selectedChat.messages = merged;
+                        setForceUpdate(n => n + 1);
                     }
+                } else {
+                    setNoMoreOlder(true);
                 }
             })
             .catch(err => {

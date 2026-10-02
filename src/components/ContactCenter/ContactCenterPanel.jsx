@@ -474,6 +474,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
+    // Actualizar mensajes de un chat específico desde el hijo (ContactCenterChatConsole)
+    // Evita mutaciones directas del estado que causaban React error #321.
+    const handleUpdateChatMessages = (chatId, messages) => {
+        setChats(prev => prev.map(c =>
+            c.id === chatId ? { ...c, messages } : c
+        ));
+    };
+
     // Asignar chat exclusivamente a una agente (bloqueo contra colisión o reasignación confirmada)
     const handleAssignChat = async (chatId, targetAgentId = activeAgent.id, options = {}) => {
         const targetChat = chats.find(c => c.id === chatId);
@@ -1068,6 +1076,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onBulkCloseChats={handleBulkCloseChats}
                     onBulkTransferChats={handleBulkTransferChats}
                     onBulkAssignChats={handleBulkAssignChats}
+                    onUpdateChatMessages={handleUpdateChatMessages}
                     activeSubTab={activeSubTab}
 
                     onNavigateTab={handleNavigateTab}
