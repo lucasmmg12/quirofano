@@ -144,17 +144,17 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
         reloadChats();
 
-        // Heartbeat adaptativo: cada 10 segundos para verificar consistencia si la pestaña está visible.
+        // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
         // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
         let lastFetchTime = Date.now();
         const heartbeatInterval = setInterval(() => {
             if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
             reloadChats(true);
             lastFetchTime = Date.now();
-        }, 10000);
+        }, 45000);
 
         const handleVisibilityChange = () => {
-            if (!document.hidden && Date.now() - lastFetchTime > 10000) {
+            if (!document.hidden && Date.now() - lastFetchTime > 45000) {
                 reloadChats(true);
                 lastFetchTime = Date.now();
             }

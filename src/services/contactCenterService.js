@@ -490,7 +490,7 @@ export async function fetchLiveAndDemoChats() {
             .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
             .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
-            .limit(1500);
+            .limit(300);
 
         if (error) {
             console.warn('[contact-center] Error consultando mensajes:', error);
@@ -1370,59 +1370,9 @@ export async function lookupPatientFromSalus(query) {
  * @returns {Promise<Array>} Lista de pacientes encontrados
  */
 export async function getAssociatedPatientsByPhone(phone) {
-    if (!phone) return [];
-    const clean = String(phone).replace(/\D/g, '');
-    if (clean.length < 6) return [];
-
-    // Extraer los últimos 7 dígitos significativos (estándar San Juan / Argentina)
-    const last7 = clean.slice(-7);
-    const p1 = last7.slice(0, 3);
-    const p2 = last7.slice(3);
-    const p1_dash = `${p1}-${p2}`;
-
-    const filters = [
-        `telefono.ilike.*${last7}*`,
-        `telefono.ilike.*${p1_dash}*`
-    ];
-
-    if (clean.length >= 8) {
-        const last8 = clean.slice(-8);
-        filters.push(`telefono.ilike.*${last8}*`);
-    }
-
-    try {
-        const { data, error } = await supabase
-            .from('hospital_pacientes')
-            .select('id_paciente, nombre, dni, telefono, email, fecha_nacimiento, coseguro, nhc, centro')
-            .or(filters.join(','))
-            .limit(30);
-
-        if (error) throw error;
-        if (!data || data.length === 0) return [];
-
-        // Post-filtro para asegurar match real de abonado
-        const valid = data.filter(item => {
-            const itemDigits = String(item.telefono || '').replace(/\D/g, '');
-            if (!itemDigits) return false;
-            return itemDigits.endsWith(last7) || itemDigits.includes(last7) || clean.endsWith(itemDigits.slice(-7));
-        });
-
-        // Deduplicar por id_paciente o dni
-        const seen = new Set();
-        const deduplicated = [];
-        for (const p of valid) {
-            const key = p.id_paciente || p.dni || p.nombre;
-            if (!seen.has(key)) {
-                seen.add(key);
-                deduplicated.push(p);
-            }
-        }
-
-        return deduplicated;
-    } catch (err) {
-        console.error('Error buscando pacientes asociados por teléfono:', err);
-        return [];
-    }
+    // Deprecado para prevenir bloqueos de CPU y timeouts en PostgreSQL por escaneo secuencial en hospital_pacientes (300k filas)
+    // Conforme a la directiva institucional, la vinculación y padrón de pacientes se realiza de forma estricta y segura por DNI.
+    return [];
 }
 
 /**
