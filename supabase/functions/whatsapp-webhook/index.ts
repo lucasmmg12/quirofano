@@ -2581,11 +2581,14 @@ async function handleChatbotTriage(
 
     // Comprobar si la sesión expiró por tiempo de inactividad
     // Umbral de inactividad: 15 minutos sin mensajes nuevos (configurable en app_config)
+    // CRÍTICO: La expiración por inactividad SOLO aplica si la conversación NO está asignada a un agente humano.
+    // Si la conversación tiene una agente asignada (conv.assigned_agent_id), NUNCA debe expirar ni desasignarse automáticamente.
     const INACTIVITY_TIMEOUT_MINUTES = cachedInactivityTimeoutMinutes || 15;
     const lastMsgTime = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
     const minutesSinceLastMsg = lastMsgTime > 0 ? (Date.now() - lastMsgTime) / (1000 * 60) : 0;
     const isSessionExpiredByInactivity = Boolean(
         conv && 
+        !conv.assigned_agent_id &&
         lastMsgTime > 0 && 
         minutesSinceLastMsg >= INACTIVITY_TIMEOUT_MINUTES
     );
@@ -2596,9 +2599,9 @@ async function handleChatbotTriage(
         /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|atras+|atr[aá]s+|atrs+|volver|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/im.test(cleanText);
 
 
-    // Si el chat estaba cerrado o expiró por inactividad:
+    // Si el chat estaba cerrado o una sesión NO asignada expiró por inactividad:
     // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVA SESIÓN
-    if (wasClosed || isSessionExpiredByInactivity) {
+    if (wasClosed || (isSessionExpiredByInactivity && !conv?.assigned_agent_id)) {
         console.log(`[triage-bot] Chat ${phone} ${wasClosed ? 'estaba cerrado' : `inactivo por ${minutesSinceLastMsg.toFixed(1)} min (umbral ${INACTIVITY_TIMEOUT_MINUTES} min)`}. REACTIVANDO SESIÓN A CERO.`);
         await supabase
             .from('contact_center_conversations')
@@ -2637,8 +2640,8 @@ async function handleChatbotTriage(
         }
     }
 
-    // 1.1 Si la conversación está asignada a un agente humano en vivo (y no expiró por inactividad)
-    if (conv && !wasClosed && !isSessionExpiredByInactivity && conv.assigned_agent_id) {
+    // 1.1 Si la conversación está asignada a un agente humano en vivo (NUNCA expira por inactividad ni por saludos)
+    if (conv && !wasClosed && conv.assigned_agent_id) {
         console.log(`[triage-bot] Chat ${phone} asignado a ${conv.assigned_agent_name || conv.assigned_agent_id}.`);
         const schedule = getContactCenterScheduleInfo();
         const silentUpdates: Record<string, any> = {
