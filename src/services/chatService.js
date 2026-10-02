@@ -151,33 +151,32 @@ export async function markAllAsRead() {
  * ligeramente diferente (ej: con 15 interno incluido, más de 13 dígitos, etc.)
  */
 export async function fetchUnreadCounts() {
-    const { data, error } = await supabase
-        .from('whatsapp_messages')
-        .select('phone, line_id, raw_payload')
-        .eq('direction', 'incoming')
-        .eq('is_read', false)
-        .or('line_id.in.(line_a,line_b,line_c,line_meta),line_id.is.null')
-        .neq('line_id', 'contact_center')
-        .neq('line_id', 'line_recepciones')
-        .limit(5000);
+    try {
+        const { data, error } = await supabase
+            .from('whatsapp_messages')
+            .select('phone, line_id')
+            .eq('direction', 'incoming')
+            .eq('is_read', false)
+            .in('line_id', ['line_a', 'line_b', 'line_c', 'line_meta'])
+            .order('id', { ascending: false })
+            .limit(500);
 
-    if (error) {
-        console.error('Error fetching unread counts:', error);
+        if (error) {
+            console.warn('[chatService] Advertencia consultando no leídos:', error?.message || error);
+            return {};
+        }
+
+        const counts = {};
+        (data || []).forEach(msg => {
+            const normalizedPhone = normalizeArgentinePhone(msg.phone);
+            const key = normalizedPhone || msg.phone;
+            counts[key] = (counts[key] || 0) + 1;
+        });
+        return counts;
+    } catch (err) {
+        console.warn('[chatService] Error controlado en fetchUnreadCounts:', err);
         return {};
     }
-
-    const validLines = new Set(['line_a', 'line_b', 'line_c', 'line_meta']);
-
-    // Contar por teléfono — re-normalizar para consistencia con el frontend
-    const counts = {};
-    (data || []).forEach(msg => {
-        if (msg.line_id && !validLines.has(msg.line_id)) return;
-        if (msg.raw_payload?.source === 'bot_triage') return;
-        const normalizedPhone = normalizeArgentinePhone(msg.phone);
-        const key = normalizedPhone || msg.phone;
-        counts[key] = (counts[key] || 0) + 1;
-    });
-    return counts;
 }
 
 /**

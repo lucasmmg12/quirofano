@@ -922,20 +922,24 @@ export default function ContactCenterChatConsole({
     useEffect(() => {
         if (!selectedChat?.phone || !lastMsgInChat) return;
 
-        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente con cooldown de 2 minutos
+        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente con cooldown estricto (3 min)
+        // Si la conversación ya tiene resumen generado, no sobrecargar el servidor
         if (lastMsgSender === 'patient') {
             const phone = selectedChat.phone;
             const lastRun = lastAiSummaryTimeRef.current[phone] || 0;
-            const cooldownPassed = Date.now() - lastRun > 120000;
-            if (!cooldownPassed && aiSummaryData) {
+            const cooldownPassed = (Date.now() - lastRun) > 180000;
+            
+            if (!cooldownPassed || selectedChat.aiSummary || aiSummaryData) {
                 return;
             }
 
+            // Marcar tiempo inmediatamente para prevenir carreras concurrentes
+            lastAiSummaryTimeRef.current[phone] = Date.now();
+
             const timer = setTimeout(() => {
-                console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA automático...');
-                lastAiSummaryTimeRef.current[phone] = Date.now();
+                console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA...');
                 handleRunAiSummary(true);
-            }, 1200);
+            }, 2000);
             return () => clearTimeout(timer);
         }
     }, [lastMsgId, lastMsgSender, selectedChat?.phone]);
