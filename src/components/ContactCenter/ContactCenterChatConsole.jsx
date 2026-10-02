@@ -262,6 +262,9 @@ export default function ContactCenterChatConsole({
     const [bulkResolutionReason, setBulkResolutionReason] = useState('Cierre masivo de cola');
     const [isBulkClosing, setIsBulkClosing] = useState(false);
 
+    // Tracking de chats leídos (abiertos) durante esta sesión
+    const readChatIdsRef = useRef(new Set());
+
     // Pase de Guardia Masivo / Traspaso de Fin de Turno
     const [handoverModalOpen, setHandoverModalOpen] = useState(false);
     const [handoverTargetAgent, setHandoverTargetAgent] = useState(() => {
@@ -3005,25 +3008,26 @@ export default function ContactCenterChatConsole({
                             return (
                                 <div 
                                     key={chat.id}
-                                    onClick={() => onSelectChat(chat.id)}
+                                    onClick={() => {
+                                        readChatIdsRef.current.add(chat.id);
+                                        onSelectChat(chat.id);
+                                    }}
                                     style={{
                                         padding: '12px 14px',
                                         borderBottom: `1px solid ${themeCardBorder}`,
                                         cursor: 'pointer',
-                                        background: isSelected 
-                                            ? themeCardSelectedBg 
-                                            : isChecked 
-                                                ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
-                                                : (chat.unreadCount > 0 || (chat.lastResponderRole === 'patient' && !isClosedOrArchived(chat.status)))
-                                                    ? (ccTheme.isDark ? '#0C1B2E' : '#EFF6FF')
-                                                    : themeCardBg,
-                                        borderLeft: isSelected 
-                                            ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
-                                            : isChecked 
-                                                ? '4px solid #16A34A' 
-                                                : (chat.unreadCount > 0 || (chat.lastResponderRole === 'patient' && !isClosedOrArchived(chat.status)))
-                                                    ? '4px solid #3B82F6'
-                                                    : '4px solid transparent',
+                                        background: (() => {
+                                            if (isSelected) return themeCardSelectedBg;
+                                            if (isChecked) return ccTheme.isDark ? '#064E3B' : '#F0FDF4';
+                                            const isUnread = chat.unread && !readChatIdsRef.current.has(chat.id) && !isClosedOrArchived(chat.status);
+                                            return isUnread ? (ccTheme.isDark ? '#0C1B2E' : '#EFF6FF') : themeCardBg;
+                                        })(),
+                                        borderLeft: (() => {
+                                            if (isSelected) return `4px solid ${ccTheme.accentColor || '#1E40AF'}`;
+                                            if (isChecked) return '4px solid #16A34A';
+                                            const isUnread = chat.unread && !readChatIdsRef.current.has(chat.id) && !isClosedOrArchived(chat.status);
+                                            return isUnread ? '4px solid #3B82F6' : '4px solid transparent';
+                                        })(),
                                         transition: 'background 0.15s',
                                         position: 'relative'
                                     }}
