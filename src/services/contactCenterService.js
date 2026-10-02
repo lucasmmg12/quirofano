@@ -490,7 +490,7 @@ export async function fetchLiveAndDemoChats() {
             .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
             .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
-            .limit(600);
+            .limit(1500);
 
         if (error) {
             console.warn('[contact-center] Error consultando mensajes:', error);
@@ -668,6 +668,7 @@ export async function fetchLiveAndDemoChats() {
                     audioUnderstanding: audioUnder,
                     rawPayload: sanitizedRaw,
                     isNote: m.direction === 'note',
+                    created_at: m.created_at,
                     timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
                 };
             });
@@ -2304,18 +2305,26 @@ export async function saveBotTreeConfig(botTree, user = 'admin') {
 /**
  * Consulta mensajes históricos anteriores para un teléfono específico (Paginación / Scroll hacia atrás)
  */
-export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt, limit = 40) {
-    if (!phone || !beforeCreatedAt) return [];
+export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, limit = 50) {
+    if (!phone) return [];
     try {
         const normPhone = normalizeArgentinePhone(phone);
-        const { data: rawMessages, error } = await supabase
+        const cleanDigits = (normPhone || phone).replace(/\D/g, '');
+        const last8 = cleanDigits.slice(-8);
+
+        let query = supabase
             .from('whatsapp_messages')
             .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
             .eq('line_id', 'contact_center')
-            .eq('phone', normPhone)
-            .lt('created_at', beforeCreatedAt)
+            .or(`phone.eq.${normPhone},phone.eq.${phone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`)
             .order('created_at', { ascending: false })
             .limit(limit);
+
+        if (beforeCreatedAt) {
+            query = query.lt('created_at', beforeCreatedAt);
+        }
+
+        const { data: rawMessages, error } = await query;
 
         if (error) throw error;
         if (!rawMessages || rawMessages.length === 0) return [];

@@ -254,9 +254,10 @@ export default function ContactCenterChatConsole({
     const [transferNote, setTransferNote] = useState('');
     const [isTransferring, setIsTransferring] = useState(false);
 
-    // Carga de historial antiguo (Scroll hacia atrás) (Falla 21)
+    // Carga de historial y mensajes de la conversación
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [noMoreOlder, setNoMoreOlder] = useState(false);
+    const [loadingChatMessages, setLoadingChatMessages] = useState(false);
 
     const [filterTab, setFilterTab] = useState('sin_asignar');
     const [searchTerm, setSearchTerm] = useState('');
@@ -304,6 +305,8 @@ export default function ContactCenterChatConsole({
     const [activeDetailTab, setActiveDetailTab] = useState('info'); // 'info', 'historial', 'prestadores'
     const [transferMenuOpen, setTransferMenuOpen] = useState(false);
     const transferMenuRef = useRef(null);
+    const [botMenuOpen, setBotMenuOpen] = useState(false);
+    const botMenuRef = useRef(null);
 
     // Presencia en tiempo real (Quién está leyendo la conversación - "El Ojito")
     const [activePresences, setActivePresences] = useState([]);
@@ -417,6 +420,18 @@ export default function ContactCenterChatConsole({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [transferMenuOpen]);
+
+    // Cerrar menú de opciones de bot al hacer click afuera
+    useEffect(() => {
+        if (!botMenuOpen) return;
+        const handleClickOutside = (e) => {
+            if (botMenuRef.current && !botMenuRef.current.contains(e.target)) {
+                setBotMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [botMenuOpen]);
 
     // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
     const isGenericName = (name) => {
@@ -887,18 +902,56 @@ export default function ContactCenterChatConsole({
     };
 
 
+    // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo si no tiene mensajes en memoria
+    useEffect(() => {
+        if (!selectedChat?.phone) return;
+
+        // Si ya tiene mensajes en memoria, no es necesario recargar inicialmente
+        if (Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0) {
+            setNoMoreOlder(false);
+            return;
+        }
+
+        let isCancelled = false;
+        setLoadingChatMessages(true);
+        setNoMoreOlder(false);
+
+        fetchOlderMessagesForPhone(selectedChat.phone, null, 60)
+            .then(msgs => {
+                if (isCancelled) return;
+                if (msgs && msgs.length > 0) {
+                    selectedChat.messages = msgs;
+                    setForceUpdate(n => n + 1);
+                } else {
+                    selectedChat.messages = [];
+                    setNoMoreOlder(true);
+                }
+            })
+            .catch(err => {
+                console.error('[ContactCenter] Error al auto-cargar mensajes del chat:', err);
+            })
+            .finally(() => {
+                if (!isCancelled) {
+                    setLoadingChatMessages(false);
+                }
+            });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [selectedChat?.id, selectedChat?.phone]);
+
     const handleLoadOlderMessages = async () => {
         if (!selectedChat?.phone || loadingOlder) return;
         const msgs = selectedChat.messages || [];
         const oldest = msgs[0];
-        if (!oldest) return;
-        const beforeIso = oldest.created_at || new Date().toISOString();
+        const beforeIso = oldest?.created_at || null;
         setLoadingOlder(true);
         try {
             const older = await fetchOlderMessagesForPhone(selectedChat.phone, beforeIso, 40);
             if (older && older.length > 0) {
-                const existingIds = new Set(msgs.map(m => m.id));
-                const uniqueNewOlder = older.filter(m => !existingIds.has(m.id));
+                const existingIds = new Set(msgs.map(m => m.id || m.realId));
+                const uniqueNewOlder = older.filter(m => !existingIds.has(m.id) && !existingIds.has(m.realId));
                 if (uniqueNewOlder.length === 0) {
                     setNoMoreOlder(true);
                 } else {
@@ -2021,9 +2074,16 @@ export default function ContactCenterChatConsole({
     }, [messageInput]);
 
     const handleInputKeyDown = (e) => {
+        // Enviar con Ctrl+Enter o Cmd+Enter
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            handleSend(e);
+            return;
+        }
+
         if (!quickRepliesOpen) {
-            // No enviar con Enter: Enter inserta salto de línea en el texto.
-            // El mensaje se envía exclusivamente haciendo click en el botón de enviar.
+            // No enviar con Enter solo: Enter inserta salto de línea en el texto.
+            // El mensaje se envía exclusivamente con Ctrl+Enter o haciendo clic en el botón de enviar.
             return;
         }
 
@@ -2038,7 +2098,7 @@ export default function ContactCenterChatConsole({
         } else if (e.key === 'Escape') {
             setQuickRepliesOpen(false);
         } else if (e.key === 'Tab' || e.key === 'Enter') {
-            // Tab o Enter autocompleta el atajo en el input para poder revisarlo/editarlo antes de enviar con el botón
+            // Tab o Enter autocompleta el atajo en el input para poder revisarlo/editarlo antes de enviar con el botón o Ctrl+Enter
             e.preventDefault();
             const matchedByDirectCmd = findQuickReplyByShortcut(messageInput);
             const targetItem = matchedByDirectCmd || currentMatches[selectedQuickReplyIndex] || currentMatches[0];
@@ -3085,96 +3145,227 @@ export default function ContactCenterChatConsole({
 
                     {/* Derecha: Bot Controls + Asignación */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
-                        {/* WIDGET: CHATBOT ACTIVO (TRIAGE) */}
-                        <div 
-                            title={botActive 
-                                ? 'El bot responde preguntas de triage ahorrando mensajes. Se silencia al asignar una agente.'
-                                : 'El bot no responderá para permitir atención humana exclusiva.'}
-                            style={{
-                                padding: '2px 6px', borderRadius: '6px',
-                                background: botActive ? '#F0FDF4' : '#FFFBEB',
-                                border: '1px solid', borderColor: botActive ? '#BBF7D0' : '#FDE68A',
-                                display: 'flex', alignItems: 'center', gap: '5px',
-                                height: '24px'
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.67rem', fontWeight: 800, color: botActive ? '#15803D' : '#B45309', whiteSpace: 'nowrap' }}>
-                                <Bot size={12} />
-                                {botActive ? 'BOT ACTIVO' : 'BOT SILENCIADO'}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        {/* BOTÓN DESPLEGABLE COMPACTO DE BOT (EXCLUSIVO PARA LMARINERO) */}
+                        {isStrictLMarinero && (
+                            <div ref={botMenuRef} style={{ position: 'relative' }}>
                                 <button
                                     type="button"
-                                    onClick={handleToggleBot}
+                                    onClick={() => setBotMenuOpen(prev => !prev)}
+                                    title="Opciones de Bot y Contexto de IA (Exclusivo lmarinero)"
                                     style={{
-                                        padding: '1px 6px', borderRadius: '4px', fontSize: '0.64rem', fontWeight: 700,
-                                        border: 'none', cursor: 'pointer',
-                                        background: botActive ? '#DC2626' : '#16A34A',
-                                        color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '3px',
-                                        height: '20px', lineHeight: 1
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid',
+                                        borderColor: botActive ? '#BBF7D0' : '#FDE68A',
+                                        background: botActive ? '#F0FDF4' : '#FFFBEB',
+                                        color: botActive ? '#15803D' : '#B45309',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        height: '24px',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                        transition: 'all 0.15s ease'
                                     }}
                                 >
-                                    <Power size={10} />
-                                    {botActive ? 'Silenciar' : 'Reanudar'}
+                                    <Bot size={13} color={botActive ? '#16A34A' : '#D97706'} />
+                                    <span>Bot</span>
+                                    <span style={{
+                                        width: '6px',
+                                        height: '6px',
+                                        borderRadius: '50%',
+                                        background: botActive ? '#16A34A' : '#EF4444',
+                                        display: 'inline-block'
+                                    }} />
+                                    <ChevronDown 
+                                        size={11} 
+                                        color={botActive ? '#15803D' : '#B45309'} 
+                                        style={{ transform: botMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} 
+                                    />
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={handleOpenResetBotModal}
-                                    title="Reiniciar flujo del bot para que vuelva al saludo inicial de triage"
-                                    style={{
-                                        padding: '1px 6px', borderRadius: '4px', fontSize: '0.64rem', fontWeight: 700,
-                                        border: '1px solid #CBD5E1', cursor: 'pointer',
-                                        background: '#FFFFFF', color: '#0284C7', display: 'flex', alignItems: 'center', gap: '3px',
-                                        height: '20px', lineHeight: 1
-                                    }}
-                                >
-                                    <RefreshCw size={10} />
-                                    Reiniciar
-                                </button>
-                                {isStrictLMarinero && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (selectedChat?.phone) {
-                                                setChatTargetToDelete(selectedChat);
-                                                setDeleteContextModalOpen(true);
-                                            }
-                                        }}
-                                        title="Solo lmarinero: Borrar todos los mensajes y eliminar por completo el contexto acumulado de la IA"
-                                        style={{
-                                            padding: '1px 6px', borderRadius: '4px', fontSize: '0.64rem', fontWeight: 700,
-                                            border: '1px solid #FECACA', cursor: 'pointer',
-                                            background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', gap: '3px',
-                                            height: '20px', lineHeight: 1
-                                        }}
-                                    >
-                                        <Trash2 size={10} color="#DC2626" />
-                                        Borrar Contexto
-                                    </button>
-                                )}
 
-                                {TEST_BOT_RESET_INDICATOR_ENABLED && (
-                                    <span
-                                        title="Modo de prueba activo: El bot reinicia automáticamente su conversación a 'inicio' tras 3 minutos de inactividad"
-                                        style={{
-                                            padding: '1px 4px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.60rem',
-                                            fontWeight: 800,
-                                            background: '#FEF3C7',
-                                            border: '1px solid #FCD34D',
-                                            color: '#B45309',
-                                            display: 'inline-flex',
+                                {botMenuOpen && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: 'calc(100% + 4px)',
+                                        right: 0,
+                                        zIndex: 100,
+                                        width: '230px',
+                                        background: '#FFFFFF',
+                                        borderRadius: '10px',
+                                        border: '1px solid #E2E8F0',
+                                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.08)',
+                                        padding: '6px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '4px'
+                                    }}>
+                                        {/* Header Estado */}
+                                        <div style={{
+                                            display: 'flex',
                                             alignItems: 'center',
-                                            gap: '2px',
-                                            height: '20px'
-                                        }}
-                                    >
-                                        ⏱️ 3m
-                                    </span>
+                                            justifyContent: 'space-between',
+                                            padding: '6px 8px',
+                                            borderRadius: '6px',
+                                            background: botActive ? '#F0FDF4' : '#FFFBEB',
+                                            border: `1px solid ${botActive ? '#BBF7D0' : '#FDE68A'}`,
+                                            marginBottom: '2px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: botActive ? '#15803D' : '#B45309' }}>
+                                                <Bot size={13} />
+                                                <span>{botActive ? 'Bot Activo (Triage)' : 'Bot Silenciado'}</span>
+                                            </div>
+                                            {TEST_BOT_RESET_INDICATOR_ENABLED && (
+                                                <span style={{ fontSize: '0.60rem', fontWeight: 800, color: '#B45309', background: '#FEF3C7', padding: '1px 4px', borderRadius: '4px' }}>
+                                                    ⏱️ 3m
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Opción 1: Silenciar / Reanudar */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                handleToggleBot();
+                                                setBotMenuOpen(false);
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                width: '100%',
+                                                padding: '7px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: 'transparent',
+                                                color: '#1E293B',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                textAlign: 'left'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <div style={{
+                                                width: '22px',
+                                                height: '22px',
+                                                borderRadius: '5px',
+                                                background: botActive ? '#FEE2E2' : '#DCFCE7',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: botActive ? '#DC2626' : '#16A34A',
+                                                flexShrink: 0
+                                            }}>
+                                                <Power size={12} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: 700, color: '#0F172A' }}>{botActive ? 'Silenciar Bot' : 'Reanudar Bot'}</div>
+                                                <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                    {botActive ? 'Pausar respuestas automáticas' : 'Permitir triage automático'}
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        {/* Opción 2: Reiniciar flujo */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setBotMenuOpen(false);
+                                                handleOpenResetBotModal();
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                width: '100%',
+                                                padding: '7px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: 'transparent',
+                                                color: '#1E293B',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                textAlign: 'left'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <div style={{
+                                                width: '22px',
+                                                height: '22px',
+                                                borderRadius: '5px',
+                                                background: '#E0F2FE',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#0284C7',
+                                                flexShrink: 0
+                                            }}>
+                                                <RefreshCw size={12} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: 700, color: '#0F172A' }}>Reiniciar Flujo</div>
+                                                <div style={{ fontSize: '0.64rem', color: '#64748B' }}>Volver al saludo inicial de triage</div>
+                                            </div>
+                                        </button>
+
+                                        <div style={{ height: '1px', background: '#F1F5F9', margin: '2px 0' }} />
+
+                                        {/* Opción 3: Borrar Contexto e Historial */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setBotMenuOpen(false);
+                                                if (selectedChat?.phone) {
+                                                    setChatTargetToDelete(selectedChat);
+                                                    setDeleteContextModalOpen(true);
+                                                }
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                width: '100%',
+                                                padding: '7px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                background: 'transparent',
+                                                color: '#DC2626',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                textAlign: 'left'
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = '#FEF2F2'}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <div style={{
+                                                width: '22px',
+                                                height: '22px',
+                                                borderRadius: '5px',
+                                                background: '#FEE2E2',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#DC2626',
+                                                flexShrink: 0
+                                            }}>
+                                                <Trash2 size={12} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: 700, color: '#DC2626' }}>Borrar Contexto</div>
+                                                <div style={{ fontSize: '0.64rem', color: '#991B1B' }}>Purgar historial e IA del chat</div>
+                                            </div>
+                                        </button>
+                                    </div>
                                 )}
                             </div>
-                        </div>
+                        )}
 
                         {/* BOTONES DE ASIGNACIÓN / BLOQUEO EXCLUSIVO */}
                         {isClosedOrArchived(selectedChat.status) ? (
@@ -3516,6 +3707,59 @@ export default function ContactCenterChatConsole({
                         const hasMore = rawMsgs.length > visibleMessageCount;
                         const remainingCount = rawMsgs.length - visibleMessageCount;
 
+                        if (loadingChatMessages && rawMsgs.length === 0) {
+                            return (
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '60px 20px',
+                                    gap: '12px',
+                                    color: '#0284C7'
+                                }}>
+                                    <RefreshCw size={26} style={{ animation: 'spin 1s linear infinite' }} />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+                                        Cargando mensajes de la conversación...
+                                    </span>
+                                </div>
+                            );
+                        }
+
+                        if (!loadingChatMessages && rawMsgs.length === 0) {
+                            return (
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '60px 20px',
+                                    textAlign: 'center',
+                                    color: '#64748B'
+                                }}>
+                                    <div style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        borderRadius: '50%',
+                                        background: '#E0F2FE',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginBottom: '12px',
+                                        color: '#0284C7'
+                                    }}>
+                                        <MessageSquare size={24} />
+                                    </div>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
+                                        No hay mensajes previos en esta conversación
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: '#64748B', maxWidth: '320px' }}>
+                                        Escribe un mensaje abajo para iniciar la atención con el paciente.
+                                    </div>
+                                </div>
+                            );
+                        }
+
                         const ordered = messageSortOrder === 'newest_first'
                             ? [...rawMsgs].reverse()
                             : rawMsgs;
@@ -3551,7 +3795,7 @@ export default function ContactCenterChatConsole({
                                         </button>
                                     </div>
                                 )}
-                                {!hasMore && !noMoreOlder && messageSortOrder === 'chronological' && (
+                                {!hasMore && !noMoreOlder && messageSortOrder === 'chronological' && rawMsgs.length >= 20 && (
                                     <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                         <button
                                             type="button"
@@ -3573,7 +3817,7 @@ export default function ContactCenterChatConsole({
                                             }}
                                         >
                                             <RefreshCw size={12} className={loadingOlder ? 'spin' : ''} />
-                                            {loadingOlder ? 'Descargando historial anterior...' : 'Descargar historial previo desde el servidor'}
+                                            {loadingOlder ? 'Cargando mensajes anteriores...' : 'Cargar mensajes más antiguos del historial'}
                                         </button>
                                     </div>
                                 )}
@@ -4745,10 +4989,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             rows={1}
                                             disabled={isLocked || uploadingMedia}
                                             placeholder={isPrivateNote 
-                                                ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
+                                                ? `Escribe una nota interna que solo verá el equipo (Ctrl+Enter para guardar)...` 
                                                 : selectedFile
-                                                    ? (selectedFile.type === 'image' ? `Mensaje opcional para la imagen...` : `Mensaje opcional para acompañar ${selectedFile.name}...`)
-                                                    : `Escribe respuesta a ${selectedChat.contactName} (o pega una captura con Ctrl+V)...`}
+                                                    ? (selectedFile.type === 'image' ? `Mensaje opcional para la imagen (Ctrl+Enter para enviar)...` : `Mensaje opcional para acompañar ${selectedFile.name} (Ctrl+Enter para enviar)...`)
+                                                    : `Escribe respuesta a ${selectedChat.contactName} (Ctrl+Enter para enviar o pega captura con Ctrl+V)...`}
                                             value={messageInput}
                                             onChange={handleInputChange}
                                             onKeyDown={handleInputKeyDown}
@@ -4794,8 +5038,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         <button 
                                             type="submit"
                                             disabled={isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)}
-                                            title={isPrivateNote ? "Guardar Nota Privada" : "Enviar WhatsApp"}
-                                            aria-label={isPrivateNote ? "Guardar Nota Privada" : "Enviar WhatsApp"}
+                                            title={isPrivateNote ? "Guardar Nota Privada (Ctrl+Enter)" : "Enviar WhatsApp (Ctrl+Enter)"}
+                                            aria-label={isPrivateNote ? "Guardar Nota Privada (Ctrl+Enter)" : "Enviar WhatsApp (Ctrl+Enter)"}
                                             style={{
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 background: isPrivateNote ? '#EA580C' : '#0284C7',

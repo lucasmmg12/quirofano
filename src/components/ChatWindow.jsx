@@ -886,8 +886,15 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         inputRef.current?.focus();
     }, [patientName, personalizeMessage]);
 
-    // Enter para enviar o seleccionar shortcut
+    // Enter para enviar con Ctrl+Enter o seleccionar shortcut
     const handleKeyDown = (e) => {
+        // Enviar con Ctrl+Enter o Cmd+Enter
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            handleSend();
+            return;
+        }
+
         // Navegación en shortcuts popup
         if (showShortcuts && filteredShortcuts.length > 0) {
             if (e.key === 'ArrowDown') {
@@ -919,8 +926,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             return;
         }
 
-        // No enviar con Enter: Enter simplemente inserta un salto de línea.
-        // El envío se realiza exclusivamente mediante el botón de enviar.
+        // No enviar con Enter solo: Enter simplemente inserta un salto de línea.
+        // El envío se realiza mediante Ctrl+Enter o haciendo clic en el botón de enviar.
     };
 
     // ==========================================
@@ -1695,7 +1702,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                                     onChange={handleInputChange}
                                     onKeyDown={handleKeyDown}
                                     onPaste={handlePaste}
-                                    placeholder="Escribí un mensaje... (/ para atajos o Ctrl+V para capturas)"
+                                    placeholder="Escribí un mensaje... (Ctrl+Enter para enviar, / para atajos o Ctrl+V para capturas)"
                                     rows={1}
                                     style={{
                                         width: '100%', resize: 'none',
@@ -1715,6 +1722,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                                 <button
                                     onClick={handleSend}
                                     disabled={sending}
+                                    title="Enviar mensaje (Ctrl+Enter)"
                                     style={{
                                         width: '42px', height: '42px', borderRadius: '50%',
                                         background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
