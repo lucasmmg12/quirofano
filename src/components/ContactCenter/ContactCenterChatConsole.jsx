@@ -913,31 +913,25 @@ export default function ContactCenterChatConsole({
     };
 
     // Auto-generar Resumen IA automáticamente tras cada mensaje entrante del paciente
-    // IMPORTANTE: useMemo previene que lastMsgId cambie referencia en cada render,
-    // lo que causaba re-ejecuciones innecesarias del useEffect de IA (parte del loop #321).
-    const lastMsgInChat = useMemo(() => {
-        const msgs = selectedChat?.messages;
-        return (msgs && msgs.length > 0) ? msgs[msgs.length - 1] : null;
-    }, [selectedChat?.id, selectedChat?.messages?.length]);
-
-    const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId || null;
-    const lastMsgSender = lastMsgInChat
-        ? (lastMsgInChat.sender || (lastMsgInChat.direction === 'incoming' ? 'patient' : 'agent'))
+    const lastMsgInChat = selectedChat?.messages && selectedChat.messages.length > 0 
+        ? selectedChat.messages[selectedChat.messages.length - 1] 
         : null;
+    const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId;
+    const lastMsgSender = lastMsgInChat?.sender || (lastMsgInChat?.direction === 'incoming' ? 'patient' : 'agent');
 
     const lastAiSummaryTimeRef = useRef({});
 
     useEffect(() => {
-        if (!selectedChat?.phone || !lastMsgInChat || !lastMsgId) return;
+        if (!selectedChat?.phone || !lastMsgInChat) return;
 
-        // Solo si el último mensaje es del paciente, con cooldown de 3 min estricto.
+        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente con cooldown estricto (3 min)
+        // Si la conversación ya tiene resumen generado, no sobrecargar el servidor
         if (lastMsgSender === 'patient') {
             const phone = selectedChat.phone;
             const lastRun = lastAiSummaryTimeRef.current[phone] || 0;
             const cooldownPassed = (Date.now() - lastRun) > 180000;
-
-            // Guard triple: cooldown + resumen existente + en proceso
-            if (!cooldownPassed || selectedChat.aiSummary || aiSummaryData || isGeneratingSummary) {
+            
+            if (!cooldownPassed || selectedChat.aiSummary || aiSummaryData) {
                 return;
             }
 
@@ -945,6 +939,7 @@ export default function ContactCenterChatConsole({
             lastAiSummaryTimeRef.current[phone] = Date.now();
 
             const timer = setTimeout(() => {
+                console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA...');
                 handleRunAiSummary(true);
             }, 2000);
             return () => clearTimeout(timer);
@@ -1029,12 +1024,15 @@ export default function ContactCenterChatConsole({
     };
 
 
-    // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo
-    // SIEMPRE recarga al cambiar de chat para mostrar el historial completo.
-    // IMPORTANTE: NO mutar selectedChat.messages directamente (causaba React #321).
-    // Se usa onUpdateChatMessages para actualizar el estado en el padre correctamente.
+    // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo si no tiene mensajes en memoria
     useEffect(() => {
-        if (!selectedChat?.phone || !selectedChat?.id) return;
+        if (!selectedChat?.phone) return;
+
+        // Si ya tiene mensajes en memoria, no es necesario recargar inicialmente
+        if (Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0) {
+            setNoMoreOlder(false);
+            return;
+        }
 
         let isCancelled = false;
         setLoadingChatMessages(true);
@@ -1044,21 +1042,10 @@ export default function ContactCenterChatConsole({
             .then(msgs => {
                 if (isCancelled) return;
                 if (msgs && msgs.length > 0) {
-                    // Fusionar: mensajes de BD + los que llegaron por RealTime mientras cargaba
-                    const realtimeOnly = (selectedChat.messages || []).filter(m =>
-                        !msgs.some(loaded => (loaded.id === m.id) || (loaded.realId === m.realId))
-                    );
-                    const merged = [...msgs, ...realtimeOnly];
-
-                    // Actualizar a través del padre (correcto) si el callback existe
-                    if (typeof onUpdateChatMessages === 'function') {
-                        onUpdateChatMessages(selectedChat.id, merged);
-                    } else {
-                        // Fallback: mutación directa solo si no hay callback
-                        selectedChat.messages = merged;
-                        setForceUpdate(n => n + 1);
-                    }
+                    selectedChat.messages = msgs;
+                    setForceUpdate(n => n + 1);
                 } else {
+                    selectedChat.messages = [];
                     setNoMoreOlder(true);
                 }
             })
@@ -1066,12 +1053,15 @@ export default function ContactCenterChatConsole({
                 console.error('[ContactCenter] Error al auto-cargar mensajes del chat:', err);
             })
             .finally(() => {
-                if (!isCancelled) setLoadingChatMessages(false);
+                if (!isCancelled) {
+                    setLoadingChatMessages(false);
+                }
             });
 
-        return () => { isCancelled = true; };
+        return () => {
+            isCancelled = true;
+        };
     }, [selectedChat?.id, selectedChat?.phone]);
-
 
     const handleLoadOlderMessages = async () => {
         if (!selectedChat?.phone || loadingOlder) return;
