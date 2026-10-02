@@ -499,12 +499,6 @@ function App({ currentUser, onLogout }) {
             if (newMsg.direction === 'incoming') {
                 playNotificationSound();
                 setGlobalUnreadCount(prev => prev + 1);
-                // Show toast notification when NOT on messaging view
-                if (activeViewRef.current !== 'mensajeria') {
-                    const senderName = newMsg.sender_name || newMsg.phone;
-                    const preview = (newMsg.content || '📎 Media').substring(0, 40);
-                    addToast(`💬 ${senderName}: ${preview}`, 'info');
-                }
             }
         });
 
