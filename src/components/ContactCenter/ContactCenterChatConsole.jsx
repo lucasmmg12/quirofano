@@ -2351,127 +2351,223 @@ export default function ContactCenterChatConsole({
                     )}
                 </div>
 
-                {/* Pestañas de Filtros Superiores AsisteClick */}
+                {/* Pestañas de Filtros de Bandejas (Cuadrícula segmentada limpia de 2 filas sin scroll) */}
                 <div style={{
                     display: 'flex',
-                    gap: '4px',
-                    padding: '8px 8px',
-                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#F1F5F9'}`,
-                    overflowX: 'auto',
-                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#FAFAFA')
+                    flexDirection: 'column',
+                    gap: '6px',
+                    padding: '8px 10px',
+                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#F8FAFC')
                 }}>
-                    <button 
-                        onClick={() => {
-                            setFilterTab('bot');
-                            const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status));
-                            if (first && onSelectChat) onSelectChat(first.id);
-                        }}
-                        style={{
-                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: filterTab === 'bot' ? 'none' : `1px solid ${themeCardBorder}`,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'bot' ? '#7C3AED' : themeCardBg,
-                            color: filterTab === 'bot' ? '#FFFFFF' : themeCardText,
-                            boxShadow: filterTab === 'bot' ? '0 2px 4px rgba(124, 58, 237, 0.25)' : 'none',
-                            display: 'flex', alignItems: 'center', gap: '4px'
-                        }}
-                    >
-                        🤖 Bot ({chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)).length})
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setFilterTab('sin_asignar');
-                            const first = chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
-                            if (first && onSelectChat) onSelectChat(first.id);
-                        }}
-                        style={{
-                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: filterTab === 'sin_asignar' ? 'none' : `1px solid ${themeCardBorder}`,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'sin_asignar' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
-                            color: filterTab === 'sin_asignar' ? '#FFFFFF' : themeCardText,
-                            boxShadow: filterTab === 'sin_asignar' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none'
-                        }}
-                    >
-                        Sin asignar ({chats.filter(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status)).length})
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setFilterTab('asignadas_mi');
-                            const first = chats.find(c => {
-                                const a = (c.assignedTo || '').toLowerCase();
-                                return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
-                            });
-                            if (first && onSelectChat) onSelectChat(first.id);
-                        }}
-                        style={{
-                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: filterTab === 'asignadas_mi' ? 'none' : `1px solid ${themeCardBorder}`,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'asignadas_mi' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
-                            color: filterTab === 'asignadas_mi' ? '#FFFFFF' : themeCardText
-                        }}
-                    >
-                        Mis chats ({chats.filter(c => {
-                            const a = (c.assignedTo || '').toLowerCase();
-                            return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
-                        }).length})
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setFilterTab('asignadas_otros');
-                            const first = chats.find(c => {
-                                const a = (c.assignedTo || '').toLowerCase();
-                                return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
-                            });
-                            if (first && onSelectChat) onSelectChat(first.id);
-                        }}
-                        style={{
-                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: filterTab === 'asignadas_otros' ? 'none' : `1px solid ${themeCardBorder}`,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'asignadas_otros' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
-                            color: filterTab === 'asignadas_otros' ? '#FFFFFF' : themeCardText
-                        }}
-                    >
-                        Otras ({chats.filter(c => {
-                            const a = (c.assignedTo || '').toLowerCase();
-                            return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
-                        }).length})
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setFilterTab('finalizados');
-                            const first = chats.find(c => isClosedOrArchived(c.status));
-                            if (first && onSelectChat) onSelectChat(first.id);
-                        }}
-                        style={{
-                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: filterTab === 'finalizados' ? 'none' : `1px solid ${themeCardBorder}`,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'finalizados' ? '#059669' : themeCardBg,
-                            color: filterTab === 'finalizados' ? '#FFFFFF' : themeCardText,
-                            boxShadow: filterTab === 'finalizados' ? '0 2px 4px rgba(5,150,105,0.25)' : 'none',
-                            display: 'flex', alignItems: 'center', gap: '3px'
-                        }}
-                    >
-                        <Archive size={11} /> Finalizados ({chats.filter(c => isClosedOrArchived(c.status)).length})
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setFilterTab('todos');
-                            if (chats.length > 0 && onSelectChat) onSelectChat(chats[0].id);
-                        }}
-                        style={{
-                            padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                            border: filterTab === 'todos' ? 'none' : `1px solid ${themeCardBorder}`,
-                            cursor: 'pointer', whiteSpace: 'nowrap',
-                            background: filterTab === 'todos' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
-                            color: filterTab === 'todos' ? '#FFFFFF' : themeCardText
-                        }}
-                    >
-                        Todos ({chats.length})
-                    </button>
+                    {/* Fila 1: Bandejas de atención humana en tiempo real (50% - 50%) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        {/* Sin Asignar */}
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                setFilterTab('sin_asignar');
+                                const first = chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
+                                if (first && onSelectChat) onSelectChat(first.id);
+                            }}
+                            title="Pacientes esperando atención (cola general sin asignar)"
+                            style={{
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.73rem',
+                                fontWeight: 700,
+                                border: filterTab === 'sin_asignar' ? 'none' : `1px solid ${themeCardBorder}`,
+                                cursor: 'pointer',
+                                background: filterTab === 'sin_asignar' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                                color: filterTab === 'sin_asignar' ? '#FFFFFF' : themeCardText,
+                                boxShadow: filterTab === 'sin_asignar' ? '0 2px 6px rgba(2,132,199,0.3)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                                <Clock size={12} /> Sin asignar
+                            </span>
+                            <span style={{
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: '10px',
+                                background: filterTab === 'sin_asignar' ? '#FFFFFF' : '#FEF3C7',
+                                color: filterTab === 'sin_asignar' ? '#0284C7' : '#B45309',
+                                border: filterTab === 'sin_asignar' ? 'none' : '1px solid #FDE68A'
+                            }}>
+                                {chats.filter(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status)).length}
+                            </span>
+                        </button>
+
+                        {/* Mis Chats */}
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                setFilterTab('asignadas_mi');
+                                const first = chats.find(c => {
+                                    const a = (c.assignedTo || '').toLowerCase();
+                                    return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+                                });
+                                if (first && onSelectChat) onSelectChat(first.id);
+                            }}
+                            title="Mis conversaciones asignadas activas"
+                            style={{
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.73rem',
+                                fontWeight: 700,
+                                border: filterTab === 'asignadas_mi' ? 'none' : `1px solid ${themeCardBorder}`,
+                                cursor: 'pointer',
+                                background: filterTab === 'asignadas_mi' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                                color: filterTab === 'asignadas_mi' ? '#FFFFFF' : themeCardText,
+                                boxShadow: filterTab === 'asignadas_mi' ? '0 2px 6px rgba(2,132,199,0.3)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                                <User size={12} /> Mis chats
+                            </span>
+                            <span style={{
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: '10px',
+                                background: filterTab === 'asignadas_mi' ? '#FFFFFF' : '#E0F2FE',
+                                color: filterTab === 'asignadas_mi' ? '#0284C7' : '#0369A1'
+                            }}>
+                                {chats.filter(c => {
+                                    const a = (c.assignedTo || '').toLowerCase();
+                                    return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+                                }).length}
+                            </span>
+                        </button>
+                    </div>
+
+                    {/* Fila 2: Supervisión, Bot y Archivo (33% - 33% - 33%) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+                        {/* Bot */}
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                setFilterTab('bot');
+                                const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status));
+                                if (first && onSelectChat) onSelectChat(first.id);
+                            }}
+                            title="Conversaciones en triage automático por el chatbot"
+                            style={{
+                                padding: '5px 6px',
+                                borderRadius: '7px',
+                                fontSize: '0.70rem',
+                                fontWeight: 700,
+                                border: filterTab === 'bot' ? 'none' : `1px solid ${themeCardBorder}`,
+                                cursor: 'pointer',
+                                background: filterTab === 'bot' ? '#7C3AED' : themeCardBg,
+                                color: filterTab === 'bot' ? '#FFFFFF' : themeCardText,
+                                boxShadow: filterTab === 'bot' ? '0 2px 4px rgba(124, 58, 237, 0.25)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <Bot size={12} />
+                            <span>Bot</span>
+                            <span style={{
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                                padding: '1px 5px',
+                                borderRadius: '8px',
+                                background: filterTab === 'bot' ? '#FFFFFF' : '#F3E8FF',
+                                color: filterTab === 'bot' ? '#7C3AED' : '#6B21A8'
+                            }}>
+                                {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)).length}
+                            </span>
+                        </button>
+
+                        {/* Otras */}
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                setFilterTab('asignadas_otros');
+                                const first = chats.find(c => {
+                                    const a = (c.assignedTo || '').toLowerCase();
+                                    return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
+                                });
+                                if (first && onSelectChat) onSelectChat(first.id);
+                            }}
+                            title="Conversaciones asignadas a otras agentes"
+                            style={{
+                                padding: '5px 6px',
+                                borderRadius: '7px',
+                                fontSize: '0.70rem',
+                                fontWeight: 700,
+                                border: filterTab === 'asignadas_otros' ? 'none' : `1px solid ${themeCardBorder}`,
+                                cursor: 'pointer',
+                                background: filterTab === 'asignadas_otros' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                                color: filterTab === 'asignadas_otros' ? '#FFFFFF' : themeCardText,
+                                boxShadow: filterTab === 'asignadas_otros' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <Users size={12} />
+                            <span>Otras</span>
+                            <span style={{
+                                fontSize: '0.62rem',
+                                fontWeight: 800,
+                                padding: '1px 5px',
+                                borderRadius: '8px',
+                                background: filterTab === 'asignadas_otros' ? '#FFFFFF' : '#F1F5F9',
+                                color: filterTab === 'asignadas_otros' ? '#0284C7' : '#475569'
+                            }}>
+                                {chats.filter(c => {
+                                    const a = (c.assignedTo || '').toLowerCase();
+                                    return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
+                                }).length}
+                            </span>
+                        </button>
+
+                        {/* Finalizados (SIN NÚMERO / CONTADOR) */}
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                setFilterTab('finalizados');
+                                const first = chats.find(c => isClosedOrArchived(c.status));
+                                if (first && onSelectChat) onSelectChat(first.id);
+                            }}
+                            title="Historial de conversaciones finalizadas y resueltas"
+                            style={{
+                                padding: '5px 6px',
+                                borderRadius: '7px',
+                                fontSize: '0.70rem',
+                                fontWeight: 700,
+                                border: filterTab === 'finalizados' ? 'none' : `1px solid ${themeCardBorder}`,
+                                cursor: 'pointer',
+                                background: filterTab === 'finalizados' ? '#059669' : themeCardBg,
+                                color: filterTab === 'finalizados' ? '#FFFFFF' : themeCardText,
+                                boxShadow: filterTab === 'finalizados' ? '0 2px 4px rgba(5,150,105,0.25)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <Archive size={12} />
+                            <span>Finalizados</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* SUB-FILTROS DE TRIAGE CLÍNICO Y DEMORAS */}
