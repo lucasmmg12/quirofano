@@ -1393,7 +1393,7 @@ export default function ContactCenterChatConsole({
 
     // ── BUSCADOR INTELIGENTE DE CHATS (NOMBRE, DNI, TELÉFONO, MENSAJES Y ANÁLISIS IA) ──
     const normalizeSearch = (s) => {
-        if (!s) return '';
+        if (!s || typeof s === 'object') return '';
         return String(s)
             .toLowerCase()
             .normalize('NFD')
@@ -1500,8 +1500,11 @@ export default function ContactCenterChatConsole({
         if (normalizeSearch(chat.customFields?.obraSocial).includes(q)) {
             return { isMatch: true, matchType: 'obra_social', matchText: `OS: ${chat.customFields.obraSocial}` };
         }
-        if (normalizeSearch(chat.aiSummary).includes(q)) {
-            return { isMatch: true, matchType: 'resumen_ia', snippet: `IA: ${chat.aiSummary.slice(0, 55)}...` };
+        const summaryText = typeof chat.aiSummary === 'string'
+            ? chat.aiSummary
+            : (chat.aiSummary?.resumen_solicitud || chat.aiSummary?.tipo_tramite || '');
+        if (summaryText && normalizeSearch(summaryText).includes(q)) {
+            return { isMatch: true, matchType: 'resumen_ia', snippet: `IA: ${String(summaryText).slice(0, 55)}...` };
         }
 
         return { isMatch: false, matchType: null, snippet: null };
