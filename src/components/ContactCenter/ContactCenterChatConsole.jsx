@@ -1053,8 +1053,9 @@ export default function ContactCenterChatConsole({
     useEffect(() => {
         if (!selectedChat?.phone) return;
 
-        // Si ya tiene mensajes en memoria, no es necesario recargar inicialmente
-        if (Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0) {
+        // Si ya tiene suficientes mensajes en memoria (historial completo), no recargar.
+        // Si tiene pocos (< 10, ej: solo los del polling inicial), recargar para traer historial completo.
+        if (Array.isArray(selectedChat.messages) && selectedChat.messages.length >= 10) {
             setNoMoreOlder(false);
             return;
         }
