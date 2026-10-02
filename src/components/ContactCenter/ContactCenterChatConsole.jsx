@@ -3014,12 +3014,16 @@ export default function ContactCenterChatConsole({
                                             ? themeCardSelectedBg 
                                             : isChecked 
                                                 ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
-                                                : themeCardBg,
+                                                : (chat.unreadCount > 0 || (chat.lastResponderRole === 'patient' && !isClosedOrArchived(chat.status)))
+                                                    ? (ccTheme.isDark ? '#0C1B2E' : '#EFF6FF')
+                                                    : themeCardBg,
                                         borderLeft: isSelected 
                                             ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
                                             : isChecked 
                                                 ? '4px solid #16A34A' 
-                                                : '4px solid transparent',
+                                                : (chat.unreadCount > 0 || (chat.lastResponderRole === 'patient' && !isClosedOrArchived(chat.status)))
+                                                    ? '4px solid #3B82F6'
+                                                    : '4px solid transparent',
                                         transition: 'background 0.15s',
                                         position: 'relative'
                                     }}
@@ -3188,54 +3192,17 @@ export default function ContactCenterChatConsole({
                                             );
                                         })()}
 
-                                        {/* Tag: Último en responder */}
-                                        {chat.lastResponder && (
+                                        {/* Tag: Nombre del agente que respondió último (solo si fue agente) */}
+                                        {chat.lastResponder && chat.lastResponderRole === 'agent' && (
                                             <span style={{
                                                 fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                                background: chat.lastResponderRole === 'agent' ? (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF') : (ccTheme.isDark ? '#450A0A' : '#FFF1F2'),
-                                                color: chat.lastResponderRole === 'agent' ? (ccTheme.isDark ? '#93C5FD' : '#1E40AF') : (ccTheme.isDark ? '#FCA5A5' : '#E11D48'),
+                                                background: ccTheme.isDark ? '#1E3A5F' : '#EFF6FF',
+                                                color: ccTheme.isDark ? '#93C5FD' : '#1E40AF',
                                                 border: `1px solid ${themeCardBorder}`,
                                                 display: 'flex', alignItems: 'center', gap: '3px'
                                             }}>
-                                                {chat.lastResponderRole === 'agent' ? 'Resp: ' + chat.lastResponder : '🔴 Escribió Paciente'}
+                                                {chat.lastResponder}
                                             </span>
-                                        )}
-
-                                        {/* Tag: Tiempo de Espera sin Respuesta */}
-                                        {!isClosedOrArchived(chat.status) && (
-                                            chat.isWaitingResponse ? (
-                                                <span 
-                                                    title={`Lleva ${chat.waitingTimeText || 'un tiempo'} esperando respuesta`}
-                                                    style={{
-                                                        fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
-                                                        background: chat.waitingMinutes >= 30 
-                                                            ? (ccTheme.isDark ? '#450A0A' : '#FEF2F2') 
-                                                            : (chat.waitingMinutes >= 10 ? (ccTheme.isDark ? '#451A03' : '#FFFBEB') : (ccTheme.isDark ? '#064E3B' : '#F0FDF4')),
-                                                        color: chat.waitingMinutes >= 30 
-                                                            ? (ccTheme.isDark ? '#FCA5A5' : '#DC2626') 
-                                                            : (chat.waitingMinutes >= 10 ? (ccTheme.isDark ? '#FDE68A' : '#D97706') : (ccTheme.isDark ? '#6EE7B7' : '#15803D')),
-                                                        border: `1px solid ${chat.waitingMinutes >= 30 
-                                                            ? (ccTheme.isDark ? '#7F1D1D' : '#FECACA') 
-                                                            : (chat.waitingMinutes >= 10 ? (ccTheme.isDark ? '#78350F' : '#FDE68A') : (ccTheme.isDark ? '#047857' : '#BBF7D0'))}`,
-                                                        display: 'flex', alignItems: 'center', gap: '3px'
-                                                    }}
-                                                >
-                                                    <Clock size={9} />
-                                                    {chat.waitingMinutes >= 30 ? '🚨 ' : (chat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
-                                                    {chat.waitingTimeText || 'Sin responder'}
-                                                </span>
-                                            ) : (
-                                                <span 
-                                                    title="Esta conversación ya fue respondida por un operador"
-                                                    style={{
-                                                        fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '6px',
-                                                        background: ccTheme.isDark ? '#064E3B' : '#F8FAFC', color: ccTheme.isDark ? '#6EE7B7' : '#15803D', border: `1px solid ${ccTheme.isDark ? '#047857' : '#DCFCE7'}`,
-                                                        display: 'flex', alignItems: 'center', gap: '2px'
-                                                    }}
-                                                >
-                                                    <Check size={9} color={ccTheme.isDark ? '#6EE7B7' : '#16A34A'} /> Respondido
-                                                </span>
-                                            )
                                         )}
                                     </div>
 
