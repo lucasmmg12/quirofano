@@ -3021,7 +3021,7 @@ export default function ContactCenterChatConsole({
                                         onSelectChat(chat.id);
                                     }}
                                     style={{
-                                        padding: '12px 14px',
+                                        padding: '7px 10px',
                                         borderBottom: `1px solid ${themeCardBorder}`,
                                         cursor: 'pointer',
                                         background: isSelected 
@@ -3042,8 +3042,8 @@ export default function ContactCenterChatConsole({
                                         position: 'relative'
                                     }}
                                 >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             {/* Checkbox de selección para finalización masiva */}
                                             {!isClosed && (
                                                 <input
@@ -3056,8 +3056,8 @@ export default function ContactCenterChatConsole({
                                                     onClick={(e) => e.stopPropagation()}
                                                     style={{
                                                         cursor: 'pointer',
-                                                        width: '16px',
-                                                        height: '16px',
+                                                        width: '13px',
+                                                        height: '13px',
                                                         accentColor: '#16A34A',
                                                         flexShrink: 0
                                                     }}
@@ -3065,18 +3065,18 @@ export default function ContactCenterChatConsole({
                                                 />
                                             )}
                                             <div style={{
-                                                width: '28px', height: '28px', borderRadius: '50%',
+                                                width: '22px', height: '22px', borderRadius: '50%',
                                                 background: chat.avatarColor || '#1E40AF', color: '#FFF',
-                                                fontSize: '0.7rem', fontWeight: 800, display: 'flex',
-                                                alignItems: 'center', justifyContent: 'center'
+                                                fontSize: '0.58rem', fontWeight: 800, display: 'flex',
+                                                alignItems: 'center', justifyContent: 'center', flexShrink: 0
                                             }}>
                                                 {getChatAvatarInitials(chat)}
                                             </div>
-                                            <div>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: isSelected ? (ccTheme.accentColor || (ccTheme.isDark ? '#38BDF8' : '#1E40AF')) : themeCardText }}>
+                                            <div style={{ minWidth: 0 }}>
+                                                <span style={{ fontSize: '0.73rem', fontWeight: 700, color: isSelected ? (ccTheme.accentColor || (ccTheme.isDark ? '#38BDF8' : '#1E40AF')) : themeCardText, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {getCleanChatName(chat)}
                                                 </span>
-                                                <div style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
+                                                <div style={{ fontSize: '0.60rem', color: themeCardSubtext }}>
                                                     +{chat.phone}
                                                 </div>
                                             </div>
@@ -3153,7 +3153,7 @@ export default function ContactCenterChatConsole({
                                     </div>
 
                                     {/* TAGS DE TRAZABILIDAD: ASIGNADO Y LOCK */}
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '6px 0 4px' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', margin: '3px 0 2px' }}>
                                         {isClosedOrArchived(chat.status) ? (
                                             <span style={{
                                                 fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
