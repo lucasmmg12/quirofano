@@ -140,6 +140,28 @@ import ContactCenterThemeModal from './ContactCenterThemeModal';
 const TEST_BOT_RESET_INDICATOR_ENABLED = false;
 
 /**
+ * Formatea texto con sintaxis WhatsApp: *bold*, _italic_, ~strikethrough~
+ * Devuelve array de elementos React con los estilos aplicados.
+ */
+function formatWhatsAppText(text) {
+    if (!text || typeof text !== 'string') return text;
+    // Regex que captura *bold*, _italic_, ~strike~ en orden
+    const parts = text.split(/(\*[^*]+\*|_[^_]+_|~[^~]+~)/g);
+    return parts.map((part, i) => {
+        if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+            return <strong key={i}>{part.slice(1, -1)}</strong>;
+        }
+        if (part.startsWith('_') && part.endsWith('_') && part.length > 2) {
+            return <em key={i}>{part.slice(1, -1)}</em>;
+        }
+        if (part.startsWith('~') && part.endsWith('~') && part.length > 2) {
+            return <s key={i}>{part.slice(1, -1)}</s>;
+        }
+        return part;
+    });
+}
+
+/**
  * Pantalla de carga clínica para la columna lateral (Ficha CRM / Historial).
  * Evita confusiones entre operadores ocultando de inmediato los datos del paciente anterior
  * mientras se sincroniza la identidad clínica, padrón SALUS y turnos activos del nuevo paciente.
@@ -4741,7 +4763,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
                                         {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && (
                                             <div style={{ whiteSpace: 'pre-line' }}>
-                                                {msg.text}
+                                                {formatWhatsAppText(msg.text)}
                                             </div>
                                         )}
 
