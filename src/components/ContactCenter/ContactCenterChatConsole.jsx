@@ -2892,8 +2892,8 @@ export default function ContactCenterChatConsole({
                                 ? <span>{selectedChatIds.size} sel.</span>
                                 : <span>Todos ({selectableChats.length})</span>}
                         </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {selectedChatIds.size > 0 && (
+                        {selectedChatIds.size > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <button
                                     type="button"
                                     onClick={handleClearSelection}
@@ -2910,11 +2910,11 @@ export default function ContactCenterChatConsole({
                                 >
                                     Limpiar
                                 </button>
-                            )}
-                            <span style={{ fontSize: '0.62rem', color: themeCardSubtext }}>
-                                {filteredChats.length} {filteredChats.length === 1 ? 'chat' : 'chats'}
-                            </span>
-                        </div>
+                                <span style={{ fontSize: '0.62rem', color: themeCardSubtext }}>
+                                    {filteredChats.length} chats
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Fila 2: Botones de acción (solo cuando hay selección) */}
