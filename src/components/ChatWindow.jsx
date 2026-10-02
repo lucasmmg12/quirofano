@@ -919,10 +919,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             return;
         }
 
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
+        // No enviar con Enter: Enter simplemente inserta un salto de línea.
+        // El envío se realiza exclusivamente mediante el botón de enviar.
     };
 
     // ==========================================

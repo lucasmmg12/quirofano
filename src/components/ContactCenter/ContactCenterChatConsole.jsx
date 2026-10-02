@@ -2022,21 +2022,8 @@ export default function ContactCenterChatConsole({
 
     const handleInputKeyDown = (e) => {
         if (!quickRepliesOpen) {
-            if (e.key === 'Enter') {
-                if (e.shiftKey) {
-                    // Shift + Enter: Salto de línea hacia arriba sin enviar (comportamiento natural)
-                    return;
-                }
-                // Enter solo: Enviar mensaje
-                e.preventDefault();
-                if (!canWriteMessage || isLocked || uploadingMedia) {
-                    return;
-                }
-                if (!messageInput.trim() && !selectedFile) {
-                    return;
-                }
-                handleSend(e);
-            }
+            // No enviar con Enter: Enter inserta salto de línea en el texto.
+            // El mensaje se envía exclusivamente haciendo click en el botón de enviar.
             return;
         }
 
@@ -2050,27 +2037,14 @@ export default function ContactCenterChatConsole({
             setSelectedQuickReplyIndex(prev => (prev - 1 + Math.max(1, currentMatches.length)) % Math.max(1, currentMatches.length));
         } else if (e.key === 'Escape') {
             setQuickRepliesOpen(false);
-        } else if (e.key === 'Tab') {
-            // Tab autocompleta el texto en el input para poder editarlo
-            e.preventDefault();
-            const targetItem = currentMatches[selectedQuickReplyIndex] || currentMatches[0];
-            if (targetItem) {
-                setMessageInput(resolveQuickReplyText(targetItem.content));
-                setQuickRepliesOpen(false);
-            }
-        } else if (e.key === 'Enter') {
-            if (e.shiftKey) {
-                return;
-            }
-            // Enter envía inmediatamente el atajo
+        } else if (e.key === 'Tab' || e.key === 'Enter') {
+            // Tab o Enter autocompleta el atajo en el input para poder revisarlo/editarlo antes de enviar con el botón
             e.preventDefault();
             const matchedByDirectCmd = findQuickReplyByShortcut(messageInput);
             const targetItem = matchedByDirectCmd || currentMatches[selectedQuickReplyIndex] || currentMatches[0];
-
             if (targetItem) {
-                sendDirectMessage(resolveQuickReplyText(targetItem.content), isPrivateNote);
-            } else {
-                handleSend(e);
+                setMessageInput(resolveQuickReplyText(targetItem.content));
+                setQuickRepliesOpen(false);
             }
         }
     };
@@ -4773,7 +4747,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             placeholder={isPrivateNote 
                                                 ? `Escribe una nota interna que solo verá el equipo (o / para atajos)...` 
                                                 : selectedFile
-                                                    ? (selectedFile.type === 'image' ? `Mensaje opcional para la imagen (o Enter para enviar)...` : `Mensaje opcional para acompañar ${selectedFile.name}...`)
+                                                    ? (selectedFile.type === 'image' ? `Mensaje opcional para la imagen...` : `Mensaje opcional para acompañar ${selectedFile.name}...`)
                                                     : `Escribe respuesta a ${selectedChat.contactName} (o pega una captura con Ctrl+V)...`}
                                             value={messageInput}
                                             onChange={handleInputChange}
@@ -4816,37 +4790,31 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             </button>
                                         )}
 
-                                        {/* Botón Enviar */}
+                                        {/* Botón Enviar (solo icono para ahorrar espacio) */}
                                         <button 
                                             type="submit"
                                             disabled={isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)}
+                                            title={isPrivateNote ? "Guardar Nota Privada" : "Enviar WhatsApp"}
+                                            aria-label={isPrivateNote ? "Guardar Nota Privada" : "Enviar WhatsApp"}
                                             style={{
-                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 background: isPrivateNote ? '#EA580C' : '#0284C7',
-                                                color: '#FFFFFF', border: 'none', padding: '8px 16px',
-                                                borderRadius: '8px', fontWeight: 700, fontSize: '0.8rem',
+                                                color: '#FFFFFF', border: 'none',
+                                                width: '36px', height: '36px',
+                                                borderRadius: '8px',
                                                 cursor: (isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)) ? 'not-allowed' : 'pointer',
                                                 opacity: (isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)) ? 0.6 : 1,
-                                                boxShadow: !isLocked && (messageInput.trim() || selectedFile) ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none'
+                                                boxShadow: !isLocked && (messageInput.trim() || selectedFile) ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none',
+                                                flexShrink: 0,
+                                                transition: 'all 0.15s ease'
                                             }}
                                         >
                                             {uploadingMedia ? (
-                                                <>
-                                                    <Loader2 size={14} className="animate-spin" />
-                                                    Subiendo...
-                                                </>
+                                                <Loader2 size={16} className="animate-spin" />
                                             ) : isPrivateNote ? (
-                                                <>
-                                                    <Lock size={14} /> Guardar Nota
-                                                </>
-                                            ) : selectedFile ? (
-                                                <>
-                                                    <Send size={14} /> Enviar con Adjunto
-                                                </>
+                                                <Lock size={16} />
                                             ) : (
-                                                <>
-                                                    <Send size={14} /> Enviar WhatsApp
-                                                </>
+                                                <Send size={16} />
                                             )}
                                         </button>
                                     </>
