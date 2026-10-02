@@ -2838,37 +2838,36 @@ export default function ContactCenterChatConsole({
                 })()}
 
 
-                {/* BARRA DE SELECCIÓN Y CIERRE MASIVO SILENCIOSO */}
+                {/* BARRA DE SELECCIÓN Y ACCIONES MASIVAS — compacta para sidebar */}
                 <div style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: selectedChatIds.size > 0 ? 'column' : 'row',
+                    gap: selectedChatIds.size > 0 ? '4px' : '0',
+                    alignItems: selectedChatIds.size > 0 ? 'stretch' : 'center',
                     justifyContent: 'space-between',
-                    padding: '8px 12px',
+                    padding: '5px 10px',
                     background: selectedChatIds.size > 0 
                         ? themeCardSelectedBg 
                         : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#F8FAFC')),
                     borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
-                    transition: 'background 0.15s ease',
-                    fontSize: '0.74rem'
+                    transition: 'background 0.15s ease'
                 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: themeCardText, userSelect: 'none' }}>
-                        <input
-                            type="checkbox"
-                            checked={selectableChats.length > 0 && selectableChats.every(c => selectedChatIds.has(c.id))}
-                            onChange={handleSelectAllVisible}
-                            disabled={selectableChats.length === 0}
-                            style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: ccTheme.accentColor || '#2563EB' }}
-                        />
-                        <span>
+                    {/* Fila 1: Checkbox + contador + limpiar */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontWeight: 700, color: themeCardText, userSelect: 'none', fontSize: '0.68rem' }}>
+                            <input
+                                type="checkbox"
+                                checked={selectableChats.length > 0 && selectableChats.every(c => selectedChatIds.has(c.id))}
+                                onChange={handleSelectAllVisible}
+                                disabled={selectableChats.length === 0}
+                                style={{ cursor: 'pointer', width: '13px', height: '13px', accentColor: ccTheme.accentColor || '#2563EB' }}
+                            />
                             {selectedChatIds.size > 0 
-                                ? `${selectedChatIds.size} seleccionados` 
-                                : `Seleccionar todos (${selectableChats.length})`}
-                        </span>
-                    </label>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {selectedChatIds.size > 0 ? (
-                            <>
+                                ? <span>{selectedChatIds.size} sel.</span>
+                                : <span>Todos ({selectableChats.length})</span>}
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {selectedChatIds.size > 0 && (
                                 <button
                                     type="button"
                                     onClick={handleClearSelection}
@@ -2876,67 +2875,77 @@ export default function ContactCenterChatConsole({
                                         background: 'transparent',
                                         border: 'none',
                                         color: themeCardSubtext,
-                                        fontSize: '0.72rem',
+                                        fontSize: '0.64rem',
                                         fontWeight: 600,
                                         cursor: 'pointer',
-                                        padding: '3px 6px'
+                                        padding: '2px 4px',
+                                        textDecoration: 'underline'
                                     }}
                                 >
-                                    Deseleccionar
+                                    Limpiar
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={handleConfirmBulkAssign}
-                                    disabled={isBulkAssigning}
-                                    style={{
-                                        background: '#2563EB',
-                                        color: '#FFFFFF',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        cursor: isBulkAssigning ? 'not-allowed' : 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
-                                        opacity: isBulkAssigning ? 0.7 : 1
-                                    }}
-                                    title={`Asignar todas las conversaciones seleccionadas a ${activeAgent.name}`}
-                                >
-                                    <UserCheck size={13} />
-                                    {isBulkAssigning ? 'Asignando...' : `Asignarme (${selectedChatIds.size})`}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setBulkCloseModalOpen(true)}
-                                    style={{
-                                        background: '#DC2626',
-                                        color: '#FFFFFF',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)'
-                                    }}
-                                    title="Finalizar todas las conversaciones seleccionadas sin enviar mensajes"
-                                >
-                                    <CheckCircle2 size={13} />
-                                    Finalizar ({selectedChatIds.size})
-                                </button>
-                            </>
-                        ) : (
-                            <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
+                            )}
+                            <span style={{ fontSize: '0.62rem', color: themeCardSubtext }}>
                                 {filteredChats.length} {filteredChats.length === 1 ? 'chat' : 'chats'}
                             </span>
-                        )}
+                        </div>
                     </div>
+
+                    {/* Fila 2: Botones de acción (solo cuando hay selección) */}
+                    {selectedChatIds.size > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <button
+                                type="button"
+                                onClick={handleConfirmBulkAssign}
+                                disabled={isBulkAssigning}
+                                style={{
+                                    flex: 1,
+                                    background: '#2563EB',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '5px',
+                                    padding: '4px 0',
+                                    fontSize: '0.64rem',
+                                    fontWeight: 800,
+                                    cursor: isBulkAssigning ? 'not-allowed' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 1px 3px rgba(37,99,235,0.25)',
+                                    opacity: isBulkAssigning ? 0.7 : 1
+                                }}
+                                title={`Asignar ${selectedChatIds.size} conversaciones a ${activeAgent.name}`}
+                            >
+                                <UserCheck size={12} />
+                                {isBulkAssigning ? '...' : 'Asignarme'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setBulkCloseModalOpen(true)}
+                                style={{
+                                    flex: 1,
+                                    background: '#DC2626',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '5px',
+                                    padding: '4px 0',
+                                    fontSize: '0.64rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 1px 3px rgba(220,38,38,0.25)'
+                                }}
+                                title={`Finalizar ${selectedChatIds.size} conversaciones`}
+                            >
+                                <CheckCircle2 size={12} />
+                                Finalizar
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Lista de Chats con Tags de Asignación y Último en Responder */}
