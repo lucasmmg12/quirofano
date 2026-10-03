@@ -559,6 +559,30 @@ export async function fetchLiveAndDemoChats() {
             realChatsMap[normPhone].push(msg);
         });
 
+        // 3. Resolución complementaria de estado para teléfonos con mensajes
+        // Garantiza que chats archivados que quedaron fuera del lote inicial de 60
+        // NO resuciten en el frontend como activos ('bot') por falta de registro.
+        const missingPhones = Object.keys(realChatsMap).filter(p => !convByPhone[p]);
+        if (missingPhones.length > 0) {
+            try {
+                for (let i = 0; i < missingPhones.length; i += 50) {
+                    const batch = missingPhones.slice(i, i + 50);
+                    const { data: extraConvs } = await supabase
+                        .from('contact_center_conversations')
+                        .select('*')
+                        .in('phone', batch);
+
+                    (extraConvs || []).forEach(c => {
+                        if (c.phone) {
+                            convByPhone[normalizeArgentinePhone(c.phone)] = c;
+                        }
+                    });
+                }
+            } catch (errMissing) {
+                console.warn('[contact-center] Error resolviendo conversaciones complementarias:', errMissing);
+            }
+        }
+
         function formatRelativeTime(dateStr) {
             if (!dateStr) return 'Reciente';
             const d = new Date(dateStr);
