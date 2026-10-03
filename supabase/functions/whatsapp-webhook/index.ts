@@ -15,6 +15,39 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '
 // Bucket de Supabase Storage para media persistente
 const STORAGE_BUCKET = 'whatsapp-media';
 
+// =============================================
+// RETRY HELPER: Protección contra PGRST002 (schema cache unavailable)
+// Reintenta operaciones de DB con backoff exponencial cuando PostgREST
+// no puede conectar a la base de datos (saturación de pool o restart)
+// =============================================
+async function supabaseRetry<T>(
+    operation: () => Promise<{ data: T | null; error: any }>,
+    label: string = 'operation',
+    maxRetries: number = 3
+): Promise<{ data: T | null; error: any }> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const result = await operation();
+        if (!result.error) return result;
+
+        const isRetryable = result.error.code === 'PGRST002' ||
+            (result.error.message && result.error.message.includes('schema cache'));
+
+        if (isRetryable && attempt < maxRetries) {
+            const delayMs = attempt * 1500; // 1.5s, 3s, 4.5s
+            console.warn(`[webhook-retry] ⚠️ ${label}: PGRST002 en intento ${attempt}/${maxRetries}. Reintentando en ${delayMs}ms...`);
+            await new Promise(r => setTimeout(r, delayMs));
+            continue;
+        }
+
+        // Error no-retriable o último intento
+        if (isRetryable) {
+            console.error(`[webhook-retry] ❌ ${label}: PGRST002 persistió tras ${maxRetries} intentos.`);
+        }
+        return result;
+    }
+    return { data: null, error: { message: `${label}: max retries exceeded`, code: 'RETRY_EXHAUSTED' } };
+}
+
 Deno.serve(async (req) => {
     // CORS headers
     const corsHeaders = {
@@ -512,27 +545,31 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
         const finalMediaType = mediaType !== 'text' ? mediaType : (mediaUrl ? inferMediaType(mediaUrl, data.attachment?.[0]) : 'text');
 
         // Insertar en la tabla y obtener ID para posibles enriquecimientos de IA
-        const { data: insertedData, error: insertError } = await supabase
-            .from('whatsapp_messages')
-            .insert({
-                phone,
-                direction,
-                content: content || (mediaUrl ? `[${finalMediaType}]` : (finalMediaType !== 'text' ? `[${finalMediaType}]` : '')),
-                media_url: mediaUrl,
-                media_type: finalMediaType,
-                sender_name: senderName,
-                is_read: direction === 'outgoing',
-                raw_payload: payload,
-                // Guardar la URL temporal original como referencia
-                original_media_url: originalMediaUrl || null,
-                // Línea WhatsApp que recibió el mensaje
-                line_id: lineId,
-            })
-            .select('id')
-            .maybeSingle();
+        // PROTECCIÓN: Retry con backoff para PGRST002 (schema cache unavailable)
+        const { data: insertedData, error: insertError } = await supabaseRetry(
+            () => supabase
+                .from('whatsapp_messages')
+                .insert({
+                    phone,
+                    direction,
+                    content: content || (mediaUrl ? `[${finalMediaType}]` : (finalMediaType !== 'text' ? `[${finalMediaType}]` : '')),
+                    media_url: mediaUrl,
+                    media_type: finalMediaType,
+                    sender_name: senderName,
+                    is_read: direction === 'outgoing',
+                    raw_payload: payload,
+                    // Guardar la URL temporal original como referencia
+                    original_media_url: originalMediaUrl || null,
+                    // Línea WhatsApp que recibió el mensaje
+                    line_id: lineId,
+                })
+                .select('id')
+                .maybeSingle(),
+            `insert whatsapp_messages (${phone} ${direction})`
+        );
 
         if (insertError) {
-            console.error('[webhook] Error insertando mensaje:', insertError);
+            console.error('[webhook] Error insertando mensaje (tras reintentos):', insertError);
             return new Response(
                 JSON.stringify({ ok: false, error: insertError.message }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -675,11 +712,18 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                         }
                     }
 
-                    await supabase
-                        .from('contact_center_conversations')
-                        .upsert(convUpdates, { onConflict: 'phone' });
+                    const { error: waWebUpsertErr } = await supabaseRetry(
+                        () => supabase
+                            .from('contact_center_conversations')
+                            .upsert(convUpdates, { onConflict: 'phone' }),
+                        `upsert conversation WA Web (${phone})`
+                    );
 
-                    console.log(`[webhook] ✅ Conversación actualizada para ${phone} por mensaje de WhatsApp Web.`);
+                    if (waWebUpsertErr) {
+                        console.error(`[webhook] Error actualizando conversación WA Web (${phone}):`, waWebUpsertErr);
+                    } else {
+                        console.log(`[webhook] ✅ Conversación actualizada para ${phone} por mensaje de WhatsApp Web.`);
+                    }
                 } catch (convErr: any) {
                     console.error('[webhook] Error actualizando conversación por mensaje WhatsApp Web:', convErr?.message || convErr);
                 }
@@ -2801,15 +2845,18 @@ async function handleChatbotTriage(
             }
         }
 
-        const { error: upsertErr } = await supabase
-            .from('contact_center_conversations')
-            .upsert({
-                phone,
-                ...cleanUpdates
-            }, { onConflict: 'phone' });
+        const { error: upsertErr } = await supabaseRetry(
+            () => supabase
+                .from('contact_center_conversations')
+                .upsert({
+                    phone,
+                    ...cleanUpdates
+                }, { onConflict: 'phone' }),
+            `upsert conversation triage (${phone})`
+        );
 
         if (upsertErr) {
-            console.error('[triage-bot] ❌ Error actualizando contact_center_conversations:', upsertErr);
+            console.error('[triage-bot] ❌ Error actualizando contact_center_conversations (tras reintentos):', upsertErr);
         } else {
             console.log(`[triage-bot] ✅ Conversación ${phone} persistida (stage: ${finalStage}, bot_active: ${cleanUpdates.bot_active})`);
         }

@@ -119,7 +119,8 @@ import {
     FINAL_ATTENTION_MESSAGE, isClosedOrArchived,
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
     transcribeAudioMessage, uploadContactCenterMedia,
-    fetchOlderMessagesForPhone
+    fetchOlderMessagesForPhone,
+    fetchArchivedChats
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
@@ -287,6 +288,13 @@ export default function ContactCenterChatConsole({
     // Tracking de chats leídos: Map<chatId, incomingMsgCount al momento de leer>
     const readChatMsgCountRef = useRef(new Map());
 
+    // Paginación de chats finalizados (lazy-load)
+    const [archivedChats, setArchivedChats] = useState([]);
+    const [archivedOffset, setArchivedOffset] = useState(0);
+    const [archivedHasMore, setArchivedHasMore] = useState(true);
+    const [loadingArchived, setLoadingArchived] = useState(false);
+    const archivedLoadedRef = useRef(false);
+
     // Pase de Guardia Masivo / Traspaso de Fin de Turno
     const [handoverModalOpen, setHandoverModalOpen] = useState(false);
     const [handoverTargetAgent, setHandoverTargetAgent] = useState(() => {
@@ -382,6 +390,8 @@ export default function ContactCenterChatConsole({
     const [searchTerm, setSearchTerm] = useState('');
     const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
     const searchInputRef = useRef(null);
+
+
 
     // Atajo de teclado global: '/' o 'Ctrl+K' para activar el buscador al instante
     useEffect(() => {
@@ -786,7 +796,12 @@ export default function ContactCenterChatConsole({
     const patientHistoryCache = useRef({});
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
-    const selectedChat = chats.find(c => c.id === activeChatId) || chats[0] || {};
+    const selectedChat = chats.find(c => c.id === activeChatId) 
+        || archivedChats.find(c => c.id === activeChatId) 
+        || ((filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') 
+            ? (chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0] || chats[0]) 
+            : (chats[0] || archivedChats[0])) 
+        || {};
 
     // Ref para rastrear por cuál chat ya se solicitó el historial (evita refetch en re-renders)
     const historyRequestedForChat = useRef(null);
@@ -1740,19 +1755,33 @@ export default function ContactCenterChatConsole({
 
     const isSearching = !!searchTerm.trim();
 
-    // Evaluar todas las conversaciones con el buscador
+    // Evaluar todas las conversaciones con el buscador (incluye finalizados cargados)
     const searchedChats = useMemo(() => {
         if (!isSearching) return [];
-        return chats.map(chat => {
+        const pool = [...chats, ...archivedChats];
+        return pool.map(chat => {
             const matchInfo = getSearchMatchInfo(chat, searchTerm);
             return matchInfo.isMatch ? { ...chat, _searchMatch: matchInfo } : null;
         }).filter(Boolean);
-    }, [chats, searchTerm]);
+    }, [chats, archivedChats, isSearching, searchTerm]);
 
     // Filtrar chats según pestaña activa o alcance de búsqueda
     const filteredChats = useMemo(() => {
         let base = [];
-        if (isSearching) {
+        const isFinalizadosTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
+
+        if (isFinalizadosTab) {
+            const closedFromChats = chats.filter(c => isClosedOrArchived(c.status));
+            const seenIds = new Set(closedFromChats.map(c => c.id));
+            const allArchived = [...closedFromChats, ...archivedChats.filter(c => !seenIds.has(c.id))];
+
+            base = isSearching 
+                ? allArchived.map(chat => {
+                    const matchInfo = getSearchMatchInfo(chat, searchTerm);
+                    return matchInfo.isMatch ? { ...chat, _searchMatch: matchInfo } : null;
+                }).filter(Boolean)
+                : allArchived;
+        } else if (isSearching) {
             if (searchScope === 'all') {
                 base = [...searchedChats];
             } else {
@@ -1770,7 +1799,6 @@ export default function ContactCenterChatConsole({
                     if (filterTab === 'sin_asignar') return isChatUnassigned;
                     if (filterTab === 'asignadas_mi') return isMine && !closed;
                     if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
-                    if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
                     if (filterTab === 'todos') return true;
                     return !closed;
                 });
@@ -1790,7 +1818,6 @@ export default function ContactCenterChatConsole({
                 if (filterTab === 'sin_asignar') return isChatUnassigned;
                 if (filterTab === 'asignadas_mi') return isMine && !closed;
                 if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
-                if (filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') return closed;
                 if (filterTab === 'todos') return true;
                 return !closed;
             });
@@ -1816,7 +1843,7 @@ export default function ContactCenterChatConsole({
             }
             return true;
         }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
-    }, [chats, isSearching, searchScope, searchedChats, filterTab, triageFilter, myAliases, activeAgent.name]);
+    }, [chats, archivedChats, isSearching, searchScope, searchedChats, filterTab, triageFilter, myAliases, activeAgent.name]);
 
     // Conversaciones seleccionables para cierre masivo (excluye las ya finalizadas)
     const selectableChats = useMemo(() => {
@@ -2727,8 +2754,8 @@ export default function ContactCenterChatConsole({
                             type="button"
                             onClick={() => {
                                 setFilterTab('finalizados');
-                                const first = chats.find(c => isClosedOrArchived(c.status));
-                                if (first && onSelectChat) onSelectChat(first.id);
+                                const firstClosed = chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0];
+                                if (firstClosed && onSelectChat) onSelectChat(firstClosed.id);
                             }}
                             title="Historial de conversaciones finalizadas y resueltas"
                             style={{
@@ -3322,6 +3349,46 @@ export default function ContactCenterChatConsole({
                                 </div>
                             );
                         })
+                    )}
+
+                    {/* Botón Cargar Más para Finalizados paginados */}
+                    {(filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') && (
+                        <div style={{ padding: '12px 16px', textAlign: 'center' }}>
+                            {loadingArchived ? (
+                                <span style={{ fontSize: '0.72rem', color: themeCardSubtext }}>Cargando...</span>
+                            ) : archivedHasMore ? (
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setLoadingArchived(true);
+                                        try {
+                                            const result = await fetchArchivedChats(archivedOffset, 25);
+                                            setArchivedChats(prev => [...prev, ...result.chats]);
+                                            setArchivedOffset(prev => prev + 25);
+                                            setArchivedHasMore(result.hasMore);
+                                        } catch (err) {
+                                            console.error('Error cargando más finalizados:', err);
+                                        } finally {
+                                            setLoadingArchived(false);
+                                        }
+                                    }}
+                                    style={{
+                                        background: themeCardBg,
+                                        border: `1px solid ${themeCardBorder}`,
+                                        borderRadius: '6px',
+                                        padding: '6px 16px',
+                                        fontSize: '0.70rem',
+                                        fontWeight: 700,
+                                        color: ccTheme.accentColor || '#0284C7',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cargar más finalizados
+                                </button>
+                            ) : (
+                                <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>No hay más conversaciones</span>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

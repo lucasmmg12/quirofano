@@ -492,21 +492,20 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
-        // Prioridad Crítica: Primero todas las conversaciones activas (abierto, sin_asignar, bot)
-        // para que NINGÚN paciente en espera sea ocultado por límite de corte.
+        // Prioridad: Conversaciones activas + lote de recientes finalizados para resolver CRM y mensajes sin saturar memoria
         const [activeConvRes, archivedConvRes] = await Promise.all([
             supabase
                 .from('contact_center_conversations')
                 .select('*')
-                .in('status', ['abierto', 'sin_asignar', 'bot'])
+                .in('status', ['abierto', 'sin_asignar', 'bot', 'asignada'])
                 .order('updated_at', { ascending: false })
                 .limit(200),
             supabase
                 .from('contact_center_conversations')
                 .select('*')
-                .in('status', ['archivado', 'cerrado', 'finalizado'])
+                .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto'])
                 .order('updated_at', { ascending: false })
-                .limit(100)
+                .limit(60)
         ]);
 
         const activeList = activeConvRes.data || [];
@@ -2492,3 +2491,85 @@ export async function deleteChatHistoryAndContext({ phone, currentUser }) {
     return { success: true };
 }
 
+
+/**
+ * Carga paginada de chats finalizados/archivados/cerrados.
+ * NO se cargan en el polling — solo on-demand cuando el usuario abre la pestaña Finalizados.
+ * @param {number} offset - Desde qué registro empezar (0 = los más recientes)
+ * @param {number} limit - Cantidad de registros por página (default 25)
+ * @returns {{ chats: Array, hasMore: boolean }}
+ */
+export async function fetchArchivedChats(offset = 0, limit = 25) {
+    try {
+        const { data: convs, error } = await supabase
+            .from('contact_center_conversations')
+            .select('*')
+            .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto'])
+            .order('updated_at', { ascending: false })
+            .range(offset, offset + limit - 1);
+
+        if (error) {
+            console.warn('[contactCenterService] Error cargando finalizados:', error);
+            return { chats: [], hasMore: false };
+        }
+
+        const archivedChats = (convs || []).map(conv => {
+            const phone = normalizeArgentinePhone(conv.phone || '');
+            const resolvedName = (conv.nombre_completo && String(conv.nombre_completo).trim()) || `+${phone.replace(/\D/g, '')}`;
+            return {
+                id: 'REAL_' + phone.replace(/\D/g, '').slice(-12),
+                contactName: resolvedName,
+                phone: phone,
+                channel: 'WHATSAPP',
+                channelNumber: '5492645825637',
+                status: conv.status || 'finalizado',
+                unread: false,
+                lastMessage: conv.last_message_text || 'Conversación finalizada',
+                lastMessageTimestamp: conv.updated_at ? new Date(conv.updated_at).getTime() : 0,
+                timeAgo: formatRelativeTime(conv.updated_at),
+                department: 'Atención al cliente',
+                assignedTo: conv.assigned_agent_id || null,
+                assignedToName: conv.assigned_agent_name || null,
+                assignedAt: conv.assigned_at || null,
+                botActive: conv.bot_active ?? false,
+                aiSummary: conv.ai_summary || null,
+                resolutionReason: conv.resolution_reason || null,
+                closedAt: conv.closed_at || null,
+                closedByAgentId: conv.closed_by_agent_id || null,
+                closedByAgentName: conv.closed_by_agent_name || null,
+                lastResponder: null,
+                lastResponderRole: null,
+                lastResponseAt: null,
+                isWaitingResponse: false,
+                waitingSinceMs: null,
+                waitingMinutes: 0,
+                waitingTimeText: null,
+                badgeTimeText: null,
+                chatbot: '#triage-sanatorio',
+                avatarColor: '#64748B',
+                tags: ['Contact Center', 'WhatsApp'],
+                customFields: {
+                    titularNombre: resolvedName,
+                    titularTelefono: phone,
+                    pacienteNombre: resolvedName,
+                    pacienteDni: conv.dni || null,
+                    pacienteObraSocial: conv.obra_social || null,
+                    pacienteNhc: conv.nhc || null,
+                    fechaNacimiento: conv.fecha_nacimiento || null,
+                    email: conv.email || null,
+                    departamento: conv.departamento || 'San Juan',
+                    motivoConsulta: conv.motivo_consulta || 'Consulta general'
+                },
+                messages: []
+            };
+        });
+
+        return {
+            chats: archivedChats,
+            hasMore: (convs || []).length === limit
+        };
+    } catch (err) {
+        console.error('[contactCenterService] Error en fetchArchivedChats:', err);
+        return { chats: [], hasMore: false };
+    }
+}
