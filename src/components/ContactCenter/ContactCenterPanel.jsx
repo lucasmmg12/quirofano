@@ -309,6 +309,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         mediaUrl: newMsg.media_url || null,
                         orderAnalysis: newMsg.raw_payload?.order_analysis || null,
                         rawPayload: sanitizedRaw,
+                        created_at: newMsg.created_at || new Date().toISOString(),
                         timestamp: timeStr
                     };
 
@@ -329,6 +330,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             messages: updatedMessages,
                             lastMessage: newMsg.content || `[${newMsg.media_type}]`,
                             lastMessageTimestamp: now.getTime(),
+                            lastIncomingTimestamp: isIncoming ? now.getTime() : (existingChat.lastIncomingTimestamp || 0),
+                            lastIncomingAt: isIncoming ? now.toISOString() : (existingChat.lastIncomingAt || null),
                             timeAgo: 'hace instantes',
                             unread: isIncoming ? true : existingChat.unread,
                             lastResponder: isIncoming ? (newMsg.sender_name || 'Paciente') : (newMsg.sender_name || 'Sanatorio Argentino'),
@@ -339,8 +342,21 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido'
                         };
 
+                        // Si el mensaje es una respuesta del agente (!isIncoming) Y el chat está asignado a un agente,
+                        // NO debe moverse al inicio del sidebar; debe permanecer exactamente en su posición fija.
+                        if (!isIncoming && (existingChat.assignedTo || existingChat.status === 'asignada')) {
+                            return prevChats.map((c, idx) => idx === chatIdx ? updatedChat : c);
+                        }
+
                         const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
-                        return [updatedChat, ...otherChats].sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+                        return [updatedChat, ...otherChats].sort((a, b) => {
+                            const aIsAssigned = Boolean(a.assignedTo);
+                            const bIsAssigned = Boolean(b.assignedTo);
+                            const aKey = aIsAssigned ? (a.lastIncomingTimestamp || a.lastMessageTimestamp || 0) : (a.lastMessageTimestamp || 0);
+                            const bKey = bIsAssigned ? (b.lastIncomingTimestamp || b.lastMessageTimestamp || 0) : (b.lastMessageTimestamp || 0);
+                            if (bKey !== aKey) return bKey - aKey;
+                            return String(b.id || '').localeCompare(String(a.id || ''));
+                        });
                     } else {
                         // Nuevo chat en vivo no registrado previamente
                         const newRealChat = {

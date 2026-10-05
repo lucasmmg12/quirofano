@@ -946,6 +946,9 @@ export async function fetchLiveAndDemoChats() {
                     pacienteNhc: aiDual?.paciente?.nhc || conv?.nhc || null
                 }
             };
+            const lastIncomingMsg = messages.find(m => m.direction === 'incoming');
+            const lastIncomingIso = lastIncomingMsg?.created_at || incomingWithName?.created_at || null;
+            const lastIncomingMs = lastIncomingIso ? new Date(lastIncomingIso).getTime() : 0;
 
             realChats.push({
                 id: 'REAL_' + phone.replace(/\D/g, '').slice(-12),
@@ -980,7 +983,8 @@ export async function fetchLiveAndDemoChats() {
                 avatarColor: '#0284C7',
                 tags: ['Contact Center', 'WhatsApp'],
                 whatsappName: incomingSenderName || null,
-                lastIncomingAt: incomingWithName?.created_at || messages.find(m => m.direction === 'incoming')?.created_at || null,
+                lastIncomingAt: lastIncomingIso,
+                lastIncomingTimestamp: lastIncomingMs,
                 customFields: patientFields,
                 messages: formattedMessages
             });
@@ -989,8 +993,17 @@ export async function fetchLiveAndDemoChats() {
         }
     });
 
-        // Orden cronológico descendente (interacción más reciente arriba)
-        realChats.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+        // Orden de bandeja:
+        // - Para chats asignados: ordenados por último mensaje entrante del paciente (permanecen fijos al responder).
+        // - Para chats no asignados (bot, sin_asignar): ordenados dinámicamente por última interacción general.
+        realChats.sort((a, b) => {
+            const aIsAssigned = Boolean(a.assignedTo);
+            const bIsAssigned = Boolean(b.assignedTo);
+            const aKey = aIsAssigned ? (a.lastIncomingTimestamp || a.lastMessageTimestamp || 0) : (a.lastMessageTimestamp || 0);
+            const bKey = bIsAssigned ? (b.lastIncomingTimestamp || b.lastMessageTimestamp || 0) : (b.lastMessageTimestamp || 0);
+            if (bKey !== aKey) return bKey - aKey;
+            return String(b.id || '').localeCompare(String(a.id || ''));
+        });
 
         return realChats;
     } catch (err) {

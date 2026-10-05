@@ -830,6 +830,13 @@ export default function ContactCenterChatConsole({
             : (chats[0] || archivedChats[0])) 
         || {};
 
+    // === ESTADO DE SOBREESCRITURA MANUAL DE VENTANA 24H (Para que el operador nunca quede atrapado) ===
+    const [forceBypass24hWindow, setForceBypass24hWindow] = useState(false);
+
+    useEffect(() => {
+        setForceBypass24hWindow(false);
+    }, [selectedChat?.id]);
+
     // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
     const lastIncomingMsg = useMemo(() => {
         if (!selectedChat?.messages || selectedChat.messages.length === 0) return null;
@@ -849,11 +856,33 @@ export default function ContactCenterChatConsole({
 
     const is24hWindowExpired = useMemo(() => {
         if (!selectedChat || !selectedChat.id) return false;
-        const timeRef = lastIncomingMsg?.created_at || selectedChat.lastIncomingAt;
-        if (!timeRef) return true; // Si nunca escribió el paciente, la ventana está cerrada
-        const diffMs = Date.now() - new Date(timeRef).getTime();
-        return diffMs > 24 * 60 * 60 * 1000; // > 24 horas
-    }, [selectedChat, lastIncomingMsg]);
+        if (forceBypass24hWindow) return false;
+
+        // Si el paciente está esperando respuesta y tiene waitingMinutes < 1440 (24hs),
+        // o si es un chat activo recién entrado, la ventana está 100% ABIERTA.
+        if (selectedChat.isWaitingResponse && (selectedChat.waitingMinutes || 0) < 1440) {
+            return false;
+        }
+
+        // Buscar el timestamp más reciente del paciente por cualquier fuente disponible
+        let patientTimeMs = 0;
+        if (selectedChat.lastIncomingTimestamp) {
+            patientTimeMs = Number(selectedChat.lastIncomingTimestamp);
+        } else if (selectedChat.lastIncomingAt) {
+            patientTimeMs = new Date(selectedChat.lastIncomingAt).getTime();
+        } else if (lastIncomingMsg?.created_at) {
+            patientTimeMs = new Date(lastIncomingMsg.created_at).getTime();
+        }
+
+        // Si no se encuentra fecha fehaciente del paciente, NUNCA bloquear por defecto
+        if (!patientTimeMs || isNaN(patientTimeMs) || patientTimeMs <= 0) {
+            return false;
+        }
+
+        const diffMs = Date.now() - patientTimeMs;
+        // Solo expira si realmente pasaron más de 24 horas continuas sin mensaje del paciente
+        return diffMs > (24 * 60 * 60 * 1000);
+    }, [selectedChat, lastIncomingMsg, forceBypass24hWindow]);
 
     const windowRemaining = useMemo(() => {
         const timeRef = lastIncomingMsg?.created_at || selectedChat?.lastIncomingAt;
@@ -2009,8 +2038,36 @@ export default function ContactCenterChatConsole({
                 const a = (chat.assignedTo || '').toLowerCase();
                 return a === agentId || (chat.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase());
             }
-            return true;
-        }).sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
+        }).sort((a, b) => {
+            const aIsAssigned = Boolean(a.assignedTo);
+            const bIsAssigned = Boolean(b.assignedTo);
+
+            const getAssignedKey = (chat) => {
+                if (chat.lastIncomingTimestamp) return Number(chat.lastIncomingTimestamp);
+                if (chat.lastIncomingAt) {
+                    const t = new Date(chat.lastIncomingAt).getTime();
+                    if (!isNaN(t) && t > 0) return t;
+                }
+                if (chat.assignedAt) {
+                    const t = new Date(chat.assignedAt).getTime();
+                    if (!isNaN(t) && t > 0) return t;
+                }
+                const firstMsg = chat.messages?.[0];
+                if (firstMsg?.created_at || firstMsg?.timestamp) {
+                    const t = new Date(firstMsg.created_at || firstMsg.timestamp).getTime();
+                    if (!isNaN(t) && t > 0) return t;
+                }
+                return chat.lastMessageTimestamp || 0;
+            };
+
+            // Para chats asignados a agentes: la posición en el sidebar permanece FIJA cuando
+            // el operador responde (outgoing). Solo sube si el paciente envía un mensaje entrante nuevo.
+            const aKey = aIsAssigned ? getAssignedKey(a) : (a.lastMessageTimestamp || 0);
+            const bKey = bIsAssigned ? getAssignedKey(b) : (b.lastMessageTimestamp || 0);
+
+            if (bKey !== aKey) return bKey - aKey;
+            return String(b.id || '').localeCompare(String(a.id || ''));
+        });
     }, [chats, archivedChats, isSearching, searchScope, searchedChats, filterTab, triageFilter, myAliases, activeAgent.name]);
 
     // Conversaciones seleccionables para cierre masivo (excluye las ya finalizadas)
@@ -5321,18 +5378,32 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
                                     </div>
                                     
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsPrivateNote(true)}
-                                        style={{
-                                            padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                            border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C',
-                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
-                                        }}
-                                        title="Redactar nota confidencial para el equipo del Sanatorio"
-                                    >
-                                        <Lock size={12} /> Redactar Nota Interna
-                                    </button>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setForceBypass24hWindow(true)}
+                                            style={{
+                                                padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#0284C7',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+                                            }}
+                                            title="Permitir redactar mensaje libre de WhatsApp directamente sin plantilla"
+                                        >
+                                            <Send size={12} /> Redactar WhatsApp libre
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsPrivateNote(true)}
+                                            style={{
+                                                padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+                                            }}
+                                            title="Redactar nota confidencial para el equipo del Sanatorio"
+                                        >
+                                            <Lock size={12} /> Redactar Nota Interna
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Selector de Plantilla y Detalles */}
