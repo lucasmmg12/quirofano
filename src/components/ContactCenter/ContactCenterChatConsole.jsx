@@ -400,7 +400,19 @@ export default function ContactCenterChatConsole({
     const [noMoreOlder, setNoMoreOlder] = useState(false);
     const [loadingChatMessages, setLoadingChatMessages] = useState(false);
 
-    const [filterTab, setFilterTab] = useState('sin_asignar');
+    const [filterTab, setFilterTab] = useState(() => {
+        try {
+            return localStorage.getItem('sa_cc_filter_tab') || 'sin_asignar';
+        } catch (_) {
+            return 'sin_asignar';
+        }
+    });
+
+    useEffect(() => {
+        try {
+            if (filterTab) localStorage.setItem('sa_cc_filter_tab', filterTab);
+        } catch (_) {}
+    }, [filterTab]);
     const [searchTerm, setSearchTerm] = useState('');
     const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
     const searchInputRef = useRef(null);
@@ -1723,6 +1735,34 @@ export default function ContactCenterChatConsole({
 
     // Regla estricta: Dos agentes no pueden escribir a la vez. Siempre sí o sí deben asignárselo.
     const canWriteMessage = isAssignedToMe && !isClosedOrArchived(selectedChat.status);
+
+    // Auto-alinear pestaña del sidebar para que contenga al chat activo al recargar la página (F5)
+    useEffect(() => {
+        if (!activeChatId || !chats || chats.length === 0) return;
+        const currentChat = chats.find(c => c.id === activeChatId);
+        if (!currentChat) return;
+
+        const isMine = (currentChat.assignedTo && myAliases.includes(currentChat.assignedTo.toLowerCase())) ||
+                       (currentChat.assignedToName && currentChat.assignedToName.toLowerCase().includes(activeAgent.name.toLowerCase()));
+
+        if (isClosedOrArchived(currentChat.status)) {
+            if (filterTab !== 'finalizados' && filterTab !== 'archivadas') {
+                setFilterTab('finalizados');
+            }
+        } else if (isMine) {
+            if (filterTab !== 'asignadas_mi' && filterTab !== 'todos') {
+                setFilterTab('asignadas_mi');
+            }
+        } else if (!currentChat.assignedTo && currentChat.status === 'sin_asignar') {
+            if (filterTab !== 'sin_asignar' && filterTab !== 'todos') {
+                setFilterTab('sin_asignar');
+            }
+        } else if (currentChat.status === 'bot' || currentChat.botActive) {
+            if (filterTab !== 'bot' && filterTab !== 'todos') {
+                setFilterTab('bot');
+            }
+        }
+    }, [activeChatId, chats?.length]);
 
     // Detección de otros agentes leyendo la conversación actual ("El Ojito")
     const otherViewersForCurrentChat = useMemo(() => {

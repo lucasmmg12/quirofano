@@ -42,7 +42,33 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
     const [chats, setChats] = useState([]);
-    const [activeChatId, setActiveChatId] = useState(null);
+    const [activeChatId, setActiveChatId] = useState(() => {
+        try {
+            return localStorage.getItem('sa_cc_active_chat_id') || null;
+        } catch (_) {
+            return null;
+        }
+    });
+
+    const handleSelectChat = (id) => {
+        setActiveChatId(id);
+        try {
+            if (id) {
+                localStorage.setItem('sa_cc_active_chat_id', String(id));
+            } else {
+                localStorage.removeItem('sa_cc_active_chat_id');
+            }
+        } catch (_) {}
+    };
+
+    useEffect(() => {
+        try {
+            if (activeChatId) {
+                localStorage.setItem('sa_cc_active_chat_id', String(activeChatId));
+            }
+        } catch (_) {}
+    }, [activeChatId]);
+
     const [allowedUsers, setAllowedUsers] = useState(['lmarinero', 'daniela', 'sofia', 'virginia', 'erica']);
     const [savingPermisos, setSavingPermisos] = useState(false);
     const [loadingLive, setLoadingLive] = useState(false);
@@ -142,13 +168,21 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 return loaded;
             });
             
-            // Mantener el chat actualmente seleccionado por el operador, o seleccionar el primer chat activo
+            // Mantener el chat actualmente seleccionado por el operador, o recuperarlo de localStorage, o seleccionar el primer chat activo
             setActiveChatId(currentId => {
-                if (currentId && loaded.some(c => c.id === currentId)) {
-                    return currentId; // Preservar siempre la selección del usuario
+                const savedId = (() => {
+                    try { return localStorage.getItem('sa_cc_active_chat_id'); } catch (_) { return null; }
+                })();
+                const targetId = currentId || savedId;
+                if (targetId && loaded.some(c => c.id === targetId)) {
+                    return targetId; // Preservar siempre la selección del usuario tras F5 o recarga
                 }
                 const firstActive = loaded.find(c => !isClosedOrArchived(c.status));
-                return firstActive?.id || loaded[0]?.id || null;
+                const fallbackId = firstActive?.id || loaded[0]?.id || null;
+                if (!targetId && fallbackId) {
+                    try { localStorage.setItem('sa_cc_active_chat_id', String(fallbackId)); } catch (_) {}
+                }
+                return targetId || fallbackId;
             });
         } catch (err) {
             // Error transitorio: NO limpiar el estado existente. Solo loguear.
@@ -1052,7 +1086,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     activeChatId={activeChatId}
                     activeAgent={activeAgent}
                     currentUser={currentUser}
-                    onSelectChat={setActiveChatId}
+                    onSelectChat={handleSelectChat}
                     onSendMessage={handleSendMessage}
                     onSendTemplate={handleSendTemplate}
                     onAssignChat={handleAssignChat}
