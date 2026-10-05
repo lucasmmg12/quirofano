@@ -88,6 +88,47 @@ export function getPhoneVariants(phone) {
     return Array.from(variants).filter(Boolean);
 }
 
+/**
+ * SELECT liviano para whatsapp_messages.
+ * En lugar de traer el raw_payload completo (JSON de BuilderBot de varios KB por fila),
+ * Postgres extrae solo las rutas JSON que la UI realmente usa. Reduce fuertemente la CPU
+ * y el ancho de banda de cada recarga del Contact Center.
+ */
+export const CC_MESSAGE_SLIM_SELECT = [
+    'id', 'phone', 'content', 'direction', 'sender_name', 'media_url', 'media_type', 'created_at', 'line_id',
+    'rp_order:raw_payload->order_analysis',
+    'rp_audio_t:raw_payload->audio_transcription',
+    'rp_trans:raw_payload->transcription',
+    'rp_audio_u:raw_payload->audio_understanding',
+    'rp_agent:raw_payload->agent',
+    'rp_bot:raw_payload->bot',
+    'rp_is_bot:raw_payload->is_bot',
+    'rp_jid:raw_payload->data->key->remoteJid',
+    'rp_from:raw_payload->data->from'
+].join(', ');
+
+/**
+ * Reconstruye un raw_payload mínimo a partir del SELECT liviano,
+ * para que el resto del código siga leyendo m.raw_payload.* sin cambios.
+ */
+export function rehydrateSlimMessage(m) {
+    if (!m) return m;
+    const { rp_order, rp_audio_t, rp_trans, rp_audio_u, rp_agent, rp_bot, rp_is_bot, rp_jid, rp_from, ...base } = m;
+    return {
+        ...base,
+        raw_payload: {
+            order_analysis: rp_order ?? undefined,
+            audio_transcription: rp_audio_t ?? undefined,
+            transcription: rp_trans ?? undefined,
+            audio_understanding: rp_audio_u ?? undefined,
+            agent: rp_agent ?? undefined,
+            bot: rp_bot ?? undefined,
+            is_bot: rp_is_bot ?? undefined,
+            data: { key: { remoteJid: rp_jid ?? undefined }, from: rp_from ?? undefined }
+        }
+    };
+}
+
 // Administradores con acceso maestro permanente
 export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya'];
 
@@ -556,12 +597,13 @@ export async function fetchLiveAndDemoChats() {
         // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
         // Limit incrementado a 800 para cubrir chats concurrentes sin truncar conversaciones activas.
         // NOTA: El índice idx_whatsapp_messages_line_created garantiza que esta query sea O(log n).
-        const { data: rawMessages, error } = await supabase
+        const { data: slimMessages, error } = await supabase
             .from('whatsapp_messages')
-            .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
+            .select(CC_MESSAGE_SLIM_SELECT)
             .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
             .limit(800);
+        const rawMessages = (slimMessages || []).map(rehydrateSlimMessage);
 
         if (error) {
             console.warn('[contact-center] Error consultando mensajes:', error);
@@ -2433,7 +2475,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
 
         let query = supabase
             .from('whatsapp_messages')
-            .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
+            .select(CC_MESSAGE_SLIM_SELECT)
             .eq('line_id', 'contact_center')
             .in('phone', variants)
             .order('created_at', { ascending: false })
@@ -2443,7 +2485,8 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
             query = query.lt('created_at', beforeCreatedAt);
         }
 
-        const { data: rawMessages, error } = await query;
+        const { data: slimRows, error } = await query;
+        const rawMessages = slimRows ? slimRows.map(rehydrateSlimMessage) : slimRows;
 
         if (error) {
             console.error('[contactCenterService] Error fetching older messages:', error);

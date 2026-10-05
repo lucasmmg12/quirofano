@@ -74,12 +74,14 @@ Deno.serve(async (req) => {
         }
 
         // 2. Obtener los mensajes más RECIENTES del chat (orden descendente para tomar los últimos)
-        const { data: rawMessages } = await supabase
+        const { data: slimMsgs } = await supabase
             .from('whatsapp_messages')
-            .select('*')
+            .select('id, content, direction, sender_name, media_type, created_at, order_analysis:raw_payload->order_analysis')
             .eq('phone', phone)
+            .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
             .limit(50);
+        const rawMessages = (slimMsgs || []).map((m: any) => ({ ...m, raw_payload: { order_analysis: m.order_analysis } }));
 
         // Delimitar la sesión activa actual:
         // No incluir mensajes de conversaciones o consultas finalizadas semanas o meses atrás.

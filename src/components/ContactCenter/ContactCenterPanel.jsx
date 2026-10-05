@@ -95,7 +95,11 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const isLMarinero = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim().split('@')[0]);
 
     // 1. Cargar permisos y sincronizar mensajes en vivo
+    // Guard anti-apilamiento: si una recarga sigue en curso (base lenta), no lanzar otra encima.
+    const reloadInFlightRef = React.useRef(false);
     const reloadChats = async (isSilent = false) => {
+        if (reloadInFlightRef.current) return;
+        reloadInFlightRef.current = true;
         if (!isSilent) setLoadingLive(true);
         try {
             const loaded = await fetchLiveAndDemoChats();
@@ -111,6 +115,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     return loaded;
                 });
                 if (!isSilent) setLoadingLive(false);
+                reloadInFlightRef.current = false;
                 return;
             }
 
@@ -149,6 +154,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             // Error transitorio: NO limpiar el estado existente. Solo loguear.
             console.warn('[contact-center] Error cargando chats (estado preservado):', err?.message || err);
         } finally {
+            reloadInFlightRef.current = false;
             if (!isSilent) setLoadingLive(false);
         }
     };
@@ -177,17 +183,19 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             });
         }, 600);
 
-        // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
-        // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
+        // Heartbeat adaptativo: cada 90 segundos para verificar consistencia si la pestaña está visible.
+        // Los mensajes nuevos llegan por Realtime; el heartbeat es solo red de seguridad.
+        // Pausado automáticamente si el operador minimiza o cambia de pestaña.
+        const HEARTBEAT_MS = 90000;
         let lastFetchTime = Date.now();
         const heartbeatInterval = setInterval(() => {
             if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
             reloadChats(true);
             lastFetchTime = Date.now();
-        }, 45000);
+        }, HEARTBEAT_MS);
 
         const handleVisibilityChange = () => {
-            if (!document.hidden && Date.now() - lastFetchTime > 45000) {
+            if (!document.hidden && Date.now() - lastFetchTime > HEARTBEAT_MS) {
                 reloadChats(true);
                 lastFetchTime = Date.now();
             }
