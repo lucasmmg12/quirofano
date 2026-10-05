@@ -453,6 +453,17 @@ export default function ContactCenterChatConsole({
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const attachmentInputRef = useRef(null);
 
+    // Modal de Previsualización de Imagen estilo WhatsApp Web (Ctrl+V, Adjuntos, Drag & Drop)
+    const [imagePreviewModal, setImagePreviewModal] = useState({
+        isOpen: false,
+        file: null,
+        previewUrl: null,
+        name: '',
+        size: '',
+        caption: ''
+    });
+    const imageCaptionInputRef = useRef(null);
+
     // Estado para grabación de notas de voz (audio)
     const [isRecordingAudio, setIsRecordingAudio] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
@@ -515,6 +526,16 @@ export default function ContactCenterChatConsole({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [viewerImage]);
+
+    // Auto-focus al campo de comentario al abrir la previsualización de imagen estilo WhatsApp Web
+    useEffect(() => {
+        if (imagePreviewModal.isOpen) {
+            const timer = setTimeout(() => {
+                imageCaptionInputRef.current?.focus();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [imagePreviewModal.isOpen]);
 
     // Descarga profesional directa sin redirigir a enlaces externos
     const handleDownloadViewerImage = async () => {
@@ -2156,9 +2177,9 @@ export default function ContactCenterChatConsole({
         }
 
         let detectedType = 'document';
-        if (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(file.name || '')) {
+        if (file.type?.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg|tiff?)$/i.test(file.name || '')) {
             detectedType = 'image';
-        } else if (file.type.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(file.name || '')) {
+        } else if (file.type?.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(file.name || '')) {
             detectedType = 'audio';
         }
 
@@ -2177,17 +2198,32 @@ export default function ContactCenterChatConsole({
             URL.revokeObjectURL(selectedFile.previewUrl);
         }
 
+        const previewUrl = detectedType === 'image' ? URL.createObjectURL(finalFile) : null;
+        const formattedSize = (finalFile.size / 1024).toFixed(1) + ' KB';
+
         setSelectedFile({
             file: finalFile,
             name: finalName,
-            size: (finalFile.size / 1024).toFixed(1) + ' KB',
+            size: formattedSize,
             type: detectedType,
-            previewUrl: detectedType === 'image' ? URL.createObjectURL(finalFile) : null
+            previewUrl
         });
 
-        setTimeout(() => {
-            inputRef.current?.focus();
-        }, 60);
+        // Si es una imagen, abrimos inmediatamente la previsualización modal idéntica a WhatsApp Web
+        if (detectedType === 'image') {
+            setImagePreviewModal({
+                isOpen: true,
+                file: finalFile,
+                previewUrl,
+                name: finalName,
+                size: formattedSize,
+                caption: messageInput || ''
+            });
+        } else {
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 60);
+        }
     };
 
     const handleFileSelected = (e) => {
@@ -2204,47 +2240,84 @@ export default function ContactCenterChatConsole({
         setSelectedFile(null);
     };
 
+    const handleCloseImagePreviewModal = () => {
+        if (imagePreviewModal.previewUrl) {
+            URL.revokeObjectURL(imagePreviewModal.previewUrl);
+        }
+        setImagePreviewModal({
+            isOpen: false,
+            file: null,
+            previewUrl: null,
+            name: '',
+            size: '',
+            caption: ''
+        });
+        handleRemoveSelectedFile();
+    };
+
+    // Helper robusto para extraer imágenes del portapapeles (Snipping Tool, Captura de Pantalla, Copiar Imagen, Archivos del Explorador)
+    const extractImageFromClipboard = (clipboardData) => {
+        if (!clipboardData) return null;
+
+        const isImageMimeOrExt = (mime, name) => {
+            if (mime && mime.toLowerCase().startsWith('image/')) return true;
+            if (name && /\.(jpe?g|png|webp|gif|bmp|svg|tiff?)$/i.test(name)) return true;
+            return false;
+        };
+
+        // 1. Priorizar items del portapapeles (capturas de pantalla con Snipping Tool, Win+Shift+S, PrintScreen, copiar imagen web)
+        if (clipboardData.items) {
+            for (let i = 0; i < clipboardData.items.length; i++) {
+                const item = clipboardData.items[i];
+                if (item.type && item.type.startsWith('image/')) {
+                    const f = item.getAsFile();
+                    if (f) return f;
+                } else if (item.kind === 'file') {
+                    const f = item.getAsFile();
+                    if (f && isImageMimeOrExt(f.type, f.name)) {
+                        return f;
+                    }
+                }
+            }
+        }
+
+        // 2. Revisar archivos adjuntos en el portapapeles (archivos copiados desde el Explorador de Windows o Escritorio)
+        if (clipboardData.files && clipboardData.files.length > 0) {
+            for (let i = 0; i < clipboardData.files.length; i++) {
+                const f = clipboardData.files[i];
+                if (isImageMimeOrExt(f.type, f.name)) {
+                    return f;
+                }
+            }
+        }
+
+        return null;
+    };
+
     // === Pegar captura de pantalla (Print Screen / Snipping Tool / Ctrl+V) ===
     const handlePaste = (e) => {
-        const clipboardItems = e.clipboardData?.items;
-        if (!clipboardItems) return;
-
-        let imageItem = null;
-        for (let i = 0; i < clipboardItems.length; i++) {
-            const item = clipboardItems[i];
-            if (item.type && item.type.indexOf('image') !== -1) {
-                imageItem = item;
-                break;
-            }
+        const imageFile = extractImageFromClipboard(e.clipboardData);
+        if (!imageFile) {
+            // Si es texto plano o HTML, dejamos que el evento continúe para que pegue en el textarea normalmente
+            return;
         }
 
-        let imageFile = null;
-        if (imageItem) {
-            imageFile = imageItem.getAsFile();
-        } else if (e.clipboardData?.files?.length > 0) {
-            const f = e.clipboardData.files[0];
-            if (f.type && f.type.startsWith('image/')) {
-                imageFile = f;
-            }
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isLocked) {
+            alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+            return;
         }
 
-        if (imageFile) {
-            e.preventDefault();
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob') 
+            ? imageFile.name 
+            : `captura_${timeStr}.png`;
 
-            if (isLocked) {
-                alert(`Esta conversación está asignada a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
-                return;
-            }
-
-            const now = new Date();
-            const pad = (n) => String(n).padStart(2, '0');
-            const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-            const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob') 
-                ? imageFile.name 
-                : `captura_${timeStr}.png`;
-
-            processAttachmentFile(imageFile, fileName);
-        }
+        processAttachmentFile(imageFile, fileName);
     };
 
     // === Arrastrar y soltar archivos / capturas (Drag & Drop) ===
@@ -2274,35 +2347,107 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Escuchar Ctrl+V globalmente en la ventana cuando hay un chat abierto y se pega una captura
+    // Escuchar Ctrl+V globalmente en la ventana cuando hay un chat abierto y se pega una captura o imagen
     useEffect(() => {
         const handleGlobalPaste = (e) => {
-            if (!selectedChat || isLocked) return;
+            // Si el evento ya fue prevenido en el textarea u otro handler, evitar duplicación
+            if (e.defaultPrevented) return;
+            if (!selectedChat) return;
 
-            // Verificar si el portapapeles contiene una imagen
-            const items = e.clipboardData?.items;
-            if (!items) return;
+            const imageFile = extractImageFromClipboard(e.clipboardData);
+            if (!imageFile) return;
 
-            let hasImage = false;
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].type && items[i].type.indexOf('image') !== -1) {
-                    hasImage = true;
-                    break;
-                }
-            }
+            e.preventDefault();
+            e.stopPropagation();
 
-            if (!hasImage && !e.clipboardData?.files?.[0]?.type?.startsWith('image/')) {
-                // Si es texto, no interferimos: se pegará donde esté el cursor normalmente
+            if (isLocked) {
+                alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
                 return;
             }
 
-            // Es una imagen (captura de pantalla) -> procesar
-            handlePaste(e);
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob') 
+                ? imageFile.name 
+                : `captura_${timeStr}.png`;
+
+            processAttachmentFile(imageFile, fileName);
         };
 
         window.addEventListener('paste', handleGlobalPaste);
         return () => window.removeEventListener('paste', handleGlobalPaste);
-    }, [selectedChat, isLocked, assignedAgentObj, selectedFile]);
+    }, [selectedChat?.id, isLocked, assignedAgentObj?.name, messageInput]);
+
+    // Enviar imagen desde el modal de previsualización estilo WhatsApp Web
+    const handleSendImageFromModal = async () => {
+        if (!imagePreviewModal.file || !selectedChat) return;
+
+        if (!isAuthorized) {
+            alert('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos de respuesta.');
+            return;
+        }
+        if (!canWriteMessage) {
+            if (onAssignChat) {
+                const confirmAssign = window.confirm('Debes asignarte esta conversación para responder. ¿Deseas asignártela ahora y enviar la imagen?');
+                if (confirmAssign) {
+                    await onAssignChat(selectedChat.id, activeAgent.id);
+                } else {
+                    return;
+                }
+            } else {
+                alert('Debes asignarte la conversación antes de responder para evitar que dos agentes escriban a la vez.');
+                return;
+            }
+        }
+        if (!isPrivateNote && is24hWindowExpired) {
+            alert('⚠️ La ventana de 24 horas de WhatsApp ha expirado. Por política obligatoria de Meta, debes iniciar el contacto enviando una plantilla oficial aprobada.');
+            return;
+        }
+        if (isLocked) {
+            alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+            return;
+        }
+
+        try {
+            setUploadingMedia(true);
+            const fileToSend = imagePreviewModal.file;
+            const captionToSend = (imagePreviewModal.caption || '').trim();
+            const fileNameToSend = imagePreviewModal.name || fileToSend.name || 'captura.png';
+
+            const uploaded = await uploadContactCenterMedia(fileToSend, 'images');
+
+            onSendMessage(
+                selectedChat.id,
+                captionToSend,
+                isPrivateNote,
+                uploaded.publicUrl,
+                'image',
+                fileNameToSend
+            );
+
+            if (imagePreviewModal.previewUrl) {
+                URL.revokeObjectURL(imagePreviewModal.previewUrl);
+            }
+            setImagePreviewModal({
+                isOpen: false,
+                file: null,
+                previewUrl: null,
+                name: '',
+                size: '',
+                caption: ''
+            });
+            handleRemoveSelectedFile();
+            setMessageInput('');
+            setQuickRepliesOpen(false);
+            setQuickRepliesModalOpen(false);
+        } catch (err) {
+            console.error('Error enviando imagen desde modal de vista previa:', err);
+            alert(`Error al enviar imagen: ${err.message || 'Fallo de subida de imagen'}`);
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
 
     // === Grabación de notas de voz (Audio) ===
     const startAudioRecording = async () => {
@@ -5695,8 +5840,17 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             <img 
                                                 src={selectedFile.previewUrl} 
                                                 alt="Preview" 
-                                                onClick={() => window.open(selectedFile.previewUrl, '_blank')}
-                                                title="Clic para ver captura en tamaño completo"
+                                                onClick={() => {
+                                                    setImagePreviewModal({
+                                                        isOpen: true,
+                                                        file: selectedFile.file,
+                                                        previewUrl: selectedFile.previewUrl,
+                                                        name: selectedFile.name,
+                                                        size: selectedFile.size,
+                                                        caption: messageInput || ''
+                                                    });
+                                                }}
+                                                title="Clic para ver previsualización estilo WhatsApp Web y editar comentario"
                                                 style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', cursor: 'pointer', border: '1.5px solid #0284C7', boxShadow: '0 1px 3px rgba(2,132,199,0.2)' }} 
                                             />
                                         ) : selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? (
@@ -5720,12 +5874,26 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                 <File size={20} />
                                             </div>
                                         )}
-                                        <div style={{ minWidth: 0 }}>
+                                        <div 
+                                            style={{ minWidth: 0, cursor: selectedFile.type === 'image' ? 'pointer' : 'default' }}
+                                            onClick={() => {
+                                                if (selectedFile.type === 'image') {
+                                                    setImagePreviewModal({
+                                                        isOpen: true,
+                                                        file: selectedFile.file,
+                                                        previewUrl: selectedFile.previewUrl,
+                                                        name: selectedFile.name,
+                                                        size: selectedFile.size,
+                                                        caption: messageInput || ''
+                                                    });
+                                                }
+                                            }}
+                                        >
                                             <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0369A1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                 {selectedFile.name}
                                             </div>
                                             <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                {selectedFile.size} • {selectedFile.type === 'image' ? 'Captura / Imagen lista (opcional: escribe un texto antes de enviar)' : 'Adjunto listo'}
+                                                {selectedFile.size} • {selectedFile.type === 'image' ? 'Clic para previsualizar como en WhatsApp Web' : 'Adjunto listo'}
                                             </div>
                                         </div>
                                     </div>
@@ -9037,6 +9205,305 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                                     )}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════════════ */}
+            {/* MODAL DE PREVISUALIZACIÓN DE IMAGEN ESTILO WHATSAPP WEB (CTRL+V / ADJUNTOS) */}
+            {/* ═══════════════════════════════════════════════════════════════════════ */}
+            {imagePreviewModal.isOpen && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Previsualización de imagen para enviar"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            handleCloseImagePreviewModal();
+                        }
+                    }}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 99999,
+                        backgroundColor: 'rgba(11, 20, 26, 0.92)',
+                        backdropFilter: 'blur(8px)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        animation: 'fadeIn 0.18s ease-out'
+                    }}
+                >
+                    {/* BARRA SUPERIOR DE ENCABEZADO */}
+                    <div style={{
+                        height: '64px',
+                        backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0 24px',
+                        color: '#FFFFFF'
+                    }}>
+                        {/* Botón Cerrar (X) estilo WhatsApp Web */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <button
+                                type="button"
+                                onClick={handleCloseImagePreviewModal}
+                                title="Descartar imagen (Esc)"
+                                style={{
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '50%',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
+                            >
+                                <X size={20} />
+                            </button>
+
+                            <div>
+                                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>Vista previa de imagen</span>
+                                    <span style={{
+                                        fontSize: '0.70rem',
+                                        fontWeight: 600,
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        backgroundColor: '#0284C7',
+                                        color: '#FFFFFF'
+                                    }}>
+                                        WhatsApp
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
+                                    Enviar a: <strong style={{ color: '#E2E8F0' }}>{selectedChat?.contactName || selectedChat?.phoneNumber}</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Detalles del archivo */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                                padding: '4px 12px',
+                                borderRadius: '8px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                fontSize: '0.75rem',
+                                color: '#CBD5E1',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <span style={{ fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {imagePreviewModal.name}
+                                </span>
+                                <span>•</span>
+                                <span style={{ color: '#94A3B8' }}>{imagePreviewModal.size}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ÁREA CENTRAL: PREVISUALIZACIÓN DE LA IMAGEN EN ALTA DEFINICIÓN */}
+                    <div 
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '20px',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        {imagePreviewModal.previewUrl && (
+                            <div style={{
+                                position: 'relative',
+                                maxHeight: '62vh',
+                                maxWidth: '85vw',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
+                                borderRadius: '12px',
+                                overflow: 'hidden',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
+                                backgroundColor: 'rgba(0, 0, 0, 0.3)'
+                            }}>
+                                <img
+                                    src={imagePreviewModal.previewUrl}
+                                    alt="Previsualización antes de enviar"
+                                    style={{
+                                        maxHeight: '62vh',
+                                        maxWidth: '85vw',
+                                        objectFit: 'contain',
+                                        display: 'block'
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* BARRA INFERIOR ESTILO WHATSAPP WEB: AÑADIR COMENTARIO + BOTÓN ENVIAR */}
+                    <div style={{
+                        padding: '16px 24px 24px',
+                        backgroundColor: 'rgba(15, 23, 42, 0.90)',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center'
+                    }}>
+                        {/* Advertencia si no está asignado o bloqueado */}
+                        {isLocked ? (
+                            <div style={{
+                                width: '100%',
+                                maxWidth: '720px',
+                                padding: '8px 14px',
+                                marginBottom: '10px',
+                                borderRadius: '8px',
+                                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                color: '#FCA5A5',
+                                fontSize: '0.80rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}>
+                                <AlertTriangle size={16} />
+                                <span>Esta conversación está asignada exclusivamente a <strong>{assignedAgentObj?.name || 'otra agente'}</strong>. No tienes permisos de envío.</span>
+                            </div>
+                        ) : !canWriteMessage ? (
+                            <div style={{
+                                width: '100%',
+                                maxWidth: '720px',
+                                padding: '8px 14px',
+                                marginBottom: '10px',
+                                borderRadius: '8px',
+                                backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                border: '1px solid rgba(245, 158, 11, 0.4)',
+                                color: '#FDE68A',
+                                fontSize: '0.80rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <AlertCircle size={16} />
+                                    <span>Debes asignarte esta conversación para poder enviar la imagen.</span>
+                                </div>
+                                {onAssignChat && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onAssignChat(selectedChat.id, activeAgent.id)}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            backgroundColor: '#0284C7',
+                                            border: 'none',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Asignármela ahora
+                                    </button>
+                                )}
+                            </div>
+                        ) : null}
+
+                        <div style={{
+                            width: '100%',
+                            maxWidth: '720px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            {/* Input de Comentario / Mensaje que acompaña a la imagen */}
+                            <div style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                backgroundColor: '#1E293B',
+                                border: '1.5px solid rgba(255, 255, 255, 0.15)',
+                                borderRadius: '24px',
+                                padding: '8px 16px',
+                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+                                transition: 'border-color 0.15s ease'
+                            }}>
+                                <input
+                                    ref={imageCaptionInputRef}
+                                    type="text"
+                                    disabled={uploadingMedia || isLocked}
+                                    placeholder="Añade un comentario... (Enter para enviar)"
+                                    value={imagePreviewModal.caption}
+                                    onChange={(e) => setImagePreviewModal(prev => ({ ...prev, caption: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSendImageFromModal();
+                                        }
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        outline: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.90rem',
+                                        fontFamily: 'inherit'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Botón Enviar estilo WhatsApp (Circular azul institucional) */}
+                            <button
+                                type="button"
+                                onClick={handleSendImageFromModal}
+                                disabled={uploadingMedia || isLocked}
+                                title="Enviar imagen con comentario (Enter)"
+                                style={{
+                                    width: '46px',
+                                    height: '46px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#0284C7',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: (uploadingMedia || isLocked) ? 'not-allowed' : 'pointer',
+                                    opacity: (uploadingMedia || isLocked) ? 0.6 : 1,
+                                    boxShadow: '0 4px 14px rgba(2, 132, 199, 0.45)',
+                                    transition: 'transform 0.12s ease, background-color 0.15s ease',
+                                    flexShrink: 0
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (!uploadingMedia && !isLocked) e.currentTarget.style.transform = 'scale(1.06)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                }}
+                            >
+                                {uploadingMedia ? (
+                                    <Loader2 size={20} className="animate-spin" />
+                                ) : (
+                                    <Send size={19} style={{ marginLeft: '2px' }} />
+                                )}
+                            </button>
+                        </div>
+
+                        <div style={{ marginTop: '8px', fontSize: '0.70rem', color: '#64748B' }}>
+                            Presiona <strong>Enter</strong> para enviar • <strong>Esc</strong> para descartar
                         </div>
                     </div>
                 </div>
