@@ -1742,23 +1742,25 @@ export async function lookupPatientFromSalus(query) {
     }
 
     // 1. Prioridad: Búsqueda en tiempo real en SALUS SQL Server vía sync-server (timeout 2.5s)
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
-        const baseUrl = getSalusSyncBaseUrl();
-        const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-            const json = await res.json();
-            if (json.success && json.paciente) {
-                salusPatientCache.set(clean, { data: json.paciente, timestamp: Date.now() });
-                return json.paciente;
+    const baseUrl = getSalusSyncBaseUrl();
+    if (baseUrl) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.paciente) {
+                    salusPatientCache.set(clean, { data: json.paciente, timestamp: Date.now() });
+                    return json.paciente;
+                }
             }
+        } catch (_) {
+            // Fallback a Supabase si sync-server no responde
         }
-    } catch (_) {
-        // Fallback a Supabase si sync-server no responde
     }
 
     // 2. Fallback: Búsqueda por DNI o NHC en Supabase hospital_pacientes

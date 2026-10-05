@@ -30,8 +30,8 @@ export function getSalusSyncBaseUrl() {
     if (isLocal) {
         return 'http://localhost:3456';
     }
-    // En PCs externas por seguridad de red / firewall no asumir conexión directa TCP
-    return null;
+    // En la red intranet del Sanatorio Argentino (128.223.x.x o red local) conectarse al sync-server central
+    return 'http://128.223.17.60:3456';
 }
 
 /**
