@@ -25,7 +25,13 @@ export default function ContactCenterBotTree({
         'nodo_turnos_triage': true,
         'nodo_camino_1_registrado': true,
         'nodo_camino_2_nuevo': true,
-        'nodo_estudios_menu': true,
+        'nodo_mis_turnos': true,
+        'nodo_gestion_identificacion': true,
+        'nodo_gestion_seleccion': true,
+        'nodo_cancelar_confirmacion': true,
+        'nodo_reprogramar_preferencia': true,
+        'nodo_reprogramar_profesional': true,
+        'nodo_autorizaciones': true,
         'nodo_operador_handoff': true
     });
     const [viewMode, setViewMode] = useState('diagram'); // 'diagram' | 'compact_list'
