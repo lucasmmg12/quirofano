@@ -5063,16 +5063,35 @@ async function handleNewPatientIntake(
             try {
                 const supabaseClient = (globalThis as any)._lastSupabaseClient;
                 if (supabaseClient) {
-                    await supabaseClient.from('hospital_pacientes').upsert({
-                        dni: String(updates.dni).trim(),
-                        nombre: updates.nombre_completo.toUpperCase().trim(),
-                        coseguro: updates.obra_social || 'Particular',
-                        fecha_nacimiento: updates.fecha_nacimiento || null,
-                        centro: updates.departamento || 'San Juan',
-                        telefono: phone,
-                        manual: true,
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: 'dni' });
+                    const cleanDni = String(updates.dni).trim();
+                    const { data: existingPac } = await supabaseClient
+                        .from('hospital_pacientes')
+                        .select('id_paciente')
+                        .eq('dni', cleanDni)
+                        .maybeSingle();
+
+                    if (existingPac?.id_paciente) {
+                        await supabaseClient.from('hospital_pacientes').update({
+                            nombre: updates.nombre_completo.toUpperCase().trim(),
+                            coseguro: updates.obra_social || 'Particular',
+                            fecha_nacimiento: updates.fecha_nacimiento || null,
+                            centro: updates.departamento || 'San Juan',
+                            telefono: phone,
+                            manual: true,
+                            updated_at: new Date().toISOString()
+                        }).eq('id_paciente', existingPac.id_paciente);
+                    } else {
+                        await supabaseClient.from('hospital_pacientes').insert({
+                            dni: cleanDni,
+                            nombre: updates.nombre_completo.toUpperCase().trim(),
+                            coseguro: updates.obra_social || 'Particular',
+                            fecha_nacimiento: updates.fecha_nacimiento || null,
+                            centro: updates.departamento || 'San Juan',
+                            telefono: phone,
+                            manual: true,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
                     console.log(`[triage-bot] ✅ Paciente nuevo pre-registrado en hospital_pacientes para SALUS: ${updates.nombre_completo} (DNI ${updates.dni})`);
                 }
             } catch (err) {

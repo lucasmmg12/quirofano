@@ -921,15 +921,21 @@ export default function ContactCenterChatConsole({
         }).catch(() => {});
     }, []);
 
+    const failedSummaryPhonesRef = useRef(new Set());
+
     const handleRunAiSummary = async (isAuto = false) => {
         if (!selectedChat?.phone || isGeneratingSummary) return;
+        const phone = selectedChat.phone;
+        if (isAuto && failedSummaryPhonesRef.current.has(phone)) return;
+        if (!isAuto) failedSummaryPhonesRef.current.delete(phone);
+
         try {
             setIsGeneratingSummary(true);
             const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Tiempo de espera agotado al generar resumen IA')), 12000)
             );
             const summary = await Promise.race([
-                generateChatAiSummary(selectedChat.phone),
+                generateChatAiSummary(phone),
                 timeoutPromise
             ]);
             if (summary) {
@@ -948,10 +954,11 @@ export default function ContactCenterChatConsole({
                 }
             }
         } catch (err) {
-            if (!isAuto) {
-                alert('No se pudo generar el resumen IA: ' + (err.message || 'Error'));
+            if (isAuto) {
+                failedSummaryPhonesRef.current.add(phone);
+                console.warn('[auto-ai-summary] Resumen IA omitido temporalmente (se puede reintentar manualmente):', err?.message || err);
             } else {
-                console.warn('[auto-ai-summary] Actualización automática de IA omitida:', err?.message || err);
+                alert('No se pudo generar el resumen IA: ' + (err.message || 'Error'));
             }
         } finally {
             setIsGeneratingSummary(false);
@@ -1153,19 +1160,6 @@ export default function ContactCenterChatConsole({
         }, 50);
         return () => clearTimeout(timer);
     }, [selectedChat?.id, selectedChat?.messages?.length, messageSortOrder]);
-
-    // Si el chat activo no tiene análisis IA generado pero tiene mensajes del paciente, analizar automáticamente
-    useEffect(() => {
-        if (selectedChat?.phone && !aiSummaryData && selectedChat.messages && selectedChat.messages.length > 0) {
-            const hasPatientMsg = selectedChat.messages.some(m => m.sender === 'patient' || m.direction === 'incoming');
-            if (hasPatientMsg && !isGeneratingSummary) {
-                const initTimer = setTimeout(() => {
-                    handleRunAiSummary(true);
-                }, 800);
-                return () => clearTimeout(initTimer);
-            }
-        }
-    }, [selectedChat?.id, selectedChat?.phone, selectedChat?.messages?.length]);
 
     // =========================================================================
     // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA
