@@ -533,13 +533,13 @@ export async function fetchLiveAndDemoChats() {
             supabase
                 .from('contact_center_conversations')
                 .select('*')
-                .in('status', ['abierto', 'sin_asignar', 'bot', 'asignada'])
+                .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","closed","archived")')
                 .order('updated_at', { ascending: false })
                 .limit(200),
             supabase
                 .from('contact_center_conversations')
                 .select('*')
-                .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto'])
+                .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto', 'closed', 'archived'])
                 .order('updated_at', { ascending: false })
                 .limit(60)
         ]);

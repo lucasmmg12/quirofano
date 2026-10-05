@@ -23,6 +23,14 @@ export const ALTA_ESTADOS = {
 
 };
 
+// IDs de duplicados accidentales generados por el desfase de zona horaria para CARRIZO DIAZ, MAXIMO
+export const STUCK_DUPLICATES_TO_PURGE = [
+    'e1865294-b900-429b-82c3-6399315ce858', // P2
+    '498ad3f5-9861-4be2-aa33-8f60b1a15439', // P3
+    'e8fe4295-f0ed-4398-aadd-460dedc1b74b'  // P4
+];
+let purgedDuplicatesOnce = false;
+
 /**
  * Obtiene altas administrativas con filtros
  * Paginación automática para superar el límite de 1000 filas de Supabase
@@ -68,11 +76,25 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
         const { data, error } = await query;
         if (error) throw error;
 
+        // Purga automática en segundo plano de los IDs duplicados en la base de datos
+        if (!purgedDuplicatesOnce) {
+            purgedDuplicatesOnce = true;
+            supabase
+                .from('altas_administrativas')
+                .delete()
+                .in('id', STUCK_DUPLICATES_TO_PURGE)
+                .then(() => {})
+                .catch(() => {});
+        }
+
         const rows = data || [];
         // Filtro por frontend: No mostrar admisiones con especialidad CHEQUEO que empiecen con A
         // REGLA NUEVO CIRCUITO FICHAS FÍSICAS (01/10/2026 en adelante):
         // Toda admisión con fecha_ingreso >= 01/10/2026 solo ingresa a Control de Altas si ya fue entregada formalmente por Recepción (7:00 hs)
         const filteredRows = rows.filter(row => {
+            if (row.id && STUCK_DUPLICATES_TO_PURGE.includes(row.id)) {
+                return false;
+            }
             if (row.numero_admision?.toUpperCase().startsWith('A') && row.especialidad?.toUpperCase() === 'CHEQUEO') {
                 return false;
             }
@@ -159,24 +181,34 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
         // La ficha original siempre queda como "Alta Adm. Parcial"
         updatePayload.estado = 'Alta Adm. Parcial';
 
-        // Determinar inicio del mes siguiente basado en el mes de ingreso de la ficha actual
-        const d = new Date(current.fecha_ingreso || new Date());
-        const m = d.getMonth() + 1;
-        const y = d.getFullYear();
-        const nextY = m === 12 ? y + 1 : y;
-        const nextM = m === 12 ? 1 : m + 1;
-        const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
+        // Solo crear prórroga si la ficha actual no tiene fecha de alta médica (paciente aún internado)
+        if (!current.fecha_alta) {
+            // Extraer año y mes directamente evitando desfases por huso horario UTC
+            let y, m;
+            if (typeof current.fecha_ingreso === 'string' && current.fecha_ingreso.includes('-')) {
+                const parts = current.fecha_ingreso.split('T')[0].split('-');
+                y = parseInt(parts[0], 10);
+                m = parseInt(parts[1], 10); // 1-12
+            } else {
+                const d = new Date(current.fecha_ingreso || Date.now());
+                y = d.getFullYear();
+                m = d.getMonth() + 1;
+            }
+            const nextY = m === 12 ? y + 1 : y;
+            const nextM = m === 12 ? 1 : m + 1;
+            const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
 
-        const newNumeroAdmision = await generateNextNumeroAdmision(current.numero_admision);
+            const newNumeroAdmision = await generateNextNumeroAdmision(current.numero_admision);
 
-        const { id: oldId, created_at, ...rest } = current;
-        duplicateRecord = {
-            ...rest,
-            numero_admision: newNumeroAdmision,
-            fecha_ingreso: nextMonthStart,
-            estado: estado === 'Prórroga' ? 'Prórroga' : null, // Prórroga -> Prórroga, Alta Parcial -> Vacío
-            estado_fac: 'Pendiente',
-            notas_internas: (current.notas_internas ? current.notas_internas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
+            const { id: oldId, created_at, ...rest } = current;
+            duplicateRecord = {
+                ...rest,
+                numero_admision: newNumeroAdmision,
+                fecha_ingreso: nextMonthStart,
+                fecha_alta: null, // Limpiar alta médica para la nueva prórroga
+                estado: estado === 'Prórroga' ? 'Prórroga' : null, // Prórroga -> Prórroga, Alta Parcial -> Vacío
+                estado_fac: 'Pendiente',
+                notas_internas: (current.notas_internas ? current.notas_internas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
             en_carrito_traspaso: false,
             carrito_traspaso_por: null,
             carrito_traspaso_at: null,
@@ -200,6 +232,7 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
             rendicion_garantia_id: null
         };
     }
+}
 
     const { data, error } = await supabase
         .from('altas_administrativas')

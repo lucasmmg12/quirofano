@@ -925,7 +925,13 @@ export default function ContactCenterChatConsole({
         if (!selectedChat?.phone || isGeneratingSummary) return;
         try {
             setIsGeneratingSummary(true);
-            const summary = await generateChatAiSummary(selectedChat.phone);
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Tiempo de espera agotado al generar resumen IA')), 12000)
+            );
+            const summary = await Promise.race([
+                generateChatAiSummary(selectedChat.phone),
+                timeoutPromise
+            ]);
             if (summary) {
                 setAiSummaryData(summary);
                 selectedChat.aiSummary = summary;
@@ -943,9 +949,9 @@ export default function ContactCenterChatConsole({
             }
         } catch (err) {
             if (!isAuto) {
-                alert('Error al generar resumen IA: ' + (err.message || 'Error'));
+                alert('No se pudo generar el resumen IA: ' + (err.message || 'Error'));
             } else {
-                console.warn('[auto-ai-summary] Actualización automática de IA en progreso...');
+                console.warn('[auto-ai-summary] Actualización automática de IA omitida:', err?.message || err);
             }
         } finally {
             setIsGeneratingSummary(false);
@@ -3048,6 +3054,32 @@ export default function ContactCenterChatConsole({
                                 <>
                                     <MessageSquare size={24} color={themeCardSubtext} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
                                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: themeCardSubtext }}>No hay conversaciones en esta carpeta</div>
+                                    {filterTab === 'sin_asignar' && chats.some(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setFilterTab('bot');
+                                                const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status));
+                                                if (first && onSelectChat) onSelectChat(first.id);
+                                            }}
+                                            style={{
+                                                marginTop: '10px',
+                                                padding: '5px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #C4B5FD',
+                                                background: '#F5F3FF',
+                                                color: '#6D28D9',
+                                                fontSize: '0.73rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px'
+                                            }}
+                                        >
+                                            <Bot size={13} /> Ver {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)).length} chats en Bot
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -3837,8 +3869,8 @@ export default function ContactCenterChatConsole({
                             </div>
                         )}
 
-                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO CON OPCIÓN DE REASIGNACIÓN (Solo si NO está cerrado) */}
-                        {!isClosedOrArchived(selectedChat.status) && !isUnassigned && !isAssignedToMe && (
+                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO CON OPCIÓN DE REASIGNACIÓN (Solo si NO está cerrado y realmente asignada) */}
+                        {!isClosedOrArchived(selectedChat.status) && !isUnassigned && !isBot && !isAssignedToMe && selectedChat.assignedTo && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '4px',
