@@ -846,11 +846,37 @@ export default function ContactCenterChatConsole({
     const patientHistoryCache = useRef({});
 
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
-    const selectedChat = chats.find(c => c.id === activeChatId) 
-        || archivedChats.find(c => c.id === activeChatId) 
-        || ((filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') 
-            ? (chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0] || chats[0]) 
-            : (chats[0] || archivedChats[0])) 
+
+    // Comparador robusto de identidad de chat (coincidencia de ID, string ID o sufijo numérico de 10 dígitos)
+    const matchChat = (c, targetId) => {
+        if (!c || !targetId) return false;
+        if (c.id === targetId || String(c.id) === String(targetId)) return true;
+        const targetDigits = String(targetId).replace(/\D/g, '');
+        if (targetDigits.length >= 8) {
+            const targetSuffix = targetDigits.slice(-10);
+            const cIdDigits = String(c.id || '').replace(/\D/g, '');
+            const cPhoneDigits = String(c.phone || c.contactPhone || '').replace(/\D/g, '');
+            if (cIdDigits.length >= 8 && cIdDigits.slice(-10) === targetSuffix) return true;
+            if (cPhoneDigits.length >= 8 && cPhoneDigits.slice(-10) === targetSuffix) return true;
+        }
+        return false;
+    };
+
+    const selectedChat = chats.find(c => matchChat(c, activeChatId)) 
+        || archivedChats.find(c => matchChat(c, activeChatId)) 
+        // Si no se encuentra activeChatId directamente (ej: cambio de ID tras recarga), buscar el chat previo que el operador ya estaba visualizando
+        || (lastChatIdRef.current ? (chats.find(c => matchChat(c, lastChatIdRef.current)) || archivedChats.find(c => matchChat(c, lastChatIdRef.current))) : null)
+        // Si estamos en la pestaña "Mis chats", mantener siempre un chat asignado a mí (NUNCA cambiar al bot de la nada)
+        || (filterTab === 'asignadas_mi' ? chats.find(c => {
+            const a = (c.assignedTo || '').toLowerCase();
+            return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+        }) : null)
+        // Si estamos en "Sin asignar", buscar dentro de sin asignar
+        || (filterTab === 'sin_asignar' ? chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status)) : null)
+        // Si estamos en "Finalizados", buscar dentro de finalizados
+        || ((filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') ? (chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0]) : null)
+        || chats[0] 
+        || archivedChats[0] 
         || {};
 
     // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
@@ -1783,7 +1809,7 @@ export default function ContactCenterChatConsole({
     // Auto-alinear pestaña del sidebar para que contenga al chat activo al recargar la página (F5)
     useEffect(() => {
         if (!activeChatId || !chats || chats.length === 0) return;
-        const currentChat = chats.find(c => c.id === activeChatId);
+        const currentChat = chats.find(c => matchChat(c, activeChatId));
         if (!currentChat) return;
 
         const isMine = (currentChat.assignedTo && myAliases.includes(currentChat.assignedTo.toLowerCase())) ||
@@ -3443,7 +3469,7 @@ export default function ContactCenterChatConsole({
                         </div>
                     ) : (
                         filteredChats.map(chat => {
-                            const isSelected = chat.id === selectedChat.id;
+                            const isSelected = matchChat(chat, selectedChat.id);
                             const isChecked = selectedChatIds.has(chat.id);
                             const isClosed = isClosedOrArchived(chat.status);
                             const assignedAgent = chat.assignedTo ? getAgentById(chat.assignedTo) : null;

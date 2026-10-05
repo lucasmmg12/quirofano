@@ -146,14 +146,20 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             }
 
             setChats(prevChats => {
-                const prevMap = new Map((prevChats || []).map(c => [c.id, c]));
+                const prevMap = new Map();
+                (prevChats || []).forEach(c => {
+                    if (c.id) prevMap.set(String(c.id), c);
+                    const digits = String(c.phone || c.id || '').replace(/\D/g, '');
+                    if (digits.length >= 8) prevMap.set(digits.slice(-10), c);
+                });
 
                 // Fusionar historial: la recarga trae como máximo los últimos N mensajes por chat.
                 // Si en memoria ya había más (historial cargado al abrir el chat), se conservan
                 // y se agregan solo los nuevos, para que los mensajes no "aparezcan y desaparezcan".
                 const msgKey = (m) => String(m?.realId || m?.id || '');
                 const merged = loaded.map(newChat => {
-                    const oldChat = prevMap.get(newChat.id);
+                    const newDigits = String(newChat.phone || newChat.id || '').replace(/\D/g, '');
+                    const oldChat = prevMap.get(String(newChat.id)) || (newDigits.length >= 8 ? prevMap.get(newDigits.slice(-10)) : null);
                     const oldMsgs = oldChat?.messages || [];
                     const newMsgs = newChat.messages || [];
                     if (oldMsgs.length === 0) return newChat;
@@ -176,7 +182,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 // aunque el orden del array haya variado entre reloads.
                 if (isSilent && Array.isArray(prevChats) && prevChats.length === merged.length) {
                     const hasChange = merged.some(newChat => {
-                        const oldChat = prevMap.get(newChat.id);
+                        const newDigits = String(newChat.phone || newChat.id || '').replace(/\D/g, '');
+                        const oldChat = prevMap.get(String(newChat.id)) || (newDigits.length >= 8 ? prevMap.get(newDigits.slice(-10)) : null);
                         if (!oldChat) return true; // Chat nuevo o con ID diferente
                         if (oldChat.messages?.length !== newChat.messages?.length) return true;
                         if (oldChat.status !== newChat.status) return true;
@@ -193,21 +200,38 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 return merged;
             });
             
-            // Mantener el chat actualmente seleccionado por el operador, o recuperarlo de localStorage, o seleccionar el primer chat activo
+            // Mantener SIEMPRE el chat actualmente seleccionado por el operador
             setActiveChatId(currentId => {
                 const savedId = (() => {
                     try { return localStorage.getItem('sa_cc_active_chat_id'); } catch (_) { return null; }
                 })();
                 const targetId = currentId || savedId;
-                if (targetId && loaded.some(c => c.id === targetId)) {
-                    return targetId; // Preservar siempre la selección del usuario tras F5 o recarga
+                if (targetId) {
+                    // Buscar coincidencia robusta en loaded (por ID o por sufijo de 10 dígitos del teléfono)
+                    const found = loaded.find(c => {
+                        if (c.id === targetId || String(c.id) === String(targetId)) return true;
+                        const targetDigits = String(targetId).replace(/\D/g, '');
+                        if (targetDigits.length >= 8) {
+                            const cDigits = String(c.id || '').replace(/\D/g, '');
+                            const cPhone = String(c.phone || '').replace(/\D/g, '');
+                            return (cDigits.length >= 8 && cDigits.slice(-10) === targetDigits.slice(-10)) ||
+                                   (cPhone.length >= 8 && cPhone.slice(-10) === targetDigits.slice(-10));
+                        }
+                        return false;
+                    });
+                    if (found) {
+                        return found.id; // Actualizar con el ID canónico
+                    }
+                    // Si el operador ya estaba en un chat y no está en loaded (ej: conversación archivada o en triage),
+                    // CONSERVAR targetId. NUNCA cambiarle el chat de forma arbitraria.
+                    return targetId;
                 }
                 const firstActive = loaded.find(c => !isClosedOrArchived(c.status));
                 const fallbackId = firstActive?.id || loaded[0]?.id || null;
-                if (!targetId && fallbackId) {
+                if (fallbackId) {
                     try { localStorage.setItem('sa_cc_active_chat_id', String(fallbackId)); } catch (_) {}
                 }
-                return targetId || fallbackId;
+                return fallbackId;
             });
         } catch (err) {
             // Error transitorio: NO limpiar el estado existente. Solo loguear.

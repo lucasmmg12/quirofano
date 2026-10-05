@@ -950,8 +950,9 @@ export async function fetchLiveAndDemoChats() {
             const lastIncomingIso = lastIncomingMsg?.created_at || incomingWithName?.created_at || null;
             const lastIncomingMs = lastIncomingIso ? new Date(lastIncomingIso).getTime() : 0;
 
+            const cleanPhone = normalizeArgentinePhone(phone) || phone.replace(/\D/g, '');
             realChats.push({
-                id: 'REAL_' + phone.replace(/\D/g, '').slice(-12),
+                id: 'REAL_' + cleanPhone,
                 contactName: resolvedNombre,
                 phone: phone,
                 channel: 'WHATSAPP',
@@ -2883,8 +2884,9 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
         const archivedChats = (convs || []).map(conv => {
             const phone = normalizeArgentinePhone(conv.phone || '');
             const resolvedName = (conv.nombre_completo && String(conv.nombre_completo).trim()) || `+${phone.replace(/\D/g, '')}`;
+            const cleanPhone = phone || normalizeArgentinePhone(conv.phone || '') || String(conv.phone || '').replace(/\D/g, '');
             return {
-                id: 'REAL_' + phone.replace(/\D/g, '').slice(-12),
+                id: 'REAL_' + cleanPhone,
                 contactName: resolvedName,
                 phone: phone,
                 channel: 'WHATSAPP',
