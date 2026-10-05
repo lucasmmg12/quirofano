@@ -1911,7 +1911,7 @@ DIRECTIVAS PRINCIPALES:
 10. IMÁGENES Y AUTORIZACIÓN DE ÓRDENES MÉDICAS:
    - Si un paciente envió previamente una imagen o documento, NUNCA asumas automáticamente que corresponde a una orden médica a autorizar (pudo haber sido su DNI, credencial, comprobante o foto personal).
    - Si el paciente solicita autorizar una orden médica:
-     - Solicita DNI, Nombre completo del titular de la orden, y Obra Social/Prepaga y Plan.
+     - Solicita DNI, Nombre y Apellido del titular de la orden, y Obra Social/Prepaga y Plan.
      - Pide explícitamente la foto clara y legible de la orden médica a autorizar: "📸 Envianos la foto clara y legible de la orden médica que deseás autorizar (si la imagen que enviaste anteriormente corresponde a esta orden médica, confirmánoslo escribiendo 'es la foto anterior'; si era de otro trámite o documento, por favor adjuntá aquí la foto de la orden a autorizar)".
      - Recuerda que la vigencia de las órdenes médicas es de 30 días corridos.
 11. DESAMBIGUACIÓN DE MÉDICOS HOMÓNIMOS:
@@ -3626,7 +3626,7 @@ async function handleChatbotTriage(
                 `2️⃣ *Autorización de orden médica* (para presentar a tu obra social o cobertura)\n` +
                 `3️⃣ *Presupuesto o aranceles particulares*\n` +
                 `4️⃣ *Hablar con un agente*\n\n` +
-                `Podés responder directamente con el número *1*, *2*, *3* o *4*, o escribirnos tu consulta junto a tu *Nombre completo* y *DNI*.`;
+                `Podés responder directamente con el número *1*, *2*, *3* o *4*, o escribirnos tu consulta junto a tu *Nombre y Apellido* y *DNI*.`;
         }
     }
     // =============================================
@@ -3988,7 +3988,7 @@ async function handleChatbotTriage(
         } else {
             replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
                 `Ya mismo te comunicamos con un agente de nuestro equipo de atención para asistirte.\n\n` +
-                `📝 *Por favor, indícanos tu Nombre completo, DNI y el motivo de tu consulta* (también podés enviarnos fotos/imágenes de pedidos médicos, estudios o credenciales que necesites gestionar) para que en breve te respondamos con mayor rapidez.\n\n` +
+                `📝 *Por favor, indícanos tu Nombre y Apellido, DNI y el motivo de tu consulta* (también podés enviarnos fotos/imágenes de pedidos médicos, estudios o credenciales que necesites gestionar) para que en breve te respondamos con mayor rapidez.\n\n` +
                 `${getAgentHandoffNotice()}`;
         }
         updates.status = 'sin_asignar';
@@ -4935,7 +4935,7 @@ async function handleChatbotTriage(
             replyText = `¡Hola! 🏥 Con gusto te ayudamos a coordinar el turno para tu familiar u otra persona.\n\n` +
                 `Por favor indícanos:\n` +
                 `• Número de *DNI del paciente* (sin puntos ni espacios)\n` +
-                `• *Nombre completo* del paciente\n` +
+                `• *Nombre y Apellido* del paciente\n` +
                 `${specOrDocLine}` +
                 `• *Obra Social / Prepaga y Plan* del paciente (o si la atención será Particular)\n` +
                 `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
@@ -4992,7 +4992,7 @@ async function handleChatbotTriage(
                 : `• *Obra Social / Prepaga* y plan (o si tu atención será Particular)`;
 
             const dniPrompt = paciente?.dni 
-                ? `• *DNI:* En tu ficha figura *${paciente.dni}* (si el turno es para otra persona, indícanos su DNI y Nombre Completo)\n` 
+                ? `• *DNI:* En tu ficha figura *${paciente.dni}* (si el turno es para otra persona, indícanos su DNI, Nombre y Apellido)\n` 
                 : `• Número de *DNI del paciente* (sin puntos ni espacios)\n`;
 
             const specOrDocLine = (doctorDisplay || effectiveSpecialty)
@@ -5051,7 +5051,7 @@ async function handleChatbotTriage(
             replyText = `¡Hola *${fullName}*! 🏥 Te ayudamos con la *autorización* de tu orden médica.\n\n` +
                 `Por favor indícanos:\n` +
                 `• ¿La orden médica es a tu nombre (*${fullName}*), o de otro paciente/familiar?\n` +
-                `• *DNI* y *Nombre Completo* del paciente titular de la orden médica.\n` +
+                `• *DNI*, *Nombre y Apellido* del paciente titular de la orden médica.\n` +
                 `• *Obra Social o Prepaga* y qué *plan* posee (o si es Particular).\n` +
                 `${orderPhotoPrompt}\n\n` +
                 `*(Vigencia de órdenes médicas: 30 días corridos).*`;
@@ -5087,7 +5087,7 @@ async function handleChatbotTriage(
         replyText = `¡Entendido *${fullName}*! 🏥 Te ayudamos a gestionar el *turno o autorización* para tu familiar u otro paciente.\n\n` +
             `Por favor indícanos en un solo mensaje:\n` +
             `• *¿Qué trámite necesitás?* (Solicitar un *turno médico* o *autorizar una orden médica*)\n` +
-            `• *DNI* (sin puntos) y *Nombre Completo* del paciente que se atenderá.\n` +
+            `• *DNI* (sin puntos), *Nombre y Apellido* del paciente que se atenderá.\n` +
             `• *Obra Social o Prepaga* y qué *plan* posee (o si es Particular).\n` +
             `• Si es turno: médico, especialidad o estudio requerido, y preferencia horaria.\n` +
             `• Si es autorización: envíanos la *foto clara de la orden médica*.\n\n` +
@@ -5242,10 +5242,11 @@ function calculateAgeFromBirthDate(birthDateStr: string | null): number | null {
 function getMissingPatientFields(data: Record<string, any>): string[] {
     const missing: string[] = [];
 
-    // 1. Nombre completo (al menos 3 caracteres y letras reales)
+    // 1. Nombre y Apellido (mínimo 2 palabras con letras reales: nombre + apellido)
     const name = (data.nombre_completo || '').trim();
     const GENERIC_NAMES = ['paciente', 'usuario', 'hola', 'doctor', 'doctora', 'buenas', 'sanatorio'];
-    if (!name || name.length < 3 || GENERIC_NAMES.some(g => name.toLowerCase() === g) || !/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(name)) {
+    const nameWords = name.replace(/[,.]/g, ' ').split(/\s+/).filter((w: string) => /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ'-]{2,}$/.test(w));
+    if (!name || name.length < 3 || GENERIC_NAMES.some(g => name.toLowerCase() === g) || nameWords.length < 2) {
         missing.push('nombre_completo');
     }
 
@@ -5284,7 +5285,7 @@ function getMissingPatientFields(data: Record<string, any>): string[] {
  */
 function buildMissingFieldsPrompt(patientName: string | null, missing: string[], currentData: Record<string, any>): string {
     const labelsMap: Record<string, string> = {
-        nombre_completo: '1️⃣ *Nombre y Apellido completo* (tal como figura en tu DNI)',
+        nombre_completo: '1️⃣ *Nombre y Apellido* (tal como figuran en tu DNI)',
         dni: '2️⃣ *Número de DNI* (solo números, sin puntos ni espacios)',
         fecha_nacimiento_edad: '3️⃣ *Fecha de Nacimiento* (DD/MM/AAAA) o *Edad*',
         obra_social: '4️⃣ *Obra Social / Prepaga y Plan* (o aclará "Particular" si no poseés cobertura médica)',
