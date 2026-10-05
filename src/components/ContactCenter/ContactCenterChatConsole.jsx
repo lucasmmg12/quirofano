@@ -1082,16 +1082,21 @@ export default function ContactCenterChatConsole({
         fetchOlderMessagesForPhone(selectedChat.phone, null, 60)
             .then(msgs => {
                 if (isCancelled) return;
-                if (msgs && msgs.length > 0) {
+                // Si la consulta fue exitosa y trajo mensajes
+                if (Array.isArray(msgs) && msgs.length > 0) {
                     selectedChat.messages = msgs;
                     setForceUpdate(n => n + 1);
-                } else {
-                    selectedChat.messages = [];
+                } else if (Array.isArray(msgs) && msgs.length === 0) {
+                    // Solo marcar fin de mensajes si no hay más en BD, pero PRESERVAR los mensajes que ya existían en memoria
+                    if (!selectedChat.messages || selectedChat.messages.length === 0) {
+                        selectedChat.messages = [];
+                    }
                     setNoMoreOlder(true);
                 }
+                // Si msgs es null (error de red o timeout), NUNCA sobreescribir ni vaciar los mensajes existentes
             })
             .catch(err => {
-                console.error('[ContactCenter] Error al auto-cargar mensajes del chat:', err);
+                console.error('[ContactCenter] Error al auto-cargar mensajes del chat (preservando estado):', err);
             })
             .finally(() => {
                 if (!isCancelled) {
@@ -1112,7 +1117,7 @@ export default function ContactCenterChatConsole({
         setLoadingOlder(true);
         try {
             const older = await fetchOlderMessagesForPhone(selectedChat.phone, beforeIso, 40);
-            if (older && older.length > 0) {
+            if (Array.isArray(older) && older.length > 0) {
                 const existingIds = new Set(msgs.map(m => m.id || m.realId));
                 const uniqueNewOlder = older.filter(m => !existingIds.has(m.id) && !existingIds.has(m.realId));
                 if (uniqueNewOlder.length === 0) {
@@ -1121,7 +1126,7 @@ export default function ContactCenterChatConsole({
                     selectedChat.messages = [...uniqueNewOlder, ...msgs];
                     setForceUpdate(n => n + 1);
                 }
-            } else {
+            } else if (Array.isArray(older) && older.length === 0) {
                 setNoMoreOlder(true);
             }
         } catch (err) {

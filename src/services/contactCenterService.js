@@ -52,6 +52,42 @@ export function appendToMessageCache(phone, message) {
     entry.fetchedAt = Date.now(); // Refrescar TTL
 }
 
+/**
+ * Genera un conjunto de variantes exactas de teléfono (con/sin prefijos 54, 549, +, 10 dígitos)
+ * para realizar búsquedas ultra-rápidas mediante índices B-Tree (WHERE phone IN (...))
+ * evitando por completo escaneos secuenciales y timeouts (error 500) en Supabase.
+ */
+export function getPhoneVariants(phone) {
+    if (!phone) return [];
+    const raw = String(phone).trim();
+    const clean = raw.replace(/\D/g, '');
+    const norm = normalizeArgentinePhone(raw);
+    const variants = new Set();
+    if (raw) variants.add(raw);
+    if (clean) variants.add(clean);
+    if (norm) {
+        variants.add(norm);
+        variants.add(`+${norm}`);
+        if (norm.startsWith('549')) {
+            const local10 = norm.slice(3);
+            variants.add(local10);
+            variants.add('54' + local10);
+            variants.add(`+54${local10}`);
+        }
+    }
+    if (clean.startsWith('549')) {
+        const local10 = clean.slice(3);
+        variants.add(local10);
+        variants.add('54' + local10);
+        variants.add(`+54${local10}`);
+    } else if (clean.length === 10) {
+        variants.add('549' + clean);
+        variants.add('+549' + clean);
+        variants.add('54' + clean);
+    }
+    return Array.from(variants).filter(Boolean);
+}
+
 // Administradores con acceso maestro permanente
 export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya'];
 
@@ -670,9 +706,10 @@ export async function fetchLiveAndDemoChats() {
         ])).filter(phone => !phone.startsWith('5491203') && !phone.startsWith('1203'));
 
         allPhones.forEach(phone => {
-            const messages = realChatsMap[phone] || [];
-            const conv = convByPhone[phone];
-            if (messages.length === 0 && !conv) return;
+            try {
+                const messages = realChatsMap[phone] || [];
+                const conv = convByPhone[phone];
+                if (messages.length === 0 && !conv) return;
 
             const chronological = [...messages].reverse();
             const lastMsg = messages[0] || {};
@@ -902,7 +939,10 @@ export async function fetchLiveAndDemoChats() {
                 customFields: patientFields,
                 messages: formattedMessages
             });
-        });
+        } catch (errPhone) {
+            console.warn('[contact-center] Error procesando chat individual:', phone, errPhone);
+        }
+    });
 
         // Orden cronológico descendente (interacción más reciente arriba)
         realChats.sort((a, b) => (b.lastMessageTimestamp || 0) - (a.lastMessageTimestamp || 0));
@@ -2381,8 +2421,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
     if (!phone) return [];
     try {
         const normPhone = normalizeArgentinePhone(phone);
-        const cleanDigits = (normPhone || phone).replace(/\D/g, '');
-        const last8 = cleanDigits.slice(-8);
+        const variants = getPhoneVariants(phone);
 
         // CACHÉ: Solo para la carga inicial (no para paginación)
         if (!beforeCreatedAt) {
@@ -2396,7 +2435,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
             .from('whatsapp_messages')
             .select('id, phone, content, direction, sender_name, media_url, media_type, created_at, line_id, raw_payload')
             .eq('line_id', 'contact_center')
-            .or(`phone.eq.${normPhone},phone.eq.${phone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`)
+            .in('phone', variants)
             .order('created_at', { ascending: false })
             .limit(limit);
 
@@ -2406,7 +2445,11 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
 
         const { data: rawMessages, error } = await query;
 
-        if (error) throw error;
+        if (error) {
+            console.error('[contactCenterService] Error fetching older messages:', error);
+            // Retornar null para que el frontend distinga entre falla de red vs chat sin mensajes
+            return null;
+        }
         if (!rawMessages || rawMessages.length === 0) return [];
 
         // Invertir para orden cronológico ascendente
@@ -2454,7 +2497,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
         return result;
     } catch (err) {
         console.error('[contactCenterService] Error fetching older messages:', err);
-        return [];
+        return null;
     }
 }
 
@@ -2473,8 +2516,7 @@ export async function deleteChatHistoryAndContext({ phone, currentUser }) {
     }
 
     const norm = normalizeArgentinePhone(phone);
-    const cleanDigits = (norm || phone).replace(/\D/g, '');
-    const last8 = cleanDigits.slice(-8);
+    const variants = getPhoneVariants(phone);
 
     // 2. Intentar llamar al backend autónomo (sync-server) que ejecuta con service_role
     let backendSuccess = false;
@@ -2494,17 +2536,17 @@ export async function deleteChatHistoryAndContext({ phone, currentUser }) {
         console.warn('[contactCenterService] No se pudo conectar con sync-server, ejecutando vía Supabase directo:', e.message);
     }
 
-    // 3. Ejecutar borrado directo en Supabase por redundancia
+    // 3. Ejecutar borrado directo en Supabase por redundancia con índices exactos
     try {
         await Promise.all([
             supabase
                 .from('whatsapp_messages')
                 .delete()
-                .or(`phone.eq.${norm},phone.eq.${phone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`),
+                .in('phone', variants),
             supabase
                 .from('contact_center_conversations')
                 .delete()
-                .or(`phone.eq.${norm},phone.eq.${phone},phone.eq.${cleanDigits},phone.ilike.%${last8}%`)
+                .in('phone', variants)
         ]);
         console.log(`[contactCenterService] ✅ Conversación y mensajes purgados en Supabase para ${phone}.`);
     } catch (dbErr) {

@@ -160,21 +160,22 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             }
         });
 
-        // Retardo inicial de 800ms para evitar colisión con otras queries
+        // Retardo inicial de 600ms para evitar colisión con otras queries
         // que se lanzan al montar la app (altas_administrativas, auth, etc.).
         // Esto evita saturar el pool de conexiones de Supabase al inicio.
         const initialLoadTimer = setTimeout(() => {
             reloadChats().then(() => {
-                // Red de seguridad: si el primer load trajo 0 chats,
-                // reintentamos una vez a los 3 segundos (timeout transitorio).
+                // Red de seguridad: si el primer load trajo 0 chats por latencia de red,
+                // reintentamos de forma escalonada (1.5s y 4s) para recuperar la bandeja sin requerir F5 manual
                 setChats(currentChats => {
                     if (currentChats.length === 0) {
-                        setTimeout(() => reloadChats(), 3000);
+                        setTimeout(() => reloadChats(), 1500);
+                        setTimeout(() => reloadChats(), 4000);
                     }
                     return currentChats;
                 });
             });
-        }, 800);
+        }, 600);
 
         // Heartbeat adaptativo: cada 45 segundos para verificar consistencia si la pestaña está visible.
         // Pausado automáticamente si el operador minimiza o cambia de pestaña para no saturar memoria RAM.
