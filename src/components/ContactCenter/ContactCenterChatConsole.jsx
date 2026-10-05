@@ -9,7 +9,7 @@ import {
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
-    FileText, FileSpreadsheet, File, Maximize2, Palette,
+    FileText, FileSpreadsheet, File, Maximize2, Palette, LayoutTemplate,
     Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users
 } from 'lucide-react';
 
@@ -120,8 +120,12 @@ import {
     isUserAuthorizedForContactCenter, subscribeToChatPresence,
     transcribeAudioMessage, uploadContactCenterMedia,
     fetchOlderMessagesForPhone,
-    fetchArchivedChats
+    fetchArchivedChats,
+    getPatientNameForTemplate,
+    CONTACT_CENTER_FALLBACK_TEMPLATES,
+    sendContactCenterTemplate
 } from '../../services/contactCenterService';
+import { fetchMetaTemplates } from '../../services/metaTemplateService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
 import { 
@@ -263,6 +267,7 @@ export default function ContactCenterChatConsole({
     currentUser,
     onSelectChat, 
     onSendMessage, 
+    onSendTemplate,
     onAssignChat,
     onUnassignChat,
     onTransferChat,
@@ -303,6 +308,15 @@ export default function ContactCenterChatConsole({
     });
     const [handoverNote, setHandoverNote] = useState('');
     const [isExecutingHandover, setIsExecutingHandover] = useState(false);
+
+    // === PLANTILLAS OFICIALES META / VENTANA 24 HS ===
+    const [metaTemplates, setMetaTemplates] = useState(CONTACT_CENTER_FALLBACK_TEMPLATES);
+    const [loadingTemplates, setLoadingTemplates] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState(CONTACT_CENTER_FALLBACK_TEMPLATES[0]);
+    const [templateVar1, setTemplateVar1] = useState(''); // Variable 1: Nombre paciente
+    const [templateVar2, setTemplateVar2] = useState(''); // Variable 2: Agente
+    const [sendingTemplate, setSendingTemplate] = useState(false);
+    const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
 
     // Personalización de Temas y Ergonomía Visual (Presets, Fondos, Nano Banana, Sidebars)
@@ -802,6 +816,118 @@ export default function ContactCenterChatConsole({
             ? (chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0] || chats[0]) 
             : (chats[0] || archivedChats[0])) 
         || {};
+
+    // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
+    const lastIncomingMsg = useMemo(() => {
+        if (!selectedChat?.messages || selectedChat.messages.length === 0) return null;
+        let latest = null;
+        let latestMs = 0;
+        for (const m of selectedChat.messages) {
+            if (m.sender === 'patient' || m.direction === 'incoming') {
+                const timeMs = m.created_at ? new Date(m.created_at).getTime() : 0;
+                if (timeMs >= latestMs) {
+                    latestMs = timeMs;
+                    latest = m;
+                }
+            }
+        }
+        return latest;
+    }, [selectedChat?.messages]);
+
+    const is24hWindowExpired = useMemo(() => {
+        if (!selectedChat || !selectedChat.id) return false;
+        const timeRef = lastIncomingMsg?.created_at || selectedChat.lastIncomingAt;
+        if (!timeRef) return true; // Si nunca escribió el paciente, la ventana está cerrada
+        const diffMs = Date.now() - new Date(timeRef).getTime();
+        return diffMs > 24 * 60 * 60 * 1000; // > 24 horas
+    }, [selectedChat, lastIncomingMsg]);
+
+    const windowRemaining = useMemo(() => {
+        const timeRef = lastIncomingMsg?.created_at || selectedChat?.lastIncomingAt;
+        if (!timeRef || is24hWindowExpired) return null;
+        const expiresAt = new Date(timeRef).getTime() + (24 * 60 * 60 * 1000);
+        const remainingMs = Math.max(0, expiresAt - Date.now());
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const mins = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        return { hours, mins, totalMs: remainingMs };
+    }, [lastIncomingMsg, selectedChat?.lastIncomingAt, is24hWindowExpired]);
+
+    // Cargar plantillas de WhatsApp aprobadas de Meta desde BuilderBot Cloud API
+    useEffect(() => {
+        let isMounted = true;
+        setLoadingTemplates(true);
+        fetchMetaTemplates('contact_center')
+            .then(tpls => {
+                if (!isMounted) return;
+                const approved = (tpls || []).filter(t => t.status === 'APPROVED');
+                const list = approved.length > 0 ? approved : tpls;
+                if (list && list.length > 0) {
+                    setMetaTemplates(list);
+                    setSelectedTemplate(list[0]);
+                } else {
+                    setMetaTemplates(CONTACT_CENTER_FALLBACK_TEMPLATES);
+                    setSelectedTemplate(CONTACT_CENTER_FALLBACK_TEMPLATES[0]);
+                }
+            })
+            .catch(err => {
+                console.warn('[ContactCenter] Error cargando plantillas:', err);
+                if (isMounted) {
+                    setMetaTemplates(CONTACT_CENTER_FALLBACK_TEMPLATES);
+                    setSelectedTemplate(CONTACT_CENTER_FALLBACK_TEMPLATES[0]);
+                }
+            })
+            .finally(() => {
+                if (isMounted) setLoadingTemplates(false);
+            });
+        return () => { isMounted = false; };
+    }, []);
+
+    // Sincronizar automáticamente las variables de la plantilla al cambiar el chat
+    useEffect(() => {
+        if (selectedChat?.id) {
+            const pName = getPatientNameForTemplate(selectedChat);
+            setTemplateVar1(pName);
+            setTemplateVar2(activeAgent?.name || '');
+        }
+    }, [selectedChat?.id, selectedChat?.patientFields, selectedChat?.contactName, activeAgent?.name]);
+
+    // Ejecutar envío de plantilla oficial de Meta
+    const handleExecuteSendTemplate = async (templateToUse, v1, v2) => {
+        if (!selectedChat?.id) return;
+        const targetTpl = templateToUse || selectedTemplate || CONTACT_CENTER_FALLBACK_TEMPLATES[0];
+        const finalVar1 = (v1 !== undefined ? v1 : templateVar1).trim();
+        const finalVar2 = (v2 !== undefined ? v2 : templateVar2).trim() || activeAgent.name;
+
+        if (!finalVar1) {
+            alert('Por favor ingresa el nombre del paciente para la variable {{1}} de la plantilla.');
+            return;
+        }
+        if (!finalVar2) {
+            alert('Por favor ingresa el nombre de la agente para la variable {{2}} de la plantilla.');
+            return;
+        }
+
+        try {
+            setSendingTemplate(true);
+            if (onSendTemplate) {
+                await onSendTemplate(selectedChat.id, targetTpl, [finalVar1, finalVar2]);
+            } else {
+                await sendContactCenterTemplate({
+                    chat: selectedChat,
+                    template: targetTpl,
+                    variables: [finalVar1, finalVar2],
+                    activeAgent,
+                    currentUser
+                });
+            }
+            setTemplateModalOpen(false);
+        } catch (err) {
+            console.error('Error enviando plantilla:', err);
+            alert(`Error al enviar plantilla: ${err.message || 'Fallo de conexión'}`);
+        } finally {
+            setSendingTemplate(false);
+        }
+    };
 
     // Ref para rastrear por cuál chat ya se solicitó el historial (evita refetch en re-renders)
     const historyRequestedForChat = useRef(null);
@@ -2195,6 +2321,10 @@ export default function ContactCenterChatConsole({
             alert('Debes asignarte la conversación antes de responder para evitar que dos agentes escriban a la vez.');
             return;
         }
+        if (!isNote && is24hWindowExpired) {
+            alert('⚠️ La ventana de 24 horas de WhatsApp ha expirado. Por política obligatoria de Meta, debes iniciar el contacto enviando una plantilla oficial aprobada.');
+            return;
+        }
         if (isLocked) {
             alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
             return;
@@ -3479,6 +3609,36 @@ export default function ContactCenterChatConsole({
                                     {selectedChat.lastResponder || 'Paciente'}
                                 </strong>
                             </span>
+                            <span>•</span>
+                            {is24hWindowExpired ? (
+                                <span 
+                                    title="Pasaron más de 24hs desde el último mensaje del paciente. Solo se puede responder con una plantilla oficial aprobada por Meta."
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                        padding: '1px 6px', borderRadius: '4px',
+                                        background: '#FEF3C7', border: '1px solid #FCD34D',
+                                        color: '#B45309', fontSize: '0.64rem', fontWeight: 800,
+                                        cursor: 'help'
+                                    }}
+                                >
+                                    <Clock size={10} color="#D97706" />
+                                    Ventana 24h: Expirada (Requiere Plantilla Meta)
+                                </span>
+                            ) : windowRemaining ? (
+                                <span 
+                                    title={`Ventana activa de conversación libre de WhatsApp. Vence en aprox. ${windowRemaining.hours} horas y ${windowRemaining.mins} minutos.`}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                        padding: '1px 6px', borderRadius: '4px',
+                                        background: '#ECFDF5', border: '1px solid #A7F3D0',
+                                        color: '#047857', fontSize: '0.64rem', fontWeight: 800,
+                                        cursor: 'help'
+                                    }}
+                                >
+                                    <CheckCircle2 size={10} color="#10B981" />
+                                    Ventana 24h activa ({windowRemaining.hours}h {windowRemaining.mins}m)
+                                </span>
+                            ) : null}
                             {/* Badge de Ojito si otro agente está leyendo este chat */}
                             {otherViewersForCurrentChat.length > 0 && (
                                 <>
@@ -4861,9 +5021,35 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         })()}
 
                                         {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && (
-                                            <div style={{ whiteSpace: 'pre-line' }}>
-                                                {formatWhatsAppText(msg.text)}
-                                            </div>
+                                            msg.text.startsWith('📋 [Plantilla Meta') ? (
+                                                <div style={{
+                                                    background: '#F0F9FF',
+                                                    border: '1px solid #BAE6FD',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 10px',
+                                                    color: '#0369A1'
+                                                }}>
+                                                    <div style={{
+                                                        fontSize: '0.67rem',
+                                                        fontWeight: 800,
+                                                        color: '#0284C7',
+                                                        textTransform: 'uppercase',
+                                                        marginBottom: '4px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        <LayoutTemplate size={12} /> Plantilla Oficial de Meta WhatsApp
+                                                    </div>
+                                                    <div style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: '#1E293B', lineHeight: 1.45 }}>
+                                                        {formatWhatsAppText(msg.text.replace(/^📋\s*\[Plantilla Meta:[^\]]*\]\s*/, ''))}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div style={{ whiteSpace: 'pre-line' }}>
+                                                    {formatWhatsAppText(msg.text)}
+                                                </div>
+                                            )
                                         )}
 
 
@@ -5110,6 +5296,20 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 >
                                     <Zap size={12} /> Respuestas rápidas (/)
                                 </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setTemplateModalOpen(true)}
+                                    title="Abrir catálogo de plantillas oficiales de Meta WhatsApp"
+                                    style={{
+                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                        border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#4F46E5',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 1px 2px rgba(79, 70, 229, 0.08)'
+                                    }}
+                                >
+                                    <LayoutTemplate size={12} /> Plantillas Meta
+                                </button>
                             </div>
 
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
@@ -5117,6 +5317,246 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </span>
                         </div>
 
+                        {/* BLOQUE MANDATORIO META: VENTANA DE 24HS EXPIRADA (SOLO SE PUEDE ESCRIBIR INICIANDO CON PLANTILLA) */}
+                        {!isPrivateNote && is24hWindowExpired ? (
+                            <div style={{
+                                background: '#FFFDF5',
+                                border: '1.5px solid #FCD34D',
+                                borderRadius: '12px',
+                                padding: '16px',
+                                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.08)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '14px'
+                            }}>
+                                {/* Encabezado Clínico de la Alerta */}
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px', height: '36px', borderRadius: '10px',
+                                            background: '#FEF3C7', border: '1px solid #FDE68A',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            color: '#D97706', flexShrink: 0
+                                        }}>
+                                            <Clock size={20} />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span>Ventana de 24 horas Expirada</span>
+                                                <span style={{
+                                                    fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                                                    background: '#D97706', color: '#FFFFFF', textTransform: 'uppercase'
+                                                }}>
+                                                    Política Oficial Meta
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: '2px', lineHeight: 1.4 }}>
+                                                Han pasado más de 24 horas desde el último mensaje del paciente. La conversación <strong>únicamente puede iniciarse o reanudarse enviando una plantilla oficial aprobada</strong>.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPrivateNote(true)}
+                                        style={{
+                                            padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                            border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C',
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+                                        }}
+                                        title="Redactar nota confidencial para el equipo del Sanatorio"
+                                    >
+                                        <Lock size={12} /> Redactar Nota Interna
+                                    </button>
+                                </div>
+
+                                {/* Selector de Plantilla y Detalles */}
+                                <div style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '10px',
+                                    padding: '12px 14px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '12px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#334155' }}>
+                                                Plantilla Oficial Aprobada:
+                                            </span>
+                                            {metaTemplates.length > 1 ? (
+                                                <select
+                                                    value={selectedTemplate?.name || ''}
+                                                    onChange={(e) => {
+                                                        const found = metaTemplates.find(t => t.name === e.target.value);
+                                                        if (found) setSelectedTemplate(found);
+                                                    }}
+                                                    style={{
+                                                        padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                        fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', outline: 'none',
+                                                        background: '#F8FAFC'
+                                                    }}
+                                                >
+                                                    {metaTemplates.map(t => (
+                                                        <option key={t.id || t.name} value={t.name}>
+                                                            {t.name} ({t.category || 'UTILIDAD'})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <span style={{
+                                                    fontSize: '0.76rem', fontWeight: 800, color: '#0284C7',
+                                                    background: '#F0F9FF', padding: '2px 8px', borderRadius: '6px', border: '1px solid #BAE6FD'
+                                                }}>
+                                                    {selectedTemplate?.name || 'ojonoscobran'}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <span style={{
+                                            fontSize: '0.68rem', fontWeight: 800, color: '#16A34A',
+                                            background: '#DCFCE7', padding: '2px 8px', borderRadius: '9999px',
+                                            display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}>
+                                            <CheckCircle2 size={12} /> Aprobada por Meta ({selectedTemplate?.language || 'es_AR'})
+                                        </span>
+                                    </div>
+
+                                    {/* Inputs de las Variables 1 y 2 */}
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                        gap: '10px'
+                                    }}>
+                                        {/* Variable 1: Nombre del paciente */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <User size={12} color="#0284C7" />
+                                                Variable {'{{1}}'} — Nombre del Paciente:
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={templateVar1}
+                                                onChange={(e) => setTemplateVar1(e.target.value)}
+                                                placeholder="Ej: María (detectado por DNI / WhatsApp)"
+                                                style={{
+                                                    padding: '7px 10px',
+                                                    borderRadius: '8px',
+                                                    border: '1.5px solid #CBD5E1',
+                                                    fontSize: '0.82rem',
+                                                    fontWeight: 700,
+                                                    color: '#0F172A',
+                                                    background: '#F8FAFC',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                            <span style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                Mapeado automáticamente por DNI / Ficha o webhook de WhatsApp ({'{name}'}).
+                                            </span>
+                                        </div>
+
+                                        {/* Variable 2: Nombre de la agente */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <ShieldCheck size={12} color={activeAgent.color || '#0284C7'} />
+                                                Variable {'{{2}}'} — Nombre de la Agente:
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={templateVar2}
+                                                onChange={(e) => setTemplateVar2(e.target.value)}
+                                                placeholder="Ej: Daniela"
+                                                style={{
+                                                    padding: '7px 10px',
+                                                    borderRadius: '8px',
+                                                    border: '1.5px solid #CBD5E1',
+                                                    fontSize: '0.82rem',
+                                                    fontWeight: 700,
+                                                    color: '#0F172A',
+                                                    background: '#F8FAFC',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                            <span style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                Nombre de la agente responsable que inicia la conversación.
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Vista Previa en Vivo Formato WhatsApp */}
+                                    <div style={{
+                                        background: '#EFEAE2',
+                                        borderRadius: '8px',
+                                        padding: '10px 14px',
+                                        border: '1px solid #D1D5DB'
+                                    }}>
+                                        <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                            Vista previa del mensaje que recibirá el paciente:
+                                        </div>
+                                        <div style={{
+                                            background: '#FFFFFF',
+                                            borderRadius: '8px 8px 8px 2px',
+                                            padding: '8px 12px',
+                                            maxWidth: '450px',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                            fontSize: '0.82rem',
+                                            color: '#111827',
+                                            lineHeight: 1.45
+                                        }}>
+                                            Hola <strong style={{ color: '#0284C7' }}>{templateVar1 || '{{1}}'}</strong> soy <strong style={{ color: activeAgent.color || '#0284C7' }}>{templateVar2 || '{{2}}'}</strong> de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.65rem', color: '#9CA3AF' }}>
+                                                <span>{new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                <CheckCircle2 size={11} color="#3B82F6" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Botón de Envío */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                            💡 Al enviar la plantilla, la ventana de 24hs se reactivará en cuanto el paciente responda.
+                                        </span>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleExecuteSendTemplate(selectedTemplate, templateVar1, templateVar2)}
+                                            disabled={sendingTemplate || !templateVar1.trim() || !templateVar2.trim() || isLocked}
+                                            style={{
+                                                padding: '9px 20px',
+                                                borderRadius: '8px',
+                                                border: 'none',
+                                                background: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate)
+                                                    ? '#94A3B8'
+                                                    : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                                color: '#FFFFFF',
+                                                fontSize: '0.80rem',
+                                                fontWeight: 800,
+                                                cursor: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate) ? 'not-allowed' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
+                                                whiteSpace: 'nowrap',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            {sendingTemplate ? (
+                                                <>
+                                                    <Loader2 size={15} className="animate-spin" />
+                                                    Enviando plantilla oficial...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Send size={15} />
+                                                    Iniciar charla con Plantilla Oficial
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
                         <div style={{ position: 'relative' }}>
                             {/* POPOVER FLOTANTE CONTEXTUAL DE ATAJOS RÁPIDOS CON TECLADO */}
                             {quickRepliesOpen && (
@@ -5454,6 +5894,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 )}
                             </div>
                         </div>
+                        )}
                     </form>
                 )}
                 </div>
@@ -8308,6 +8749,273 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                                         <>
                                             <Trash2 size={14} />
                                             <span>Sí, borrar chat y contexto</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Envío de Plantillas Oficiales de Meta (WhatsApp Business) */}
+            {templateModalOpen && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 120,
+                    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '16px'
+                }}>
+                    <div style={{
+                        backgroundColor: '#FFFFFF',
+                        borderRadius: '16px',
+                        maxWidth: '560px',
+                        width: '100%',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        border: '1px solid #E2E8F0',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column'
+                    }}>
+                        {/* Cabecera */}
+                        <div style={{
+                            padding: '16px 20px',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '36px', height: '36px', borderRadius: '10px',
+                                    background: 'rgba(255, 255, 255, 0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <LayoutTemplate size={20} color="#FFFFFF" />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 800, fontSize: '0.98rem' }}>Plantillas Oficiales de WhatsApp (Meta)</div>
+                                    <div style={{ fontSize: '0.72rem', opacity: 0.9 }}>
+                                        {is24hWindowExpired 
+                                            ? 'Ventana de 24hs expirada • Inicio obligatorio con plantilla' 
+                                            : 'Inicio institucional de conversación con plantilla aprobada'}
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setTemplateModalOpen(false)}
+                                disabled={sendingTemplate}
+                                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '4px' }}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Cuerpo */}
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '75vh', overflowY: 'auto' }}>
+                            {/* Alerta de Estado 24h */}
+                            <div style={{
+                                background: is24hWindowExpired ? '#FFFBEB' : '#F0FDF4',
+                                border: is24hWindowExpired ? '1px solid #FCD34D' : '1px solid #BBF7D0',
+                                borderRadius: '10px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                            }}>
+                                {is24hWindowExpired ? (
+                                    <>
+                                        <Clock size={20} color="#D97706" style={{ flexShrink: 0 }} />
+                                        <div style={{ fontSize: '0.78rem', color: '#92400E', lineHeight: 1.4 }}>
+                                            <strong>Ventana de 24 horas expirada:</strong> Según las políticas de Meta, no es posible enviar texto libre directo hasta que el paciente responda a esta plantilla aprobada.
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 size={20} color="#16A34A" style={{ flexShrink: 0 }} />
+                                        <div style={{ fontSize: '0.78rem', color: '#166534', lineHeight: 1.4 }}>
+                                            <strong>Ventana de 24 horas activa:</strong> Puedes usar esta plantilla institucional para presentarte o reanudar el contacto formal con el paciente.
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Selector de Plantilla */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                    📋 Seleccionar Plantilla Aprobada:
+                                </label>
+                                {metaTemplates.length > 1 ? (
+                                    <select
+                                        value={selectedTemplate?.name || ''}
+                                        onChange={(e) => {
+                                            const found = metaTemplates.find(t => t.name === e.target.value);
+                                            if (found) setSelectedTemplate(found);
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '9px 12px',
+                                            borderRadius: '8px',
+                                            border: '1.5px solid #CBD5E1',
+                                            fontSize: '0.82rem',
+                                            fontWeight: 700,
+                                            color: '#0F172A',
+                                            background: '#F8FAFC',
+                                            outline: 'none'
+                                        }}
+                                    >
+                                        {metaTemplates.map(t => (
+                                            <option key={t.id || t.name} value={t.name}>
+                                                {t.name} ({t.category || 'UTILIDAD'} - {t.language || 'es_AR'})
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <div style={{
+                                        padding: '9px 12px',
+                                        borderRadius: '8px',
+                                        background: '#F8FAFC',
+                                        border: '1px solid #E2E8F0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                    }}>
+                                        <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
+                                            {selectedTemplate?.name || 'ojonoscobran'}
+                                        </span>
+                                        <span style={{
+                                            fontSize: '0.68rem', fontWeight: 800, color: '#16A34A',
+                                            background: '#DCFCE7', padding: '2px 8px', borderRadius: '9999px',
+                                            display: 'flex', alignItems: 'center', gap: '4px'
+                                        }}>
+                                            <CheckCircle2 size={12} /> Aprobada ({selectedTemplate?.language || 'es_AR'})
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Inputs de Variables 1 y 2 */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <User size={13} color="#0284C7" />
+                                        Variable {'{{1}}'} (Paciente):
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={templateVar1}
+                                        onChange={(e) => setTemplateVar1(e.target.value)}
+                                        placeholder="Nombre del paciente"
+                                        style={{
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            border: '1.5px solid #CBD5E1',
+                                            fontSize: '0.82rem',
+                                            fontWeight: 700,
+                                            color: '#0F172A',
+                                            background: '#F8FAFC',
+                                            outline: 'none'
+                                        }}
+                                    />
+                                    <span style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                        Detectado por DNI / Webhook ({'{name}'}).
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <ShieldCheck size={13} color={activeAgent.color || '#0284C7'} />
+                                        Variable {'{{2}}'} (Agente):
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={templateVar2}
+                                        onChange={(e) => setTemplateVar2(e.target.value)}
+                                        placeholder="Nombre de la agente"
+                                        style={{
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            border: '1.5px solid #CBD5E1',
+                                            fontSize: '0.82rem',
+                                            fontWeight: 700,
+                                            color: '#0F172A',
+                                            background: '#F8FAFC',
+                                            outline: 'none'
+                                        }}
+                                    />
+                                    <span style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                        Agente activa que inicia la charla.
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Vista Previa WhatsApp */}
+                            <div style={{
+                                background: '#EFEAE2',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: '1px solid #D1D5DB'
+                            }}>
+                                <div style={{ fontSize: '0.67rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                    Vista previa del mensaje WhatsApp:
+                                </div>
+                                <div style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '8px 8px 8px 2px',
+                                    padding: '10px 14px',
+                                    maxWidth: '100%',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                    fontSize: '0.84rem',
+                                    color: '#111827',
+                                    lineHeight: 1.45
+                                }}>
+                                    Hola <strong style={{ color: '#0284C7' }}>{templateVar1 || '{{1}}'}</strong> soy <strong style={{ color: activeAgent.color || '#0284C7' }}>{templateVar2 || '{{2}}'}</strong> de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '6px', fontSize: '0.65rem', color: '#9CA3AF' }}>
+                                        <span>{new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                        <CheckCircle2 size={12} color="#3B82F6" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Botones de Acción */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setTemplateModalOpen(false)}
+                                    disabled={sendingTemplate}
+                                    style={{
+                                        padding: '9px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#475569', fontSize: '0.82rem', fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExecuteSendTemplate(selectedTemplate, templateVar1, templateVar2)}
+                                    disabled={sendingTemplate || !templateVar1.trim() || !templateVar2.trim() || isLocked}
+                                    style={{
+                                        padding: '9px 20px', borderRadius: '8px', border: 'none',
+                                        background: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate)
+                                            ? '#94A3B8'
+                                            : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                        color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 800,
+                                        cursor: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate) ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                                    }}
+                                >
+                                    {sendingTemplate ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            <span>Enviando plantilla...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send size={16} />
+                                            <span>Enviar Plantilla Oficial</span>
                                         </>
                                     )}
                                 </button>

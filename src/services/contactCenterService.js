@@ -12,6 +12,7 @@
 import { supabase } from '../lib/supabase';
 import { getConfigValue, updateConfig } from './configService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from './builderbotApi';
+import { sendMetaTemplate, fetchMetaTemplates } from './metaTemplateService';
 import { getSalusSyncBaseUrl } from './salusSync';
 
 const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
@@ -978,6 +979,8 @@ export async function fetchLiveAndDemoChats() {
                 chatbot: '#triage-sanatorio',
                 avatarColor: '#0284C7',
                 tags: ['Contact Center', 'WhatsApp'],
+                whatsappName: incomingSenderName || null,
+                lastIncomingAt: incomingWithName?.created_at || messages.find(m => m.direction === 'incoming')?.created_at || null,
                 customFields: patientFields,
                 messages: formattedMessages
             });
@@ -1164,6 +1167,240 @@ export async function sendContactCenterMessage({
         waitingMinutes: isNote ? chat.waitingMinutes : 0,
         waitingTimeText: isNote ? chat.waitingTimeText : 'Respondido',
         badgeTimeText: isNote ? chat.badgeTimeText : 'Respondido',
+        messages: [...(chat.messages || []), newMsg]
+    };
+
+    return { newMsg, updatedChat };
+}
+
+export const CONTACT_CENTER_FALLBACK_TEMPLATES = [
+    {
+        id: '1862403598475000',
+        name: 'ojonoscobran',
+        language: 'es_AR',
+        category: 'UTILITY',
+        status: 'APPROVED',
+        components: [
+            {
+                type: 'BODY',
+                text: 'Hola {{1}} soy {{2}} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.',
+                example: {
+                    body_text: [['nombre', 'agente']]
+                }
+            }
+        ]
+    }
+];
+
+/**
+ * Resuelve de forma inteligente el nombre del paciente para la Variable 1 de la plantilla Meta
+ * Prioridad 1: Nombre mapeado por DNI (desde SALUS / ficha médica / triage validado)
+ * Prioridad 2: Nombre registrado con {name} que viene del webhook de WhatsApp / pushName
+ * Prioridad 3: Remitente de mensajes entrantes de WhatsApp
+ */
+export function getPatientNameForTemplate(chat) {
+    if (!chat) return '';
+
+    const formatName = (str) => {
+        if (!str) return '';
+        let clean = String(str).trim();
+        // Si viene en formato "APELLIDO, NOMBRE" (SALUS), tomar el nombre de pila
+        if (clean.includes(',')) {
+            const parts = clean.split(',');
+            if (parts[1] && parts[1].trim()) {
+                clean = parts[1].trim();
+            } else if (parts[0] && parts[0].trim()) {
+                clean = parts[0].trim();
+            }
+        }
+        // Limpiar caracteres extraños
+        clean = clean.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!clean) return '';
+        // Title Case: "MARIA BELEN" -> "Maria Belen"
+        return clean.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    };
+
+    const isInvalid = (str) => {
+        if (!str) return true;
+        const s = String(str).trim().toLowerCase();
+        return (
+            s === '' ||
+            s === 'paciente' ||
+            s === 'unknown' ||
+            s === 'null' ||
+            s === 'undefined' ||
+            s.startsWith('paciente (') ||
+            s.startsWith('+') ||
+            /^\d+$/.test(s)
+        );
+    };
+
+    // 1. Mapeado por DNI (pacienteNombre o nombre_completo desde SALUS / triage)
+    const dniName = chat.patientFields?.pacienteNombre || chat.nombre_completo || chat.customFields?.pacienteNombre;
+    if (dniName && !isInvalid(dniName)) {
+        return formatName(dniName);
+    }
+
+    // 2. Nombre que vino en el webhook desde WhatsApp ({name} / pushname)
+    const webhookName = chat.whatsappName || chat.pushName;
+    if (webhookName && !isInvalid(webhookName)) {
+        return formatName(webhookName);
+    }
+
+    // 3. Remitente de mensajes entrantes de WhatsApp
+    const msgs = chat.messages || [];
+    for (const m of msgs) {
+        if ((m.direction === 'incoming' || m.sender === 'patient') && m.senderName && !isInvalid(m.senderName)) {
+            return formatName(m.senderName);
+        }
+    }
+
+    // 4. Nombre de contacto si no es número ni genérico
+    if (chat.contactName && !isInvalid(chat.contactName)) {
+        return formatName(chat.contactName);
+    }
+
+    return '';
+}
+
+/**
+ * Envía una plantilla oficial de Meta WhatsApp desde el Contact Center
+ * Se utiliza obligatoriamente cuando expiró la ventana de 24 horas o para iniciar conversaciones.
+ */
+export async function sendContactCenterTemplate({
+    chat,
+    template,
+    variables = [],
+    activeAgent,
+    currentUser
+}) {
+    if (!isUserAuthorizedForContactCenter(currentUser)) {
+        throw new Error('No tienes autorización para responder en el Contact Center. Solo las agentes asignadas y Lucas Marinero tienen permisos operativos.');
+    }
+
+    const isLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
+    if (isLocked) {
+        throw new Error(`Esta conversación está asignada exclusivamente a ${chat.assignedToName || chat.assignedTo}.`);
+    }
+
+    const normalizedPhone = normalizeArgentinePhone(chat.phone);
+    if (!normalizedPhone) throw new Error('Número de teléfono del paciente no válido.');
+
+    const components = [
+        {
+            type: 'body',
+            parameters: variables.map(val => ({
+                type: 'text',
+                text: String(val || '').trim()
+            }))
+        }
+    ];
+
+    const templateName = template?.name || template?.templateName || 'ojonoscobran';
+    const languageCode = template?.language || template?.languageCode || 'es_AR';
+
+    // Despachar a través del servicio oficial de templates (Edge Function send-whatsapp -> BuilderBot)
+    const res = await sendMetaTemplate({
+        to: normalizedPhone,
+        templateName,
+        languageCode,
+        components,
+        lineId: 'contact_center'
+    });
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+    // Sustituir variables en el texto de la plantilla para el historial de chat
+    const rawBody = template?.components?.find(c => c.type === 'BODY' || c.type === 'body')?.text || 
+        template?.text || 
+        `Hola {{1}} soy {{2}} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
+    
+    let resolvedText = rawBody;
+    variables.forEach((val, idx) => {
+        resolvedText = resolvedText.replace(new RegExp(`\\{\\{${idx + 1}\\}\\}`, 'g'), val);
+    });
+
+    const displayContent = `📋 [Plantilla Meta: ${templateName}] ${resolvedText}`;
+
+    // 1. Guardar en Supabase whatsapp_messages
+    try {
+        const { error: insertError } = await supabase
+            .from('whatsapp_messages')
+            .insert({
+                phone: normalizedPhone,
+                direction: 'outgoing',
+                content: displayContent,
+                media_type: 'template',
+                sender_name: activeAgent.name,
+                is_read: true,
+                line_id: 'contact_center',
+                raw_payload: {
+                    source: 'contact_center',
+                    line: 'contact_center',
+                    type: 'meta_template',
+                    templateName,
+                    variables,
+                    agent: activeAgent.id,
+                    agentName: activeAgent.name,
+                    metaResult: res
+                }
+            });
+
+        if (insertError) {
+            console.warn('[contact-center] Error guardando plantilla en whatsapp_messages:', insertError.message);
+        }
+    } catch (err) {
+        console.warn('[contact-center] Error en persistencia Supabase:', err);
+    }
+
+    // 2. Silenciar chatbot y actualizar último mensaje
+    try {
+        await supabase
+            .from('contact_center_conversations')
+            .update({
+                bot_active: false,
+                last_message_text: displayContent,
+                last_message_at: now.toISOString(),
+                updated_at: now.toISOString()
+            })
+            .eq('phone', normalizedPhone);
+    } catch (botErr) {
+        console.warn('[contact-center] Error actualizando contact_center_conversations:', botErr);
+    }
+
+    // 3. Crear mensaje formateado local
+    const newMsg = {
+        id: 'msg_tpl_' + Date.now(),
+        sender: 'agent',
+        senderName: activeAgent.name,
+        senderAgentId: activeAgent.id,
+        agentRole: activeAgent.role || 'Atención al Paciente',
+        tagColor: activeAgent.color,
+        type: 'template',
+        text: displayContent,
+        caption: displayContent,
+        templateName,
+        templateBody: resolvedText,
+        variables,
+        isTemplate: true,
+        created_at: now.toISOString(),
+        timestamp: timeStr
+    };
+
+    const updatedChat = {
+        ...chat,
+        botActive: false,
+        lastMessage: displayContent,
+        lastMessageTimestamp: now.getTime(),
+        timeAgo: 'hace unos segundos',
+        lastResponder: activeAgent.name,
+        lastResponderRole: 'agent',
+        lastResponseAt: timeStr,
+        isWaitingResponse: false,
+        waitingMinutes: 0,
+        waitingTimeText: 'Respondido',
+        badgeTimeText: 'Respondido',
         messages: [...(chat.messages || []), newMsg]
     };
 

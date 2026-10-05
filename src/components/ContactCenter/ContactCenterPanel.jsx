@@ -15,7 +15,7 @@ import {
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
     CONTACT_CENTER_AGENTS, getAgentById, fetchLiveAndDemoChats,
-    sendContactCenterMessage, assignChatExclusively, unassignChat,
+    sendContactCenterMessage, sendContactCenterTemplate, assignChatExclusively, unassignChat,
     transferChatToAgent, closeConversationWithResolution,
     bulkCloseConversationsSilent,
     subscribeToContactCenterRealtime, playContactCenterChime,
@@ -428,6 +428,33 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         } catch (err) {
             console.error(err);
             if (addToast) addToast(err.message || 'Error al enviar', 'error');
+        }
+    };
+
+    // Manejar envío de plantilla oficial de Meta WhatsApp
+    const handleSendTemplate = async (chatId, template, variables) => {
+        const targetChat = chats.find(c => c.id === chatId);
+        if (!targetChat) return;
+
+        try {
+            const { newMsg, updatedChat } = await sendContactCenterTemplate({
+                chat: targetChat,
+                template,
+                variables,
+                activeAgent,
+                currentUser
+            });
+
+            setChats(prev => prev.map(c => c.id === chatId ? updatedChat : c));
+
+            if (addToast) {
+                addToast(`Plantilla "${template?.name || 'Meta'}" enviada por ${activeAgent.name} ✅`, 'success');
+            }
+            return { success: true, newMsg };
+        } catch (err) {
+            console.error('Error enviando plantilla en Contact Center:', err);
+            if (addToast) addToast(err.message || 'Error al enviar plantilla', 'error');
+            throw err;
         }
     };
 
@@ -1027,6 +1054,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     currentUser={currentUser}
                     onSelectChat={setActiveChatId}
                     onSendMessage={handleSendMessage}
+                    onSendTemplate={handleSendTemplate}
                     onAssignChat={handleAssignChat}
                     onUnassignChat={handleUnassignChat}
                     onTransferChat={handleTransferChat}
