@@ -865,6 +865,26 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
 
+    // Conversación iniciada con plantilla Meta desde Turnos Online:
+    // recarga la bandeja (para traer la conversación ya asignada) y la abre en la consola.
+    const handleTemplateConversationStarted = async (phone) => {
+        if (!phone) return;
+        const cleanPhone = String(phone).replace(/\D/g, '');
+        await reloadChats(true);
+        setChats(current => {
+            const found = current.find(c => {
+                const p = (c.contactPhone || c.phone || '').replace(/\D/g, '');
+                return p && (p.includes(cleanPhone) || cleanPhone.includes(p));
+            });
+            if (found) {
+                setActiveChatId(found.id);
+                try { localStorage.setItem('sa_cc_active_chat_id', String(found.id)); } catch (_) {}
+            }
+            return current;
+        });
+        setActiveSubTab('conversaciones');
+    };
+
     return (
         <div className="content no-print" style={{ padding: activeSubTab === 'conversaciones' ? '6px 10px 0 10px' : '16px 20px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
             {/* Si NO estamos en conversaciones (ej: mi_semana, turnos_online, metricas), mostramos una barra compacta con las pestañas de navegación del módulo (sin el banner superior de Image 3) */}
@@ -1086,6 +1106,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     currentUser={currentUser}
                     addToast={addToast}
                     onOpenChatWithPhone={handleOpenChatWithPhone}
+                    onConversationStarted={handleTemplateConversationStarted}
                     onBackToConsole={() => handleNavigateTab('conversaciones')}
                 />
             )}

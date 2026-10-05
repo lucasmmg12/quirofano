@@ -6,6 +6,184 @@
 import { supabase } from '../lib/supabase';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from './builderbotApi';
 import { saveOutgoingMessage } from './chatService';
+import { sendMetaTemplate } from './metaTemplateService';
+
+/**
+ * Plantilla oficial aprobada por Meta para iniciar conversación con pacientes
+ * que tienen varios turnos online el mismo día.
+ * Body: {{1}} nombre · {{2}} fecha · {{3}} detalle de turnos. Botones Quick Reply sin parámetros.
+ */
+export const META_TEMPLATE_TURNOS_MISMO_DIA = {
+    name: 'turnos_multiples_mismo_dia',
+    language: 'es_AR',
+    body: 'Hola {{1}}, nos comunicamos de *Sanatorio Argentino*.\n\n*Registramos en nuestro sistema que tenés más de un turno agendado para el día {{2}}:*\n{{3}}\n\nTe consultamos si vas a asistir a todas las consultas o si deseás anular o reprogramar alguna para liberar el lugar a otros pacientes.\n\n*Por favor, seleccioná una de las siguientes opciones o respondé a este mensaje. ¡Muchas gracias!*',
+    buttons: ['Asistiré a todos', 'Deseo anular uno']
+};
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function toTitle(str) {
+    return String(str || '').toLowerCase().replace(/(^|\s)\S/g, s => s.toUpperCase()).trim();
+}
+
+/** "CARRIZO CARRIZO, GABRIELA" -> "Gabriela" */
+export function formatNombrePaciente(nombreSalus) {
+    const raw = String(nombreSalus || '').trim();
+    if (!raw) return 'Paciente';
+    const nombres = raw.includes(',') ? raw.split(',')[1] : raw;
+    return toTitle(nombres) || toTitle(raw);
+}
+
+/** "2026-09-29" -> "martes 29 de septiembre" (sin desfase de zona horaria) */
+export function formatFechaTurno(isoDate) {
+    const m = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return String(isoDate || '');
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]}`;
+}
+
+/** "08:15 a. m." -> "08:15 hs" ; "01:30 p. m." -> "13:30 hs" */
+function formatHora(hora) {
+    const m = String(hora || '').match(/(\d{1,2}):(\d{2})\s*([ap])?/i);
+    if (!m) return String(hora || '').trim();
+    let h = Number(m[1]);
+    const ap = (m[3] || '').toLowerCase();
+    if (ap === 'p' && h < 12) h += 12;
+    if (ap === 'a' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${m[2]} hs`;
+}
+
+/**
+ * Arma las 3 variables de la plantilla a partir de un caso de Turnos Online.
+ * IMPORTANTE: Meta rechaza parámetros con saltos de línea, tabs o 4+ espacios seguidos (error 132018),
+ * por eso el detalle de turnos va en una sola línea.
+ */
+export function buildVariablesTurnosMismoDia(caso) {
+    const turnos = (caso?.turnos || []).slice().sort((a, b) => formatHora(a.horaInicio).localeCompare(formatHora(b.horaInicio)));
+    const fecha = formatFechaTurno(turnos[0]?.fechaTurno || caso?.fechasTurnos?.[0]);
+    const profesional = toTitle(caso?.profesional || caso?.agenda || '');
+    const horas = turnos.map(t => formatHora(t.horaInicio)).filter(Boolean);
+    const listaHoras = horas.length > 1
+        ? `${horas.slice(0, -1).join(', ')} y ${horas[horas.length - 1]}`
+        : (horas[0] || '');
+    const detalle = `${listaHoras}${profesional ? ` con ${profesional}` : ''}`;
+    return [formatNombrePaciente(caso?.nombre), fecha, detalle].map(v => String(v).replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim());
+}
+
+export function renderTemplateBody(body, variables) {
+    return variables.reduce((txt, val, idx) => txt.replace(new RegExp(`\\{\\{${idx + 1}\\}\\}`, 'g'), val), body);
+}
+
+/**
+ * Inicia una conversación nueva en el Contact Center enviando la plantilla oficial de Meta
+ * `turnos_multiples_mismo_dia`. Funciona aunque la ventana de 24h esté cerrada.
+ * - Envía por la línea contact_center
+ * - Registra el mensaje en whatsapp_messages (aparece en la consola)
+ * - Crea/actualiza la conversación asignada a la agente que envía (Mis Chats), bot pausado
+ * - Marca el caso como "contactado"
+ */
+export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
+    if (!caso?.telefono) throw new Error('El paciente no posee número de teléfono registrado.');
+    const phone = normalizeArgentinePhone(caso.telefono);
+    if (!phone || phone.length !== 13) throw new Error(`Número de teléfono inválido: ${caso.telefono}`);
+
+    const vars = (variables && variables.length === 3 ? variables : buildVariablesTurnosMismoDia(caso))
+        .map(v => String(v || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim());
+    if (vars.some(v => !v)) throw new Error('Completá las 3 variables de la plantilla antes de enviar.');
+
+    const tpl = META_TEMPLATE_TURNOS_MISMO_DIA;
+    // 1. Envío oficial a Meta (lanza error si Meta lo rechaza → no se registra nada falso)
+    const metaResult = await sendMetaTemplate({
+        to: phone,
+        templateName: tpl.name,
+        languageCode: tpl.language,
+        components: [{ type: 'body', parameters: vars.map(text => ({ type: 'text', text })) }],
+        lineId: 'contact_center'
+    });
+
+    const now = new Date().toISOString();
+    const agenteId = agente?.id || null;
+    const agenteNombre = agente?.fullName || agente?.name || 'Contact Center';
+    const resolvedText = renderTemplateBody(tpl.body, vars);
+    const displayContent = `📋 [Plantilla Meta: ${tpl.name}] ${resolvedText}`;
+
+    // 2. Registrar en whatsapp_messages (línea Contact Center)
+    const { error: msgErr } = await supabase.from('whatsapp_messages').insert({
+        phone,
+        direction: 'outgoing',
+        content: displayContent,
+        media_type: 'template',
+        sender_name: agente?.name || agenteNombre,
+        is_read: true,
+        line_id: 'contact_center',
+        raw_payload: {
+            source: 'contact_center',
+            line: 'contact_center',
+            type: 'meta_template',
+            templateName: tpl.name,
+            variables: vars,
+            agent: agenteId,
+            agentName: agenteNombre,
+            origen: 'turnos_online_mismo_dia',
+            casoKey: caso.key,
+            metaResult
+        }
+    });
+    if (msgErr) console.warn('[turnosOnline] No se pudo registrar el mensaje en whatsapp_messages:', msgErr.message);
+
+    // 3. Crear o actualizar la conversación asignada a la agente (bot pausado)
+    const convPayload = {
+        status: 'abierto',
+        assigned_agent_id: agenteId,
+        assigned_agent_name: agenteNombre,
+        assigned_at: now,
+        bot_active: false,
+        bot_stage: 'esperando_agente',
+        last_message_text: displayContent,
+        last_message_at: now,
+        updated_at: now,
+        resolution_reason: null,
+        closed_at: null,
+        closed_by_agent_id: null,
+        closed_by_agent_name: null
+    };
+    const { data: existing } = await supabase
+        .from('contact_center_conversations')
+        .select('phone')
+        .eq('phone', phone)
+        .maybeSingle();
+    const convRes = existing
+        ? await supabase.from('contact_center_conversations').update(convPayload).eq('phone', phone)
+        : await supabase.from('contact_center_conversations').insert({
+            phone,
+            ...convPayload,
+            dni: caso.dni || null,
+            nombre_completo: caso.nombre || null,
+            telefono_contacto: phone,
+            email: caso.email || null,
+            motivo_consulta: 'Turnos online múltiples el mismo día',
+            created_at: now
+        });
+    if (convRes.error) console.warn('[turnosOnline] No se pudo crear/actualizar la conversación:', convRes.error.message);
+
+    // 4. Marcar el caso como contactado
+    if (caso.key) {
+        try {
+            await saveGestionTurnoOnline({
+                key: caso.key,
+                estado: 'contactado',
+                agenteId,
+                agenteNombre,
+                notas: `Plantilla Meta "${tpl.name}" enviada por ${agenteNombre}`
+            });
+        } catch (e) {
+            console.warn('Error auto-marcando contactado:', e.message);
+        }
+    }
+
+    return { success: true, phone, variables: vars, metaResult };
+}
 
 export const PLANTILLAS_TURNOS_ONLINE = [
     {
@@ -248,8 +426,9 @@ export async function sendWhatsappAvisoTurno({ phone, text, agente, pacienteNomb
         throw new Error('El paciente no posee número de teléfono registrado.');
     }
 
-    const { normalized, valid } = normalizeArgentinePhone(phone);
-    if (!valid && (!normalized || normalized.length < 10)) {
+    // normalizeArgentinePhone devuelve un string (ej: 5492645438114)
+    const normalized = normalizeArgentinePhone(phone);
+    if (!normalized || normalized.length < 10) {
         throw new Error(`Número de teléfono inválido: ${phone}`);
     }
 

@@ -9,10 +9,17 @@ import {
     fetchTurnosOnlineDuplicados, 
     saveGestionTurnoOnline, 
     sendWhatsappAvisoTurno,
+    sendTemplateTurnosMismoDia,
+    buildVariablesTurnosMismoDia,
+    renderTemplateBody,
+    META_TEMPLATE_TURNOS_MISMO_DIA,
     PLANTILLAS_TURNOS_ONLINE 
 } from '../../services/turnosOnlineService';
 
-export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser, addToast, onOpenChatWithPhone, onBackToConsole }) {
+const META_OPTION_ID = 'meta_turnos_mismo_dia';
+const META_VAR_LABELS = ['{{1}} Nombre del paciente', '{{2}} Fecha de los turnos', '{{3}} Horarios y profesional'];
+
+export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser, addToast, onOpenChatWithPhone, onConversationStarted, onBackToConsole }) {
     const [loading, setLoading] = useState(false);
     const [filtroDias, setFiltroDias] = useState(1); // 1 = ayer/hoy
     const [fechaCustom, setFechaCustom] = useState('');
@@ -141,11 +148,19 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
     // 4. Abrir modal de WhatsApp con plantilla adecuada
     const handleOpenWhatsappModal = (caso) => {
-        // Seleccionar plantilla adecuada según si los turnos son el mismo día o no
-        const defaultTemplate = caso.esMismoDia 
-            ? PLANTILLAS_TURNOS_ONLINE[0] 
-            : PLANTILLAS_TURNOS_ONLINE[1];
+        // Mismo día: plantilla oficial de Meta (permite iniciar la charla aunque no haya ventana de 24h)
+        if (caso.esMismoDia) {
+            setModalData({
+                caso,
+                plantillaId: META_OPTION_ID,
+                metaVars: buildVariablesTurnosMismoDia(caso),
+                texto: '',
+                sending: false
+            });
+            return;
+        }
 
+        const defaultTemplate = PLANTILLAS_TURNOS_ONLINE[1];
         const initialText = defaultTemplate.generateText(caso.nombre, caso.profesional, caso.turnos);
 
         setModalData({
@@ -159,6 +174,14 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     // 5. Cambiar plantilla en el modal
     const handleChangePlantilla = (tplId) => {
         if (!modalData) return;
+        if (tplId === META_OPTION_ID) {
+            setModalData(prev => ({
+                ...prev,
+                plantillaId: META_OPTION_ID,
+                metaVars: prev.metaVars || buildVariablesTurnosMismoDia(prev.caso)
+            }));
+            return;
+        }
         const tpl = PLANTILLAS_TURNOS_ONLINE.find(p => p.id === tplId) || PLANTILLAS_TURNOS_ONLINE[0];
         const newText = tpl.generateText(modalData.caso.nombre, modalData.caso.profesional, modalData.caso.turnos);
         setModalData(prev => ({
@@ -168,6 +191,13 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         }));
     };
 
+    const isMetaSelected = modalData?.plantillaId === META_OPTION_ID;
+    const canSendModal = modalData && !modalData.sending && (
+        isMetaSelected
+            ? (modalData.metaVars || []).every(v => String(v || '').trim())
+            : Boolean(modalData.texto?.trim())
+    );
+
     // 6. Enviar mensaje de WhatsApp
     const handleConfirmSendWhatsapp = async () => {
         if (!modalData) return;
@@ -175,6 +205,21 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
         setModalData(prev => ({ ...prev, sending: true }));
         try {
+            if (modalData.plantillaId === META_OPTION_ID) {
+                const res = await sendTemplateTurnosMismoDia({
+                    caso,
+                    variables: modalData.metaVars,
+                    agente: activeAgent
+                });
+                setCasos(prev => prev.map(c => c.key === caso.key
+                    ? { ...c, gestion: { ...c.gestion, estado: 'contactado', agenteId: activeAgent?.id, agenteNombre: activeAgent?.fullName || activeAgent?.name, fechaContacto: new Date().toISOString() } }
+                    : c));
+                if (addToast) addToast(`Plantilla oficial enviada a ${caso.nombre}. La conversación quedó en tus chats.`, 'success');
+                setModalData(null);
+                if (onConversationStarted) onConversationStarted(res.phone);
+                return;
+            }
+
             await sendWhatsappAvisoTurno({
                 phone: caso.telefono,
                 text: texto,
@@ -1055,7 +1100,30 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 Seleccionar Tipo de Plantilla / Mensaje:
                             </label>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {PLANTILLAS_TURNOS_ONLINE.map(p => {
+                                {modalData.caso.esMismoDia && (
+                                    <div
+                                        onClick={() => handleChangePlantilla(META_OPTION_ID)}
+                                        style={{
+                                            padding: '10px 14px', borderRadius: '12px',
+                                            border: isMetaSelected ? '2px solid #0284C7' : '1.5px solid #E2E8F0',
+                                            background: isMetaSelected ? '#F0F9FF' : '#FFFFFF',
+                                            cursor: 'pointer', transition: 'all 0.15s',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isMetaSelected ? '#075985' : '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                Plantilla oficial Meta · {META_TEMPLATE_TURNOS_MISMO_DIA.name}
+                                                <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D' }}>Aprobada</span>
+                                            </div>
+                                            <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                                Inicia la conversación aunque el paciente nunca haya escrito. Incluye botones de respuesta.
+                                            </div>
+                                        </div>
+                                        {isMetaSelected && <Check size={18} color="#0284C7" />}
+                                    </div>
+                                )}
+                                {PLANTILLAS_TURNOS_ONLINE.filter(p => !(modalData.caso.esMismoDia && p.id === 'aviso_duplicado_mismo_dia')).map(p => {
                                     const isSelected = modalData.plantillaId === p.id;
                                     return (
                                         <div
@@ -1085,6 +1153,48 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         </div>
 
                         {/* Vista previa y edición del mensaje */}
+                        {isMetaSelected ? (
+                            <div style={{ marginBottom: '18px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                                    {META_VAR_LABELS.map((label, idx) => (
+                                        <div key={label} style={{ gridColumn: idx === 2 ? '1 / span 2' : 'auto' }}>
+                                            <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>{label}</label>
+                                            <input
+                                                type="text"
+                                                value={modalData.metaVars?.[idx] || ''}
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    setModalData(prev => {
+                                                        const next = [...(prev.metaVars || ['', '', ''])];
+                                                        next[idx] = val;
+                                                        return { ...prev, metaVars: next };
+                                                    });
+                                                }}
+                                                style={{
+                                                    width: '100%', padding: '8px 10px', borderRadius: '8px',
+                                                    border: `1.5px solid ${String(modalData.metaVars?.[idx] || '').trim() ? '#CBD5E1' : '#FCA5A5'}`,
+                                                    fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit'
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ background: '#EFEAE2', borderRadius: '10px', padding: '12px' }}>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', marginBottom: '6px', textTransform: 'uppercase' }}>Vista previa del mensaje que recibirá el paciente</div>
+                                    <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '10px 12px', fontSize: '0.82rem', lineHeight: 1.45, color: '#0F172A', whiteSpace: 'pre-wrap', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+                                        {renderTemplateBody(META_TEMPLATE_TURNOS_MISMO_DIA.body, (modalData.metaVars || []).map(v => v || '—')).replace(/\*/g, '')}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                                        {META_TEMPLATE_TURNOS_MISMO_DIA.buttons.map(b => (
+                                            <div key={b} style={{ flex: 1, textAlign: 'center', background: '#FFFFFF', borderRadius: '8px', padding: '7px', fontSize: '0.78rem', fontWeight: 700, color: '#0284C7' }}>{b}</div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '6px' }}>
+                                    La conversación se abre asignada a <strong>{activeAgent?.fullName || activeAgent?.name}</strong> y aparece en "Mis Chats".
+                                </div>
+                            </div>
+                        ) : (
                         <div style={{ marginBottom: '18px' }}>
                             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', marginBottom: '6px' }}>
                                 Mensaje a enviar (personalizable antes de despachar):
@@ -1107,9 +1217,10 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 }}
                             />
                             <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
-                                Se despacha desde la línea oficial del Contact Center firmando como: <strong>{activeAgent?.fullName || activeAgent?.name}</strong>.
+                                Se despacha desde la línea oficial del Contact Center firmando como: <strong>{activeAgent?.fullName || activeAgent?.name}</strong>. Solo llega si el paciente escribió en las últimas 24 hs.
                             </div>
                         </div>
+                        )}
 
                         {/* Botones de acción */}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -1127,7 +1238,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             </button>
                             <button
                                 type="button"
-                                disabled={modalData.sending || !modalData.texto.trim()}
+                                disabled={!canSendModal}
                                 onClick={handleConfirmSendWhatsapp}
                                 style={{
                                     padding: '10px 22px', borderRadius: '12px',
