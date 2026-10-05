@@ -1197,6 +1197,7 @@ interface IntentDetectionResult {
         | 'confirmar_turno_online'
         | 'cancelar_turno_online'
         | 'reprogramar_turno_online'
+        | 'gestion_turno_flujo'
         | 'agradecimiento_cierre'
         | 'seguimiento_asesor'
         | 'derivacion_agente'
@@ -1732,7 +1733,7 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
     }
 
     reply += `ℹ️ *Recomendación:* Recordar presentarse 15 minutos antes con el DNI físico y credencial de la obra social o cobertura médica.\n\n`;
-    reply += `¿Deseás *confirmar la asistencia*, *reprogramar* o realizar alguna consulta sobre este turno?\n\n`;
+    reply += `¿Deseás *confirmar la asistencia*, *reprogramar* o *cancelar* algún turno?\n\n`;
     reply += isOtherPatient
         ? `💡 *¿Deseás averiguar sobre el turno de otro paciente?* Podés escribir directamente su número de DNI.`
         : `💡 *¿Consultás por el turno de otro paciente o familiar?* Indícanos su número de *DNI*.`;
@@ -2019,6 +2020,44 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             return { intent: 'saludo_en_flujo', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
         }
         return { intent: 'saludo_inicial', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
+    // 0.0a-bis GESTIÓN DE TURNOS (CANCELAR / REPROGRAMAR)
+    // Se evalúa ANTES de "volver" porque la palabra "cancelar" también figura como sinónimo de volver al menú.
+    {
+        const stage = context?.botStage || '';
+        const enGestionTurno = GESTION_TURNO_STAGES.has(stage);
+        const esVolverExplicito = /\b(volver|atr[aá]s|atrs|regresar|men[uú]|inicio|reiniciar|salir)\b/i.test(clean);
+        const pideAgente = /\b(agente|asesor|asesora|operador|operadora|persona|humano)\b/i.test(clean);
+        const turnoCtx = enGestionTurno ||
+            stage === 'turno_consultado' ||
+            stage === 'esperando_confirmacion_turno' ||
+            /pr[oó]xima cita|turnos pr[oó]ximos|turno online agendado|reprogramar\* o \*cancelar/i.test(context?.lastBotMessage?.content || '');
+        const mencionaTurno = /\b(turno|turnos|cita|citas|consulta|visita|estudio|pr[aá]ctica)\b/i.test(clean);
+        const reprogFuerte = /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita)|mover\s+(?:el\s+|mi\s+)?(?:turno|cita)|pasar\s+(?:el\s+|mi\s+)(?:turno|cita)|postergar\s+(?:el\s+|mi\s+)?(?:turno|cita))\b/i.test(clean);
+        const reprogDebil = /\b(cambiar|posponer|postergar|otro\s+d[ií]a|otra\s+fecha|otro\s+horario)\b/i.test(clean);
+        const verboCancelar = /\b(cancel\w*|anul\w*|dar\s+de\s+baja|darlo\s+de\s+baja|suspender)\b/i.test(clean);
+        const noAsistire = /\bno\s+(?:voy\s+a\s+poder|puedo|podr[eé]|vamos\s+a\s+poder|podemos)\s+(?:ir|asistir|concurrir|llegar)\b/i.test(clean) || /\bno\s+voy\s+a\s+(?:ir|asistir)\b/i.test(clean);
+        const R = (intent: IntentDetectionResult['intent']): IntentDetectionResult => ({ intent, doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null });
+
+        if (enGestionTurno && !esVolverExplicito && !pideAgente) {
+            if (stage === 'esperando_preferencia_reprogramacion' || stage === 'esperando_profesional_reprogramacion') {
+                // La respuesta libre ("otro día por la tarde") es la preferencia: solo se cambia de acción si pide cancelar explícitamente
+                return R(verboCancelar ? 'cancelar_turno_online' : 'gestion_turno_flujo');
+            }
+            if (stage === 'esperando_confirmacion_cancelacion') {
+                return R((reprogFuerte || reprogDebil) ? 'reprogramar_turno_online' : 'gestion_turno_flujo');
+            }
+            if (reprogFuerte) return R('reprogramar_turno_online');
+            if (verboCancelar) return R('cancelar_turno_online');
+            return R('gestion_turno_flujo');
+        }
+
+        if (!enGestionTurno && !esVolverExplicito) {
+            if (reprogFuerte && (mencionaTurno || turnoCtx || /\breprogram/i.test(clean))) return R('reprogramar_turno_online');
+            if ((verboCancelar || noAsistire) && (mencionaTurno || turnoCtx)) return R('cancelar_turno_online');
+            if (reprogDebil && turnoCtx) return R('reprogramar_turno_online');
+        }
     }
 
     // 0.0b VOLVER ATRÁS / MENÚ PRINCIPAL / REINICIO DE GESTIÓN
@@ -2574,6 +2613,361 @@ Devuelve un JSON con:
     };
 }
 
+// =============================================
+// GESTIÓN DE TURNOS: CANCELACIÓN Y REPROGRAMACIÓN
+// El bot identifica al paciente, lista sus turnos, confirma la acción y recolecta preferencias.
+// La baja / reprogramación en SALUS la realiza SIEMPRE un agente (el bot solo registra la solicitud).
+// =============================================
+const GESTION_TURNO_STAGES = new Set([
+    'esperando_dni_gestion',
+    'esperando_seleccion_turno_gestion',
+    'esperando_confirmacion_cancelacion',
+    'esperando_preferencia_reprogramacion',
+    'esperando_profesional_reprogramacion'
+]);
+
+const GESTION_FOOTER = `\n\n🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+const GESTION_MAX_REINTENTOS = 2;
+const GESTION_MAX_TURNOS_LISTADOS = 8;
+
+function toTitleCaseNombre(raw?: string | null): string {
+    if (!raw) return '';
+    let s = String(raw).trim();
+    if (s.includes(',')) {
+        const [ap, nom] = s.split(',').map((p) => p.trim());
+        s = `${nom} ${ap}`;
+    }
+    return s.toLowerCase().split(/\s+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function formatFechaCortaTurno(fStr?: string | null): string {
+    if (!fStr) return '';
+    const [y, m, d] = String(fStr).slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return String(fStr);
+    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const date = new Date(y, m - 1, d);
+    return `${dias[date.getDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+}
+
+function describeTurnoGestion(t: any): string {
+    if (!t) return '';
+    const hora = t.hora ? ` – ${String(t.hora).slice(0, 5)} hs` : '';
+    const prof = t.medico || 'Profesional asignado';
+    const esp = t.especialidad;
+    return `${formatFechaCortaTurno(t.fecha)}${hora} – ${prof}${esp ? ` (${esp})` : ''}`;
+}
+
+function snapshotTurnoGestion(t: any) {
+    return {
+        id: t?.id ?? null,
+        fecha: t?.fecha ?? null,
+        hora: t?.hora ?? null,
+        medico: t?.medico || null,
+        especialidad: t?.especialidad || t?.tipo_visita || null,
+        sede: t?.sede || null,
+        origen: t?.origen || null
+    };
+}
+
+/** Motivo estructurado para que el agente opere en SALUS sin volver a preguntar */
+function buildGestionMotivo(g: any): string {
+    const accion = g?.accion === 'reprogramar' ? 'REPROGRAMAR TURNO' : 'CANCELAR TURNO';
+    const sel = (g?.seleccion || []).map((i: number) => g?.turnos?.[i]).filter(Boolean);
+    const turnosTxt = sel.length
+        ? sel.map((t: any) => `${describeTurnoGestion(t)}${t.id ? ` [ID ${t.id}]` : ''}`).join('; ')
+        : 'Turno no identificado';
+    let txt = `${accion} | ${toTitleCaseNombre(g?.paciente_nombre) || 'Paciente'} (DNI ${g?.dni || 'no informado'}) | ${turnosTxt}`;
+    if (g?.accion === 'reprogramar' && sel.length) {
+        const prof = g?.mismo_profesional === false ? 'Cualquiera de la especialidad' : (g?.mismo_profesional === true ? 'Mismo profesional' : 'Sin indicar');
+        txt += ` | Preferencia: ${g?.preferencia || 'Sin indicar'} | Profesional: ${prof}`;
+    }
+    return txt.slice(0, 900);
+}
+
+interface GestionTurnoResult {
+    reply: string;
+    stage: string;
+    updates: Record<string, any>;
+}
+
+/**
+ * Máquina de estados del flujo de cancelación / reprogramación de turnos.
+ * Estado temporal persistido en conv.ai_summary.gestion_turno.
+ */
+async function handleGestionTurnoFlow(params: {
+    supabase: any;
+    cleanText: string;
+    intent: string;
+    currentStage: string;
+    conv: any;
+    knownDni: string | null;
+    dniInMessage: string | null;
+    turnosDni: string | null;
+    turnosConocidos: any[];
+    whatsappName: string;
+}): Promise<GestionTurnoResult> {
+    const { supabase, cleanText, intent, currentStage, conv, knownDni, dniInMessage, turnosDni, turnosConocidos, whatsappName } = params;
+    const clean = cleanText.toLowerCase().trim();
+    const prevSummary = (conv?.ai_summary && typeof conv.ai_summary === 'object') ? conv.ai_summary : {};
+    const inFlow = GESTION_TURNO_STAGES.has(currentStage);
+    const isActionIntent = intent === 'cancelar_turno_online' || intent === 'reprogramar_turno_online';
+    const saludo = whatsappName && whatsappName !== 'Paciente' ? ` *${whatsappName}*` : '';
+
+    let g: any = inFlow && prevSummary.gestion_turno ? { ...prevSummary.gestion_turno } : {};
+    if (intent === 'cancelar_turno_online') g.accion = 'cancelar';
+    else if (intent === 'reprogramar_turno_online') g.accion = 'reprogramar';
+    if (!g.accion) g.accion = 'cancelar';
+    const verbo = () => (g.accion === 'reprogramar' ? 'reprogramar' : 'cancelar');
+    const nombrePaciente = () => toTitleCaseNombre(g.paciente_nombre);
+    const seleccionados = () => (g.seleccion || []).map((i: number) => g.turnos?.[i]).filter(Boolean);
+    const detalleSeleccion = () => seleccionados().map((t: any) => `📅 ${describeTurnoGestion(t)}`).join('\n');
+
+    const persist = (reply: string, stage: string, extra: Record<string, any> = {}): GestionTurnoResult => ({
+        reply,
+        stage,
+        updates: {
+            status: 'bot',
+            bot_active: true,
+            motivo_consulta: `Gestión de turno (${verbo()}) en curso`,
+            ai_summary: { ...prevSummary, gestion_turno: { ...g, updated_at: Date.now() } },
+            ...extra
+        }
+    });
+
+    const handoff = (reply: string): GestionTurnoResult => ({
+        reply: `${reply}\n\n${getAgentHandoffNotice()}`,
+        stage: 'esperando_agente',
+        updates: {
+            status: 'sin_asignar',
+            bot_active: false,
+            motivo_consulta: buildGestionMotivo(g),
+            medico_o_especialidad: seleccionados()[0]?.medico || seleccionados()[0]?.especialidad || null,
+            ai_summary: { ...prevSummary, gestion_turno: { ...g, estado: 'derivado_agente', updated_at: Date.now() } }
+        }
+    });
+
+    const retry = (reply: string, stage: string): GestionTurnoResult => {
+        g.intentos = (g.intentos || 0) + 1;
+        if (g.intentos > GESTION_MAX_REINTENTOS) {
+            return handoff(`No logramos interpretar tu respuesta 🙏. Te comunicamos con un agente para que continúe la gestión de tu turno.`);
+        }
+        return persist(reply, stage);
+    };
+
+    const askDni = (prefix = ''): GestionTurnoResult => persist(
+        `${prefix}Para ${verbo()} tu turno necesitamos el *DNI del paciente* (solo números, sin puntos). 🪪\n\n` +
+        `Si el turno es de un familiar, escribí el DNI de esa persona.` + GESTION_FOOTER,
+        'esperando_dni_gestion'
+    );
+
+    // Paso siguiente una vez elegido el/los turno/s
+    const askAfterSelection = (unicoTurno: boolean): GestionTurnoResult => {
+        g.intentos = 0;
+        const sel = seleccionados();
+        const nombre = nombrePaciente();
+        const encabezado = unicoTurno
+            ? `Encontramos este turno${nombre ? ` de *${nombre}*` : ''}:`
+            : (sel.length > 1 ? `Turnos seleccionados:` : `Turno seleccionado:`);
+        const tipEsOtro = unicoTurno ? `\n\n💡 Si el turno es de otro paciente, escribí su *DNI*.` : '';
+
+        if (g.accion === 'cancelar') {
+            return persist(
+                `${encabezado}\n\n${detalleSeleccion()}\n\n` +
+                `¿Confirmás que querés *cancelar* ${sel.length > 1 ? 'estos turnos' : 'este turno'}? Respondé *Sí* o *No*.` +
+                tipEsOtro + GESTION_FOOTER,
+                'esperando_confirmacion_cancelacion'
+            );
+        }
+        return persist(
+            `${encabezado}\n\n${detalleSeleccion()}\n\n` +
+            `¿Qué días u horarios te quedan mejor para el nuevo turno? Podés escribirlo libremente (ej.: *"martes o jueves por la tarde"*) o elegir una opción:\n\n` +
+            `1️⃣ Lo antes posible\n2️⃣ Por la mañana\n3️⃣ Por la tarde\n4️⃣ La semana próxima` +
+            tipEsOtro + GESTION_FOOTER,
+            'esperando_preferencia_reprogramacion'
+        );
+    };
+
+    const loadTurnos = async (dni: string): Promise<any[]> => {
+        if (turnosDni && dni === turnosDni && Array.isArray(turnosConocidos) && turnosConocidos.length > 0) {
+            return turnosConocidos;
+        }
+        try {
+            const { data, error } = await supabase.rpc('buscar_turnos_proximos', { p_dni: dni, p_telefono: null });
+            if (!error && Array.isArray(data)) return data;
+            if (error) console.warn('[gestion-turno] Error RPC buscar_turnos_proximos:', error);
+        } catch (e) {
+            console.warn('[gestion-turno] Excepción buscando turnos:', e);
+        }
+        return [];
+    };
+
+    const presentTurnos = async (dni: string): Promise<GestionTurnoResult> => {
+        const turnos = await loadTurnos(dni);
+        g.dni = dni;
+        g.turnos = turnos.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion);
+        g.seleccion = [];
+        g.intentos = 0;
+        g.paciente_nombre = turnos[0]?.paciente_nombre || (conv?.dni === dni ? conv?.nombre_completo : null) || null;
+
+        if (g.turnos.length === 0) {
+            return persist(
+                `No encontramos turnos próximos agendados para el DNI *${dni}*. 🔎\n\n` +
+                `Es posible que el turno ya haya sido dado de baja o que esté a nombre de otro paciente.\n\n` +
+                `• Si es de otro paciente o familiar, escribí su *DNI*.\n` +
+                `• Para solicitar un turno nuevo, escribí *"Menú"* y elegí la opción 1.` + GESTION_FOOTER,
+                'esperando_dni_gestion'
+            );
+        }
+        if (g.turnos.length === 1) {
+            g.seleccion = [0];
+            return askAfterSelection(true);
+        }
+        const nombre = nombrePaciente();
+        const lista = g.turnos.map((t: any, i: number) => `*${i + 1})* ${describeTurnoGestion(t)}`).join('\n');
+        return persist(
+            `Encontramos *${g.turnos.length} turnos* próximos${nombre ? ` de *${nombre}*` : ''}:\n\n${lista}\n\n` +
+            `¿Cuál querés *${verbo()}*? Respondé con el número (podés indicar varios, ej.: *1 y 3*) o escribí *Todos*.\n\n` +
+            `💡 Si es de otro paciente, escribí su *DNI*.` + GESTION_FOOTER,
+            'esperando_seleccion_turno_gestion'
+        );
+    };
+
+    // ---- ENTRADA NUEVA AL FLUJO ----
+    if (!inFlow) {
+        g = { accion: g.accion };
+        const dni = dniInMessage || knownDni;
+        if (!dni) return askDni();
+        return await presentTurnos(dni);
+    }
+
+    // ---- DNI NUEVO DENTRO DEL FLUJO (otro paciente / familiar) ----
+    const aceptaDni = currentStage === 'esperando_dni_gestion' || currentStage === 'esperando_seleccion_turno_gestion' || currentStage === 'esperando_confirmacion_cancelacion';
+    if (dniInMessage && aceptaDni) {
+        return await presentTurnos(dniInMessage);
+    }
+
+    // ---- CAMBIO DE ACCIÓN A MITAD DE FLUJO (ej.: "mejor reprogramalo") ----
+    if (isActionIntent) {
+        if (currentStage === 'esperando_dni_gestion' && !g.turnos?.length) return askDni();
+        if (currentStage === 'esperando_seleccion_turno_gestion' && g.dni) return await presentTurnos(g.dni);
+        if ((g.seleccion || []).length > 0) return askAfterSelection(false);
+        if (g.dni) return await presentTurnos(g.dni);
+        return askDni();
+    }
+
+    switch (currentStage) {
+        case 'esperando_dni_gestion': {
+            return retry(`Por favor escribí el *DNI* del paciente (solo números, sin puntos). 🪪` + GESTION_FOOTER, 'esperando_dni_gestion');
+        }
+
+        case 'esperando_seleccion_turno_gestion': {
+            const n = (g.turnos || []).length;
+            if (/^(ninguno|ninguna|no|nada|ninguno\s+de\s+esos|no\s+gracias)[!.\s]*$/i.test(clean)) {
+                g.estado = 'sin_cambios';
+                return persist(
+                    `Perfecto${saludo}, *no realizamos ningún cambio* en tus turnos. 👍\n\nSi necesitás otra cosa, escribí *"Menú"*.`,
+                    'informacion_respondida',
+                    { motivo_consulta: 'Gestión de turno: sin cambios (paciente desistió)' }
+                );
+            }
+            let idx: number[] = [];
+            if (/\b(todos|todas|ambos|ambas|los\s+dos|las\s+dos|los\s+tres|las\s+tres|todo)\b/i.test(clean)) {
+                idx = Array.from({ length: n }, (_, i) => i);
+            } else {
+                const nums = (clean.match(/\b\d{1,2}\b/g) || []).map(Number).filter((x) => x >= 1 && x <= n);
+                idx = [...new Set(nums.map((x) => x - 1))];
+                if (idx.length === 0) {
+                    // Selección por apellido del profesional u horario escrito
+                    (g.turnos || []).forEach((t: any, i: number) => {
+                        const apellido = String(t.medico || '').toLowerCase().replace(/^\(?[a-z]{2,4}\)?\s+/i, '').replace(/^(dr|dra)\.?\s*/i, '')
+                            .split(/[\s,]+/).find((w: string) => w.length >= 4 && !STOPWORDS_MEDICOS.has(w));
+                        const hora = t.hora ? String(t.hora).slice(0, 5) : '';
+                        if ((apellido && clean.includes(apellido)) || (hora && clean.includes(hora))) idx.push(i);
+                    });
+                }
+            }
+            if (idx.length === 0) {
+                return retry(
+                    `No identificamos el turno 🤔. Respondé con el *número* de la lista (ej.: *1*), varios (ej.: *1 y 2*) o *Todos*.` + GESTION_FOOTER,
+                    'esperando_seleccion_turno_gestion'
+                );
+            }
+            g.seleccion = idx.sort((a, b) => a - b);
+            return askAfterSelection(false);
+        }
+
+        case 'esperando_confirmacion_cancelacion': {
+            const noAsistire = /\bno\s+(?:voy\s+a\s+poder|puedo|podr[eé]|vamos\s+a\s+poder|voy\s+a\s+ir|voy\s+a\s+asistir)\b/i.test(clean);
+            const esSi = noAsistire || /^(s[ií]+|sii+|dale|confirm\w*|correcto|ok(ey|ay)?|de\s+acuerdo|afirmativo|exacto|claro|perfecto|cancel\w*|anul\w*|por\s+favor)\b/i.test(clean);
+            const esNo = !noAsistire && /^(no+|nop|nah|mejor\s+no|dej[aá]\w*|mantener|lo\s+mantengo|la\s+mantengo|me\s+arrepent\w*)\b/i.test(clean);
+            if (esSi && !esNo) {
+                const sel = seleccionados();
+                return handoff(
+                    `✅ Listo${saludo}, registramos tu solicitud de *cancelación*:\n\n${detalleSeleccion()}\n\n` +
+                    `Un agente ${sel.length > 1 ? 'dará de baja los turnos' : 'dará de baja el turno'} en el sistema y te confirmará por este medio. ` +
+                    `Si además necesitás un *nuevo turno*, podés indicárselo en este mismo chat.\n\n` +
+                    `¡Gracias por avisarnos! Liberar el turno permite que otro paciente pueda atenderse. 🏥`
+                );
+            }
+            if (esNo) {
+                g.estado = 'sin_cambios';
+                const sel = seleccionados();
+                return persist(
+                    `Perfecto${saludo}, *no realizamos cambios*: ${sel.length > 1 ? 'tus turnos se mantienen' : 'tu turno se mantiene'}. 👍\n\n${detalleSeleccion()}\n\n` +
+                    `ℹ️ Recordá presentarte 15 minutos antes con tu DNI y credencial de la obra social.\n\n` +
+                    `Si necesitás otra cosa, escribí *"Menú"*.`,
+                    'informacion_respondida',
+                    { motivo_consulta: 'Gestión de turno: paciente mantiene su turno' }
+                );
+            }
+            return retry(`Por favor respondé *Sí* para confirmar la cancelación o *No* para mantener el turno.` + GESTION_FOOTER, 'esperando_confirmacion_cancelacion');
+        }
+
+        case 'esperando_preferencia_reprogramacion': {
+            const opciones: Record<string, string> = { '1': 'Lo antes posible', '2': 'Por la mañana', '3': 'Por la tarde', '4': 'La semana próxima' };
+            const opt = clean.match(/^([1-4])\s*[-.)️⃣]*\s*$/);
+            let pref: string | null = opt ? opciones[opt[1]] : null;
+            if (!pref && clean.replace(/[^a-z0-9áéíóúñ]/gi, '').length >= 3) pref = cleanText.trim().slice(0, 200);
+            if (!pref) {
+                return retry(`Contanos qué días u horarios te quedan mejor (ej.: *"lunes por la mañana"*) o elegí una opción del *1* al *4*.` + GESTION_FOOTER, 'esperando_preferencia_reprogramacion');
+            }
+            g.preferencia = pref;
+            g.intentos = 0;
+            const profs = [...new Set(seleccionados().map((t: any) => t.medico).filter(Boolean))];
+            if (profs.length === 0) {
+                g.mismo_profesional = null;
+                return handoff(
+                    `📋 Listo${saludo}, registramos tu solicitud de *reprogramación*:\n\n${detalleSeleccion()}\n🗓️ *Preferencia:* ${pref}\n\n` +
+                    `Un agente buscará disponibilidad y te propondrá las nuevas opciones por este medio.`
+                );
+            }
+            return persist(
+                `¿Querés mantener ${profs.length === 1 ? `al profesional *${profs[0]}*` : 'los mismos profesionales'}?\n\n` +
+                `1️⃣ Sí, mismo profesional\n2️⃣ Me da igual, cualquiera de la especialidad` + GESTION_FOOTER,
+                'esperando_profesional_reprogramacion'
+            );
+        }
+
+        case 'esperando_profesional_reprogramacion': {
+            const mismo = /^(1|s[ií]+|mismo|misma|el\s+mismo|la\s+misma|mantener|dale|prefiero\s+(el|la)\s+mism[oa])\b/i.test(clean);
+            const cualquiera = /^(2|no|cualquier\w*|me\s+da\s+igual|da\s+igual|igual|indistint\w*|otro|otra)\b/i.test(clean);
+            if (!mismo && !cualquiera) {
+                return retry(`Respondé *1* para mantener el mismo profesional o *2* si te da igual.` + GESTION_FOOTER, 'esperando_profesional_reprogramacion');
+            }
+            g.mismo_profesional = mismo && !/^(2|no)\b/i.test(clean);
+            return handoff(
+                `📋 Listo${saludo}, registramos tu solicitud de *reprogramación*:\n\n${detalleSeleccion()}\n` +
+                `🗓️ *Preferencia:* ${g.preferencia || 'Sin indicar'}\n` +
+                `👨‍⚕️ *Profesional:* ${g.mismo_profesional ? 'Mismo profesional' : 'Cualquiera de la especialidad'}\n\n` +
+                `Un agente buscará disponibilidad y te propondrá las nuevas opciones por este medio.`
+            );
+        }
+    }
+
+    // Estado inconsistente: reiniciar el flujo de forma segura
+    return knownDni ? await presentTurnos(knownDni) : askDni();
+}
+
 // Columnas válidas estrictas de contact_center_conversations para evitar fallos de schema cache en Supabase
 const VALID_CONVERSATION_COLUMNS = new Set([
     'phone', 'status', 'assigned_agent_id', 'assigned_agent_name', 'assigned_at',
@@ -3104,6 +3498,30 @@ async function handleChatbotTriage(
 
     const analysis = await detectIntentAndEntities(supabase, cleanText, conversationContext);
     console.log(`[triage-bot] Análisis contextual para "${cleanText}":`, analysis);
+
+    // =============================================
+    // FLUJO: GESTIÓN DE TURNOS (CANCELAR / REPROGRAMAR) — el bot registra, el agente opera en SALUS
+    // =============================================
+    const isGestionTurnoIntent =
+        analysis.intent === 'cancelar_turno_online' ||
+        analysis.intent === 'reprogramar_turno_online' ||
+        (analysis.intent === 'gestion_turno_flujo' && GESTION_TURNO_STAGES.has(currentStage));
+    if (isGestionTurnoIntent && !isExplicitGreetingOrMenu && !isIncomingMedia) {
+        const gestion = await handleGestionTurnoFlow({
+            supabase,
+            cleanText,
+            intent: analysis.intent,
+            currentStage,
+            conv,
+            knownDni: resolvedDni || conv?.dni || null,
+            dniInMessage: dniMatch ? dniMatch[0] : null,
+            turnosDni: resolvedDni,
+            turnosConocidos: turnosActivosProximos,
+            whatsappName
+        });
+        console.log(`[triage-bot] Gestión de turno (${analysis.intent}) ${currentStage} → ${gestion.stage}`);
+        return await finalizeAndSend(gestion.reply, gestion.stage, { ...updates, ...gestion.updates });
+    }
 
     // Construir etiqueta de doctor SOLO si fue verificado en base de datos o venía con Dr./Dra. explícito y no es stopword
     let rawDocName = analysis.doctorRecord?.profesional_nombre || null;
@@ -4449,29 +4867,7 @@ async function handleChatbotTriage(
         updates.bot_active = false;
         nextStage = 'esperando_agente';
     }
-    // =============================================
-    // FLUJO: CANCELACIÓN DE TURNO ONLINE (CONTEXTUAL)
-    // =============================================
-    else if (analysis.intent === 'cancelar_turno_online') {
-        const doc = turnoOnlineProximo?.profesional || turnosActivosProximos?.[0]?.medico || 'tu profesional';
-        const f = turnoOnlineProximo?.fecha || turnosActivosProximos?.[0]?.fecha || '';
-        replyText = `Registramos tu solicitud para *cancelar* el turno con ${doc}${f ? ` del ${f}` : ''}. Un agente gestionará la baja en el sistema.\n\n${getAgentHandoffNotice()}`;
-        updates.motivo_consulta = `Solicita Cancelar Turno: ${doc}`;
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        nextStage = 'esperando_agente';
-    }
-    // =============================================
-    // FLUJO: REPROGRAMACIÓN DE TURNO ONLINE (CONTEXTUAL)
-    // =============================================
-    else if (analysis.intent === 'reprogramar_turno_online') {
-        const doc = turnoOnlineProximo?.profesional || turnosActivosProximos?.[0]?.medico || 'tu profesional';
-        replyText = `Te ayudamos a *reprogramar* tu turno con ${doc}.\nPor favor indícanos qué día o preferencia horaria te quedaría mejor.\n\n${getAgentHandoffNotice()}`;
-        updates.motivo_consulta = `Solicita Reprogramar Turno: ${doc}`;
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        nextStage = 'esperando_agente';
-    }
+    // (Cancelación / reprogramación: gestionadas por handleGestionTurnoFlow antes de este bloque)
     // =============================================
     // FLUJO: SEGUIMIENTO DE CASO CON ASESOR HUMANO (CONTEXTUAL)
     // =============================================
