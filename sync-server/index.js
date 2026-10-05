@@ -623,36 +623,49 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                 }
 
                 // Persistir también diagnósticos a calidad_pacientes_diagnosticos si tienen datos clínicos
-                const diagsToUpsert = consultas
-                    .filter(c => c.diagnostico || c.motivo || c.formulario)
-                    .map(c => {
-                        let fVisitaIso = null;
-                        if (c.fecha_visita) {
-                            if (c.fecha_visita.includes('/')) {
-                                const [d, m, y] = c.fecha_visita.split('/');
-                                fVisitaIso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-                            } else {
-                                fVisitaIso = String(c.fecha_visita).slice(0, 10);
-                            }
+                const diagDedupMap = new Map();
+                for (const c of consultas) {
+                    const idVisita = c.id_visita;
+                    const diag = (c.diagnostico || c.motivo || '').trim();
+                    if (!idVisita || !diag) continue;
+
+                    let fVisitaIso = null;
+                    if (c.fecha_visita) {
+                        if (c.fecha_visita.includes('/')) {
+                            const [d, m, y] = c.fecha_visita.split('/');
+                            fVisitaIso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                        } else {
+                            fVisitaIso = String(c.fecha_visita).slice(0, 10);
                         }
-                        return {
-                            id_visita: c.id_visita,
-                            nhc: String(c.nhc || resolvedNhc || ''),
-                            dni: resolvedDni ? String(resolvedDni) : null,
+                    }
+
+                    const key = `${idVisita}|${diag}`;
+                    if (!diagDedupMap.has(key)) {
+                        diagDedupMap.set(key, {
+                            id_visita: idVisita,
+                            nhc: String(c.nhc || resolvedNhc || '').trim(),
+                            dni: resolvedDni ? String(resolvedDni).trim() : null,
                             paciente: c.paciente || null,
                             fecha_visita: fVisitaIso,
-                            diagnostico: c.diagnostico || null,
-                            motivo: c.motivo || null,
-                            formulario: c.formulario || null,
-                            centro: c.centro || null,
+                            diagnostico: diag,
+                            motivo: c.motivo ? String(c.motivo).trim() : null,
+                            formulario: c.formulario ? String(c.formulario).trim() : null,
+                            centro: c.centro ? String(c.centro).trim() : null,
                             updated_at: new Date().toISOString()
-                        };
-                    });
+                        });
+                    }
+                }
 
+                const diagsToUpsert = Array.from(diagDedupMap.values());
                 if (diagsToUpsert.length > 0) {
                     for (let i = 0; i < diagsToUpsert.length; i += 50) {
                         const chunk = diagsToUpsert.slice(i, i + 50);
-                        await supabase.from('calidad_pacientes_diagnosticos').upsert(chunk, { onConflict: 'id_visita' });
+                        const { error: diagErr } = await supabase
+                            .from('calidad_pacientes_diagnosticos')
+                            .upsert(chunk, { onConflict: 'id_visita,diagnostico' });
+                        if (diagErr) {
+                            console.warn('⚠️ [Historial Clinico] Error persistiendo a calidad_pacientes_diagnosticos:', diagErr.message);
+                        }
                     }
                 }
             } catch (ePersist) {
