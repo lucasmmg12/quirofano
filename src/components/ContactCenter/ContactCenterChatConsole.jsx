@@ -399,6 +399,8 @@ export default function ContactCenterChatConsole({
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [noMoreOlder, setNoMoreOlder] = useState(false);
     const [loadingChatMessages, setLoadingChatMessages] = useState(false);
+    // Fuerza re-render cuando se cargan mensajes del historial (usado por la auto-carga y "cargar anteriores")
+    const [, setForceUpdate] = useState(0);
 
     const [filterTab, setFilterTab] = useState(() => {
         try {

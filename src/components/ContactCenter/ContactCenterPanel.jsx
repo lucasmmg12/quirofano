@@ -146,11 +146,36 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             }
 
             setChats(prevChats => {
+                const prevMap = new Map((prevChats || []).map(c => [c.id, c]));
+
+                // Fusionar historial: la recarga trae como máximo los últimos N mensajes por chat.
+                // Si en memoria ya había más (historial cargado al abrir el chat), se conservan
+                // y se agregan solo los nuevos, para que los mensajes no "aparezcan y desaparezcan".
+                const msgKey = (m) => String(m?.realId || m?.id || '');
+                const merged = loaded.map(newChat => {
+                    const oldChat = prevMap.get(newChat.id);
+                    const oldMsgs = oldChat?.messages || [];
+                    const newMsgs = newChat.messages || [];
+                    if (oldMsgs.length === 0) return newChat;
+                    const newKeys = new Set(newMsgs.map(msgKey));
+                    const onlyInOld = oldMsgs.filter(m => {
+                        const k = msgKey(m);
+                        // Mensajes optimistas locales (sin realId) se descartan si ya llegó su versión real
+                        return k && !newKeys.has(k) && (m.realId || !String(m.id || '').startsWith('msg_'));
+                    });
+                    if (onlyInOld.length === 0) return newChat;
+                    const combined = [...onlyInOld, ...newMsgs].sort((a, b) => {
+                        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+                        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+                        return ta - tb;
+                    });
+                    return { ...newChat, messages: combined };
+                });
+
                 // Comparar por ID (no por índice) para detectar cambios correctamente
                 // aunque el orden del array haya variado entre reloads.
-                if (isSilent && Array.isArray(prevChats) && prevChats.length === loaded.length) {
-                    const prevMap = new Map(prevChats.map(c => [c.id, c]));
-                    const hasChange = loaded.some(newChat => {
+                if (isSilent && Array.isArray(prevChats) && prevChats.length === merged.length) {
+                    const hasChange = merged.some(newChat => {
                         const oldChat = prevMap.get(newChat.id);
                         if (!oldChat) return true; // Chat nuevo o con ID diferente
                         if (oldChat.messages?.length !== newChat.messages?.length) return true;
@@ -165,7 +190,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     });
                     if (!hasChange) return prevChats;
                 }
-                return loaded;
+                return merged;
             });
             
             // Mantener el chat actualmente seleccionado por el operador, o recuperarlo de localStorage, o seleccionar el primer chat activo
@@ -406,9 +431,11 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 console.log('[contact-center] ⚡ Evento Realtime Conversación cambiada:', conv);
                 setLastLivePing(new Date());
                 const normPhone = normalizeArgentinePhone(conv.phone);
-                setChats(prevChats => prevChats.map(c => {
-                    if (normalizeArgentinePhone(c.phone) === normPhone) {
-                        return {
+                setChats(prevChats => {
+                    let changed = false;
+                    const next = prevChats.map(c => {
+                        if (normalizeArgentinePhone(c.phone) !== normPhone) return c;
+                        const updated = {
                             ...c,
                             contactName: conv.nombre_completo || c.contactName,
                             status: conv.status || c.status,
@@ -429,9 +456,17 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                                 medicoOEspecialidad: conv.medico_o_especialidad || c.customFields?.medicoOEspecialidad
                             }
                         };
-                    }
-                    return c;
-                }));
+                        // Solo reemplazar el objeto si cambió algo visible (evita re-render de toda la bandeja)
+                        const sameTop = ['contactName', 'status', 'assignedTo', 'assignedToName', 'assignedAt', 'botActive']
+                            .every(k => updated[k] === c[k]);
+                        const sameAi = JSON.stringify(updated.aiSummary ?? null) === JSON.stringify(c.aiSummary ?? null);
+                        const sameFields = Object.keys(updated.customFields).every(k => updated.customFields[k] === c.customFields?.[k]);
+                        if (sameTop && sameAi && sameFields) return c;
+                        changed = true;
+                        return updated;
+                    });
+                    return changed ? next : prevChats;
+                });
             }
         });
 

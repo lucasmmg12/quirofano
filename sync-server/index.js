@@ -4162,12 +4162,17 @@ app.listen(PORT, '0.0.0.0', () => {
         // 4.B RESOLUCIÓN AUTOMÁTICA DE PACIENTES EN CONTACT CENTER VÍA SALUS
         // Cuando un paciente escribe su DNI por WhatsApp, si aún no está enriquecido con SALUS (falta NHC u obra social),
         // este proceso busca en SALUS en tiempo real, guarda en hospital_pacientes y actualiza la conversación al instante.
+        // Memoria de DNIs ya procesados: evita reescribir la misma conversación cada 8 s
+        // cuando SALUS no tiene NHC u obra social (eso generaba una tormenta de eventos Realtime en las consolas).
+        const resolvedDniCache = new Map(); // key: phone|dni -> timestamp
+        const RESOLVER_RETRY_MS = 10 * 60 * 1000;
+
         async function resolveMissingPatientsInConversations() {
             if (syncInProgress) return;
             try {
                 const { data: convs, error } = await supabase
                     .from('contact_center_conversations')
-                    .select('phone, dni, nhc, obra_social, es_paciente_existente, nombre_completo')
+                    .select('phone, dni, nhc, obra_social, es_paciente_existente, nombre_completo, fecha_nacimiento')
                     .not('dni', 'is', null)
                     .or('es_paciente_existente.is.false,nhc.is.null,obra_social.is.null')
                     .order('last_message_at', { ascending: false })
@@ -4176,9 +4181,15 @@ app.listen(PORT, '0.0.0.0', () => {
                 if (error || !convs || convs.length === 0) return;
 
                 const poolInst = await getPool();
+                const now = Date.now();
                 for (const c of convs) {
                     const cleanDni = String(c.dni || '').trim().replace(/\D/g, '');
                     if (!cleanDni || cleanDni.length < 5) continue;
+
+                    const cacheKey = `${c.phone}|${cleanDni}`;
+                    const lastTry = resolvedDniCache.get(cacheKey);
+                    if (lastTry && now - lastTry < RESOLVER_RETRY_MS) continue;
+                    resolvedDniCache.set(cacheKey, now);
 
                     const res = await poolInst.request()
                         .input('dni', sql.VarChar(50), cleanDni)
@@ -4196,6 +4207,16 @@ app.listen(PORT, '0.0.0.0', () => {
                         const birth = p.FechaNacimiento ? new Date(p.FechaNacimiento).toISOString().split('T')[0] : null;
                         const formattedBirth = birth ? `${birth.split('-')[2]}/${birth.split('-')[1]}/${birth.split('-')[0]}` : null;
 
+                        const nextValues = {
+                            nombre_completo: p.nombre || c.nombre_completo,
+                            nhc: p.NHC != null ? String(p.NHC) : c.nhc,
+                            obra_social: p.mutua || c.obra_social,
+                            fecha_nacimiento: formattedBirth || c.fecha_nacimiento,
+                            es_paciente_existente: true
+                        };
+                        const changed = Object.keys(nextValues).some(k => String(nextValues[k] ?? '') !== String(c[k] ?? ''));
+                        if (!changed) continue; // Nada nuevo: no tocar la fila (no dispara Realtime)
+
                         // 1. Guardar en hospital_pacientes para que esté disponible en Supabase
                         await supabase.from('hospital_pacientes').upsert({
                             id_paciente: p.id,
@@ -4209,18 +4230,18 @@ app.listen(PORT, '0.0.0.0', () => {
                             updated_at: new Date().toISOString()
                         }, { onConflict: 'id_paciente' });
 
-                        // 2. Actualizar contact_center_conversations
+                        // 2. Actualizar contact_center_conversations solo con datos nuevos
                         await supabase.from('contact_center_conversations').update({
-                            nombre_completo: p.nombre || c.nombre_completo,
-                            nhc: p.NHC,
-                            obra_social: p.mutua,
-                            fecha_nacimiento: formattedBirth,
-                            es_paciente_existente: true,
+                            ...nextValues,
                             updated_at: new Date().toISOString()
                         }).eq('phone', c.phone);
 
                         console.log(`[Paciente Auto-Resolver] ✅ Conversación ${c.phone} vinculada exitosamente con SALUS: ${p.nombre} (DNI ${p.NIF}, NHC ${p.NHC}, Cobertura: ${p.mutua})`);
                     }
+                }
+                // Limpieza de memoria
+                for (const [k, t] of resolvedDniCache) {
+                    if (now - t > RESOLVER_RETRY_MS * 3) resolvedDniCache.delete(k);
                 }
             } catch (_) {}
         }
