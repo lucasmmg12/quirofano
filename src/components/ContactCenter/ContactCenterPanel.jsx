@@ -391,18 +391,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             badgeTimeText: isIncoming ? 'hace instantes' : 'Respondido'
                         };
 
-                        // Si el mensaje es una respuesta del agente (!isIncoming) Y el chat está asignado a un agente,
-                        // NO debe moverse al inicio del sidebar; debe permanecer exactamente en su posición fija.
-                        if (!isIncoming && (existingChat.assignedTo || existingChat.status === 'asignada')) {
-                            return prevChats.map((c, idx) => idx === chatIdx ? updatedChat : c);
-                        }
-
+                        // Toda actividad reciente (mensajes del paciente o respuestas del agente)
+                        // posiciona el chat al inicio de la bandeja (orden cronológico por actividad reciente).
                         const otherChats = prevChats.filter((_, idx) => idx !== chatIdx);
                         return [updatedChat, ...otherChats].sort((a, b) => {
-                            const aIsAssigned = Boolean(a.assignedTo);
-                            const bIsAssigned = Boolean(b.assignedTo);
-                            const aKey = aIsAssigned ? (a.lastIncomingTimestamp || a.lastMessageTimestamp || 0) : (a.lastMessageTimestamp || 0);
-                            const bKey = bIsAssigned ? (b.lastIncomingTimestamp || b.lastMessageTimestamp || 0) : (b.lastMessageTimestamp || 0);
+                            const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
+                            const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
                             if (bKey !== aKey) return bKey - aKey;
                             return String(b.id || '').localeCompare(String(a.id || ''));
                         });
@@ -520,7 +514,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 fileName
             });
 
-            setChats(prev => prev.map(c => c.id === chatId ? updatedChat : c));
+            setChats(prev => {
+                const remaining = prev.filter(c => c.id !== chatId);
+                return [updatedChat, ...remaining].sort((a, b) => {
+                    const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
+                    const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
+                    if (bKey !== aKey) return bKey - aKey;
+                    return String(b.id || '').localeCompare(String(a.id || ''));
+                });
+            });
 
             if (addToast) {
                 const label = isNote 
@@ -554,7 +556,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 currentUser
             });
 
-            setChats(prev => prev.map(c => c.id === chatId ? updatedChat : c));
+            setChats(prev => {
+                const remaining = prev.filter(c => c.id !== chatId);
+                return [updatedChat, ...remaining].sort((a, b) => {
+                    const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
+                    const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
+                    if (bKey !== aKey) return bKey - aKey;
+                    return String(b.id || '').localeCompare(String(a.id || ''));
+                });
+            });
 
             if (addToast) {
                 addToast(`Plantilla "${template?.name || 'Meta'}" enviada por ${activeAgent.name} ✅`, 'success');

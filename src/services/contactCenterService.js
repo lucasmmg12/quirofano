@@ -994,14 +994,10 @@ export async function fetchLiveAndDemoChats() {
         }
     });
 
-        // Orden de bandeja:
-        // - Para chats asignados: ordenados por último mensaje entrante del paciente (permanecen fijos al responder).
-        // - Para chats no asignados (bot, sin_asignar): ordenados dinámicamente por última interacción general.
+        // Orden de bandeja: Ordenados por actividad más reciente (mensajes entrantes de pacientes o respuestas de agentes)
         realChats.sort((a, b) => {
-            const aIsAssigned = Boolean(a.assignedTo);
-            const bIsAssigned = Boolean(b.assignedTo);
-            const aKey = aIsAssigned ? (a.lastIncomingTimestamp || a.lastMessageTimestamp || 0) : (a.lastMessageTimestamp || 0);
-            const bKey = bIsAssigned ? (b.lastIncomingTimestamp || b.lastMessageTimestamp || 0) : (b.lastMessageTimestamp || 0);
+            const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
+            const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
             if (bKey !== aKey) return bKey - aKey;
             return String(b.id || '').localeCompare(String(a.id || ''));
         });

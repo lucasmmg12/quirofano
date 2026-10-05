@@ -2101,31 +2101,27 @@ export default function ContactCenterChatConsole({
             }
             return true;
         }).sort((a, b) => {
-            const aIsAssigned = Boolean(a.assignedTo);
-            const bIsAssigned = Boolean(b.assignedTo);
-
-            const getAssignedKey = (chat) => {
-                if (chat.lastIncomingTimestamp) return Number(chat.lastIncomingTimestamp);
-                if (chat.lastIncomingAt) {
-                    const t = new Date(chat.lastIncomingAt).getTime();
-                    if (!isNaN(t) && t > 0) return t;
+            const getChatActivityTimestamp = (chat) => {
+                if (!chat) return 0;
+                let ts = Number(chat.lastMessageTimestamp) || 0;
+                if (chat.messages && chat.messages.length > 0) {
+                    const lastMsg = chat.messages[chat.messages.length - 1];
+                    const msgTime = lastMsg?.created_at 
+                        ? new Date(lastMsg.created_at).getTime() 
+                        : (typeof lastMsg?.timestamp === 'number' 
+                            ? lastMsg.timestamp 
+                            : (lastMsg?.time ? new Date(lastMsg.time).getTime() : 0));
+                    if (!isNaN(msgTime) && msgTime > ts) ts = msgTime;
                 }
-                if (chat.assignedAt) {
-                    const t = new Date(chat.assignedAt).getTime();
-                    if (!isNaN(t) && t > 0) return t;
+                if (chat.lastIncomingTimestamp && Number(chat.lastIncomingTimestamp) > ts) {
+                    ts = Number(chat.lastIncomingTimestamp);
                 }
-                const firstMsg = chat.messages?.[0];
-                if (firstMsg?.created_at || firstMsg?.timestamp) {
-                    const t = new Date(firstMsg.created_at || firstMsg.timestamp).getTime();
-                    if (!isNaN(t) && t > 0) return t;
-                }
-                return chat.lastMessageTimestamp || 0;
+                return ts;
             };
 
-            // Para chats asignados a agentes: la posición en el sidebar permanece FIJA cuando
-            // el operador responde (outgoing). Solo sube si el paciente envía un mensaje entrante nuevo.
-            const aKey = aIsAssigned ? getAssignedKey(a) : (a.lastMessageTimestamp || 0);
-            const bKey = bIsAssigned ? getAssignedKey(b) : (b.lastMessageTimestamp || 0);
+            // Orden por actividad más reciente: a medida que responden agentes o pacientes, suben al inicio
+            const aKey = getChatActivityTimestamp(a);
+            const bKey = getChatActivityTimestamp(b);
 
             if (bKey !== aKey) return bKey - aKey;
             return String(b.id || '').localeCompare(String(a.id || ''));
