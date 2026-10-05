@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Search, Paperclip, Send, Lock, Tag, User, 
     Calendar, CheckCircle2, ChevronDown, Check, Star, 
@@ -1806,6 +1807,25 @@ export default function ContactCenterChatConsole({
     // Regla estricta: Dos agentes no pueden escribir a la vez. Siempre sí o sí deben asignárselo.
     const canWriteMessage = isAssignedToMe && !isClosedOrArchived(selectedChat.status);
 
+    // Refs sincronizados para listeners globales (evitan cierres obsoletos en eventos de portapapeles y atajos)
+    const selectedChatRef = useRef(selectedChat);
+    useEffect(() => { selectedChatRef.current = selectedChat; }, [selectedChat]);
+
+    const isLockedRef = useRef(isLocked);
+    useEffect(() => { isLockedRef.current = isLocked; }, [isLocked]);
+
+    const canWriteMessageRef = useRef(canWriteMessage);
+    useEffect(() => { canWriteMessageRef.current = canWriteMessage; }, [canWriteMessage]);
+
+    const activeAgentRef = useRef(activeAgent);
+    useEffect(() => { activeAgentRef.current = activeAgent; }, [activeAgent]);
+
+    const currentUserRef = useRef(currentUser);
+    useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+
+    const assignedAgentObjRef = useRef(assignedAgentObj);
+    useEffect(() => { assignedAgentObjRef.current = assignedAgentObj; }, [assignedAgentObj]);
+
     // Auto-alinear pestaña del sidebar para que contenga al chat activo al recargar la página (F5)
     useEffect(() => {
         if (!activeChatId || !chats || chats.length === 0) return;
@@ -2194,7 +2214,7 @@ export default function ContactCenterChatConsole({
     };
 
     // === Gestión de archivos adjuntos (Excel, Word, PDF, TXT, Imágenes, Audios, Capturas de Pantalla) ===
-    const processAttachmentFile = (file, customName = null) => {
+    const processAttachmentFile = (file, customName = null, forceType = null) => {
         if (!file) return;
 
         if (file.size > 50 * 1024 * 1024) {
@@ -2202,11 +2222,19 @@ export default function ContactCenterChatConsole({
             return;
         }
 
-        let detectedType = 'document';
-        if (file.type?.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg|tiff?)$/i.test(file.name || '')) {
-            detectedType = 'image';
-        } else if (file.type?.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(file.name || '')) {
-            detectedType = 'audio';
+        const fileNameLower = (file.name || customName || '').toLowerCase();
+        let detectedType = forceType || 'document';
+        if (!forceType) {
+            if (
+                file.type?.startsWith('image/') || 
+                /\.(jpe?g|png|webp|gif|bmp|svg|tiff?)$/i.test(fileNameLower) ||
+                fileNameLower.includes('captura') ||
+                fileNameLower === 'image.png'
+            ) {
+                detectedType = 'image';
+            } else if (file.type?.startsWith('audio/') || /\.(mp3|wav|ogg|oga|m4a|aac|webm)$/i.test(fileNameLower)) {
+                detectedType = 'audio';
+            }
         }
 
         const now = new Date();
@@ -2214,11 +2242,18 @@ export default function ContactCenterChatConsole({
         const defaultCapName = `captura_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
 
         const rawName = customName || file.name || defaultCapName;
-        const finalName = (rawName === 'image.png' || rawName === 'blob') ? defaultCapName : rawName;
+        const finalName = (rawName === 'image.png' || rawName === 'blob' || !rawName) ? defaultCapName : rawName;
 
-        const finalFile = (finalName !== file.name)
-            ? new File([file], finalName, { type: file.type || (detectedType === 'image' ? 'image/png' : 'application/octet-stream') })
-            : file;
+        const effectiveMime = (detectedType === 'image') 
+            ? (file.type?.startsWith('image/') ? file.type : 'image/png')
+            : (file.type || 'application/octet-stream');
+
+        let finalFile = file;
+        try {
+            finalFile = new File([file], finalName, { type: effectiveMime });
+        } catch (_) {
+            finalFile = file;
+        }
 
         if (selectedFile?.previewUrl) {
             URL.revokeObjectURL(selectedFile.previewUrl);
@@ -2281,58 +2316,114 @@ export default function ContactCenterChatConsole({
         handleRemoveSelectedFile();
     };
 
-    // Helper robusto para extraer imágenes del portapapeles (Snipping Tool, Captura de Pantalla, Copiar Imagen, Archivos del Explorador)
-    const extractImageFromClipboard = (clipboardData) => {
-        if (!clipboardData) return null;
-
+    // Helper robusto para extraer imágenes del portapapeles (Snipping Tool, Win+Shift+S, Print Screen, Copiar Imagen, Archivos del Explorador)
+    const extractImageFromClipboard = async (clipboardData) => {
         const isImageMimeOrExt = (mime, name) => {
             if (mime && mime.toLowerCase().startsWith('image/')) return true;
             if (name && /\.(jpe?g|png|webp|gif|bmp|svg|tiff?)$/i.test(name)) return true;
             return false;
         };
 
-        // 1. Priorizar items del portapapeles (capturas de pantalla con Snipping Tool, Win+Shift+S, PrintScreen, copiar imagen web)
-        if (clipboardData.items) {
-            for (let i = 0; i < clipboardData.items.length; i++) {
-                const item = clipboardData.items[i];
-                if (item.type && item.type.startsWith('image/')) {
-                    const f = item.getAsFile();
-                    if (f) return f;
-                } else if (item.kind === 'file') {
-                    const f = item.getAsFile();
-                    if (f && isImageMimeOrExt(f.type, f.name)) {
-                        return f;
+        if (clipboardData) {
+            // 1. Priorizar items del portapapeles (capturas de pantalla con Snipping Tool, Win+Shift+S, PrtScn)
+            if (clipboardData.items && clipboardData.items.length > 0) {
+                for (let i = 0; i < clipboardData.items.length; i++) {
+                    const item = clipboardData.items[i];
+                    if (item.type && item.type.startsWith('image/')) {
+                        const f = item.getAsFile();
+                        if (f && f.size > 0) return f;
+                    }
+                }
+                for (let i = 0; i < clipboardData.items.length; i++) {
+                    const item = clipboardData.items[i];
+                    if (item.kind === 'file') {
+                        const f = item.getAsFile();
+                        if (f && f.size > 0) {
+                            if (isImageMimeOrExt(f.type, f.name)) return f;
+                            if (!f.type || f.type === 'application/octet-stream') {
+                                return new File([f], 'captura.png', { type: 'image/png' });
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        // 2. Revisar archivos adjuntos en el portapapeles (archivos copiados desde el Explorador de Windows o Escritorio)
-        if (clipboardData.files && clipboardData.files.length > 0) {
-            for (let i = 0; i < clipboardData.files.length; i++) {
-                const f = clipboardData.files[i];
-                if (isImageMimeOrExt(f.type, f.name)) {
-                    return f;
+            // 2. Revisar archivos adjuntos en el portapapeles (archivos copiados desde el Explorador de Windows o Escritorio)
+            if (clipboardData.files && clipboardData.files.length > 0) {
+                for (let i = 0; i < clipboardData.files.length; i++) {
+                    const f = clipboardData.files[i];
+                    if (f && f.size > 0) {
+                        if (isImageMimeOrExt(f.type, f.name)) return f;
+                        if (!f.type || f.type === 'application/octet-stream') {
+                            return new File([f], 'captura.png', { type: 'image/png' });
+                        }
+                    }
                 }
             }
+
+            // 3. Revisar contenido HTML (Copiar imagen desde navegadores web o aplicaciones que copian base64)
+            try {
+                const html = clipboardData.getData('text/html');
+                if (html) {
+                    const match = html.match(/<img[^>]+src=["'](data:image\/[^;]+;base64,[^"']+)["']/i);
+                    if (match && match[1]) {
+                        const res = await fetch(match[1]);
+                        const blob = await res.blob();
+                        if (blob && blob.size > 0) {
+                            return new File([blob], 'captura_copiada.png', { type: blob.type || 'image/png' });
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // 4. Fallback con API moderna asíncrona navigator.clipboard.read()
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.read === 'function') {
+            try {
+                const clipItems = await navigator.clipboard.read();
+                for (const clipItem of clipItems) {
+                    const imgType = clipItem.types.find(t => t.startsWith('image/'));
+                    if (imgType) {
+                        const blob = await clipItem.getType(imgType);
+                        if (blob && blob.size > 0) {
+                            return new File([blob], 'captura.png', { type: imgType });
+                        }
+                    }
+                }
+            } catch (_) {}
         }
 
         return null;
     };
 
-    // === Pegar captura de pantalla (Print Screen / Snipping Tool / Ctrl+V) ===
-    const handlePaste = (e) => {
-        const imageFile = extractImageFromClipboard(e.clipboardData);
+    // Manejador unificado de pegado de imágenes / capturas (Ctrl+V)
+    const handlePasteEvent = async (e) => {
+        // Si el modal de previsualización ya está abierto, dejamos que el input de comentario reciba texto normalmente
+        if (imagePreviewModal.isOpen) return;
+
+        const clipboard = e.clipboardData || window.clipboardData;
+        if (!clipboard && (!navigator.clipboard || !navigator.clipboard.read)) return;
+
+        const imageFile = await extractImageFromClipboard(clipboard);
         if (!imageFile) {
-            // Si es texto plano o HTML, dejamos que el evento continúe para que pegue en el textarea normalmente
+            // Si es texto plano o código, dejamos que el evento continúe para que pegue normalmente
             return;
         }
 
+        // Se detectó una captura o archivo de imagen: prevenir pegado de texto nativo
         e.preventDefault();
         e.stopPropagation();
 
-        if (isLocked) {
-            alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+        const currentChat = selectedChatRef.current;
+        if (!currentChat || !currentChat.id) {
+            alert('Por favor selecciona una conversación para pegar y enviar la captura de pantalla.');
+            return;
+        }
+
+        const currentLocked = isChatLockedForUser(currentChat, activeAgentRef.current?.id, currentUserRef.current);
+        if (currentLocked) {
+            const assignedName = currentChat.assignedToName || currentChat.assignedTo || 'otra agente';
+            alert(`Esta conversación está asignada exclusivamente a ${assignedName}. Modo solo lectura.`);
             return;
         }
 
@@ -2343,7 +2434,7 @@ export default function ContactCenterChatConsole({
             ? imageFile.name 
             : `captura_${timeStr}.png`;
 
-        processAttachmentFile(imageFile, fileName);
+        processAttachmentFile(imageFile, fileName, 'image');
     };
 
     // === Arrastrar y soltar archivos / capturas (Drag & Drop) ===
@@ -2365,45 +2456,25 @@ export default function ContactCenterChatConsole({
         setIsDraggingOver(false);
         const file = e.dataTransfer?.files?.[0];
         if (file) {
-            if (isLocked) {
-                alert(`Esta conversación está asignada a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
+            const currentChat = selectedChatRef.current;
+            const currentLocked = isChatLockedForUser(currentChat, activeAgentRef.current?.id, currentUserRef.current);
+            if (currentLocked) {
+                alert(`Esta conversación está asignada a otra agente. Modo solo lectura.`);
                 return;
             }
             processAttachmentFile(file);
         }
     };
 
-    // Escuchar Ctrl+V globalmente en la ventana cuando hay un chat abierto y se pega una captura o imagen
+    // Escuchar Ctrl+V globalmente en el documento para capturar capturas de pantalla desde cualquier foco
     useEffect(() => {
-        const handleGlobalPaste = (e) => {
-            // Si el evento ya fue prevenido en el textarea u otro handler, evitar duplicación
-            if (e.defaultPrevented) return;
-            if (!selectedChat) return;
-
-            const imageFile = extractImageFromClipboard(e.clipboardData);
-            if (!imageFile) return;
-
-            e.preventDefault();
-            e.stopPropagation();
-
-            if (isLocked) {
-                alert(`Esta conversación está asignada exclusivamente a ${assignedAgentObj?.name || 'otra agente'}. Modo solo lectura.`);
-                return;
-            }
-
-            const now = new Date();
-            const pad = (n) => String(n).padStart(2, '0');
-            const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-            const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob') 
-                ? imageFile.name 
-                : `captura_${timeStr}.png`;
-
-            processAttachmentFile(imageFile, fileName);
+        const onGlobalPaste = (e) => {
+            handlePasteEvent(e);
         };
 
-        window.addEventListener('paste', handleGlobalPaste);
-        return () => window.removeEventListener('paste', handleGlobalPaste);
-    }, [selectedChat?.id, isLocked, assignedAgentObj?.name, messageInput]);
+        document.addEventListener('paste', onGlobalPaste);
+        return () => document.removeEventListener('paste', onGlobalPaste);
+    }, []);
 
     // Enviar imagen desde el modal de previsualización estilo WhatsApp Web
     const handleSendImageFromModal = async () => {
@@ -6036,7 +6107,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             value={messageInput}
                                             onChange={handleInputChange}
                                             onKeyDown={handleInputKeyDown}
-                                            onPaste={handlePaste}
+                                            onPaste={handlePasteEvent}
                                             style={{
                                                 flex: 1,
                                                 border: 'none',
@@ -9239,7 +9310,7 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
             {/* ═══════════════════════════════════════════════════════════════════════ */}
             {/* MODAL DE PREVISUALIZACIÓN DE IMAGEN ESTILO WHATSAPP WEB (CTRL+V / ADJUNTOS) */}
             {/* ═══════════════════════════════════════════════════════════════════════ */}
-            {imagePreviewModal.isOpen && (
+            {imagePreviewModal.isOpen && typeof document !== 'undefined' && createPortal(
                 <div
                     role="dialog"
                     aria-modal="true"
@@ -9253,8 +9324,8 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                     style={{
                         position: 'fixed',
                         inset: 0,
-                        zIndex: 99999,
-                        backgroundColor: 'rgba(11, 20, 26, 0.92)',
+                        zIndex: 999999,
+                        backgroundColor: 'rgba(11, 20, 26, 0.94)',
                         backdropFilter: 'blur(8px)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -9351,10 +9422,10 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                             overflow: 'hidden'
                         }}
                     >
-                        {imagePreviewModal.previewUrl && (
+                        {imagePreviewModal.previewUrl ? (
                             <div style={{
                                 position: 'relative',
-                                maxHeight: '62vh',
+                                maxHeight: '65vh',
                                 maxWidth: '85vw',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -9369,12 +9440,26 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                                     src={imagePreviewModal.previewUrl}
                                     alt="Previsualización antes de enviar"
                                     style={{
-                                        maxHeight: '62vh',
+                                        maxHeight: '65vh',
                                         maxWidth: '85vw',
                                         objectFit: 'contain',
                                         display: 'block'
                                     }}
+                                    onError={(e) => {
+                                        console.error('Error al renderizar preview de imagen:', e);
+                                    }}
                                 />
+                            </div>
+                        ) : (
+                            <div style={{
+                                padding: '30px',
+                                borderRadius: '12px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                color: '#FFFFFF',
+                                textAlign: 'center'
+                            }}>
+                                <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 12px' }} />
+                                <div>Cargando imagen...</div>
                             </div>
                         )}
                     </div>
@@ -9532,7 +9617,8 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                             Presiona <strong>Enter</strong> para enviar • <strong>Esc</strong> para descartar
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Modal de Personalización Visual (Presets, Nano Banana, Opacidad y Sidebars) */}
