@@ -8,7 +8,7 @@ import {
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
-    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy, ArrowUpDown,
+    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy,
     FileText, FileSpreadsheet, File, Maximize2, Palette, LayoutTemplate,
     Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users
 } from 'lucide-react';
@@ -462,10 +462,11 @@ export default function ContactCenterChatConsole({
     const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
     const [transcribingMsgId, setTranscribingMsgId] = useState(null);
     const [copiedAudioMsgId, setCopiedAudioMsgId] = useState(null);
-    const [, setForceUpdate] = useState(0);
-    const [messageSortOrder, setMessageSortOrder] = useState(() => {
-        return localStorage.getItem('cc_message_sort_order') || 'chronological';
-    }); // 'chronological' (estándar WhatsApp/AsisteClick) o 'newest_first'
+    // Orden de mensajes: Cronológico clásico estándar de WhatsApp (más recientes abajo)
+    const [messageSortOrder] = useState('chronological');
+    useEffect(() => {
+        try { localStorage.removeItem('cc_message_sort_order'); } catch (_) {}
+    }, []);
     // Optimización RAM: Renderizar inicialmente 50 mensajes en el thread para computadoras de bajo rendimiento
     const [visibleMessageCount, setVisibleMessageCount] = useState(50);
     const messagesEndRef = useRef(null);
@@ -1275,17 +1276,13 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Control de desplazamiento según orden de mensajes (cronológico clásico abajo o más recientes arriba)
+    // Control de desplazamiento: cronológico clásico (abajo los más recientes)
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (messageSortOrder === 'chronological') {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            } else if (messagesContainerRef.current) {
-                messagesContainerRef.current.scrollTop = 0;
-            }
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 50);
         return () => clearTimeout(timer);
-    }, [selectedChat?.id, selectedChat?.messages?.length, messageSortOrder]);
+    }, [selectedChat?.id, selectedChat?.messages?.length]);
 
     // =========================================================================
     // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA
@@ -4208,49 +4205,6 @@ export default function ContactCenterChatConsole({
                         backgroundAttachment: 'fixed'
                     }}
                 >
-                    {/* Barra de Orden de Mensajes (Últimos a primeros) */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '2px 8px',
-                        background: '#FFFFFF',
-                        border: '1px solid #E2E8F0',
-                        borderRadius: '6px',
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                        flexShrink: 0,
-                        minHeight: '24px'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.67rem', color: '#475569' }}>
-                            <Clock size={11} color="#0284C7" />
-                            <span>Orden:</span>
-                            <strong style={{ color: '#0284C7' }}>
-                                {messageSortOrder === 'newest_first' ? 'Más recientes arriba ⬆' : 'Cronológico clásico ⬇'}
-                            </strong>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setMessageSortOrder(prev => {
-                                    const next = prev === 'newest_first' ? 'chronological' : 'newest_first';
-                                    try { localStorage.setItem('cc_message_sort_order', next); } catch {}
-                                    return next;
-                                });
-                            }}
-                            title="Alternar entre ver mensajes más recientes arriba o cronológico clásico"
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                padding: '1px 6px', borderRadius: '4px',
-                                border: '1px solid #CBD5E1', background: '#F8FAFC',
-                                color: '#1E293B', fontSize: '0.64rem', fontWeight: 700,
-                                cursor: 'pointer', height: '20px', lineHeight: 1
-                            }}
-                        >
-                            <ArrowUpDown size={10} />
-                            {messageSortOrder === 'newest_first' ? 'Cronológico clásico ⬇' : 'Más recientes arriba ⬆'}
-                        </button>
-                    </div>
-
                     {(() => {
                         const rawMsgs = selectedChat.messages || [];
                         const hasMore = rawMsgs.length > visibleMessageCount;
@@ -4309,17 +4263,13 @@ export default function ContactCenterChatConsole({
                             );
                         }
 
-                        const ordered = messageSortOrder === 'newest_first'
-                            ? [...rawMsgs].reverse()
-                            : rawMsgs;
-
-                        const visibleMsgs = messageSortOrder === 'newest_first'
-                            ? ordered.slice(0, visibleMessageCount)
-                            : ordered.slice(Math.max(0, ordered.length - visibleMessageCount));
+                        // Orden cronológico estándar (abajo los más recientes)
+                        const ordered = rawMsgs;
+                        const visibleMsgs = ordered.slice(Math.max(0, ordered.length - visibleMessageCount));
 
                         return (
                             <>
-                                {hasMore && messageSortOrder === 'chronological' && (
+                                {hasMore && (
                                     <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                         <button
                                             type="button"
@@ -4344,7 +4294,7 @@ export default function ContactCenterChatConsole({
                                         </button>
                                     </div>
                                 )}
-                                {!hasMore && !noMoreOlder && messageSortOrder === 'chronological' && rawMsgs.length >= 20 && (
+                                {!hasMore && !noMoreOlder && rawMsgs.length >= 20 && (
                                     <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                         <button
                                             type="button"
@@ -5064,31 +5014,6 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
                         );
                     })}
-                                {hasMore && messageSortOrder === 'newest_first' && (
-                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setVisibleMessageCount(c => c + 50)}
-                                            style={{
-                                                background: '#F8FAFC',
-                                                border: '1px solid #CBD5E1',
-                                                color: '#334155',
-                                                borderRadius: '20px',
-                                                padding: '6px 16px',
-                                                fontSize: '0.72rem',
-                                                fontWeight: 700,
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-                                            }}
-                                        >
-                                            <Clock size={12} color="#64748B" />
-                                            Cargar mensajes anteriores ({remainingCount} más)
-                                        </button>
-                                    </div>
-                                )}
                             </>
                         );
                 })()}
