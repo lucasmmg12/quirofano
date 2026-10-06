@@ -10,6 +10,12 @@
  */
 import { supabase } from '../lib/supabase';
 
+// ─── Circuito de fichas físicas: fecha de corte ───
+// Desde esta fecha de ingreso, una admisión solo aparece en Control de Altas
+// cuando Recepción emitió la entrega de su ficha física (ficha_estado = 'entregada').
+// Las admisiones anteriores no participan del circuito (regularizadas el 06/10/2026).
+export const FICHAS_CIRCUITO_CORTE = '2026-10-01';
+
 // ─── Generador de Código de Remito Institucional ───
 function generarCodigoRemito() {
     const hoy = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -51,7 +57,8 @@ export async function fetchAdmisionesFichas({
             ficha_devolucion_por,
             ficha_doc_estado,
             ficha_doc_incompleta_motivo
-        `, { count: 'exact' });
+        `, { count: 'exact' })
+        .gte('fecha_ingreso', FICHAS_CIRCUITO_CORTE);
 
     // Filtro por estado de la ficha física
     if (filtroEstado === 'pendientes') {
@@ -92,11 +99,12 @@ export async function fetchAdmisionesFichas({
 // ─── 2. Contadores para Badges y Resumen ───
 export async function fetchResumenFichas() {
     try {
+        const base = () => supabase.from('altas_administrativas').select('id', { count: 'exact', head: true }).gte('fecha_ingreso', FICHAS_CIRCUITO_CORTE);
         const [pendientesRes, carritoRes, devueltasRes, entregadasRes] = await Promise.all([
-            supabase.from('altas_administrativas').select('id', { count: 'exact', head: true }).or('ficha_estado.is.null,ficha_estado.eq.pendiente'),
-            supabase.from('altas_administrativas').select('id', { count: 'exact', head: true }).eq('ficha_en_carrito', true),
-            supabase.from('altas_administrativas').select('id', { count: 'exact', head: true }).eq('ficha_estado', 'devuelta_a_recepcion'),
-            supabase.from('altas_administrativas').select('id', { count: 'exact', head: true }).eq('ficha_estado', 'entregada')
+            base().or('ficha_estado.is.null,ficha_estado.eq.pendiente'),
+            base().eq('ficha_en_carrito', true),
+            base().eq('ficha_estado', 'devuelta_a_recepcion'),
+            base().eq('ficha_estado', 'entregada')
         ]);
 
         return {
@@ -111,11 +119,7 @@ export async function fetchResumenFichas() {
     }
 }
 
-// ─── 2.B Circuito de fichas físicas: fecha de corte y fichas no entregadas ───
-// Desde esta fecha de ingreso, una admisión solo aparece en Control de Altas
-// cuando Recepción emitió la entrega de su ficha física (ficha_estado = 'entregada').
-export const FICHAS_CIRCUITO_CORTE = '2026-10-01';
-
+// ─── 2.B Fichas del circuito (ingreso ≥ corte) que aún no fueron entregadas ───
 export async function fetchFichasNoEntregadasDesdeCorte() {
     try {
         const base = () => supabase
