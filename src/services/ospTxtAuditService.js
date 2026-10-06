@@ -31,8 +31,34 @@ export function formatMoney(val) {
 export function toFloat2(val) {
     if (typeof val === 'number') return Math.round(val * 100) / 100;
     if (!val) return 0.0;
-    const clean = String(val).replace(/\$/g, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
-    const parsed = parseFloat(clean);
+    let s = String(val).replace(/\$/g, '').replace(/\s/g, '').trim();
+    if (!s) return 0.0;
+
+    // Si tiene coma y punto: ej. "1.234.567,89" o "1,234,567.89"
+    if (s.includes('.') && s.includes(',')) {
+        if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+            // Formato es-AR: 1.234,56 (puntos son miles, coma es decimal)
+            s = s.replace(/\./g, '').replace(',', '.');
+        } else {
+            // Formato US: 1,234.56 (comas son miles, punto es decimal)
+            s = s.replace(/,/g, '');
+        }
+    } else if (s.includes(',')) {
+        // Solo coma: "39269,60" -> decimal
+        s = s.replace(',', '.');
+    } else if (s.includes('.')) {
+        // Solo punto(s)
+        const parts = s.split('.');
+        if (parts.length === 2) {
+            // Un solo punto: ej "39269.60", "0.00" -> es punto decimal estándar de base de datos / TXT
+            // No se modifica, parseFloat lo interpreta directo
+        } else {
+            // Múltiples puntos: "1.000.000" -> separadores de miles
+            s = s.replace(/\./g, '');
+        }
+    }
+
+    const parsed = parseFloat(s);
     return isNaN(parsed) ? 0.0 : Math.round(parsed * 100) / 100;
 }
 
@@ -296,7 +322,7 @@ export function executeAudit(excelRows, txtRows) {
                 });
             }
 
-            if (Math.abs(exc.total - bestCand.total) >= 0.01) {
+            if (Math.abs(exc.total - bestCand.total) > 0.05) {
                 discrepancies.push({
                     campo: 'Total Reconocido',
                     codigoCampo: 'Campo 11 vs Col I',
@@ -306,7 +332,7 @@ export function executeAudit(excelRows, txtRows) {
                 });
             }
 
-            if (Math.abs(exc.honorarios - bestCand.honorarios) >= 0.01) {
+            if (Math.abs(exc.honorarios - bestCand.honorarios) > 0.05) {
                 discrepancies.push({
                     campo: 'Honorarios',
                     codigoCampo: 'Campo 20 vs Col G',
@@ -316,7 +342,7 @@ export function executeAudit(excelRows, txtRows) {
                 });
             }
 
-            if (Math.abs(exc.gastos - bestCand.gastos) >= 0.01) {
+            if (Math.abs(exc.gastos - bestCand.gastos) > 0.05) {
                 discrepancies.push({
                     campo: 'Gastos',
                     codigoCampo: 'Campo 21 vs Col H',
