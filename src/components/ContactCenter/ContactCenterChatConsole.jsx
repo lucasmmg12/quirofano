@@ -863,6 +863,10 @@ export default function ContactCenterChatConsole({
         return false;
     };
 
+    // Alias del agente actual (id, username, legacyId). Debe declararse ANTES de selectedChat:
+    // se usa en el fallback de la pestaña "Mis chats" (antes provocaba ReferenceError TDZ).
+    const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
+
     const selectedChat = chats.find(c => matchChat(c, activeChatId)) 
         || archivedChats.find(c => matchChat(c, activeChatId)) 
         // Si no se encuentra activeChatId directamente (ej: cambio de ID tras recarga), buscar el chat previo que el operador ya estaba visualizando
@@ -1795,7 +1799,6 @@ export default function ContactCenterChatConsole({
     // Determinar autorización para responder y bloqueo de chat
     const isAuthorized = isUserAuthorizedForContactCenter(currentUser);
     const isLocked = isChatLockedForUser(selectedChat, activeAgent.id, currentUser);
-    const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
     const isAssignedToMe = selectedChat.assignedTo && (
         myAliases.includes(selectedChat.assignedTo.toLowerCase()) ||
         (selectedChat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
