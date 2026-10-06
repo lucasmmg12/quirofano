@@ -416,6 +416,34 @@ export default function ContactCenterChatConsole({
             if (filterTab) localStorage.setItem('sa_cc_filter_tab', filterTab);
         } catch (_) {}
     }, [filterTab]);
+
+    // Carga inicial de chats finalizados al cambiar a la pestaña de Finalizados
+    useEffect(() => {
+        const isFinalizadosTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
+        if (isFinalizadosTab && !archivedLoadedRef.current) {
+            archivedLoadedRef.current = true;
+            setLoadingArchived(true);
+            fetchArchivedChats(0, 30)
+                .then(result => {
+                    if (result && result.chats && result.chats.length > 0) {
+                        setArchivedChats(prev => {
+                            const existingIds = new Set(prev.map(c => c.id));
+                            const newChats = result.chats.filter(c => !existingIds.has(c.id));
+                            return [...prev, ...newChats];
+                        });
+                        setArchivedOffset(result.chats.length);
+                        setArchivedHasMore(result.hasMore);
+                    }
+                })
+                .catch(err => {
+                    console.error('[ContactCenterChatConsole] Error al cargar chats finalizados iniciales:', err);
+                })
+                .finally(() => {
+                    setLoadingArchived(false);
+                });
+        }
+    }, [filterTab]);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
     const searchInputRef = useRef(null);
@@ -867,22 +895,28 @@ export default function ContactCenterChatConsole({
     // se usa en el fallback de la pestaña "Mis chats" (antes provocaba ReferenceError TDZ).
     const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
 
-    const selectedChat = chats.find(c => matchChat(c, activeChatId)) 
-        || archivedChats.find(c => matchChat(c, activeChatId)) 
-        // Si no se encuentra activeChatId directamente (ej: cambio de ID tras recarga), buscar el chat previo que el operador ya estaba visualizando
-        || (lastChatIdRef.current ? (chats.find(c => matchChat(c, lastChatIdRef.current)) || archivedChats.find(c => matchChat(c, lastChatIdRef.current))) : null)
-        // Si estamos en la pestaña "Mis chats", mantener siempre un chat asignado a mí (NUNCA cambiar al bot de la nada)
-        || (filterTab === 'asignadas_mi' ? chats.find(c => {
-            const a = (c.assignedTo || '').toLowerCase();
-            return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
-        }) : null)
-        // Si estamos en "Sin asignar", buscar dentro de sin asignar
-        || (filterTab === 'sin_asignar' ? chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status)) : null)
-        // Si estamos en "Finalizados", buscar dentro de finalizados
-        || ((filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') ? (chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0]) : null)
-        || chats[0] 
-        || archivedChats[0] 
-        || {};
+    const isFinalizadosCurrentTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
+    const activeChatFromPool = chats.find(c => matchChat(c, activeChatId)) || archivedChats.find(c => matchChat(c, activeChatId));
+    const activeChatIsClosed = activeChatFromPool ? isClosedOrArchived(activeChatFromPool) : false;
+
+    const selectedChat = (isFinalizadosCurrentTab && !activeChatIsClosed)
+        ? (chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || {})
+        : (chats.find(c => matchChat(c, activeChatId)) 
+            || archivedChats.find(c => matchChat(c, activeChatId)) 
+            // Si no se encuentra activeChatId directamente (ej: cambio de ID tras recarga), buscar el chat previo que el operador ya estaba visualizando
+            || (lastChatIdRef.current ? (chats.find(c => matchChat(c, lastChatIdRef.current)) || archivedChats.find(c => matchChat(c, lastChatIdRef.current))) : null)
+            // Si estamos en la pestaña "Mis chats", mantener siempre un chat asignado a mí (NUNCA cambiar al bot de la nada)
+            || (filterTab === 'asignadas_mi' ? chats.find(c => {
+                const a = (c.assignedTo || '').toLowerCase();
+                return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c);
+            }) : null)
+            // Si estamos en "Sin asignar", buscar dentro de sin asignar
+            || (filterTab === 'sin_asignar' ? chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) : null)
+            // Si estamos en "Finalizados", buscar dentro de finalizados
+            || (isFinalizadosCurrentTab ? (chats.find(c => isClosedOrArchived(c)) || archivedChats[0]) : null)
+            || chats[0] 
+            || archivedChats[0] 
+            || {});
 
     // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
     const lastIncomingMsg = useMemo(() => {
@@ -1808,7 +1842,7 @@ export default function ContactCenterChatConsole({
     const assignedAgentObj = selectedChat.assignedTo ? getAgentById(selectedChat.assignedTo) : null;
 
     // Regla estricta: Dos agentes no pueden escribir a la vez. Siempre sí o sí deben asignárselo.
-    const canWriteMessage = isAssignedToMe && !isClosedOrArchived(selectedChat.status);
+    const canWriteMessage = isAssignedToMe && !isClosedOrArchived(selectedChat);
 
     // Refs sincronizados para listeners globales (evitan cierres obsoletos en eventos de portapapeles y atajos)
     const selectedChatRef = useRef(selectedChat);
@@ -1838,7 +1872,7 @@ export default function ContactCenterChatConsole({
         const isMine = (currentChat.assignedTo && myAliases.includes(currentChat.assignedTo.toLowerCase())) ||
                        (currentChat.assignedToName && currentChat.assignedToName.toLowerCase().includes(activeAgent.name.toLowerCase()));
 
-        if (isClosedOrArchived(currentChat.status)) {
+        if (isClosedOrArchived(currentChat)) {
             if (filterTab !== 'finalizados' && filterTab !== 'archivadas') {
                 setFilterTab('finalizados');
             }
@@ -2032,7 +2066,7 @@ export default function ContactCenterChatConsole({
         const isFinalizadosTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
 
         if (isFinalizadosTab) {
-            const closedFromChats = chats.filter(c => isClosedOrArchived(c.status));
+            const closedFromChats = chats.filter(c => isClosedOrArchived(c));
             const seenIds = new Set(closedFromChats.map(c => c.id));
             const allArchived = [...closedFromChats, ...archivedChats.filter(c => !seenIds.has(c.id))];
 
@@ -2052,7 +2086,7 @@ export default function ContactCenterChatConsole({
                         myAliases.includes(chatAssigned) ||
                         (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
                     );
-                    const closed = isClosedOrArchived(chat.status);
+                    const closed = isClosedOrArchived(chat);
                     const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                     const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
 
@@ -2071,7 +2105,7 @@ export default function ContactCenterChatConsole({
                     myAliases.includes(chatAssigned) ||
                     (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
                 );
-                const closed = isClosedOrArchived(chat.status);
+                const closed = isClosedOrArchived(chat);
                 const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                 const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
 
@@ -2085,6 +2119,17 @@ export default function ContactCenterChatConsole({
         }
 
         return base.filter(chat => {
+            if (isFinalizadosTab) {
+                // En pestaña finalizados, no filtrar por demoras de respuesta activa
+                if (triageFilter.startsWith('agent_')) {
+                    const agentId = triageFilter.replace('agent_', '').toLowerCase();
+                    const agent = CONTACT_CENTER_AGENTS.find(a => a.id.toLowerCase() === agentId);
+                    if (!agent) return true;
+                    const a = (chat.assignedTo || chat.closedByAgentId || '').toLowerCase();
+                    return a === agentId || (chat.assignedToName || chat.closedByAgentName || '').toLowerCase().includes(agent.name.toLowerCase());
+                }
+                return true;
+            }
             if (triageFilter === 'all') return true;
             if (triageFilter === 'demora_15') return chat.isWaitingResponse && (chat.waitingMinutes || 0) >= 15;
             if (triageFilter === 'guardia') {
@@ -2122,6 +2167,29 @@ export default function ContactCenterChatConsole({
                 return ts;
             };
 
+            if (isFinalizadosTab) {
+                const getClosedTimestamp = (chat) => {
+                    if (!chat) return 0;
+                    if (chat.closedAt) {
+                        const t = new Date(chat.closedAt).getTime();
+                        if (!isNaN(t) && t > 0) return t;
+                    }
+                    if (chat.closed_at) {
+                        const t = new Date(chat.closed_at).getTime();
+                        if (!isNaN(t) && t > 0) return t;
+                    }
+                    if (chat.updated_at) {
+                        const t = new Date(chat.updated_at).getTime();
+                        if (!isNaN(t) && t > 0) return t;
+                    }
+                    return getChatActivityTimestamp(chat);
+                };
+                const aClosed = getClosedTimestamp(a);
+                const bClosed = getClosedTimestamp(b);
+                if (bClosed !== aClosed) return bClosed - aClosed;
+                return String(b.id || '').localeCompare(String(a.id || ''));
+            }
+
             // Orden por actividad más reciente: a medida que responden agentes o pacientes, suben al inicio
             const aKey = getChatActivityTimestamp(a);
             const bKey = getChatActivityTimestamp(b);
@@ -2133,7 +2201,7 @@ export default function ContactCenterChatConsole({
 
     // Conversaciones seleccionables para cierre masivo (excluye las ya finalizadas)
     const selectableChats = useMemo(() => {
-        return filteredChats.filter(c => !isClosedOrArchived(c.status));
+        return filteredChats.filter(c => !isClosedOrArchived(c));
     }, [filteredChats]);
 
     // Conversaciones activas asignadas exclusivamente a la agente actual (para Pase de Guardia)
@@ -2144,7 +2212,7 @@ export default function ContactCenterChatConsole({
                 myAliases.includes(chatAssigned) ||
                 (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
             );
-            return isMine && !isClosedOrArchived(chat.status);
+            return isMine && !isClosedOrArchived(chat);
         });
     }, [chats, myAliases, activeAgent.name]);
 
@@ -3043,7 +3111,7 @@ export default function ContactCenterChatConsole({
                             onClick={() => {
                                 setFilterTab('sin_asignar');
                                 setTriageFilter('all');
-                                const first = chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status));
+                                const first = chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c));
                                 if (first && onSelectChat) onSelectChat(first.id);
                             }}
                             title="Pacientes esperando atención (cola general sin asignar)"
@@ -3075,7 +3143,7 @@ export default function ContactCenterChatConsole({
                                 color: filterTab === 'sin_asignar' ? '#0284C7' : '#B45309',
                                 border: filterTab === 'sin_asignar' ? 'none' : '1px solid #FDE68A'
                             }}>
-                                {chats.filter(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c.status)).length}
+                                {chats.filter(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)).length}
                             </span>
                         </button>
 
@@ -3086,7 +3154,7 @@ export default function ContactCenterChatConsole({
                                 setFilterTab('asignadas_mi');
                                 const first = chats.find(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
-                                    return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+                                    return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c);
                                 });
                                 if (first && onSelectChat) onSelectChat(first.id);
                             }}
@@ -3120,7 +3188,7 @@ export default function ContactCenterChatConsole({
                             }}>
                                 {chats.filter(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
-                                    return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+                                    return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c);
                                 }).length}
                             </span>
                         </button>
@@ -3133,7 +3201,7 @@ export default function ContactCenterChatConsole({
                             type="button"
                             onClick={() => {
                                 setFilterTab('bot');
-                                const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status));
+                                const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c));
                                 if (first && onSelectChat) onSelectChat(first.id);
                             }}
                             title="Conversaciones en triage automático por el chatbot"
@@ -3164,7 +3232,7 @@ export default function ContactCenterChatConsole({
                                 background: filterTab === 'bot' ? '#FFFFFF' : '#F3E8FF',
                                 color: filterTab === 'bot' ? '#7C3AED' : '#6B21A8'
                             }}>
-                                {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)).length}
+                                {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)).length}
                             </span>
                         </button>
 
@@ -3175,7 +3243,7 @@ export default function ContactCenterChatConsole({
                                 setFilterTab('asignadas_otros');
                                 const first = chats.find(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
-                                    return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
+                                    return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c);
                                 });
                                 if (first && onSelectChat) onSelectChat(first.id);
                             }}
@@ -3209,7 +3277,7 @@ export default function ContactCenterChatConsole({
                             }}>
                                 {chats.filter(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
-                                    return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c.status);
+                                    return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c);
                                 }).length}
                             </span>
                         </button>
@@ -3219,8 +3287,15 @@ export default function ContactCenterChatConsole({
                             type="button"
                             onClick={() => {
                                 setFilterTab('finalizados');
-                                const firstClosed = chats.find(c => isClosedOrArchived(c.status)) || archivedChats[0];
-                                if (firstClosed && onSelectChat) onSelectChat(firstClosed.id);
+                                setTriageFilter('all');
+                                const allClosed = [...chats.filter(c => isClosedOrArchived(c)), ...archivedChats];
+                                allClosed.sort((a, b) => {
+                                    const aTime = a.closedAt ? new Date(a.closedAt).getTime() : (a.closed_at ? new Date(a.closed_at).getTime() : (a.updated_at ? new Date(a.updated_at).getTime() : (a.lastMessageTimestamp || 0)));
+                                    const bTime = b.closedAt ? new Date(b.closedAt).getTime() : (b.closed_at ? new Date(b.closed_at).getTime() : (b.updated_at ? new Date(b.updated_at).getTime() : (b.lastMessageTimestamp || 0)));
+                                    return bTime - aTime;
+                                });
+                                const topClosed = allClosed[0];
+                                if (topClosed && onSelectChat) onSelectChat(topClosed.id);
                             }}
                             title="Historial de conversaciones finalizadas y resueltas"
                             style={{
@@ -3317,7 +3392,7 @@ export default function ContactCenterChatConsole({
                             {otherAgents.map(agent => {
                                 const agentChats = chats.filter(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
-                                    return (a === agent.id.toLowerCase() || (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())) && !isClosedOrArchived(c.status);
+                                    return (a === agent.id.toLowerCase() || (c.assignedToName || '').toLowerCase().includes(agent.name.toLowerCase())) && !isClosedOrArchived(c);
                                 });
                                 const isActive = triageFilter === `agent_${agent.id}`;
                                 return (
@@ -3508,12 +3583,12 @@ export default function ContactCenterChatConsole({
                                 <>
                                     <MessageSquare size={24} color={themeCardSubtext} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
                                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: themeCardSubtext }}>No hay conversaciones en esta carpeta</div>
-                                    {filterTab === 'sin_asignar' && chats.some(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)) && (
+                                    {filterTab === 'sin_asignar' && chats.some(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)) && (
                                         <button
                                             type="button"
                                             onClick={() => {
                                                 setFilterTab('bot');
-                                                const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status));
+                                                const first = chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c));
                                                 if (first && onSelectChat) onSelectChat(first.id);
                                             }}
                                             style={{
@@ -3531,7 +3606,7 @@ export default function ContactCenterChatConsole({
                                                 gap: '5px'
                                             }}
                                         >
-                                            <Bot size={13} /> Ver {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c.status)).length} chats en Bot
+                                            <Bot size={13} /> Ver {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)).length} chats en Bot
                                         </button>
                                     )}
                                 </>
@@ -3541,7 +3616,7 @@ export default function ContactCenterChatConsole({
                         filteredChats.map(chat => {
                             const isSelected = matchChat(chat, selectedChat.id);
                             const isChecked = selectedChatIds.has(chat.id);
-                            const isClosed = isClosedOrArchived(chat.status);
+                            const isClosed = isClosedOrArchived(chat);
                             const assignedAgent = chat.assignedTo ? getAgentById(chat.assignedTo) : null;
                             const chatIsLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
                             const chatIsMine = chat.assignedTo && chat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
@@ -3551,7 +3626,7 @@ export default function ContactCenterChatConsole({
                             const chatUnreadCount = (chat.unread && readAtCount === undefined) 
                                 ? Math.max(1, incomingMsgs)
                                 : (readAtCount !== undefined ? Math.max(0, incomingMsgs - readAtCount) : 0);
-                            const isChatUnread = chatUnreadCount > 0 && !isClosedOrArchived(chat.status);
+                            const isChatUnread = chatUnreadCount > 0 && !isClosed;
 
                             return (
                                 <div 
@@ -3683,11 +3758,11 @@ export default function ContactCenterChatConsole({
                                                     fontWeight: 700,
                                                     padding: '1px 5px',
                                                     borderRadius: '4px',
-                                                    background: isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#064E3B' : '#ECFDF5') : themeCardSelectedBg,
-                                                    color: isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#6EE7B7' : '#047857') : themeCardText,
-                                                    border: `1px solid ${isClosedOrArchived(chat.status) ? (ccTheme.isDark ? '#047857' : '#A7F3D0') : themeCardBorder}`
+                                                    background: isClosed ? (ccTheme.isDark ? '#064E3B' : '#ECFDF5') : themeCardSelectedBg,
+                                                    color: isClosed ? (ccTheme.isDark ? '#6EE7B7' : '#047857') : themeCardText,
+                                                    border: `1px solid ${isClosed ? (ccTheme.isDark ? '#047857' : '#A7F3D0') : themeCardBorder}`
                                                 }}>
-                                                    {isClosedOrArchived(chat.status) ? '📁 Finalizado' : (chat.assignedToName ? `👤 ${chat.assignedToName}` : ((chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar')) ? '🤖 Bot' : '⚠️ Sin asignar'))}
+                                                    {isClosed ? '📁 Finalizado' : (chat.assignedToName ? `👤 ${chat.assignedToName}` : ((chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar')) ? '🤖 Bot' : '⚠️ Sin asignar'))}
                                                 </span>
                                             )}
                                         </div>
@@ -3695,7 +3770,7 @@ export default function ContactCenterChatConsole({
 
                                     {/* TAGS DE TRAZABILIDAD: ASIGNADO Y LOCK */}
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', margin: '3px 0 2px' }}>
-                                        {isClosedOrArchived(chat.status) ? (
+                                        {isClosed ? (
                                             <span style={{
                                                 fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
                                                 background: ccTheme.isDark ? '#064E3B' : '#ECFDF5', color: ccTheme.isDark ? '#6EE7B7' : '#047857', border: `1px solid ${ccTheme.isDark ? '#047857' : '#A7F3D0'}`,
@@ -3732,7 +3807,7 @@ export default function ContactCenterChatConsole({
                                         )}
 
                                         {/* Tag de Bloqueo Exclusivo */}
-                                        {chatIsLocked && !isClosedOrArchived(chat.status) && (
+                                        {chatIsLocked && !isClosed && (
                                             <span style={{
                                                 fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '6px',
                                                 background: ccTheme.isDark ? '#450A0A' : '#FEE2E2', color: ccTheme.isDark ? '#FCA5A5' : '#B91C1C', border: `1px solid ${ccTheme.isDark ? '#7F1D1D' : '#FCA5A5'}`,
@@ -3993,7 +4068,7 @@ export default function ContactCenterChatConsole({
                                     </span>
                                 </>
                             )}
-                            {!isClosedOrArchived(selectedChat.status) && (
+                            {!isClosedOrArchived(selectedChat) && (
                                 <>
                                     <span>•</span>
                                     {selectedChat.isWaitingResponse ? (
@@ -4247,7 +4322,7 @@ export default function ContactCenterChatConsole({
                         )}
 
                         {/* BOTONES DE ASIGNACIÓN / BLOQUEO EXCLUSIVO */}
-                        {isClosedOrArchived(selectedChat.status) ? (
+                        {isClosedOrArchived(selectedChat) ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '4px',
@@ -4301,7 +4376,7 @@ export default function ContactCenterChatConsole({
                         ) : null}
 
                         {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR (Solo si NO está cerrado) */}
-                        {!isClosedOrArchived(selectedChat.status) && isAssignedToMe && (
+                        {!isClosedOrArchived(selectedChat) && isAssignedToMe && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <span style={{
                                     fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
@@ -4354,7 +4429,7 @@ export default function ContactCenterChatConsole({
                         )}
 
                         {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO CON OPCIÓN DE REASIGNACIÓN (Solo si NO está cerrado y realmente asignada) */}
-                        {!isClosedOrArchived(selectedChat.status) && !isUnassigned && !isBot && !isAssignedToMe && selectedChat.assignedTo && (
+                        {!isClosedOrArchived(selectedChat) && !isUnassigned && !isBot && !isAssignedToMe && selectedChat.assignedTo && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '4px',
@@ -5356,7 +5431,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                 {/* COMPOSITOR DE MENSAJE: CON CONTROL DE ASIGNACIÓN ESTRICTO (DOS AGENTES NO PUEDEN ESCRIBIR A LA VEZ) */}
                 <div style={{ flexShrink: 0, padding: '14px 20px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
                     {/* CASO 1: CHAT CERRADO / ARCHIVADO */}
-                    {isClosedOrArchived(selectedChat.status) ? (
+                    {isClosedOrArchived(selectedChat) ? (
                         <div style={{
                             padding: '12px 16px', borderRadius: '10px',
                             background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',

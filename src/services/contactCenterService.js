@@ -224,9 +224,13 @@ export function getAgentById(agentIdOrName) {
  */
 export function isClosedOrArchived(statusOrChat) {
     if (!statusOrChat) return false;
-    const s = typeof statusOrChat === 'object' ? (statusOrChat.status || '') : String(statusOrChat);
-    const clean = s.toLowerCase().trim();
-    return clean === 'archivado' || clean === 'cerrado' || clean === 'finalizado' || clean === 'resuelto';
+    if (typeof statusOrChat === 'object') {
+        if (statusOrChat.closedAt || statusOrChat.closed_at) return true;
+        const s = String(statusOrChat.status || '').toLowerCase().trim();
+        return s === 'archivado' || s === 'cerrado' || s === 'finalizado' || s === 'resuelto' || s === 'closed' || s === 'archived';
+    }
+    const clean = String(statusOrChat).toLowerCase().trim();
+    return clean === 'archivado' || clean === 'cerrado' || clean === 'finalizado' || clean === 'resuelto' || clean === 'closed' || clean === 'archived';
 }
 
 /**
@@ -583,7 +587,7 @@ export async function fetchLiveAndDemoChats() {
                 .select('*')
                 .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto', 'closed', 'archived'])
                 .order('updated_at', { ascending: false })
-                .limit(60)
+                .limit(120)
         ]);
 
         const activeList = activeConvRes.data || [];
@@ -970,6 +974,7 @@ export async function fetchLiveAndDemoChats() {
                 aiSummary: conv?.ai_summary || null,
                 resolutionReason: conv?.resolution_reason || null,
                 closedAt: conv?.closed_at || null,
+                closed_at: conv?.closed_at || null,
                 closedByAgentId: conv?.closed_by_agent_id || null,
                 closedByAgentName: conv?.closed_by_agent_name || null,
                 lastResponder: lastRespName,
@@ -1916,6 +1921,7 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         type: 'text',
         text: FINAL_ATTENTION_MESSAGE,
         isNote: false,
+        created_at: now.toISOString(),
         timestamp: timeStr
     };
 
@@ -1923,6 +1929,7 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         id: 'sys_' + Date.now(),
         sender: 'system',
         text: `${activeAgent?.name || 'Operador'} finalizó la atención con motivo: "${resolutionReason || 'Resuelto'}". Se envió mensaje de cierre y encuesta al paciente. Bot reactivado.`,
+        created_at: now.toISOString(),
         timestamp: timeStr
     };
 
@@ -1933,7 +1940,12 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         assignedToName: null,
         botActive: true,
         resolutionReason: resolutionReason || 'Resuelto',
+        closedAt: now.toISOString(),
+        closed_at: now.toISOString(),
+        closedByAgentId: activeAgent?.id || null,
+        closedByAgentName: activeAgent?.name || null,
         lastMessage: FINAL_ATTENTION_MESSAGE,
+        lastMessageTimestamp: now.getTime(),
         timeAgo: 'hace unos segundos',
         messages: [
             ...(chat.messages || []),
@@ -1967,6 +1979,7 @@ export async function bulkCloseConversationsSilent({ targetChats, resolutionReas
             id: 'sys_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
             sender: 'system',
             text: `${activeAgent?.name || 'Operador'} finalizó masivamente la conversación (${resolutionReason}). Cierre silencioso: sin envío de mensaje al paciente. Bot reactivado.`,
+            created_at: now.toISOString(),
             timestamp: timeStr
         };
 
@@ -1977,6 +1990,11 @@ export async function bulkCloseConversationsSilent({ targetChats, resolutionReas
             assignedToName: null,
             botActive: true,
             resolutionReason,
+            closedAt: now.toISOString(),
+            closed_at: now.toISOString(),
+            closedByAgentId: activeAgent?.id || null,
+            closedByAgentName: activeAgent?.name || null,
+            lastMessageTimestamp: now.getTime(),
             messages: [
                 ...(chat.messages || []),
                 sysMsg
@@ -2868,7 +2886,7 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
         const { data: convs, error } = await supabase
             .from('contact_center_conversations')
             .select('*')
-            .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto'])
+            .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto', 'closed', 'archived'])
             .order('updated_at', { ascending: false })
             .range(offset, offset + limit - 1);
 
@@ -2900,6 +2918,7 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
                 aiSummary: conv.ai_summary || null,
                 resolutionReason: conv.resolution_reason || null,
                 closedAt: conv.closed_at || null,
+                closed_at: conv.closed_at || null,
                 closedByAgentId: conv.closed_by_agent_id || null,
                 closedByAgentName: conv.closed_by_agent_name || null,
                 lastResponder: null,

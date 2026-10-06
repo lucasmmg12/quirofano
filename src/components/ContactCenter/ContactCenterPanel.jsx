@@ -453,14 +453,21 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     let changed = false;
                     const next = prevChats.map(c => {
                         if (normalizeArgentinePhone(c.phone) !== normPhone) return c;
+                        const isClosing = isClosedOrArchived(conv.status) || Boolean(conv.closed_at);
                         const updated = {
                             ...c,
                             contactName: conv.nombre_completo || c.contactName,
                             status: conv.status || c.status,
-                            assignedTo: conv.assigned_agent_id || c.assignedTo,
-                            assignedToName: conv.assigned_agent_name || c.assignedToName,
-                            assignedAt: conv.assigned_at || c.assignedAt,
+                            assignedTo: conv.assigned_agent_id !== undefined ? conv.assigned_agent_id : (isClosing ? null : c.assignedTo),
+                            assignedToName: conv.assigned_agent_name !== undefined ? conv.assigned_agent_name : (isClosing ? null : c.assignedToName),
+                            assignedAt: conv.assigned_at !== undefined ? conv.assigned_at : (isClosing ? null : c.assignedAt),
                             botActive: conv.bot_active ?? c.botActive,
+                            closedAt: conv.closed_at !== undefined ? conv.closed_at : c.closedAt,
+                            closed_at: conv.closed_at !== undefined ? conv.closed_at : c.closed_at,
+                            resolutionReason: conv.resolution_reason !== undefined ? conv.resolution_reason : c.resolutionReason,
+                            closedByAgentId: conv.closed_by_agent_id !== undefined ? conv.closed_by_agent_id : c.closedByAgentId,
+                            closedByAgentName: conv.closed_by_agent_name !== undefined ? conv.closed_by_agent_name : c.closedByAgentName,
+                            lastMessageTimestamp: conv.closed_at ? Math.max(c.lastMessageTimestamp || 0, new Date(conv.closed_at).getTime()) : c.lastMessageTimestamp,
                             aiSummary: conv.ai_summary !== undefined ? conv.ai_summary : c.aiSummary,
                             customFields: {
                                 ...c.customFields,
@@ -474,12 +481,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                                 medicoOEspecialidad: conv.medico_o_especialidad || c.customFields?.medicoOEspecialidad
                             }
                         };
-                        // Solo reemplazar el objeto si cambió algo visible (evita re-render de toda la bandeja)
-                        const sameTop = ['contactName', 'status', 'assignedTo', 'assignedToName', 'assignedAt', 'botActive']
-                            .every(k => updated[k] === c[k]);
-                        const sameAi = JSON.stringify(updated.aiSummary ?? null) === JSON.stringify(c.aiSummary ?? null);
-                        const sameFields = Object.keys(updated.customFields).every(k => updated.customFields[k] === c.customFields?.[k]);
-                        if (sameTop && sameAi && sameFields) return c;
                         changed = true;
                         return updated;
                     });
@@ -700,6 +701,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 currentUser
             });
             setChats(prev => prev.map(c => c.id === chatId ? updated : c));
+            setActiveChatId(currentId => {
+                if (currentId === chatId || currentId === targetChat.id) {
+                    const remaining = chats.filter(c => c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c));
+                    return remaining[0]?.id || null;
+                }
+                return currentId;
+            });
             if (addToast) {
                 addToast(`Atención finalizada y mensaje de despedida/encuesta enviado al paciente (${resolutionReason})`, 'success');
             }
@@ -724,6 +732,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
             const updatedMap = new Map(updatedList.map(u => [u.id, u]));
             setChats(prev => prev.map(c => updatedMap.get(c.id) || c));
+
+            const closedSet = new Set(chatIds);
+            setActiveChatId(currentId => {
+                if (closedSet.has(currentId)) {
+                    const remaining = chats.filter(c => !closedSet.has(c.id) && !isClosedOrArchived(c));
+                    return remaining[0]?.id || null;
+                }
+                return currentId;
+            });
 
             if (addToast) {
                 addToast(`Se finalizaron ${updatedList.length} conversaciones masivamente (sin enviar mensajes)`, 'success');

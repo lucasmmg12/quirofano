@@ -676,39 +676,47 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                     const nowIso = new Date().toISOString();
                     const { data: existingConv } = await supabase
                         .from('contact_center_conversations')
-                        .select('id, patient_name, status, assigned_agent_name, bot_active')
+                        .select('phone, nombre_completo, status, assigned_agent_name, bot_active, closed_at')
                         .eq('phone', phone)
                         .maybeSingle();
+
+                    // Comprobar si la conversación ya estaba archivada o cerrada
+                    const isAlreadyClosed = Boolean(
+                        existingConv?.closed_at || 
+                        ['archivado', 'cerrado', 'finalizado', 'resuelto', 'closed', 'archived'].includes(existingConv?.status)
+                    );
 
                     const convUpdates: Record<string, any> = {
                         phone,
                         last_message_at: nowIso,
                         last_message_text: content,
-                        last_message_sender: 'agent',
-                        last_agent_message_at: nowIso,
                         bot_active: false, // PAUSAR BOT porque el operador humano está respondiendo en WhatsApp Web
-                        unread_count: 0,
                         updated_at: nowIso
                     };
 
-                    if (!existingConv || existingConv.status === 'bot' || existingConv.status === 'sin_asignar') {
-                        convUpdates.status = 'asignado';
-                    }
+                    if (!isAlreadyClosed) {
+                        if (!existingConv || existingConv.status === 'bot' || existingConv.status === 'sin_asignar') {
+                            convUpdates.status = 'asignado';
+                        }
 
-                    if (extractedAgentName && (!existingConv?.assigned_agent_name || existingConv.assigned_agent_name === 'Bot Sanatorio')) {
-                        convUpdates.assigned_agent_name = extractedAgentName.replace(' (WhatsApp Web)', '');
-                        convUpdates.assigned_at = nowIso;
+                        if (extractedAgentName && (!existingConv?.assigned_agent_name || existingConv.assigned_agent_name === 'Bot Sanatorio')) {
+                            convUpdates.assigned_agent_name = extractedAgentName.replace(' (WhatsApp Web)', '');
+                            convUpdates.assigned_at = nowIso;
+                        }
+                    } else {
+                        // Preservar estado archivado/cerrado para que el mensaje de cierre no la desarchive
+                        convUpdates.status = existingConv?.status || 'archivado';
                     }
 
                     // Asegurar que no quede como 'Unknown'
-                    if (!existingConv?.patient_name || existingConv.patient_name.toLowerCase() === 'unknown') {
+                    if (!existingConv?.nombre_completo || existingConv.nombre_completo.toLowerCase() === 'unknown') {
                         const { data: dbPac } = await supabase
                             .from('hospital_pacientes')
                             .select('nombre')
                             .eq('telefono', phone)
                             .maybeSingle();
                         if (dbPac?.nombre) {
-                            convUpdates.patient_name = dbPac.nombre;
+                            convUpdates.nombre_completo = dbPac.nombre;
                         }
                     }
 
@@ -722,7 +730,7 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                     if (waWebUpsertErr) {
                         console.error(`[webhook] Error actualizando conversación WA Web (${phone}):`, waWebUpsertErr);
                     } else {
-                        console.log(`[webhook] ✅ Conversación actualizada para ${phone} por mensaje de WhatsApp Web.`);
+                        console.log(`[webhook] ✅ Conversación actualizada para ${phone} por mensaje de WhatsApp Web (status: ${convUpdates.status}).`);
                     }
                 } catch (convErr: any) {
                     console.error('[webhook] Error actualizando conversación por mensaje WhatsApp Web:', convErr?.message || convErr);
@@ -3012,9 +3020,28 @@ async function handleChatbotTriage(
     const wasClosed = Boolean(
         conv?.closed_at || 
         conv?.resolution_reason || 
-        ['archivado', 'finalizado', 'cerrado'].includes(conv?.status) ||
+        ['archivado', 'finalizado', 'cerrado', 'resuelto', 'closed', 'archived'].includes(conv?.status) ||
         conv?.closed_by_agent_id
     );
+
+    // Detección de cortesía, agradecimiento o calificación en chat ya finalizado
+    // Evita desarchivar el chat si el paciente responde "muchas gracias", "👍", "5 estrellas", etc.
+    const isCourtesyOrRating = 
+        /^(gracias+|muchas\s+gracias|mil\s+gracias|muchisimas\s+gracias|much[ií]simas\s+gracias|gracias\s+por\s+todo|gracias\s+por\s+la\s+atenci[oó]n|muy\s+amable|muy\s+atentos?|ok+|okei|okay|dale|listo|perfecto|joya|genial|buenisimo|buen[ií]simo|excelente|de\s+diez|de\s+10|chau+|adi[oó]s|adios|hasta\s+luego|saludos|que\s+tengas?\s+buen\s+d[ií]a|buen\s+d[ií]a\s+gracias|[1-5](\s*estrellas?)?|10|[👍👌🙏❤️👏⭐]+)[!.\s]*$/i.test(cleanText.trim()) ||
+        (/\b(gracias|muchas gracias|mil gracias|muchisimas gracias|excelente atencion|muy amable|saludos)\b/i.test(cleanText.trim()) && cleanText.trim().length <= 60);
+
+    if (wasClosed && isCourtesyOrRating) {
+        console.log(`[triage-bot] Chat ${phone} está finalizado y recibió mensaje de cortesía/calificación ("${cleanText}"). Manteniendo estado ARCHIVADO.`);
+        await supabase
+            .from('contact_center_conversations')
+            .update({
+                last_message_text: cleanText,
+                last_message_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .eq('phone', phone);
+        return;
+    }
 
     // Comprobar si la sesión expiró por tiempo de inactividad
     // Umbral de inactividad: 15 minutos sin mensajes nuevos (configurable en app_config)
