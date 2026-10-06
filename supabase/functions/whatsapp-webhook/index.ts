@@ -1315,9 +1315,41 @@ const SPECIALTY_MAP: [RegExp, string][] = [
     [/\b(alergia|alergistas?|inmunolog[ií]a)\b/i, 'Alergia e Inmunología'],
     [/\b(mastolog[ií]a|mast[oó]log[ao]s?)\b/i, 'Mastología'],
     [/\b(fertilidad|reproducci[oó]n\s+asistida)\b/i, 'Medicina Reproductiva / Fertilidad'],
-    [/\b(ecograf[ií]a|ecograf[ií]as|ecografistas?)\b/i, 'Ecografía'],
-    [/\b(radiograf[ií]a|rayos\s*x)\b/i, 'Radiografía']
+    [/\b(ecograf[ií]a|ecograf[ií]as|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma)\b/i, 'Ecografía'],
+    [/\b(tomograf[ií]a|tomograf[ií]as|tac\b|tomograf[ií]a\s+computada)\b/i, 'Tomografía'],
+    [/\b(radiograf[ií]a|radiograf[ií]as|rayos\s*x|espinograf[ií]a|placa[s]?\b)\b/i, 'Radiografía'],
+    [/\b(densitometr[ií]a|densitometr[ií]as|densitometr[ií]a\s+[oó]sea)\b/i, 'Densitometría Ósea'],
+    [/\b(mamograf[ií]a|mamograf[ií]as|mamograf[ií]a\s+digital|mamograf[ií]a\s+bilateral)\b/i, 'Mamografía'],
+    [/\b(resonancia|resonancias|resonancia\s+magn[eé]tica|rmn\b)\b/i, 'Resonancia Magnética']
 ];
+
+// Estudios de Diagnóstico por Imágenes que exigen obligatoriamente la presentación de Orden / Pedido Médico
+export const ESTUDIOS_CON_ORDEN_MAPPING: [RegExp, string][] = [
+    [/\b(ecograf[ií]a[s]?|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma|ecogr[aá]fic[ao]s?)\b/i, 'Ecografía'],
+    [/\b(tomograf[ií]a[s]?|tac\b|tomogr[aá]fic[ao]s?)\b/i, 'Tomografía'],
+    [/\b(radiograf[ií]a[s]?|rayos\s*x|espinograf[ií]a[s]?|placa[s]?\b)\b/i, 'Radiografía'],
+    [/\b(densitometr[ií]a[s]?|densitometr[ií]a\s+[oó]sea)\b/i, 'Densitometría Ósea'],
+    [/\b(mamograf[ií]a[s]?|mamogr[aá]fic[ao]s?)\b/i, 'Mamografía'],
+    [/\b(resonancia[s]?|resonancia\s+magn[eé]tica|rmn\b)\b/i, 'Resonancia Magnética']
+];
+
+export function detectEstudiosConOrden(text: string | null | undefined): string[] {
+    if (!text) return [];
+    const clean = text.trim();
+    if (!clean) return [];
+    const matches: string[] = [];
+    for (const [rx, label] of ESTUDIOS_CON_ORDEN_MAPPING) {
+        if (rx.test(clean) && !matches.includes(label)) {
+            matches.push(label);
+        }
+    }
+    return matches;
+}
+
+export function detectEstudioConOrden(text: string | null | undefined): string | null {
+    const list = detectEstudiosConOrden(text);
+    return list.length > 0 ? list.join(' y ') : null;
+}
 
 function detectSpecialty(text: string): string | null {
     if (!text) return null;
@@ -1339,11 +1371,12 @@ function isMedicalSpecialty(text: string): boolean {
     for (const [_, name] of SPECIALTY_MAP) {
         if (name.toLowerCase() === clean.toLowerCase()) return true;
     }
-    return /\b(especialidad|servicio|departamento|traumatolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|cardiolog[ií]a|dermatolog[ií]a|neurolog[ií]a|urolog[ií]a|oftalmolog[ií]a|otorrino|otorrinolaringolog[ií]a|gastroenterolog[ií]a|endocrinolog[ií]a|reumatolog[ií]a|neumonolog[ií]a|nefrolog[ií]a|hematolog[ií]a|infectolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|psicolog[ií]a|psiquiatr[ií]a|cirug[ií]a|flebolog[ií]a|alergia|mastolog[ií]a|fertilidad|ecograf[ií]a|radiograf[ií]a|cl[ií]nica\s+m[eé]dica|salud\s+mental|medicina\s+interna)\b/i.test(clean);
+    return /\b(especialidad|servicio|departamento|traumatolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|cardiolog[ií]a|dermatolog[ií]a|neurolog[ií]a|urolog[ií]a|oftalmolog[ií]a|otorrino|otorrinolaringolog[ií]a|gastroenterolog[ií]a|endocrinolog[ií]a|reumatolog[ií]a|neumonolog[ií]a|nefrolog[ií]a|hematolog[ií]a|infectolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|psicolog[ií]a|psiquiatr[ií]a|cirug[ií]a|flebolog[ií]a|alergia|mastolog[ií]a|fertilidad|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|densitometr[ií]a|mamograf[ií]a|resonancia|cl[ií]nica\s+m[eé]dica|salud\s+mental|medicina\s+interna)\b/i.test(clean);
 }
 
 /**
  * Formatea la cláusula gramatical para coordinar el turno, distinguiendo limpiamente entre:
+ *  - Estudios que requieren orden: "para tu estudio de *Ecografía*"
  *  - Especialidad médica: "en la especialidad de *Traumatología*"
  *  - Doctora: "con la *Dra. Apellido*"
  *  - Doctor: "con el *Dr. Apellido*"
@@ -1357,6 +1390,10 @@ function formatTurnoTargetPhrase(target: string | null | undefined): string {
 
     if (/\b(programa|circuito|chequeo)\b/i.test(clean)) {
         return ` para el *${clean}*`;
+    }
+
+    if (detectEstudioConOrden(clean)) {
+        return ` para tu estudio de *${clean}*`;
     }
 
     if (isMedicalSpecialty(clean)) {
@@ -3823,17 +3860,40 @@ async function handleChatbotTriage(
             const effectiveOs = extractedOs || updates.obra_social || conv?.obra_social || paciente?.coseguro || null;
 
             if (effectiveDni && effectiveOs && !effectiveOs.toLowerCase().includes('a confirmar')) {
-                // YA TENEMOS DNI Y OBRA SOCIAL -> CONFIRMACIÓN INMEDIATA
-                replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tu turno con *${info.displayName}* (${info.specialty}).\n\n` +
-                    `• *DNI:* ${effectiveDni}\n` +
-                    `• *Cobertura:* ${effectiveOs}\n\n` +
-                    `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                    `${getAgentHandoffNotice()}\n\n` +
-                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                updates.status = 'sin_asignar';
-                updates.bot_active = false;
-                nextStage = 'esperando_agente';
-                updates.ai_summary = buildTriageSummary(updates, 'turno', selectedDoc, Boolean(paciente), paciente?.edad);
+                const estudioRequiereOrden = detectEstudioConOrden(info.specialty) || detectEstudioConOrden(cleanText);
+                const hasSentOrderPhoto = isIncomingMedia || patientSentImageRecently || Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
+
+                if (estudioRequiereOrden && !hasSentOrderPhoto) {
+                    replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tu solicitud para *${info.displayName}* (${info.specialty}).\n\n` +
+                        `• *DNI:* ${effectiveDni}\n` +
+                        `• *Cobertura:* ${effectiveOs}\n\n` +
+                        `📋 *Paso necesario:* Para poder autorizar y coordinar estudios de diagnóstico por imágenes (*${estudioRequiereOrden}*), es requisito indispensable contar con el pedido médico prescripto por el profesional.\n\n` +
+                        `📸 Por favor, *envíanos una foto clara o archivo PDF de la orden médica / pedido médico* por este medio.\n\n` +
+                        `_(En cuanto nos envíes la foto, un agente agendará tu turno en nuestro sistema institucional con la orden correspondiente)._\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_orden_foto';
+                    nextStage = 'esperando_orden_foto';
+                    updates.motivo_consulta = `Solicitud de Turno: ${info.displayName} (${info.specialty}) [Aguardando pedido médico]`;
+                    updates.ai_summary = {
+                        ...buildTriageSummary(updates, 'turno', selectedDoc, Boolean(paciente), paciente?.edad),
+                        estudio_requiere_orden: estudioRequiereOrden,
+                        esperando_pedido_medico: true
+                    };
+                } else {
+                    // YA TENEMOS DNI Y OBRA SOCIAL -> CONFIRMACIÓN INMEDIATA
+                    replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tu turno con *${info.displayName}* (${info.specialty}).\n\n` +
+                        `• *DNI:* ${effectiveDni}\n` +
+                        `• *Cobertura:* ${effectiveOs}\n\n` +
+                        `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
+                        `${getAgentHandoffNotice()}\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                    updates.status = 'sin_asignar';
+                    updates.bot_active = false;
+                    nextStage = 'esperando_agente';
+                    updates.ai_summary = buildTriageSummary(updates, 'turno', selectedDoc, Boolean(paciente), paciente?.edad);
+                }
             } else if (effectiveDni && (!effectiveOs || effectiveOs.toLowerCase().includes('a confirmar'))) {
                 // TENEMOS DNI PERO FALTA OBRA SOCIAL -> PREGUNTAR OBRA SOCIAL
                 replyText = `¡Perfecto *${whatsappName}*! 🏥 Registramos tu preferencia para atenderte con *${info.displayName}* (${info.specialty}) y tu DNI *${effectiveDni}*.\n\n` +
@@ -4031,6 +4091,61 @@ async function handleChatbotTriage(
         }
     }
     // =============================================
+    // FLUJO 0A-2D: ESPERANDO FOTO DE PEDIDO MÉDICO PARA TURNO DE ESTUDIO (ECOGRAFÍA, TOMOGRAFÍA, ETC.)
+    // =============================================
+    else if (
+        currentStage === 'esperando_orden_foto' &&
+        analysis.intent !== 'derivacion_agente' &&
+        analysis.intent !== 'volver_atras'
+    ) {
+        const targetStudy = conv?.medico_o_especialidad || updates.medico_o_especialidad || 'Diagnóstico por Imágenes';
+        const isReferencingPreviousPhoto = /\b(es\s+la\s+(?:foto\s+)?que\s+mand[eé]|ya\s+la\s+mand[eé]|la\s+foto\s+anterior|la\s+que\s+mand[eé]\s+antes|la\s+de\s+arriba|te\s+la\s+mand[eé]\s+reci[eé]n)\b/i.test(cleanText);
+        const saysNoOrder = /\b(no\s+tengo\s+(?:orden|pedido|receta)|no\s+tengo|no\s+me\s+dieron|sin\s+orden|sin\s+pedido|todav[ií]a\s+no\s+tengo|a[uú]n\s+no\s+tengo|no\s+poseo|no\s+la\s+tengo|no\s+lo\s+tengo|es\s+necesari[ao]\s+orden|hace\s+falta\s+orden|es\s+obligatori[ao])\b/i.test(cleanText);
+
+        if (isIncomingMedia || isReferencingPreviousPhoto) {
+            replyText = `¡Muchas gracias *${whatsappName}*! 📄📸 Recibimos el pedido médico para tu turno de *${targetStudy}*.\n\n` +
+                `Un agente del equipo de Sanatorio Argentino verificará la orden médica y agendará la cita en nuestro sistema institucional para confirmarte los detalles a la brevedad.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.bot_stage = 'esperando_agente';
+            const prevMotivo = conv?.motivo_consulta || updates.motivo_consulta || `Solicitud de Turno: ${targetStudy}`;
+            updates.motivo_consulta = prevMotivo.includes('[Aguardando pedido médico]')
+                ? prevMotivo.replace('[Aguardando pedido médico]', '[Pedido médico adjuntado]')
+                : `${prevMotivo} [Pedido médico adjuntado]`;
+            updates.ai_summary = {
+                ...(conv?.ai_summary || {}),
+                pedido_medico_recibido: true,
+                estudio: targetStudy
+            };
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else if (saysNoOrder) {
+            replyText = `¡Comprendido *${whatsappName}*! 📋 Para la realización de estudios de diagnóstico por imágenes (*${targetStudy}*), tanto las obras sociales como los protocolos médicos institucionales exigen contar obligatoriamente con el pedido médico u orden prescripta por un profesional.\n\n` +
+                `• *Si el médico te envió la orden digital:* Podés reenviarnos el archivo PDF o captura de pantalla cuando la tengas.\n` +
+                `• *Si necesitás primero una consulta médica para que te indiquen el estudio:* Escribinos para coordinarte una consulta previa con el especialista.\n` +
+                `• *Si deseás consultar con un asesor humano:* Escribí *"Agente"* y te comunicamos de inmediato.\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            nextStage = 'esperando_orden_foto';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else {
+            // El paciente envió texto adicional (ej: horario, DNI, comentarios) pero aún no la foto
+            const extractedDni = candidateDni || updates.dni || conv?.dni;
+            const dniMsg = extractedDni ? ` Registramos tu DNI *${extractedDni}*.` : '';
+            replyText = `¡Recibido *${whatsappName}*! 🏥${dniMsg} Para poder coordinar tu turno de *${targetStudy}*, únicamente nos falta la *foto clara o archivo de tu pedido médico / orden médica* 📸.\n\n` +
+                `Por favor adjuntala por este medio para que un agente verifique la prescripción y confirme tu cita.\n\n` +
+                `_(Si la imagen que enviaste anteriormente es el pedido médico, respondé *"es la foto anterior"*; si preferís ayuda de un asesor, escribí *"Agente"*)._\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            nextStage = 'esperando_orden_foto';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+    }
+    // =============================================
     // FLUJO 0A-3: DERIVACIÓN DIRECTA A AGENTE HUMANO (ALTA PRIORIDAD)
     // =============================================
     else if (analysis.intent === 'derivacion_agente') {
@@ -4196,36 +4311,69 @@ async function handleChatbotTriage(
             const hasDoctor = Boolean(effectiveDocOrSpec);
             const hasOs = Boolean(updates.obra_social && !updates.obra_social.toLowerCase().includes('a confirmar') && !updates.obra_social.toLowerCase().includes('a consultar'));
 
-            // CASO A: SI TENEMOS TODAS LAS VARIABLES (DNI + Médico + Obra Social) -> CONFIRMACIÓN INMEDIATA
+            // CASO A: SI TENEMOS TODAS LAS VARIABLES (DNI + Médico + Obra Social)
             if (hasDni && hasDoctor && hasOs) {
                 const docMsg = formatTurnoTargetPhrase(effectiveDocOrSpec);
                 const osMsg = `\n• *Cobertura informada:* ${updates.obra_social}`;
-
-
                 const horMsg = preferenciaHoraria ? `\n• *Preferencia horaria:* ${preferenciaHoraria}` : '';
 
-                if (isForOtherPatient) {
-                    replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${targetDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
-                        `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional para el paciente y te confirmará los detalles a la brevedad.\n\n` +
-                        `${getAgentHandoffNotice()}\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                    updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${targetDni}) - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
-                    updates.es_gestion_tercero = true;
-                    updates.titular_nombre = whatsappName;
-                    updates.paciente_nombre = cleanName;
-                    updates.paciente_dni = targetDni;
-                } else {
-                    replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
-                        `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                        `${getAgentHandoffNotice()}\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                    updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${cleanName} - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
-                }
+                const estudioRequiereOrden = detectEstudioConOrden(effectiveDocOrSpec) || detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad);
+                const hasSentOrderPhoto = isIncomingMedia || patientSentImageRecently || Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
 
-                updates.status = 'sin_asignar';
-                updates.bot_active = false;
-                nextStage = 'esperando_agente';
-                updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+                if (estudioRequiereOrden && !hasSentOrderPhoto) {
+                    if (isForOtherPatient) {
+                        replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${targetDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
+                            `📋 *Paso necesario:* Para poder autorizar y coordinar estudios de diagnóstico por imágenes (*${estudioRequiereOrden}*), es requisito indispensable contar con el pedido médico prescripto por el profesional.\n\n` +
+                            `📸 Por favor, *envíanos una foto clara o archivo PDF de la orden médica / pedido médico* por este medio.\n\n` +
+                            `_(En cuanto nos envíes la foto, un agente agendará el turno en nuestro sistema institucional con la orden correspondiente)._\n\n` +
+                            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                        updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${targetDni}) - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''} [Aguardando pedido médico]`;
+                        updates.es_gestion_tercero = true;
+                        updates.titular_nombre = whatsappName;
+                        updates.paciente_nombre = cleanName;
+                        updates.paciente_dni = targetDni;
+                    } else {
+                        replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
+                            `📋 *Paso necesario:* Para poder autorizar y coordinar estudios de diagnóstico por imágenes (*${estudioRequiereOrden}*), es requisito indispensable contar con el pedido médico prescripto por el profesional.\n\n` +
+                            `📸 Por favor, *envíanos una foto clara o archivo PDF de tu orden médica / pedido médico* por este medio.\n\n` +
+                            `_(En cuanto nos envíes la foto, un agente agendará la cita en nuestro sistema institucional con la orden correspondiente)._\n\n` +
+                            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                        updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${cleanName} - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''} [Aguardando pedido médico]`;
+                    }
+
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_orden_foto';
+                    nextStage = 'esperando_orden_foto';
+                    updates.ai_summary = {
+                        ...buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad),
+                        estudio_requiere_orden: estudioRequiereOrden,
+                        esperando_pedido_medico: true
+                    };
+                } else {
+                    if (isForOtherPatient) {
+                        replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${targetDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
+                            `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional para el paciente y te confirmará los detalles a la brevedad.\n\n` +
+                            `${getAgentHandoffNotice()}\n\n` +
+                            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                        updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${targetDni}) - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+                        updates.es_gestion_tercero = true;
+                        updates.titular_nombre = whatsappName;
+                        updates.paciente_nombre = cleanName;
+                        updates.paciente_dni = targetDni;
+                    } else {
+                        replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
+                            `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
+                            `${getAgentHandoffNotice()}\n\n` +
+                            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                        updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${cleanName} - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
+                    }
+
+                    updates.status = 'sin_asignar';
+                    updates.bot_active = false;
+                    nextStage = 'esperando_agente';
+                    updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
+                }
             }
             // CASO B: TENEMOS DNI Y MÉDICO, PERO FALTA OBRA SOCIAL -> PREGUNTAR SOLO POR LA OBRA SOCIAL
             else if (hasDni && hasDoctor && !hasOs) {
@@ -4435,13 +4583,34 @@ async function handleChatbotTriage(
 
             if (effectiveDocOrSpec) {
                 updates.medico_o_especialidad = effectiveDocOrSpec;
-                replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*) y tu solicitud para *${effectiveDocOrSpec}*.\n\n` +
-                    `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                    `${getAgentHandoffNotice()}`;
-                updates.status = 'sin_asignar';
-                updates.bot_active = false;
-                nextStage = 'esperando_agente';
-                updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
+                const estudioRequiereOrden = detectEstudioConOrden(effectiveDocOrSpec) || detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad);
+                const hasSentOrderPhoto = isIncomingMedia || patientSentImageRecently || Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
+
+                if (estudioRequiereOrden && !hasSentOrderPhoto) {
+                    replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*) y tu solicitud para *${effectiveDocOrSpec}*.\n\n` +
+                        `📋 *Paso necesario:* Para poder autorizar y coordinar estudios de diagnóstico por imágenes (*${estudioRequiereOrden}*), es requisito indispensable contar con el pedido médico prescripto por el profesional.\n\n` +
+                        `📸 Por favor, *envíanos una foto clara o archivo PDF de tu orden médica / pedido médico* por este medio.\n\n` +
+                        `_(En cuanto nos envíes la foto, un agente agendará tu cita en nuestro sistema institucional con la orden correspondiente)._\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_orden_foto';
+                    nextStage = 'esperando_orden_foto';
+                    updates.motivo_consulta = `Solicitud de Turno: ${fullName} - ${effectiveDocOrSpec} [Aguardando pedido médico]`;
+                    updates.ai_summary = {
+                        ...buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad),
+                        estudio_requiere_orden: estudioRequiereOrden,
+                        esperando_pedido_medico: true
+                    };
+                } else {
+                    replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*) y tu solicitud para *${effectiveDocOrSpec}*.\n\n` +
+                        `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
+                        `${getAgentHandoffNotice()}`;
+                    updates.status = 'sin_asignar';
+                    updates.bot_active = false;
+                    nextStage = 'esperando_agente';
+                    updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
+                }
             } else {
                 replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*).\n\n` +
                     `Por favor indícanos:\n` +
@@ -5031,15 +5200,37 @@ async function handleChatbotTriage(
             const validDisplay = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : '';
             const targetForMsg = updates.medico_o_especialidad || validDisplay || null;
             const docMsg = formatTurnoTargetPhrase(targetForMsg);
-            replyText = `¡Muchas gracias *${fullName}*! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-                `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                `${getAgentHandoffNotice()}\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
 
-            updates.status = 'sin_asignar';
-            updates.bot_active = false;
-            nextStage = 'esperando_agente';
-            updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            const estudioRequiereOrden = detectEstudioConOrden(targetForMsg) || detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad);
+            const hasSentOrderPhoto = isIncomingMedia || patientSentImageRecently || Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
+
+            if (estudioRequiereOrden && !hasSentOrderPhoto) {
+                replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
+                    `📋 *Paso necesario:* Para poder autorizar y coordinar estudios de diagnóstico por imágenes (*${estudioRequiereOrden}*), es requisito indispensable contar con el pedido médico prescripto por el profesional.\n\n` +
+                    `📸 Por favor, *envíanos una foto clara o archivo PDF de tu orden médica / pedido médico* por este medio.\n\n` +
+                    `_(En cuanto nos envíes la foto, un agente agendará tu turno en nuestro sistema institucional con la orden correspondiente)._\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                updates.bot_stage = 'esperando_orden_foto';
+                nextStage = 'esperando_orden_foto';
+                updates.motivo_consulta = `Solicitud de Turno: ${fullName} - ${targetForMsg || estudioRequiereOrden} [Aguardando pedido médico]`;
+                updates.ai_summary = {
+                    ...buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad),
+                    estudio_requiere_orden: estudioRequiereOrden,
+                    esperando_pedido_medico: true
+                };
+            } else {
+                replyText = `¡Muchas gracias *${fullName}*! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
+                    `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
+                    `${getAgentHandoffNotice()}\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                nextStage = 'esperando_agente';
+                updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            }
         } else {
             const osTurnoInfo = getRegisteredOsInfo(paciente?.coseguro || conv?.obra_social);
             const osTurnoBullet = osTurnoInfo.hasRegisteredOs
@@ -5054,13 +5245,19 @@ async function handleChatbotTriage(
                 ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
                 : `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`;
 
+            const isEstudioTurno = detectEstudioConOrden(doctorDisplay || effectiveSpecialty || cleanText);
+            const estudioBullet = isEstudioTurno
+                ? `• 📸 *Pedido médico:* Por favor adjuntanos la foto o archivo de tu orden médica (obligatoria para agendar estudios de diagnóstico por imágenes).\n`
+                : '';
+
             replyText = `¡Hola${paciente ? ` *${fullName}*` : ''}! 🏥 Te ayudamos a coordinar tu nuevo turno médico${doctorNoteMsg}.\n\n` +
                 `Por favor indícanos:\n` +
                 `${dniPrompt}` +
                 `${specOrDocLine}` +
                 `• ¿El turno es para vos o para un familiar / otra persona?\n` +
                 `• Preferencia de *días y horarios* (mañana o tarde)\n` +
-                `${osTurnoBullet}\n\n` +
+                `${osTurnoBullet}\n` +
+                `${estudioBullet}\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
             updates.status = 'bot';
             updates.bot_active = true;
@@ -5505,10 +5702,23 @@ async function handleNewPatientIntake(
         updates.departamento = mergedPatientData.departamento;
         updates.telefono_contacto = mergedPatientData.telefono_contacto || phone;
         updates.es_paciente_existente = false;
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        updates.bot_stage = 'esperando_agente';
-        const nextStage = 'esperando_agente';
+        const targetDocOrStudy = mergedPatientData.medico_o_especialidad || updates.medico_o_especialidad || cleanText;
+        const estudioRequiereOrden = detectEstudioConOrden(targetDocOrStudy);
+        const hasSentOrderPhoto = Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
+
+        let nextStage = 'esperando_agente';
+        if (estudioRequiereOrden && !hasSentOrderPhoto) {
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_orden_foto';
+            nextStage = 'esperando_orden_foto';
+            updates.motivo_consulta = `Alta de Paciente + Turno: ${resolvedName} - ${estudioRequiereOrden} [Aguardando pedido médico]`;
+        } else {
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            nextStage = 'esperando_agente';
+        }
 
         // Pre-registrar en hospital_pacientes para que quede dado de alta en el padrón de SALUS
         if (updates.dni && updates.nombre_completo) {
@@ -5551,12 +5761,16 @@ async function handleNewPatientIntake(
             }
         }
 
-        updates.ai_summary = buildTriageSummary(updates, intent, doctorRecord, false, mergedPatientData.edad);
+        updates.ai_summary = {
+            ...buildTriageSummary(updates, intent, doctorRecord, false, mergedPatientData.edad),
+            estudio_requiere_orden: estudioRequiereOrden || null,
+            esperando_pedido_medico: Boolean(estudioRequiereOrden && !hasSentOrderPhoto)
+        };
 
         const ageNote = mergedPatientData.edad ? ` (${mergedPatientData.edad} años)` : '';
         const docNote = doctorDisplay ? `\n• *Profesional solicitado:* ${doctorDisplay}` : '';
-        const orderNote = intent === 'autorizacion' 
-            ? `\n\n📸 *Para tramitar tu autorización:* Por favor envíanos la *foto clara y legible de la orden médica* a autorizar.` 
+        const orderNote = (intent === 'autorizacion' || (estudioRequiereOrden && !hasSentOrderPhoto))
+            ? `\n\n📸 *Pedido médico:* Por favor envíanos la *foto clara o archivo PDF de tu orden médica / pedido médico* para poder coordinar tu estudio de *${estudioRequiereOrden || 'diagnóstico por imágenes'}*.` 
             : '';
         const reply = `¡Excelente *${resolvedName}*! ✅ Registramos todos tus datos para tu alta en Sanatorio Argentino:\n\n` +
             `📋 *Ficha de Admisión Digital:*\n` +
@@ -5566,8 +5780,10 @@ async function handleNewPatientIntake(
             `• *Nacimiento:* ${updates.fecha_nacimiento || '—'}${ageNote}\n` +
             `• *Departamento:* ${updates.departamento}\n` +
             `• *Contacto:* ${updates.telefono_contacto}${docNote}${orderNote}\n\n` +
-            `Tu ficha ya fue cargada para el equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n` +
-            `${getAgentHandoffNotice()}`;
+            (estudioRequiereOrden && !hasSentOrderPhoto
+                ? `_(En cuanto nos envíes la foto del pedido médico, un asesor agendará tu turno con la prescripción correspondiente)._\n\n` +
+                  `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`
+                : `Tu ficha ya fue cargada para el equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n${getAgentHandoffNotice()}`);
 
         return { nextStage, replyText: reply };
     }
