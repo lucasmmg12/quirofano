@@ -48,6 +48,49 @@ async function supabaseRetry<T>(
     return { data: null, error: { message: `${label}: max retries exceeded`, code: 'RETRY_EXHAUSTED' } };
 }
 
+// =============================================
+// VALIDACIÓN Y EXTRACCIÓN INFALIBLE DE DNI ARGENTINO
+// Evita confusiones con fechas de nacimiento (DD/MM/AAAA) o números telefónicos
+// =============================================
+function isValidArgentineDni(str: string | null | undefined): boolean {
+    if (!str) return false;
+    const clean = String(str).replace(/\D/g, '');
+    // Un DNI argentino tiene entre 7 y 8 dígitos y NUNCA empieza con 0
+    if (!/^[1-9]\d{6,7}$/.test(clean)) return false;
+    const num = parseInt(clean, 10);
+    return num >= 1000000 && num <= 65000000;
+}
+
+function extractDniFromText(text: string | null | undefined): string | null {
+    if (!text) return null;
+    const clean = text.trim();
+    
+    // Si el mensaje completo es únicamente un número (con o sin puntos/espacios)
+    const strippedMsg = clean.replace(/[\s.-]/g, '');
+    if (/^\d{7,8}$/.test(strippedMsg) && isValidArgentineDni(strippedMsg)) {
+        return strippedMsg;
+    }
+
+    // Remover fechas de nacimiento con barras o guiones para que sus dígitos (ej: 04/07/2002 -> 04072002) nunca se confundan con un DNI
+    const textWithoutDates = clean.replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, ' ');
+
+    // 1. Buscar si hay una etiqueta explícita de DNI (ej: "DNI: 44316298", "dni 44.316.298", "documento: 44316298")
+    const explicitTagMatch = textWithoutDates.match(/\b(?:dni|documento|doc|nro)\s*[:.\s#]*([1-9]\d{1,2}\.?\d{3}\.?\d{3}|[1-9]\d{6,7})\b/i);
+    if (explicitTagMatch && explicitTagMatch[1]) {
+        const cleanTagDni = explicitTagMatch[1].replace(/\D/g, '');
+        if (isValidArgentineDni(cleanTagDni)) return cleanTagDni;
+    }
+
+    // 2. Buscar número de 7 u 8 dígitos que empiece con 1-9 en el texto libre sin fechas
+    const normalized = textWithoutDates.replace(/\./g, '');
+    const candidateMatch = normalized.match(/\b[1-9]\d{6,7}\b/);
+    if (candidateMatch && isValidArgentineDni(candidateMatch[0])) {
+        return candidateMatch[0];
+    }
+
+    return null;
+}
+
 Deno.serve(async (req) => {
     // CORS headers
     const corsHeaders = {
@@ -148,9 +191,9 @@ Deno.serve(async (req) => {
             const activeBotName = overrideConfig?.botName || dynamicConfig.botName || 'Dora';
 
             // 2. Extraer DNI candidato del mensaje actual, historial o del preset del paciente
-            const userDniMatch = userMessage.match(/\b\d{7,8}\b/) || 
-                (Array.isArray(history) && [...history].reverse().find((h: any) => h.sender === 'user' && /\b\d{7,8}\b/.test(h.text))?.text.match(/\b\d{7,8}\b/));
-            const targetDni = userDniMatch ? userDniMatch[0] : (patientData.dni ? String(patientData.dni).replace(/\D/g, '') : null);
+            const userDniMatch = extractDniFromText(userMessage) || 
+                (Array.isArray(history) && [...history].reverse().map((h: any) => h.sender === 'user' ? extractDniFromText(h.text) : null).find(Boolean));
+            const targetDni = userDniMatch || (isValidArgentineDni(patientData.dni) ? String(patientData.dni).replace(/\D/g, '') : null);
 
             // 3. Verificar si el DNI existe en la base hospital_pacientes (SALUS)
             let isExistingInDb = false;
@@ -2103,6 +2146,10 @@ DIRECTIVAS PRINCIPALES:
      "*a-* [Apellido Nombre] ([Especialidad])"
      "*b-* [Apellido Nombre] ([Especialidad])"
      "Podés responder con la letra (*a*, *b*...) o escribir el nombre."
+12. DISTINCIÓN OBLIGATORIA ENTRE DNI Y FECHA DE NACIMIENTO:
+   - NUNCA confundas una fecha de nacimiento (DD/MM/AAAA, ej: 04/07/2002 o 04072002) con un número de DNI.
+   - Los DNI argentinos tienen 7 u 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 65.000.000).
+   - Si el paciente en un mensaje posterior envía sus datos personales de admisión (ej: "Ramiro Javier Gutiérrez\n04/07/2002\nDepartamento rawson"), la fecha 04/07/2002 es su fecha de nacimiento y NUNCA debe sobreescribir ni sustituir el DNI ya informado en el mensaje anterior.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -3295,8 +3342,8 @@ async function handleChatbotTriage(
             updated_at: new Date().toISOString(),
             bot_active: false
         };
-        const candidateDni = cleanText.match(/\b\d{7,8}\b/)?.[0];
-        if (candidateDni && !conv.dni) {
+        const candidateDni = extractDniFromText(cleanText);
+        if (candidateDni && isValidArgentineDni(candidateDni) && !conv.dni) {
             silentUpdates.dni = candidateDni;
         }
 
@@ -3328,8 +3375,8 @@ async function handleChatbotTriage(
                 last_message_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
-            const extractedDni = cleanText.match(/\b\d{7,8}\b/)?.[0] || (cleanText.replace(/\D/g, '').length >= 7 && cleanText.replace(/\D/g, '').length <= 9 ? cleanText.replace(/\D/g, '') : null);
-            if (extractedDni && !conv.dni) {
+            const extractedDni = extractDniFromText(cleanText);
+            if (extractedDni && isValidArgentineDni(extractedDni) && !conv.dni) {
                 silentUpdates.dni = extractedDni;
                 try {
                     const { data: pFound } = await supabase
@@ -3495,17 +3542,13 @@ async function handleChatbotTriage(
     }
 
     // 1. Identificar al paciente EXCLUSIVAMENTE por DNI en el mensaje actual (nunca pre-mapear por teléfono)
-    // Se elimina la vinculación histórica por teléfono para que todos los contactos nuevos o existentes
-    // sean tratados como nuevos usuarios hasta que proporcionen expresamente un DNI.
-    const normalizedText = cleanText.replace(/\./g, '');
-    const rawDigits = cleanText.replace(/\D/g, '');
-    const isOnlyDigits = rawDigits.length >= 7 && rawDigits.length <= 9;
-    const dniMatch = cleanText.match(/\b\d{7,8}\b/) || normalizedText.match(/\b\d{7,8}\b/);
-    const candidateDni: string | null = dniMatch ? dniMatch[0] : (isOnlyDigits ? rawDigits : null);
+    // Se utiliza extractDniFromText para evitar falsos positivos con fechas de nacimiento (DD/MM/AAAA) o teléfonos
+    const candidateDni: string | null = extractDniFromText(cleanText);
     const dniInMessage = candidateDni;
 
-    // Persistencia y memoria: DNI en el mensaje actual O DNI previamente registrado en la conversación
-    const effectiveDni = dniInMessage || conv?.dni || null;
+    // Persistencia y memoria: DNI en el mensaje actual O DNI previamente validado y registrado en la conversación
+    const establishedConvDni = (conv?.dni && isValidArgentineDni(conv.dni)) ? conv.dni : null;
+    const effectiveDni = dniInMessage || establishedConvDni || null;
 
     let paciente: any = null;
 
@@ -4295,7 +4338,7 @@ async function handleChatbotTriage(
         analysis.intent !== 'cancelar_turno_online'
     ) {
         // 1. Si el paciente incluyó DNI en la respuesta, verificar en SALUS (Bifurcación de los Dos Caminos)
-        if (candidateDni && (!paciente || String(paciente.dni) !== String(candidateDni))) {
+        if (candidateDni && isValidArgentineDni(candidateDni) && (!paciente || String(paciente.dni) !== String(candidateDni))) {
             const { data: pFound } = await supabase
                 .from('hospital_pacientes')
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
@@ -4322,7 +4365,7 @@ async function handleChatbotTriage(
 
         // Si se detectó que es un paciente NO registrado en SALUS y aportó DNI:
         // Se activa inmediatamente la recolección de los datos obligatorios para el alta en SALUS
-        if (candidateDni && !paciente) {
+        if (candidateDni && isValidArgentineDni(candidateDni) && !paciente) {
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -4559,10 +4602,7 @@ async function handleChatbotTriage(
         const isAskingForOtherPatient = !isExplicitlyForSelf && /\b(otro\s+paciente|otra\s+persona|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s)\b/i.test(cleanText);
 
         // Detectar si en el mensaje actual vino un DNI explícito (sin considerar la memoria del usuario que envió el chat)
-        const explicitDniMatch = cleanText.replace(/\./g, '').match(/\b\d{7,8}\b/);
-        const rawDigits = cleanText.replace(/\D/g, '');
-        const isOnlyDigits = rawDigits.length >= 6 && rawDigits.length <= 9;
-        const dniInCurrentMsg = explicitDniMatch ? explicitDniMatch[0] : (isOnlyDigits ? rawDigits : null);
+        const dniInCurrentMsg = extractDniFromText(cleanText);
 
         // Caso 1: El usuario pide averiguar por otro paciente y NO incluyó el DNI en este mensaje
         if (isAskingForOtherPatient && !dniInCurrentMsg) {
@@ -4742,8 +4782,24 @@ async function handleChatbotTriage(
                 updates.bot_stage = 'esperando_datos_turno';
             }
         }
-        // CASO 1B: Paciente respondiendo DNI (Bifurcación Camino 1 vs Camino 2)
-        else if (candidateDni) {
+        // CASO 1B: Paciente en espera de datos de admisión nuevo paciente (Nombre, Fecha Nac, Dpto)
+        // Se ejecuta directamente handleNewPatientIntake preservando el DNI previamente verificado en conv.dni
+        else if (currentStage === 'esperando_datos_nuevo') {
+            const res = await handleNewPatientIntake(
+                cleanText,
+                candidateDni,
+                conv,
+                phone,
+                updates,
+                analysis.intent,
+                analysis.doctorRecord,
+                doctorDisplay
+            );
+            nextStage = res.nextStage;
+            replyText = res.replyText;
+        }
+        // CASO 1C: Paciente respondiendo DNI (Bifurcación Camino 1 vs Camino 2)
+        else if (candidateDni && isValidArgentineDni(candidateDni)) {
             const { data: pFound } = await supabase
                 .from('hospital_pacientes')
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
@@ -4793,7 +4849,7 @@ async function handleChatbotTriage(
                 replyText = res.replyText;
             }
         } else {
-            // CASO 1C: Paciente continuando con la carga de datos obligatorios para el alta
+            // CASO 1D: Paciente continuando con la carga de datos obligatorios para el alta
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -5776,8 +5832,15 @@ async function handleNewPatientIntake(
 ): Promise<{ nextStage: string; replyText: string }> {
     const extracted = await extractPatientVariables(cleanText, candidateDni);
 
+    // Prioridad DNI: Si la conversación ya tiene un DNI válido confirmado, se PRESERVA obligatoriamente.
+    // Solo si no existe DNI previo se acepta candidateDni o extracted.dni (siempre que sean DNI válidos argentinos).
+    const establishedConvDni = (conv?.dni && isValidArgentineDni(conv.dni)) ? conv.dni : null;
+    const validCandidateDni = (candidateDni && isValidArgentineDni(candidateDni)) ? candidateDni : null;
+    const validExtractedDni = (extracted.dni && isValidArgentineDni(extracted.dni)) ? extracted.dni : null;
+    const finalDni = establishedConvDni || validCandidateDni || validExtractedDni || null;
+
     const mergedPatientData: Record<string, any> = {
-        dni: candidateDni || extracted.dni || conv?.dni || null,
+        dni: finalDni,
         nombre_completo: extracted.nombre_completo || (conv?.nombre_completo && !conv?.nombre_completo.startsWith('Paciente') ? conv.nombre_completo : null),
         obra_social: extracted.obra_social || (conv?.obra_social && conv?.obra_social !== 'Particular / A confirmar' && conv?.obra_social !== 'A consultar' ? conv.obra_social : null),
         fecha_nacimiento: extracted.fecha_nacimiento || conv?.fecha_nacimiento || null,
@@ -5915,9 +5978,12 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
     const vars: Record<string, any> = {};
 
     // 1. Extracción heurística rápida por patrones
-    const dniMatch = text.match(/\b\d{7,8}\b/);
-    if (dniMatch) vars.dni = dniMatch[0];
-    else if (fallbackDni) vars.dni = fallbackDni;
+    const extractedDni = extractDniFromText(text);
+    if (extractedDni && isValidArgentineDni(extractedDni)) {
+        vars.dni = extractedDni;
+    } else if (fallbackDni && isValidArgentineDni(fallbackDni)) {
+        vars.dni = fallbackDni;
+    }
 
     const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     if (emailMatch) vars.email = emailMatch[0];
@@ -6003,12 +6069,15 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
                             content: `Eres el extractor clínico y administrativo del Contact Center de Sanatorio Argentino en San Juan, Argentina.
 Extrae del mensaje del paciente un JSON con los siguientes campos:
 - nombre_completo: Nombre y apellido del paciente a atender (string o null). No incluyas palabras como "Hola", "Doctor", "Turno", etc.
-- dni: Número de DNI (solo 7 u 8 dígitos numéricos) o null.
+- dni: Número de Documento Nacional de Identidad del paciente (solo 7 u 8 dígitos numéricos válidos en Argentina, que comiencen del 1 al 9) o null.
+  ¡REGLA ABSOLUTA DE SEGURIDAD CLÍNICA!: NUNCA extraigas una fecha de nacimiento (ej: "04/07/2002", "04-07-2002", "04072002") como DNI. Un DNI argentino NUNCA comienza con 0.
+  Si el paciente envía únicamente su nombre, fecha de nacimiento y localidad (ej: "Ramiro Javier Gutiérrez\\n04/07/2002\\nDepartamento rawson"), el campo "dni" DEBE SER OBLIGATORIAMENTE null.
+  Las fechas van EXCLUSIVAMENTE en el campo "fecha_nacimiento".
 - es_gestion_tercero: boolean (true si el solicitante indica que el turno o trámite es para otra persona o familiar como hijo, mamá, etc., false si es para sí mismo).
 - parentesco: relación del paciente a atender con el remitente (hijo/a, madre/padre, cónyuge, familiar, otro) o null.
 - paciente_nombre: nombre del paciente a atender si es para otra persona o null.
 - paciente_dni: DNI del paciente a atender si es para otra persona o null.
-- fecha_nacimiento: Fecha de nacimiento en formato DD/MM/AAAA o null.
+- fecha_nacimiento: Fecha de nacimiento en formato DD/MM/AAAA o null. Si el paciente escribe una fecha (ej: "04/07/2002"), colócala aquí en formato DD/MM/AAAA y NUNCA en dni.
 - edad: Edad del paciente en años como número entero o null. Si menciona fecha de nacimiento, calcula también la edad actual.
 - obra_social: Nombre de la obra social, prepaga y plan (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, Particular) o null.
 - departamento: Localidad o departamento de San Juan donde reside (ej: Capital, Rawson, Rivadavia, Santa Lucía, Chimbas, Pocito, Caucete, etc.) o null.
@@ -6030,7 +6099,13 @@ Si un dato no fue aportado en el texto, indícalo como null.`
                 const aiData = await aiRes.json();
                 const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
                 if (parsed.nombre_completo && !vars.nombre_completo) vars.nombre_completo = parsed.nombre_completo;
-                if (parsed.dni && !vars.dni) vars.dni = parsed.dni;
+                if (parsed.dni && isValidArgentineDni(parsed.dni)) {
+                    const fnDigits = (parsed.fecha_nacimiento || vars.fecha_nacimiento || '').replace(/\D/g, '');
+                    // Descartar si el DNI retornado por la IA coincide exactamente con los números de la fecha de nacimiento
+                    if (parsed.dni !== fnDigits) {
+                        if (!vars.dni) vars.dni = parsed.dni;
+                    }
+                }
                 if (parsed.es_gestion_tercero !== undefined) vars.es_gestion_tercero = Boolean(parsed.es_gestion_tercero);
                 if (parsed.parentesco) vars.parentesco = parsed.parentesco;
                 if (parsed.paciente_nombre) vars.paciente_nombre = parsed.paciente_nombre;
