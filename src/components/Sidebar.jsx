@@ -98,9 +98,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
     // Sub-items dentro de "Altas Adm"
     const altasSubItems = [
-        { id: 'altas', label: 'Control de Altas', icon: ClipboardCheck },
-        { id: 'entrega_fichas', label: 'Entrega de Fichas', icon: PackageCheck },
-        { id: 'facturacion', label: 'Facturación', icon: Receipt },
+        { id: 'entrega_fichas', label: '1. Entrega de Fichas', icon: PackageCheck },
+        { id: 'altas', label: '2. Control de Altas', icon: ClipboardCheck },
+        { id: 'facturacion', label: '3. Facturación', icon: Receipt },
         { id: 'txt_provincia', label: 'Txt Provincia', icon: FileText },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
         { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },

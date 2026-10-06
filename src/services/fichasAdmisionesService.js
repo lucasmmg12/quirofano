@@ -111,6 +111,32 @@ export async function fetchResumenFichas() {
     }
 }
 
+// ─── 2.B Circuito de fichas físicas: fecha de corte y fichas no entregadas ───
+// Desde esta fecha de ingreso, una admisión solo aparece en Control de Altas
+// cuando Recepción emitió la entrega de su ficha física (ficha_estado = 'entregada').
+export const FICHAS_CIRCUITO_CORTE = '2026-10-01';
+
+export async function fetchFichasNoEntregadasDesdeCorte() {
+    try {
+        const base = () => supabase
+            .from('altas_administrativas')
+            .select('id', { count: 'exact', head: true })
+            .gte('fecha_ingreso', FICHAS_CIRCUITO_CORTE);
+        const [pendRes, carritoRes, devRes] = await Promise.all([
+            base().or('ficha_estado.is.null,ficha_estado.eq.pendiente'),
+            base().eq('ficha_estado', 'en_carrito'),
+            base().eq('ficha_estado', 'devuelta_a_recepcion')
+        ]);
+        const pendientes = pendRes.count || 0;
+        const enCarrito = carritoRes.count || 0;
+        const devueltas = devRes.count || 0;
+        return { pendientes, enCarrito, devueltas, total: pendientes + enCarrito + devueltas };
+    } catch (err) {
+        console.warn('[fichasAdmisionesService] Error contando fichas no entregadas:', err);
+        return null;
+    }
+}
+
 // ─── 3. Carrito de Fichas ───
 export async function toggleCarritoFicha(admisionId, inCart, userDetails = 'Recepción') {
     const { error } = await supabase

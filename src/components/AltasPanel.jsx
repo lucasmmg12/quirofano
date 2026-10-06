@@ -22,6 +22,7 @@ import {
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
+import CircuitoFichasBanner from './common/CircuitoFichasBanner';
 import GarantiasPanel from './GarantiasPanel';
 import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
@@ -1142,6 +1143,9 @@ export default function AltasPanel({ addToast, currentUser }) {
     return (
         <div className="content no-print" style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', overflow: 'auto' }}>
             
+            {/* ── Circuito de fichas: paso 2 ── */}
+            <CircuitoFichasBanner step={2} />
+
             {/* ── Header ── */}
             <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1159,7 +1163,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             color: '#fff', fontSize: '1rem',
                         }}>📋</div>
-                        Control de Altas Administrativas
+                        2. Control de Altas Administrativas
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--neutral-400)' }}>
                         Gestión del proceso de alta hospitalaria — {total} registros

@@ -32,6 +32,7 @@ import {
 } from '../services/fichasAdmisionesService';
 import DigitalSignaturePad from './common/DigitalSignaturePad';
 import PrintConstanciaFichas from './PrintConstanciaFichas';
+import CircuitoFichasBanner from './common/CircuitoFichasBanner';
 
 export default function FichasAdmisionesPanel({ isPublic = false, currentUser = null }) {
     // Pestañas
@@ -378,6 +379,9 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
             maxWidth: '1440px', margin: '0 auto',
             fontFamily: "'Inter', -apple-system, sans-serif"
         }}>
+            {/* Circuito de fichas: paso 1 */}
+            <CircuitoFichasBanner step={1} interactive={!isPublic} />
+
             {/* Header del Panel */}
             <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -397,7 +401,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                             fontSize: '1.45rem', fontWeight: 900, color: '#0f172a',
                             letterSpacing: '-0.4px', margin: 0
                         }}>
-                            Entrega de Fichas de Admisiones
+                            1. Entrega de Fichas de Admisiones
                         </h1>
                         <p style={{ fontSize: '0.84rem', color: '#64748b', margin: '2px 0 0 0' }}>
                             Trazabilidad y remitos de entrega física de fichas de Recepción a Administración (7:00 hs)

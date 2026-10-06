@@ -2,11 +2,36 @@ import { useState, useEffect, useCallback } from 'react';
 import { HelpCircle, X, ChevronLeft, ChevronRight, Lightbulb } from 'lucide-react';
 
 // ─── Help content per module ───
+const CIRCUITO_SLIDE = {
+    title: '🔁 Circuito de fichas (obligatorio)',
+    desc: '1. **Entrega de Fichas** (Recepción): entrega las fichas físicas a Administración con remito firmado.\n2. **Control de Altas** (Administración): trabaja solo fichas ENTREGADAS y las traspasa con remito.\n3. **Facturación**: trabaja solo fichas TRASPASADAS y factura o devuelve con remito.\n\n• Aplica a admisiones con ingreso desde el **01/10/2026**\n• Ningún paso se saltea\n• Las devoluciones van siempre al paso anterior: **Facturación → Control de Altas → Recepción**',
+};
+
 const HELP_CONTENT = {
+    entrega_fichas: {
+        title: '1. Entrega de Fichas',
+        icon: '📦',
+        slides: [
+            CIRCUITO_SLIDE,
+            {
+                title: '📦 Qué hace Recepción (paso 1)',
+                desc: '1. En **Pendientes**, buscar las admisiones del día anterior\n2. Enviar al carrito solo las fichas que se entregan físicamente\n3. En el **Carrito**, marcar documentación completa o incompleta (con motivo)\n4. Firmar quien entrega y quien recibe y **emitir la entrega** (remito PDF)\n5. Recién ahí la admisión aparece en **2. Control de Altas**',
+            },
+            {
+                title: '↩️ Fichas devueltas',
+                desc: '• Administración devuelve fichas incompletas desde **Historial**, indicando el motivo\n• Recepción las ve en el filtro **Devueltas**\n• Completar la documentación y presionar **Subsanar**: la ficha vuelve a Pendientes para una nueva entrega',
+            },
+        ],
+    },
     altas: {
-        title: 'Control de Altas',
+        title: '2. Control de Altas',
         icon: '📋',
         slides: [
+            CIRCUITO_SLIDE,
+            {
+                title: '⚠️ ¿No aparece una admisión?',
+                desc: 'Desde el **01/10/2026**, una admisión solo aparece acá cuando Recepción **emitió la entrega de su ficha** en **1. Entrega de Fichas**.\n\n• Si no la ves, su ficha está pendiente, en carrito o devuelta a Recepción\n• El aviso amarillo arriba muestra cuántas faltan entregar\n• No es un error de sincronización con SALUS',
+            },
             {
                 img: '/help/altas_overview.png',
                 title: 'Vista General',
@@ -18,7 +43,7 @@ const HELP_CONTENT = {
             },
             {
                 title: '📦 Traspaso a Facturación',
-                desc: '1. Seleccioná las fichas con los checkboxes\n2. Hacé click en **"Traspasar a Facturación"**\n3. Confirmá en el diálogo\n4. Se genera un **remito PDF** automáticamente\n5. Las fichas aparecen en el módulo de Facturación',
+                desc: '1. Seleccioná las fichas con los checkboxes\n2. Hacé click en **"Traspasar a Facturación"**\n3. Confirmá en el diálogo\n4. Se genera un **remito PDF** automáticamente\n5. Las fichas aparecen en el módulo de Facturación\n\n• Si falta documentación física, **no traspasar**: devolver la ficha a Recepción desde **1. Entrega de Fichas → Historial**',
             },
             {
                 title: '💡 Tips',
@@ -27,9 +52,10 @@ const HELP_CONTENT = {
         ],
     },
     facturacion: {
-        title: 'Facturación Internada',
+        title: '3. Facturación Internada',
         icon: '🧾',
         slides: [
+            CIRCUITO_SLIDE,
             {
                 img: '/help/facturacion_overview.png',
                 title: 'Vista General',
@@ -41,7 +67,7 @@ const HELP_CONTENT = {
             },
             {
                 title: '🔙 Devolver Fichas',
-                desc: '1. Seleccioná la ficha con errores\n2. Click en botón **"Devolver"**\n3. Escribí el motivo de devolución\n4. La ficha vuelve a Control de Altas con estado "Devuelta FAC"\n5. El responsable de Altas verá la devolución y el motivo',
+                desc: '1. Seleccioná la ficha con errores\n2. Click en botón **"Devolver"**\n3. Escribí el motivo de devolución\n4. La ficha vuelve a Control de Altas con estado "Devuelta FAC"\n5. El responsable de Altas verá la devolución y el motivo\n\n• Nunca devolver directamente a Recepción: siempre vuelve a **2. Control de Altas**',
             },
             {
                 title: '👤 Asignación de Responsable',

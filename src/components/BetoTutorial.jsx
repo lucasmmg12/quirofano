@@ -60,10 +60,20 @@ const TUTORIALS = {
             { target: null, title: '✅ ¡Listo!', text: 'Ya conocés las funciones principales de auditoría de historias clínicas. ¡A auditar!', position: 'center' },
         ]
     },
-    altas: {
-        title: 'Control de Altas Administrativas',
+    entrega_fichas: {
+        title: '1. Entrega de Fichas',
         steps: [
-            { target: null, title: '📋 Bienvenido a Control de Altas', text: 'Acá gestionás las altas administrativas de pacientes internados. Te muestro cómo funciona todo el flujo.', position: 'center' },
+            { target: null, title: '📦 Paso 1 del circuito: Entrega de Fichas', text: 'El circuito de fichas de internación es siempre 1. Entrega de Fichas → 2. Control de Altas → 3. Facturación. Acá empieza todo: Recepción entrega las fichas físicas a Administración.', position: 'center' },
+            { target: null, title: '📋 Pendientes', text: 'En la pestaña "Pendientes" están las admisiones cuya ficha aún no fue entregada. Buscá las del día anterior y enviá al carrito solo las que entregás físicamente.', position: 'center' },
+            { target: null, title: '🛒 Carrito y remito', text: 'En el carrito marcá cada ficha como documentación completa o incompleta (con motivo). Firmá quien entrega y quien recibe y emití la entrega: se genera el remito PDF.', position: 'center' },
+            { target: null, title: '⚠️ Importante', text: 'Desde el 01/10/2026, una admisión NO aparece en Control de Altas hasta que se emite la entrega de su ficha acá. Si no se entrega, Administración no puede trabajarla.', position: 'center' },
+            { target: null, title: '↩️ Devueltas', text: 'Si Administración devuelve una ficha incompleta, la verás en "Devueltas" con el motivo. Completá la documentación y presioná "Subsanar" para volver a entregarla.', position: 'center' },
+        ]
+    },
+    altas: {
+        title: '2. Control de Altas Administrativas',
+        steps: [
+            { target: null, title: '📋 Paso 2 del circuito: Control de Altas', text: 'El circuito es siempre 1. Entrega de Fichas → 2. Control de Altas → 3. Facturación. Acá solo aparecen las admisiones cuya ficha física ya fue ENTREGADA por Recepción (ingresos desde el 01/10/2026). Si una admisión no aparece, su ficha todavía no fue entregada.', position: 'center' },
             { target: null, title: '📊 Paso 1: Revisar la Tabla', text: 'La tabla muestra todas las altas sincronizadas desde SALUS. Cada fila tiene estado, paciente, obra social, especialidad, médico, fechas y responsable asignado automáticamente por criterios.', position: 'center' },
             { target: null, title: '🏷️ Paso 2: Gestionar Estados', text: 'Hacé clic en el badge de ESTADO para cambiar entre: Procesada → En auditoría → Prórroga → Con presupuesto → Alta Adm → Suspendida → Particular → Interconsulta. El estado se guarda instantáneamente.', position: 'center' },
             { target: null, title: '💲 Estados Automáticos', text: 'Si la admisión ya tiene factura en SALUS (PDV 21/31), el estado cambia automáticamente a "Facturada" con badge verde y muestra quién la facturó. Si fue devuelta desde Facturación, aparece "Devuelta FAC" en rojo.', position: 'center' },
@@ -76,9 +86,9 @@ const TUTORIALS = {
         ]
     },
     facturacion: {
-        title: 'Control de Facturación Internada',
+        title: '3. Control de Facturación Internada',
         steps: [
-            { target: null, title: '🧾 Bienvenido a Facturación', text: 'Este módulo muestra las fichas que fueron traspasadas desde Control de Altas. Acá se gestiona el proceso de facturación internada.', position: 'center' },
+            { target: null, title: '🧾 Paso 3 del circuito: Facturación', text: 'El circuito es siempre 1. Entrega de Fichas → 2. Control de Altas → 3. Facturación. Este módulo muestra solo las fichas TRASPASADAS con remito desde Control de Altas. Las devoluciones vuelven siempre a Control de Altas, nunca directo a Recepción.', position: 'center' },
             { target: null, title: '📊 Paso 1: KPIs Superiores', text: 'Los indicadores muestran: Total de fichas, Pendientes, En proceso, Facturadas (detectadas automáticamente en SALUS PDV 21/31), Devueltas y Auto-facturadas por SALUS.', position: 'center' },
             { target: null, title: '👤 Paso 2: Asignar Responsable', text: 'Hacé clic en la columna "Asignar" de cada fila para asignar un analista de facturación. La lista incluye a todos los analistas del equipo.', position: 'center' },
             { target: null, title: '🏷️ Paso 3: Cambiar Estado', text: 'Hacé clic en el badge de estado para cambiar entre: Pendiente → En proceso → Facturada → Devuelta. Si SALUS detectó la factura automáticamente, el estado se setea solo.', position: 'center' },

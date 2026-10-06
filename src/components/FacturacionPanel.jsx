@@ -34,6 +34,7 @@ import {
 } from '../services/altasService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
+import CircuitoFichasBanner from './common/CircuitoFichasBanner';
 import SignaturePad from './SignaturePad';
 import { SkeletonTablePanel } from './SkeletonLoader';
 import KPICard from './metrics/KPICard';
@@ -1244,12 +1245,15 @@ export default function FacturacionPanel({ addToast, currentUser }) {
 
     return (
         <div className="content no-print animate-fade-in" style={{ padding: '20px 24px' }}>
+            {/* ── Circuito de fichas: paso 3 ── */}
+            <CircuitoFichasBanner step={3} />
+
             {/* ── Header ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <div>
                     <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: 'var(--neutral-800)' }}>
                         <Receipt size={22} style={{ verticalAlign: 'middle', marginRight: '8px', color: '#6366F1' }} />
-                        Control de Facturación Internada
+                        3. Control de Facturación Internada
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
                         Control de facturación internada — PDV 21/31
