@@ -124,6 +124,13 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
         try {
             const res = await fetchHistorialEntregas({ search: historialSearch });
             setHistorial(res.data);
+            if (historialSearch.trim() && res.data.length > 0 && res.data.length <= 3) {
+                const firstId = res.data[0].id;
+                setExpandedEntregaId(firstId);
+                fetchEntregaConDetalle(firstId).then(det => {
+                    setEntregaDetalles(prev => ({ ...prev, [firstId]: det }));
+                });
+            }
         } catch (err) {
             console.error('[FichasAdmisiones] Error loading historial:', err);
         } finally {
@@ -879,7 +886,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                     Fichas Seleccionadas para Entrega ({cartItems.length})
                                 </h2>
                                 <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                                    Revise cada ficha. Si falta alguna autorización o garantía, márquela como incompleta para dejar constancia formal.
+                                    Fichas preparadas para entrega en lote a Administración. La auditoría y devolución documental se realiza en Control de Altas.
                                 </p>
                             </div>
 
@@ -930,111 +937,54 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {cartItems.map((item, idx) => {
-                                    const isIncompleta = item.docEstado === 'incompleta';
-
-                                    return (
-                                        <div
-                                            key={item.id}
-                                            style={{
-                                                background: '#ffffff', borderRadius: '10px',
-                                                border: isIncompleta ? '1.5px solid #f59e0b' : '1px solid #e2e8f0',
-                                                padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px',
-                                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <span style={{
-                                                        background: '#f1f5f9', color: '#475569', width: '26px', height: '26px',
-                                                        borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        fontSize: '0.75rem', fontWeight: 800
-                                                    }}>
-                                                        {idx + 1}
-                                                    </span>
-                                                    <div>
-                                                        <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
-                                                            {item.paciente}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.76rem', color: '#64748b', display: 'flex', gap: '12px', marginTop: '2px' }}>
-                                                            <span>Adm: <strong style={{ color: '#0284c7' }}>{item.numero_admision}</strong></span>
-                                                            <span>DNI: {item.dni}</span>
-                                                            {item.nhc && item.nhc !== '—' && <span>HC: {item.nhc}</span>}
-                                                            <span>OS: {item.cliente}</span>
-                                                        </div>
-                                                    </div>
+                                {cartItems.map((item, idx) => (
+                                    <div
+                                        key={item.id}
+                                        style={{
+                                            background: '#ffffff', borderRadius: '10px',
+                                            border: '1px solid #e2e8f0',
+                                            padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <span style={{
+                                                background: '#f1f5f9', color: '#475569', width: '26px', height: '26px',
+                                                borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: '0.75rem', fontWeight: 800
+                                            }}>
+                                                {idx + 1}
+                                            </span>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
+                                                    {item.paciente}
                                                 </div>
-
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {/* Toggle Documentación Completa / Incompleta */}
-                                                    <div style={{
-                                                        display: 'flex', background: '#f1f5f9', borderRadius: '6px',
-                                                        padding: '2px', border: '1px solid #e2e8f0'
-                                                    }}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleUpdateItemDocEstado(item.id, 'completa', '')}
-                                                            style={{
-                                                                padding: '4px 10px', borderRadius: '4px', border: 'none',
-                                                                background: !isIncompleta ? '#16a34a' : 'transparent',
-                                                                color: !isIncompleta ? '#ffffff' : '#64748b',
-                                                                fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            ✓ Completa
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleUpdateItemDocEstado(item.id, 'incompleta', item.motivoIncompleta || 'Falta autorización')}
-                                                            style={{
-                                                                padding: '4px 10px', borderRadius: '4px', border: 'none',
-                                                                background: isIncompleta ? '#f59e0b' : 'transparent',
-                                                                color: isIncompleta ? '#ffffff' : '#64748b',
-                                                                fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            ⚠️ Incompleta
-                                                        </button>
-                                                    </div>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleQuitarDelCarrito(item.id)}
-                                                        title="Quitar del carrito"
-                                                        style={{
-                                                            background: 'transparent', border: 'none', color: '#94a3b8',
-                                                            cursor: 'pointer', padding: '6px', borderRadius: '4px'
-                                                        }}
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
+                                                <div style={{ fontSize: '0.76rem', color: '#64748b', display: 'flex', gap: '12px', marginTop: '2px' }}>
+                                                    <span>Adm: <strong style={{ color: '#0284c7' }}>{item.numero_admision}</strong></span>
+                                                    <span>DNI: {item.dni}</span>
+                                                    {item.nhc && item.nhc !== '—' && <span>HC: {item.nhc}</span>}
+                                                    <span>OS: {item.cliente}</span>
+                                                    {item.responsableRecepcion && item.responsableRecepcion !== 'Recepción General' && (
+                                                        <span>Recepcionó: <strong style={{ color: '#475569' }}>{item.responsableRecepcion}</strong></span>
+                                                    )}
                                                 </div>
                                             </div>
-
-                                            {/* Si está marcada como incompleta, permitir detallar el motivo */}
-                                            {isIncompleta && (
-                                                <div style={{
-                                                    background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px',
-                                                    padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px'
-                                                }}>
-                                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#92400e', whiteSpace: 'nowrap' }}>
-                                                        Motivo faltante:
-                                                    </span>
-                                                    <input
-                                                        type="text"
-                                                        value={item.motivoIncompleta || ''}
-                                                        onChange={(e) => handleUpdateItemDocEstado(item.id, 'incompleta', e.target.value)}
-                                                        placeholder="Ej: Falta autorización OSP / Falta pagaré de garantía / Falta firma paciente"
-                                                        style={{
-                                                            width: '100%', padding: '5px 8px', borderRadius: '4px',
-                                                            border: '1px solid #d97706', fontSize: '0.76rem', outline: 'none'
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
                                         </div>
-                                    );
-                                })}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleQuitarDelCarrito(item.id)}
+                                            title="Quitar del carrito"
+                                            style={{
+                                                background: 'transparent', border: 'none', color: '#94a3b8',
+                                                cursor: 'pointer', padding: '6px', borderRadius: '4px',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
@@ -1162,7 +1112,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                 type="text"
                                 value={historialSearch}
                                 onChange={(e) => setHistorialSearch(e.target.value)}
-                                placeholder="Buscar por código de remito, responsable o notas..."
+                                placeholder="Buscar por paciente, N° admisión, DNI, remito o responsable..."
                                 style={{
                                     width: '100%', padding: '9px 12px 9px 36px',
                                     borderRadius: '8px', border: '1.5px solid #cbd5e1',

@@ -1818,6 +1818,7 @@ async function syncAltasAdministrativas(db, fastSync = false) {
             TA.[Doctor],
             TA.[Motivo de alta],
             TA.[Control ADM finalizado],
+            P.Nombre AS [Operador],
             (
                 SELECT STUFF((
                     SELECT CHAR(13) + CHAR(10) + '---' + CHAR(13) + CHAR(10) + CAST(O.ValorM AS NVARCHAR(MAX))
@@ -1831,6 +1832,8 @@ async function syncAltasAdministrativas(db, fastSync = false) {
                 ).value('.', 'NVARCHAR(MAX)'), 1, 7, '')
             ) AS [Observaciones]
         FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
+        LEFT JOIN [SALUS].[dbo].[HP_Hospitalizacion] HP ON HP.id = TA.idAdmision
+        LEFT JOIN [SALUS].[dbo].[Personal] P ON P.id = HP.idUsuarioCreacion
         WHERE 
             (
                 TA.[Fecha ingreso] >= DATEADD(DAY, -${daysBack}, CAST(GETDATE() AS DATE))
@@ -1862,6 +1865,7 @@ async function syncAltasAdministrativas(db, fastSync = false) {
             especialidad: r.Especialidad?.trim() || null,
             proceso: r.Proceso?.trim() || null,
             doctor: r.Doctor?.trim() || null,
+            operador: r.Operador?.trim() || null,
             motivo_alta: r['Motivo de alta']?.trim() || null,
             control_adm_finalizado: r['Control ADM finalizado']?.trim() || null,
             observaciones: cleanObs,
@@ -1921,6 +1925,10 @@ async function syncAltasAdministrativas(db, fastSync = false) {
         const batch = uniqueRecords.slice(i, i + BATCH).map(row => {
             const preserved = existingMap.get(row.numero_admision);
             const merged = preserved ? { ...row, ...preserved } : row;
+            // Priorizar operador de SALUS (usuario creación de la admisión) si está disponible
+            if (row.operador) {
+                merged.operador = row.operador;
+            }
 
             // Auto-mapear Particular si cliente es 042 - PARTICULARES o no empieza con número
             const isPart = !merged.cliente || !/^\d{2,3}/.test(merged.cliente.trim()) || merged.cliente.includes('042') || merged.cliente.toUpperCase().includes('PARTICULAR');

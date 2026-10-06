@@ -328,7 +328,21 @@ export async function fetchHistorialEntregas({
 
     if (search && search.trim()) {
         const s = search.trim();
-        query = query.or(`codigo.ilike.%${s}%,responsable_entrega.ilike.%${s}%,responsable_recibe.ilike.%${s}%,observaciones.ilike.%${s}%`);
+
+        // Buscar en detalle coincidencias de paciente, número de admisión, DNI o recepcionista
+        const { data: matchedDetalles } = await supabase
+            .from('entregas_fichas_detalle')
+            .select('entrega_id')
+            .or(`paciente.ilike.%${s}%,numero_admision.ilike.%${s}%,dni.ilike.%${s}%,responsable_recepcion.ilike.%${s}%`)
+            .limit(100);
+
+        const matchingIds = Array.from(new Set((matchedDetalles || []).map(d => d.entrega_id).filter(Boolean)));
+
+        if (matchingIds.length > 0) {
+            query = query.or(`codigo.ilike.%${s}%,responsable_entrega.ilike.%${s}%,responsable_recibe.ilike.%${s}%,observaciones.ilike.%${s}%,id.in.(${matchingIds.join(',')})`);
+        } else {
+            query = query.or(`codigo.ilike.%${s}%,responsable_entrega.ilike.%${s}%,responsable_recibe.ilike.%${s}%,observaciones.ilike.%${s}%`);
+        }
     }
 
     query = query.order('fecha_entrega', { ascending: false }).range(from, to);

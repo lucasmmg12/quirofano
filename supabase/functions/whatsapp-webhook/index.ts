@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
                 if (activeTurnos && activeTurnos.length > 0) {
                     turnosStr = '\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n' +
                         activeTurnos.map((t: any, idx: number) => 
-                            `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Sede: ${t.sede} | Cobertura: ${t.obra_social || 'A confirmar'}`
+                            `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Cobertura: ${t.obra_social || 'A confirmar'}`
                         ).join('\n');
                 }
             }
@@ -1725,7 +1725,6 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
         reply += `⏰ *Horario:* ${t.hora} hs\n`;
         reply += `🩺 *Especialidad:* ${t.especialidad || t.tipo_visita || 'Consulta Médica'}\n`;
         reply += `👨‍⚕️ *Profesional:* ${t.medico || 'Profesional Asignado'}\n`;
-        reply += `📍 *Lugar / Sede:* ${t.sede || 'Sede San Luis (San Luis 432 Oeste)'}\n`;
         if (t.obra_social && t.obra_social !== 'Particular / A confirmar') {
             reply += `📋 *Cobertura:* ${t.obra_social}\n`;
         }
@@ -1850,7 +1849,7 @@ async function generateChatGptConversationalResponse(
         const turnosContextStr = (context?.turnosActivosProximos && context.turnosActivosProximos.length > 0)
             ? `\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n` +
               context.turnosActivosProximos.map((t, idx) => 
-                `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Sede: ${t.sede} | Cobertura: ${t.obra_social}`
+                `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Cobertura: ${t.obra_social}`
               ).join('\n') + `\n(Si el paciente consulta sobre su cita o detalles de su turno, bríndale esta información de forma cálida, clara y completa).\n`
             : '';
 
