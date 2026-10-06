@@ -425,6 +425,125 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
         }
 
         // =============================================
+        // 0. DETECTAR Y REGISTRAR REACCIONES EMOJI DE WHATSAPP
+        // =============================================
+        const reactionMsg = data.message?.reactionMessage || data.reactionMessage || (data.type === 'reaction' ? data : null);
+        if (reactionMsg && (reactionMsg.key || reactionMsg.text !== undefined)) {
+            const targetKeyId = reactionMsg.key?.id;
+            const emoji = reactionMsg.text || ''; // Cadena vacía = paciente quitó la reacción
+            console.log(`[webhook] Reacción recibida: "${emoji}" para mensaje key: ${targetKeyId} de ${phone}`);
+            if (phone) {
+                try {
+                    const { data: targetRows } = await supabase
+                        .from('whatsapp_messages')
+                        .select('id, raw_payload')
+                        .eq('phone', phone)
+                        .order('created_at', { ascending: false })
+                        .limit(25);
+
+                    const targetRow = targetRows?.find((r: any) => 
+                        r.raw_payload?.data?.key?.id === targetKeyId ||
+                        r.raw_payload?.key?.id === targetKeyId ||
+                        String(r.id) === String(targetKeyId)
+                    ) || (targetKeyId ? null : targetRows?.[0]);
+
+                    if (targetRow) {
+                        const currentPayload = targetRow.raw_payload || {};
+                        let currentReactions = Array.isArray(currentPayload.reactions) ? [...currentPayload.reactions] : [];
+
+                        if (!emoji) {
+                            currentReactions = currentReactions.filter((r: any) => r.from !== 'patient');
+                        } else {
+                            const existingIdx = currentReactions.findIndex((r: any) => r.from === 'patient');
+                            const rxObj = { emoji, from: 'patient', name: senderName || 'Paciente', at: new Date().toISOString() };
+                            if (existingIdx >= 0) {
+                                currentReactions[existingIdx] = rxObj;
+                            } else {
+                                currentReactions.push(rxObj);
+                            }
+                        }
+
+                        await supabase
+                            .from('whatsapp_messages')
+                            .update({
+                                raw_payload: {
+                                    ...currentPayload,
+                                    reactions: currentReactions
+                                }
+                            })
+                            .eq('id', targetRow.id);
+                        console.log(`[webhook] ✅ Reacción actualizada con éxito en mensaje ${targetRow.id}`);
+                    }
+                } catch (rxErr) {
+                    console.warn('[webhook] Error actualizando reacción:', rxErr);
+                }
+            }
+            return new Response(JSON.stringify({ ok: true, reaction: true }), {
+                status: 200,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        // =============================================
+        // 0B. DETECTAR MENSAJES ELIMINADOS (REVOKE / PROTOCOL MESSAGE)
+        // NUNCA borrar de la base de datos: marcar para auditoría médica
+        // =============================================
+        const protocolMsg = data.message?.protocolMessage || data.protocolMessage;
+        if (protocolMsg && (protocolMsg.type === 0 || protocolMsg.type === 'REVOKE' || protocolMsg.key?.id)) {
+            const revokeKeyId = protocolMsg.key?.id;
+            console.log(`[webhook] Solicitud de revocación / borrado recibida para key: ${revokeKeyId} de ${phone}`);
+            if (phone && revokeKeyId) {
+                try {
+                    const { data: revokeRows } = await supabase
+                        .from('whatsapp_messages')
+                        .select('id, raw_payload')
+                        .eq('phone', phone)
+                        .order('created_at', { ascending: false })
+                        .limit(25);
+
+                    const revokeRow = revokeRows?.find((r: any) => 
+                        r.raw_payload?.data?.key?.id === revokeKeyId ||
+                        r.raw_payload?.key?.id === revokeKeyId ||
+                        String(r.id) === String(revokeKeyId)
+                    );
+
+                    if (revokeRow) {
+                        await supabase
+                            .from('whatsapp_messages')
+                            .update({
+                                raw_payload: {
+                                    ...(revokeRow.raw_payload || {}),
+                                    is_deleted: true,
+                                    revoked: true,
+                                    deleted_at: new Date().toISOString()
+                                }
+                            })
+                            .eq('id', revokeRow.id);
+                        console.log(`[webhook] ✅ Mensaje ${revokeRow.id} marcado como revocado por paciente (conservado en base de datos para auditoría médica).`);
+                    }
+                } catch (revErr) {
+                    console.warn('[webhook] Error marcando mensaje como revocado:', revErr);
+                }
+            }
+            return new Response(JSON.stringify({ ok: true, revoked: true }), {
+                status: 200,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        // Extraer mensaje citado si el paciente respondió a uno en WhatsApp
+        const contextInfo = data.message?.extendedTextMessage?.contextInfo;
+        let incomingQuote = null;
+        if (contextInfo?.quotedMessage) {
+            const qMsg = contextInfo.quotedMessage;
+            const qText = qMsg.conversation || qMsg.extendedTextMessage?.text || (qMsg.imageMessage ? '📷 Foto' : qMsg.audioMessage ? '🎤 Audio' : qMsg.stickerMessage ? '🏷️ Sticker' : '');
+            incomingQuote = {
+                senderName: contextInfo.participant ? 'Remitente' : 'Mensaje',
+                text: qText
+            };
+        }
+
+        // =============================================
         // EXTRAER MEDIA — búsqueda exhaustiva en el payload
         // BuilderBot puede enviar media en múltiples formatos:
         //   - data.attachment (array de URLs o objetos)
@@ -557,7 +676,7 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                     media_type: finalMediaType,
                     sender_name: senderName,
                     is_read: direction === 'outgoing',
-                    raw_payload: payload,
+                    raw_payload: incomingQuote ? { ...payload, quoted_message: incomingQuote } : payload,
                     // Guardar la URL temporal original como referencia
                     original_media_url: originalMediaUrl || null,
                     // Línea WhatsApp que recibió el mensaje

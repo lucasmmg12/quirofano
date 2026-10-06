@@ -11,11 +11,12 @@ import {
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy,
     FileText, FileSpreadsheet, File, Maximize2, Palette, LayoutTemplate,
-    Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users
+    Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users,
+    CheckCheck, Reply, Smile
 } from 'lucide-react';
 
 /**
- * Detecta metadata y tipo de archivo para documentos y medios (PDF, Word, Excel, Imágenes)
+ * Detecta metadata y tipo de archivo para documentos y medios (PDF, Word, Excel, Imágenes, Stickers)
  */
 function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     if (!url && !explicitType) return null;
@@ -25,11 +26,12 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     
     const isVoiceNoteEvent = cleanText.startsWith('_event_voice_note_') || cleanCaption.startsWith('_event_voice_note_');
     const isAudio = explicitType === 'audio' || explicitType === 'voice' || isVoiceNoteEvent || /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(cleanUrl) || cleanUrl.includes('/audio') || cleanUrl.includes('audio_') || cleanUrl.includes('voice');
-    const isImage = !isAudio && (explicitType === 'image' || /\.(jpe?g|png|webp|gif|bmp|svg)($|\?)/i.test(cleanUrl));
-    const isPdf = !isAudio && !isImage && (cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf'));
-    const isWord = !isAudio && !isImage && (cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc'));
-    const isExcel = !isAudio && !isImage && (cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv'));
-    const isTxt = !isAudio && !isImage && !isPdf && !isWord && !isExcel && (cleanUrl.includes('.txt') || cleanCaption.toLowerCase().endsWith('.txt') || cleanText.toLowerCase().endsWith('.txt'));
+    const isSticker = explicitType === 'sticker' || cleanText === '[sticker]' || cleanCaption === '[sticker]' || cleanUrl.includes('/sticker') || (cleanUrl.includes('.webp') && !explicitType);
+    const isImage = !isAudio && !isSticker && (explicitType === 'image' || /\.(jpe?g|png|gif|bmp|svg)($|\?)/i.test(cleanUrl));
+    const isPdf = !isAudio && !isImage && !isSticker && (cleanUrl.includes('.pdf') || explicitType === 'pdf' || cleanCaption.toLowerCase().endsWith('.pdf') || cleanText.toLowerCase().endsWith('.pdf'));
+    const isWord = !isAudio && !isImage && !isSticker && (cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc'));
+    const isExcel = !isAudio && !isImage && !isSticker && (cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv'));
+    const isTxt = !isAudio && !isImage && !isSticker && !isPdf && !isWord && !isExcel && (cleanUrl.includes('.txt') || cleanCaption.toLowerCase().endsWith('.txt') || cleanText.toLowerCase().endsWith('.txt'));
     
     let fileType = 'document';
     let label = 'Documento Adjunto';
@@ -38,7 +40,14 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     let borderColor = '#BFDBFE';
     let ext = 'DOC';
     
-    if (isAudio) {
+    if (isSticker) {
+        fileType = 'sticker';
+        label = 'Sticker WhatsApp';
+        color = '#0284C7';
+        bgColor = '#F0F9FF';
+        borderColor = '#BAE6FD';
+        ext = 'STK';
+    } else if (isAudio) {
         fileType = 'audio';
         label = 'Audio / Mensaje de Voz';
         color = '#7C3AED';
@@ -151,19 +160,42 @@ const TEST_BOT_RESET_INDICATOR_ENABLED = false;
  */
 function formatWhatsAppText(text) {
     if (!text || typeof text !== 'string') return text;
-    // Regex que captura *bold*, _italic_, ~strike~ en orden
-    const parts = text.split(/(\*[^*]+\*|_[^_]+_|~[^~]+~)/g);
-    return parts.map((part, i) => {
-        if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-            return <strong key={i}>{part.slice(1, -1)}</strong>;
+    // Manejo de citas textuales de WhatsApp (líneas que empiezan con '> ')
+    const lines = text.split('\n');
+    return lines.map((line, lineIdx) => {
+        if (line.startsWith('> ')) {
+            const quoteContent = line.slice(2);
+            return (
+                <div key={`quote_${lineIdx}`} style={{
+                    borderLeft: '3px solid #94A3B8',
+                    paddingLeft: '8px',
+                    margin: '3px 0',
+                    color: '#64748B',
+                    fontStyle: 'italic',
+                    fontSize: '0.82rem'
+                }}>
+                    {quoteContent}
+                </div>
+            );
         }
-        if (part.startsWith('_') && part.endsWith('_') && part.length > 2) {
-            return <em key={i}>{part.slice(1, -1)}</em>;
-        }
-        if (part.startsWith('~') && part.endsWith('~') && part.length > 2) {
-            return <s key={i}>{part.slice(1, -1)}</s>;
-        }
-        return part;
+        const parts = line.split(/(\*[^*]+\*|_[^_]+_|~[^~]+~)/g);
+        return (
+            <React.Fragment key={`line_${lineIdx}`}>
+                {parts.map((part, i) => {
+                    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+                        return <strong key={i}>{part.slice(1, -1)}</strong>;
+                    }
+                    if (part.startsWith('_') && part.endsWith('_') && part.length > 2) {
+                        return <em key={i}>{part.slice(1, -1)}</em>;
+                    }
+                    if (part.startsWith('~') && part.endsWith('~') && part.length > 2) {
+                        return <s key={i}>{part.slice(1, -1)}</s>;
+                    }
+                    return part;
+                })}
+                {lineIdx < lines.length - 1 && '\n'}
+            </React.Fragment>
+        );
     });
 }
 
@@ -283,13 +315,19 @@ export default function ContactCenterChatConsole({
     onToggleSound,
     onReloadChats,
     loadingLive = false,
-    isLMarinero = false
+    isLMarinero = false,
+    onToggleReaction
 }) {
     // Selección múltiple y cierre masivo silencioso
     const [selectedChatIds, setSelectedChatIds] = useState(new Set());
     const [bulkCloseModalOpen, setBulkCloseModalOpen] = useState(false);
     const [bulkResolutionReason, setBulkResolutionReason] = useState('Cierre masivo de cola');
     const [isBulkClosing, setIsBulkClosing] = useState(false);
+
+    // Responder citando a un mensaje específico (Quoting estilo WhatsApp)
+    const [replyingToMessage, setReplyingToMessage] = useState(null);
+    // Mensaje actualmente bajo hover para la barra contextual de emojis y respuesta
+    const [hoveredMsgId, setHoveredMsgId] = useState(null);
 
     // Tracking de chats leídos: Map<chatId, incomingMsgCount al momento de leer>
     const readChatMsgCountRef = useRef(new Map());
@@ -1127,7 +1165,10 @@ export default function ContactCenterChatConsole({
                 });
             }
 
+            setReplyingToMessage(null);
             return () => clearTimeout(minTimer);
+        } else {
+            setReplyingToMessage(null);
         }
     }, [selectedChat?.id]);
 
@@ -2595,8 +2636,10 @@ export default function ContactCenterChatConsole({
                 isPrivateNote,
                 uploaded.publicUrl,
                 'image',
-                fileNameToSend
+                fileNameToSend,
+                replyingToMessage
             );
+            setReplyingToMessage(null);
 
             if (imagePreviewModal.previewUrl) {
                 URL.revokeObjectURL(imagePreviewModal.previewUrl);
@@ -2749,11 +2792,13 @@ export default function ContactCenterChatConsole({
                     isNote,
                     uploaded.publicUrl,
                     selectedFile.type,
-                    selectedFile.name
+                    selectedFile.name,
+                    replyingToMessage
                 );
 
                 handleRemoveSelectedFile();
                 setMessageInput('');
+                setReplyingToMessage(null);
                 setQuickRepliesOpen(false);
                 setQuickRepliesModalOpen(false);
                 return;
@@ -2768,8 +2813,9 @@ export default function ContactCenterChatConsole({
 
         if (!text || !text.trim()) return;
 
-        onSendMessage(selectedChat.id, text.trim(), isNote);
+        onSendMessage(selectedChat.id, text.trim(), isNote, null, null, null, replyingToMessage);
         setMessageInput('');
+        setReplyingToMessage(null);
         setQuickRepliesOpen(false);
         setQuickRepliesModalOpen(false);
     };
@@ -4788,16 +4834,137 @@ export default function ContactCenterChatConsole({
                                     </div>
 
                                     {/* Burbuja de Mensaje con Tag de Autoría */}
-                                    <div style={{
-                                        background: isNote ? '#FFF7ED' : (isPatient ? '#DCFCE7' : '#FFFFFF'),
-                                        border: isNote ? '1px solid #FED7AA' : '1px solid #E2E8F0',
-                                        padding: '10px 14px',
-                                        borderRadius: isPatient ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
-                                        color: '#1E293B',
-                                        fontSize: '0.86rem',
-                                        lineHeight: 1.45
-                                    }}>
+                                    <div 
+                                        onMouseEnter={() => setHoveredMsgId(msg.id)}
+                                        onMouseLeave={() => setHoveredMsgId(null)}
+                                        style={{
+                                            position: 'relative',
+                                            background: isNote ? '#FFF7ED' : (isPatient ? '#DCFCE7' : '#FFFFFF'),
+                                            border: isNote ? '1px solid #FED7AA' : '1px solid #E2E8F0',
+                                            padding: '10px 14px',
+                                            borderRadius: isPatient ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                                            color: '#1E293B',
+                                            fontSize: '0.86rem',
+                                            lineHeight: 1.45
+                                        }}>
+                                        {/* Micro-Barra Flotante de Acciones al pasar el mouse: Emojis Rápidos y Botón Responder */}
+                                        {hoveredMsgId === msg.id && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '-16px',
+                                                [isPatient ? 'right' : 'left']: '8px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '2px',
+                                                background: '#FFFFFF',
+                                                border: '1px solid #CBD5E1',
+                                                borderRadius: '20px',
+                                                padding: '2px 6px',
+                                                boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
+                                                zIndex: 15
+                                            }}>
+                                                {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+                                                    <button
+                                                        key={emoji}
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onToggleReaction?.(msg, emoji);
+                                                        }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.85rem',
+                                                            padding: '1px 3px',
+                                                            borderRadius: '4px',
+                                                            lineHeight: 1
+                                                        }}
+                                                        title={`Reaccionar con ${emoji}`}
+                                                    >
+                                                        {emoji}
+                                                    </button>
+                                                ))}
+                                                <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 3px' }} />
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setReplyingToMessage({
+                                                            id: msg.id,
+                                                            senderName: msg.senderName,
+                                                            text: msg.text || msg.caption || (msg.type === 'audio' ? 'Nota de voz' : msg.type === 'image' ? 'Foto médica' : msg.type === 'sticker' ? 'Sticker' : 'Adjunto'),
+                                                            type: msg.type,
+                                                            isPatient
+                                                        });
+                                                        inputRef.current?.focus();
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: '#0284C7',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '2px 5px',
+                                                        borderRadius: '4px'
+                                                    }}
+                                                    title="Responder citando este mensaje"
+                                                >
+                                                    <Reply size={12} />
+                                                    <span>Responder</span>
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* AVISO DE AUDITORÍA: MENSAJE ELIMINADO POR EL REMITENTE EN WHATSAPP */}
+                                        {(msg.isDeleted || msg.rawPayload?.is_deleted || msg.rawPayload?.revoked || msg.text === '[Mensaje eliminado]') && (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '4px 8px',
+                                                borderRadius: '6px',
+                                                background: '#FEF2F2',
+                                                border: '1px solid #FECACA',
+                                                color: '#DC2626',
+                                                fontSize: '0.70rem',
+                                                fontWeight: 700,
+                                                marginBottom: '6px'
+                                            }}>
+                                                <AlertTriangle size={12} color="#DC2626" />
+                                                <span>Mensaje eliminado por el remitente en WhatsApp • Conservado para auditoría médica</span>
+                                            </div>
+                                        )}
+
+                                        {/* PREVIEW DE MENSAJE CITADO (ESTILO WHATSAPP) */}
+                                        {(() => {
+                                            const q = msg.quotedMessage || msg.rawPayload?.quoted_message;
+                                            if (!q) return null;
+                                            return (
+                                                <div style={{
+                                                    background: isPatient ? 'rgba(0, 0, 0, 0.04)' : 'rgba(2, 132, 199, 0.08)',
+                                                    borderLeft: `3px solid ${isPatient ? '#0284C7' : '#0369A1'}`,
+                                                    borderRadius: '6px',
+                                                    padding: '5px 8px',
+                                                    marginBottom: '8px',
+                                                    fontSize: '0.75rem',
+                                                    lineHeight: 1.3
+                                                }}>
+                                                    <div style={{ fontWeight: 800, color: isPatient ? '#0284C7' : '#0369A1', fontSize: '0.68rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <Reply size={11} /> {q.senderName || 'Mensaje citado'}
+                                                    </div>
+                                                    <div style={{ color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {q.text || (q.type === 'image' ? '📷 Foto' : q.type === 'audio' ? '🎤 Audio' : q.type === 'sticker' ? '🏷️ Sticker' : '📎 Archivo')}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* TAG DE AUTORÍA CLARO */}
                                         {!isPatient && (
                                             <div style={{
@@ -5208,6 +5375,33 @@ export default function ContactCenterChatConsole({
                                                         </div>
                                                     )}
 
+                                                    {/* TARJETA DE STICKER NATIVO WHATSAPP */}
+                                                    {(msg.type === 'sticker' || msg.mediaType === 'sticker' || (docMeta && docMeta.fileType === 'sticker') || (msg.mediaUrl && (msg.text === '[sticker]' || msg.mediaUrl.endsWith('.webp')))) && (
+                                                        <div style={{ margin: '4px 0', display: 'flex', flexDirection: 'column', alignItems: isPatient ? 'flex-start' : 'flex-end' }}>
+                                                            {msg.mediaUrl ? (
+                                                                <img 
+                                                                    src={msg.mediaUrl} 
+                                                                    alt="Sticker WhatsApp" 
+                                                                    style={{ 
+                                                                        maxWidth: '135px', 
+                                                                        maxHeight: '135px', 
+                                                                        objectFit: 'contain', 
+                                                                        background: 'transparent',
+                                                                        filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))'
+                                                                    }} 
+                                                                />
+                                                            ) : (
+                                                                <div style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                                    padding: '6px 12px', background: '#F1F5F9', borderRadius: '8px',
+                                                                    fontSize: '0.78rem', color: '#475569'
+                                                                }}>
+                                                                    <span style={{ fontSize: '1.2rem' }}>🏷️</span> Sticker WhatsApp
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
                                                     {/* TARJETA DE IMAGEN MÉDICA / ORDEN */}
                                                     {(msg.type === 'image' || (docMeta && docMeta.fileType === 'image' && msg.mediaUrl)) && (
                                                         <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
@@ -5386,7 +5580,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             );
                                         })()}
 
-                                        {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && (
+                                        {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && !(msg.text === '[sticker]' && (msg.type === 'sticker' || msg.mediaUrl)) && (
                                             msg.text.startsWith('📋 [Plantilla Meta') ? (
                                                 <div style={{
                                                     background: '#F0F9FF',
@@ -5418,12 +5612,57 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             )
                                         )}
 
+                                        {/* Reacciones Emoji en la burbuja */}
+                                        {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
+                                            <div style={{
+                                                display: 'flex',
+                                                flexWrap: 'wrap',
+                                                gap: '4px',
+                                                marginTop: '6px',
+                                                marginBottom: '2px',
+                                                justifyContent: isPatient ? 'flex-start' : 'flex-end'
+                                            }}>
+                                                {msg.reactions.map((rx, rIdx) => (
+                                                    <button
+                                                        key={rIdx}
+                                                        type="button"
+                                                        title={`Reacción de ${rx.agentName || rx.name || 'Usuario'}`}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onToggleReaction?.(msg, rx.emoji);
+                                                        }}
+                                                        style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                            background: '#FFFFFF',
+                                                            border: '1px solid #CBD5E1',
+                                                            borderRadius: '12px',
+                                                            padding: '1px 6px',
+                                                            fontSize: '0.72rem',
+                                                            cursor: 'pointer',
+                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                                                            lineHeight: 1.2
+                                                        }}
+                                                    >
+                                                        <span>{rx.emoji}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
 
                                         <div style={{
                                             fontSize: '0.68rem', color: '#94A3B8', marginTop: '6px',
                                             textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px'
                                         }}>
-                                            {msg.timestamp} {!isPatient && !isNote && <Check size={12} color="#059669" />}
+                                            <span title={msg.created_at ? new Date(msg.created_at).toLocaleString('es-AR') : msg.timestamp}>
+                                                {msg.timestamp}
+                                            </span>
+                                            {!isPatient && !isNote && (
+                                                <span title="Entregado al paciente por WhatsApp (Doble tilde)">
+                                                    <CheckCheck size={14} color="#0284C7" />
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -5563,6 +5802,66 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {/* Formulario de redacción de mensaje: Habilitado ÚNICAMENTE si está asignado a mí */}
                     {canWriteMessage && (
                         <form onSubmit={handleSend} style={{ marginTop: '0px' }}>
+                        {/* BANNER DE RESPUESTA A MENSAJE CITADO (ESTILO WHATSAPP WEB) */}
+                        {replyingToMessage && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 12px',
+                                marginBottom: '10px',
+                                background: '#F0F9FF',
+                                borderLeft: `4px solid ${replyingToMessage.isPatient ? '#0284C7' : '#059669'}`,
+                                borderTop: '1px solid #BAE6FD',
+                                borderRight: '1px solid #BAE6FD',
+                                borderBottom: '1px solid #BAE6FD',
+                                borderRadius: '8px',
+                                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.08)'
+                            }}>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div style={{
+                                        fontSize: '0.74rem',
+                                        fontWeight: 800,
+                                        color: replyingToMessage.isPatient ? '#0284C7' : '#059669',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}>
+                                        <Reply size={13} />
+                                        <span>Respondiendo a <strong>{replyingToMessage.senderName}</strong></span>
+                                    </div>
+                                    <div style={{
+                                        fontSize: '0.76rem',
+                                        color: '#475569',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        marginTop: '3px'
+                                    }}>
+                                        {replyingToMessage.text}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setReplyingToMessage(null)}
+                                    style={{
+                                        background: '#FFFFFF',
+                                        border: '1px solid #CBD5E1',
+                                        color: '#64748B',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: '6px',
+                                        marginLeft: '10px'
+                                    }}
+                                    title="Cancelar respuesta"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        )}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 {/* Selector Segmentado: WhatsApp Público vs Nota Privada */}

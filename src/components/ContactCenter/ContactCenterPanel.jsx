@@ -19,7 +19,7 @@ import {
     transferChatToAgent, closeConversationWithResolution,
     bulkCloseConversationsSilent,
     subscribeToContactCenterRealtime, playContactCenterChime,
-    isClosedOrArchived
+    isClosedOrArchived, toggleMessageReaction
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
@@ -498,8 +498,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     }, []);
 
 
-    // Manejar envío de mensaje en la consola de chat (texto, notas y archivos multimedia)
-    const handleSendMessage = async (chatId, text, isNote = false, mediaUrl = null, mediaType = null, fileName = null) => {
+    // Manejar envío de mensaje en la consola de chat (texto, notas, archivos multimedia y citas)
+    const handleSendMessage = async (chatId, text, isNote = false, mediaUrl = null, mediaType = null, fileName = null, quotedMessage = null) => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
@@ -512,7 +512,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 currentUser,
                 mediaUrl,
                 mediaType,
-                fileName
+                fileName,
+                quotedMessage
             });
 
             setChats(prev => {
@@ -541,6 +542,35 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             console.error(err);
             if (addToast) addToast(err.message || 'Error al enviar', 'error');
         }
+    };
+
+    // Alternar reacción emoji en un mensaje de la consola de chat
+    const handleToggleReaction = async (message, emoji) => {
+        if (!message || !activeChatId) return;
+        const agentName = activeAgent?.name || 'Operador';
+
+        // Actualización optimista inmediata en memoria para respuesta instantánea de la UI
+        setChats(prev => prev.map(c => {
+            if (c.id !== activeChatId) return c;
+            const updatedMsgs = (c.messages || []).map(m => {
+                if (m.id !== message.id) return m;
+                const cur = Array.isArray(m.reactions) ? [...m.reactions] : [];
+                const exists = cur.find(r => r.emoji === emoji && r.agentName === agentName);
+                const next = exists
+                    ? cur.filter(r => !(r.emoji === emoji && r.agentName === agentName))
+                    : [...cur, { emoji, agentName, from: 'agent', at: new Date().toISOString() }];
+                return { ...m, reactions: next };
+            });
+            return { ...c, messages: updatedMsgs };
+        }));
+
+        // Persistir en Supabase en background (no bloqueante para la fluidez operativa)
+        toggleMessageReaction({
+            messageId: message.id,
+            realId: message.realId,
+            emoji,
+            agentName
+        }).catch(err => console.warn('[ContactCenterPanel] Error en toggleMessageReaction:', err));
     };
 
     // Manejar envío de plantilla oficial de Meta WhatsApp
@@ -1228,6 +1258,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onReloadChats={reloadChats}
                     loadingLive={loadingLive}
                     isLMarinero={isLMarinero}
+                    onToggleReaction={handleToggleReaction}
                 />
             )}
 

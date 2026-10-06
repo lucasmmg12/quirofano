@@ -104,6 +104,10 @@ export const CC_MESSAGE_SLIM_SELECT = [
     'rp_agent:raw_payload->agent',
     'rp_bot:raw_payload->bot',
     'rp_is_bot:raw_payload->is_bot',
+    'rp_quote:raw_payload->quoted_message',
+    'rp_reactions:raw_payload->reactions',
+    'rp_deleted:raw_payload->is_deleted',
+    'rp_revoked:raw_payload->revoked',
     'rp_jid:raw_payload->data->key->remoteJid',
     'rp_from:raw_payload->data->from'
 ].join(', ');
@@ -114,7 +118,11 @@ export const CC_MESSAGE_SLIM_SELECT = [
  */
 export function rehydrateSlimMessage(m) {
     if (!m) return m;
-    const { rp_order, rp_audio_t, rp_trans, rp_audio_u, rp_agent, rp_bot, rp_is_bot, rp_jid, rp_from, ...base } = m;
+    const { 
+        rp_order, rp_audio_t, rp_trans, rp_audio_u, rp_agent, rp_bot, rp_is_bot, rp_jid, rp_from,
+        rp_quote, rp_reactions, rp_deleted, rp_revoked,
+        ...base 
+    } = m;
     return {
         ...base,
         raw_payload: {
@@ -125,6 +133,10 @@ export function rehydrateSlimMessage(m) {
             agent: rp_agent ?? undefined,
             bot: rp_bot ?? undefined,
             is_bot: rp_is_bot ?? undefined,
+            quoted_message: rp_quote ?? undefined,
+            reactions: rp_reactions ?? undefined,
+            is_deleted: rp_deleted ?? undefined,
+            revoked: rp_revoked ?? undefined,
             data: { key: { remoteJid: rp_jid ?? undefined }, from: rp_from ?? undefined }
         }
     };
@@ -216,6 +228,57 @@ export function getAgentById(agentIdOrName) {
         role: 'Operador Sanatorio',
         color: '#0284C7',
         avatar: (agentIdOrName[0] || 'A').toUpperCase()
+    };
+}
+
+/**
+ * Normaliza un registro de whatsapp_messages a la estructura estándar consumida por la consola
+ * Incluye soporte nativo de stickers, respuestas citadas (quotes), reacciones emoji y trazabilidad de mensajes eliminados.
+ */
+export function normalizeMessage(m) {
+    if (!m) return m;
+    const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.content && m.content.startsWith('_event_voice_note_')) || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
+    const isSticker = m.media_type === 'sticker' || (m.content === '[sticker]' && m.media_url) || (m.media_url && m.media_url.endsWith('.webp') && !isAudio);
+    const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
+    const audioUnder = m.raw_payload?.audio_understanding || null;
+    const quotedMessage = m.raw_payload?.quoted_message || m.raw_payload?.quotedMessage || null;
+    const reactions = Array.isArray(m.raw_payload?.reactions) ? m.raw_payload.reactions : [];
+    const isDeleted = Boolean(m.raw_payload?.is_deleted || m.raw_payload?.revoked || m.raw_payload?.deleted || m.content === '[Mensaje eliminado]');
+
+    const sanitizedRaw = m.raw_payload ? {
+        order_analysis: m.raw_payload.order_analysis,
+        audio_transcription: audioTrans,
+        audio_understanding: audioUnder,
+        agent: m.raw_payload.agent,
+        bot: m.raw_payload.bot || m.raw_payload.is_bot,
+        quoted_message: quotedMessage,
+        reactions,
+        is_deleted: isDeleted,
+        revoked: isDeleted
+    } : null;
+
+    return {
+        id: 'real_' + m.id,
+        realId: m.id,
+        sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
+        senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
+        senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
+        agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
+        tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
+        type: isAudio ? 'audio' : (isSticker ? 'sticker' : (m.media_type || 'text')),
+        mediaType: isSticker ? 'sticker' : m.media_type,
+        text: (m.content && !m.content.startsWith('_event_')) ? m.content : '',
+        mediaUrl: m.media_url || null,
+        quotedMessage,
+        reactions,
+        isDeleted,
+        orderAnalysis: m.raw_payload?.order_analysis || null,
+        audioTranscription: audioTrans,
+        audioUnderstanding: audioUnder,
+        rawPayload: sanitizedRaw,
+        isNote: m.direction === 'note',
+        created_at: m.created_at,
+        timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     };
 }
 
@@ -781,40 +844,7 @@ export async function fetchLiveAndDemoChats() {
             // para garantizar máxima fluidez y evitar fugas de memoria en PCs de 4GB/8GB RAM
             const recentMsgs = chronological.slice(-60);
 
-            const formattedMessages = recentMsgs.map(m => {
-                const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.content && m.content.startsWith('_event_voice_note_')) || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
-                const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
-                const audioUnder = m.raw_payload?.audio_understanding || null;
-
-                // Extraer únicamente los campos funcionales de raw_payload, desechando payloads pesados o binarios
-                const sanitizedRaw = m.raw_payload ? {
-                    order_analysis: m.raw_payload.order_analysis,
-                    audio_transcription: audioTrans,
-                    audio_understanding: audioUnder,
-                    agent: m.raw_payload.agent,
-                    bot: m.raw_payload.bot || m.raw_payload.is_bot
-                } : null;
-
-                return {
-                    id: 'real_' + m.id,
-                    realId: m.id,
-                    sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
-                    senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
-                    senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
-                    agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
-                    tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
-                    type: isAudio ? 'audio' : (m.media_type || 'text'),
-                    text: (m.content && !m.content.startsWith('_event_')) ? m.content : '',
-                    mediaUrl: m.media_url || null,
-                    orderAnalysis: m.raw_payload?.order_analysis || null,
-                    audioTranscription: audioTrans,
-                    audioUnderstanding: audioUnder,
-                    rawPayload: sanitizedRaw,
-                    isNote: m.direction === 'note',
-                    created_at: m.created_at,
-                    timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-                };
-            });
+            const formattedMessages = recentMsgs.map(normalizeMessage);
 
             const formatBirthDate = (val) => {
                 if (!val || val === 'No informada') return 'No informada';
@@ -1061,7 +1091,8 @@ export async function sendContactCenterMessage({
     currentUser,
     mediaUrl = null,
     mediaType = null,
-    fileName = null
+    fileName = null,
+    quotedMessage = null
 }) {
     if (!isUserAuthorizedForContactCenter(currentUser)) {
         throw new Error('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos operativos de respuesta.');
@@ -1108,7 +1139,8 @@ export async function sendContactCenterMessage({
                     isNote: !!isNote,
                     mediaUrl: mediaUrl || null,
                     mediaType: finalMediaType,
-                    fileName: fileName || null
+                    fileName: fileName || null,
+                    quoted_message: quotedMessage || null
                 }
             });
 
@@ -1139,8 +1171,13 @@ export async function sendContactCenterMessage({
     // 3. Si NO es nota privada, despachar vía BuilderBot Edge Function
     if (!isNote && normalizedPhone) {
         try {
+            // Si hay un mensaje citado, agregamos cita textual limpia para que el paciente la visualice en su WhatsApp
+            const textForWhatsApp = (quotedMessage && !mediaUrl)
+                ? `> 💬 *${quotedMessage.senderName || 'Mensaje'}:* "${(quotedMessage.text || '').slice(0, 80).replace(/\n/g, ' ')}"\n\n${finalContent}`
+                : finalContent;
+
             await sendWhatsAppMessage({
-                content: finalContent,
+                content: textForWhatsApp,
                 number: normalizedPhone,
                 lineId: 'contact_center',
                 ...(mediaUrl && { mediaUrl })
@@ -1165,7 +1202,10 @@ export async function sendContactCenterMessage({
         mediaUrl: mediaUrl || null,
         mediaType: finalMediaType,
         fileName: fileName || null,
+        quotedMessage: quotedMessage || null,
+        reactions: [],
         isNote: !!isNote,
+        created_at: now.toISOString(),
         timestamp: timeStr
     };
 
@@ -1186,6 +1226,52 @@ export async function sendContactCenterMessage({
     };
 
     return { newMsg, updatedChat };
+}
+
+/**
+ * Alterna una reacción emoji en un mensaje existente de forma asíncrona.
+ * Se ejecuta en background sin bloquear ni pausar la interfaz ni la entrega de mensajes.
+ */
+export async function toggleMessageReaction({ messageId, realId, emoji, agentName = 'Operador' }) {
+    if (!messageId && !realId) return;
+    const targetId = realId || String(messageId).replace(/^real_/, '');
+    if (!targetId || targetId.startsWith('msg_')) return; // No persistir en memoria efímera
+
+    try {
+        const { data: row, error } = await supabase
+            .from('whatsapp_messages')
+            .select('raw_payload')
+            .eq('id', targetId)
+            .maybeSingle();
+
+        if (error || !row) return;
+        const currentPayload = row.raw_payload || {};
+        let reactions = Array.isArray(currentPayload.reactions) ? [...currentPayload.reactions] : [];
+
+        const existingIdx = reactions.findIndex(r => r.emoji === emoji && r.agentName === agentName);
+        if (existingIdx >= 0) {
+            reactions.splice(existingIdx, 1);
+        } else {
+            reactions.push({
+                emoji,
+                agentName,
+                from: 'agent',
+                at: new Date().toISOString()
+            });
+        }
+
+        await supabase
+            .from('whatsapp_messages')
+            .update({
+                raw_payload: {
+                    ...currentPayload,
+                    reactions
+                }
+            })
+            .eq('id', targetId);
+    } catch (err) {
+        console.warn('[contactCenterService] Error actualizando reacción:', err);
+    }
 }
 
 export const CONTACT_CENTER_FALLBACK_TEMPLATES = [
@@ -2771,39 +2857,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
         // Invertir para orden cronológico ascendente
         const chronological = [...rawMessages].reverse();
 
-        const result = chronological.map(m => {
-            const isAudio = m.media_type === 'audio' || m.media_type === 'voice' || (m.content && m.content.startsWith('_event_voice_note_')) || (m.media_url && /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(m.media_url));
-            const audioTrans = m.raw_payload?.audio_transcription || m.raw_payload?.transcription || (isAudio && m.content && !m.content.startsWith('[') && !m.content.startsWith('_event_') ? m.content.replace(/^🎤\s*"?/, '').replace(/"?$/, '') : null);
-            const audioUnder = m.raw_payload?.audio_understanding || null;
-
-            const sanitizedRaw = m.raw_payload ? {
-                order_analysis: m.raw_payload.order_analysis,
-                audio_transcription: audioTrans,
-                audio_understanding: audioUnder,
-                agent: m.raw_payload.agent,
-                bot: m.raw_payload.bot || m.raw_payload.is_bot
-            } : null;
-
-            return {
-                id: 'real_' + m.id,
-                realId: m.id,
-                sender: m.direction === 'incoming' ? 'patient' : (m.direction === 'note' ? 'note' : 'agent'),
-                senderName: m.direction === 'incoming' ? (m.sender_name || 'Paciente') : (m.sender_name || 'Sanatorio Argentino'),
-                senderAgentId: m.raw_payload?.agent || (m.sender_name ? m.sender_name.toLowerCase() : null),
-                agentRole: m.direction === 'incoming' ? null : 'Atención al Paciente',
-                tagColor: m.direction === 'incoming' ? null : (getAgentById(m.sender_name)?.color || '#0284C7'),
-                type: isAudio ? 'audio' : (m.media_type || 'text'),
-                text: (m.content && !m.content.startsWith('_event_')) ? m.content : '',
-                mediaUrl: m.media_url || null,
-                orderAnalysis: m.raw_payload?.order_analysis || null,
-                audioTranscription: audioTrans,
-                audioUnderstanding: audioUnder,
-                rawPayload: sanitizedRaw,
-                isNote: m.direction === 'note',
-                created_at: m.created_at,
-                timestamp: new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-            };
-        });
+        const result = chronological.map(normalizeMessage);
 
         // Actualizar caché solo para carga inicial (no para paginación hacia atrás)
         if (!beforeCreatedAt) {
