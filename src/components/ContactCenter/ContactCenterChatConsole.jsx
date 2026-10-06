@@ -724,6 +724,7 @@ export default function ContactCenterChatConsole({
     const [isSearchingSalus, setIsSearchingSalus] = useState(false);
     const [isSearchingThirdParty, setIsSearchingThirdParty] = useState(false);
     const [thirdPartyDniInput, setThirdPartyDniInput] = useState('');
+    const [thirdPartyError, setThirdPartyError] = useState('');
     const [activeDualTab, setActiveDualTab] = useState('paciente'); // 'paciente' | 'titular'
 
     // Estados Contactos / Pacientes Asociados por Teléfono (Grupo Familiar)
@@ -1083,6 +1084,9 @@ export default function ContactCenterChatConsole({
             });
             setIsEditingCrm(false);
             setAiSummaryData(selectedChat.aiSummary || null);
+            setThirdPartyError('');
+            setThirdPartyDniInput('');
+            setIsSearchingThirdParty(false);
 
             // Temporizador suave para finalizar la animación de carga clínica
             const minTimer = setTimeout(() => {
@@ -1476,7 +1480,7 @@ export default function ContactCenterChatConsole({
     const handleLookupSalus = async () => {
         const queryToSearch = (crmForm.dni || '').trim();
         if (!queryToSearch || queryToSearch.length < 5) {
-            alert('Ingresa al menos 5 dígitos del DNI para buscar en SALUS');
+            showToast('Ingresá al menos 5 dígitos del DNI para buscar en SALUS', 'warning');
             return;
         }
         setIsSearchingSalus(true);
@@ -1500,11 +1504,13 @@ export default function ContactCenterChatConsole({
                     selectedChat.customFields.obraSocial = found.coseguro || selectedChat.customFields.obraSocial;
                     selectedChat.customFields.esPacienteExistente = true;
                 }
+                showToast(`Paciente encontrado: ${found.nombre} (DNI ${found.dni})`, 'success');
             } else {
-                alert('No se encontró paciente en el Padrón de SALUS con el DNI provisto (' + queryToSearch + ').');
+                showToast(`No se encontró paciente en el Padrón de SALUS con el DNI ${queryToSearch}.`, 'warning');
             }
         } catch (e) {
             console.error(e);
+            showToast('Error al buscar paciente en SALUS: ' + (e.message || 'Error'), 'error');
         } finally {
             setIsSearchingSalus(false);
         }
@@ -1514,9 +1520,10 @@ export default function ContactCenterChatConsole({
     const handleLinkThirdPartyDni = async () => {
         const queryToSearch = (thirdPartyDniInput || '').trim();
         if (!queryToSearch || queryToSearch.length < 5) {
-            alert('Ingresa un número de DNI válido de al menos 5 dígitos para buscar en SALUS');
+            setThirdPartyError('Ingresá un número de DNI válido de al menos 5 dígitos para buscar en SALUS');
             return;
         }
+        setThirdPartyError('');
         setIsSearchingSalus(true);
         try {
             const found = await lookupPatientFromSalus(queryToSearch);
@@ -1577,17 +1584,18 @@ export default function ContactCenterChatConsole({
                 showToast(`Ficha Dual vinculada: Titular ${currentTitularName} ➔ Paciente ${found.nombre} (DNI ${found.dni})`, 'success');
                 setIsSearchingThirdParty(false);
                 setThirdPartyDniInput('');
+                setThirdPartyError('');
                 setActiveDualTab('paciente');
 
                 if (typeof onReloadChats === 'function') {
                     onReloadChats();
                 }
             } else {
-                alert(`No se encontró paciente en el padrón de SALUS con el DNI ${queryToSearch}.`);
+                setThirdPartyError(`No se encontró paciente en el padrón de SALUS con el DNI ${queryToSearch}.`);
             }
         } catch (err) {
             console.error(err);
-            alert('Error al buscar paciente en SALUS: ' + (err.message || 'Error'));
+            setThirdPartyError('Error al buscar paciente en SALUS: ' + (err.message || 'Error'));
         } finally {
             setIsSearchingSalus(false);
         }
@@ -6703,7 +6711,10 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
                                     <button
                                         type="button"
-                                        onClick={() => setIsSearchingThirdParty(prev => !prev)}
+                                        onClick={() => {
+                                            setIsSearchingThirdParty(prev => !prev);
+                                            setThirdPartyError('');
+                                        }}
                                         title={selectedChat.customFields?.fichaDual?.esGestionTercero ? "Vincular a otro DNI diferente en SALUS" : "Vincular ficha médica por DNI si gestiona para otro paciente"}
                                         style={{
                                             fontSize: '0.66rem',
@@ -6932,7 +6943,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             {isSearchingThirdParty && (
                                 <div style={{
                                     background: rightCardBg,
-                                    border: `1.5px solid ${rightCardBorder}`,
+                                    border: `1.5px solid ${thirdPartyError ? '#FCA5A5' : rightCardBorder}`,
                                     borderRadius: '8px',
                                     padding: '10px 12px',
                                     display: 'flex',
@@ -6945,16 +6956,42 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     <div style={{ fontSize: '0.67rem', color: themeCardSubtext }}>
                                         Ingresá el DNI del paciente que realmente se atenderá (ej: hijo/a, madre, familiar):
                                     </div>
+
+                                    {/* Notificación en rojo justo por arriba de lo 'Vincular' */}
+                                    {thirdPartyError && (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '6px 9px',
+                                            borderRadius: '6px',
+                                            background: ccTheme.isDark ? '#450A0A' : '#FEF2F2',
+                                            border: `1px solid ${ccTheme.isDark ? '#7F1D1D' : '#FECACA'}`,
+                                            color: ccTheme.isDark ? '#FCA5A5' : '#DC2626',
+                                            fontSize: '0.70rem',
+                                            fontWeight: 700,
+                                            lineHeight: 1.3
+                                        }}>
+                                            <AlertCircle size={13} style={{ flexShrink: 0, color: '#DC2626' }} />
+                                            <span>{thirdPartyError}</span>
+                                        </div>
+                                    )}
+
                                     <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
                                         <input 
                                             type="text"
                                             placeholder="DNI del paciente (sin puntos)..."
                                             value={thirdPartyDniInput}
-                                            onChange={(e) => setThirdPartyDniInput(e.target.value.replace(/\D/g, ''))}
+                                            onChange={(e) => {
+                                                setThirdPartyDniInput(e.target.value.replace(/\D/g, ''));
+                                                if (thirdPartyError) setThirdPartyError('');
+                                            }}
                                             onKeyDown={(e) => { if (e.key === 'Enter') handleLinkThirdPartyDni(); }}
                                             style={{
                                                 flex: 1, padding: '5px 8px', fontSize: '0.76rem',
-                                                borderRadius: '6px', border: `1px solid ${rightCardBorder}`, outline: 'none',
+                                                borderRadius: '6px', 
+                                                border: `1px solid ${thirdPartyError ? '#F87171' : rightCardBorder}`, 
+                                                outline: 'none',
                                                 background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
                                                 color: themeCardText
                                             }}
