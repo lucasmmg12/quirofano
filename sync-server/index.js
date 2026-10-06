@@ -274,6 +274,12 @@ app.post('/api/contact-center/delete-chat-context', async (req, res) => {
 
 
 
+// Memoria de persistencias de historial: evita reescribir en Supabase las mismas visitas/diagnósticos
+// en cada consulta (antes: ~50 lotes concurrentes cada 4 min, 24/7, aun sin cambios en SALUS).
+// key: nhc|dni -> { signature, at }
+const historialPersistCache = new Map();
+const HISTORIAL_PERSIST_TTL_MS = 6 * 60 * 60 * 1000;
+
 // ─── Historial Clínico Completo + Turnos Próximos & Online de un Paciente ───
 async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre }) {
     const startTime = Date.now();
@@ -580,7 +586,24 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
     });
 
     // Background async persist a Supabase salus_visitas (para disponibilidad universal en cualquier dispositivo)
-    if (consultas.length > 0 && (resolvedNhc || resolvedDni)) {
+    const persistKey = `${resolvedNhc || ''}|${resolvedDni || ''}`;
+    const persistSignature = consultas
+        .map(c => `${c.id_visita}:${(c.diagnostico || c.motivo || '').trim()}`)
+        .sort()
+        .join(',');
+    const prevPersist = historialPersistCache.get(persistKey);
+    const alreadyPersisted = prevPersist
+        && prevPersist.signature === persistSignature
+        && (Date.now() - prevPersist.at) < HISTORIAL_PERSIST_TTL_MS;
+
+    if (consultas.length > 0 && (resolvedNhc || resolvedDni) && !alreadyPersisted) {
+        historialPersistCache.set(persistKey, { signature: persistSignature, at: Date.now() });
+        if (historialPersistCache.size > 5000) {
+            const cutoff = Date.now() - HISTORIAL_PERSIST_TTL_MS;
+            for (const [k, v] of historialPersistCache) {
+                if (v.at < cutoff) historialPersistCache.delete(k);
+            }
+        }
         (async () => {
             try {
                 const rowsToUpsert = consultas.map(c => {
@@ -669,6 +692,7 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                     }
                 }
             } catch (ePersist) {
+                historialPersistCache.delete(persistKey);
                 console.warn('⚠️ [Historial Clinico] Error persistiendo a Supabase salus_visitas:', ePersist.message);
             }
         })();
@@ -4141,12 +4165,15 @@ app.listen(PORT, '0.0.0.0', () => {
             if (syncInProgress) return;
             try {
                 const poolInst = await getPool();
+                // Solo pacientes con actividad reciente (antes: siempre los 50 últimos, 24/7, aun sin mensajes nuevos)
+                const activitySince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
                 const { data: convs, error: convErr } = await supabase
                     .from('contact_center_conversations')
                     .select('phone, dni, nhc, nombre_completo')
                     .or('dni.not.is.null,nhc.not.is.null')
+                    .gte('last_message_at', activitySince)
                     .order('last_message_at', { ascending: false })
-                    .limit(50);
+                    .limit(25);
 
                 if (!convErr && convs && convs.length > 0) {
                     console.log(`⏰ [Historial Contact Center Auto] Sincronizando historial 360 de ${convs.length} pacientes activos hacia Supabase...`);
@@ -4260,7 +4287,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }
 
         setTimeout(resolveMissingPatientsInConversations, 2000);
-        setInterval(resolveMissingPatientsInConversations, 8000);
+        setInterval(resolveMissingPatientsInConversations, 20000);
 
         // 5. INCENTIVOS CONTACT CENTER MES A MES (Inicio y cada 15 min)
         async function syncIncentivosCiclo() {

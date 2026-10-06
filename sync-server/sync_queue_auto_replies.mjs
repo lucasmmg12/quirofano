@@ -89,7 +89,29 @@ async function sendWhatsAppNotification({ supabaseClient, supabaseUrl, serviceKe
     try {
         const lineId = 'contact_center';
 
-        // 1. Guardar mensaje saliente en whatsapp_messages para reflejo inmediato en chat
+        // 1. Despachar a WhatsApp real vía Edge Function (primero enviar, luego registrar)
+        const sendUrl = `${supabaseUrl}/functions/v1/send-whatsapp`;
+        const res = await fetch(sendUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${serviceKey}`
+            },
+            body: JSON.stringify({
+                number: phone,
+                content: text,
+                lineId
+            })
+        });
+
+        let body = null;
+        try { body = await res.json(); } catch { /* respuesta no JSON */ }
+        if (!res.ok || body?.success === false) {
+            console.error(`[QueueAutoReplies] ❌ Envío rechazado a ${phone} (${source}) | HTTP ${res.status}`, body?.error || '');
+            return false;
+        }
+
+        // 2. Registrar mensaje saliente solo si el envío fue aceptado
         await supabaseClient
             .from('whatsapp_messages')
             .insert({
@@ -106,21 +128,6 @@ async function sendWhatsAppNotification({ supabaseClient, supabaseUrl, serviceKe
                 }
             });
 
-        // 2. Despachar a WhatsApp real vía Edge Function
-        const sendUrl = `${supabaseUrl}/functions/v1/send-whatsapp`;
-        const res = await fetch(sendUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${serviceKey}`
-            },
-            body: JSON.stringify({
-                number: phone,
-                content: text,
-                lineId
-            })
-        });
-
         console.log(`[QueueAutoReplies] 📤 Mensaje enviado a ${phone} (${source}) | Status HTTP: ${res.status}`);
         return true;
     } catch (err) {
@@ -129,23 +136,40 @@ async function sendWhatsAppNotification({ supabaseClient, supabaseUrl, serviceKe
     }
 }
 
+// Ventana de atención al cliente de WhatsApp (texto libre solo dentro de 24 h del último mensaje del paciente)
+const WHATSAPP_SESSION_WINDOW_MS = 23.5 * 60 * 60 * 1000;
+
 /**
- * Escanea la cola de Contact Center y despacha avisos de fuera de horario o de demora cada 20 min
+ * Escanea la cola de Contact Center y despacha avisos de fuera de horario o de demora.
+ * Salvaguardas de política WhatsApp:
+ *  - Desactivado por defecto: requiere QUEUE_AUTO_REPLIES_ENABLED=true.
+ *  - Solo dentro de la ventana de 24 h desde el último mensaje del paciente.
+ *  - Máximo 1 aviso (fuera de horario o demora) por cada mensaje nuevo del paciente.
+ *  - Excluye conversaciones en estado `bot` (las gestiona el chatbot).
  */
 export async function processQueueWaitingAlerts({ supabaseClient, supabaseUrl, serviceKey }) {
+    if (String(process.env.QUEUE_AUTO_REPLIES_ENABLED || '').toLowerCase() !== 'true') {
+        return;
+    }
     try {
         const schedule = getContactCenterScheduleInfo();
         const nowMs = Date.now();
 
         // 1. Obtener conversaciones activas que puedan estar esperando atención
+        // Nota: la PK de contact_center_conversations es `phone` (no existe columna `id`)
         const { data: convs, error } = await supabaseClient
             .from('contact_center_conversations')
-            .select('id, phone, status, bot_active, bot_stage, assigned_agent_id, assigned_agent_name, last_message_at, ai_summary, updated_at')
-            .in('status', ['sin_asignar', 'abierto', 'bot'])
+            .select('phone, status, last_message_at, ai_summary')
+            .in('status', ['sin_asignar', 'abierto'])
+            .gte('last_message_at', new Date(nowMs - WHATSAPP_SESSION_WINDOW_MS).toISOString())
             .order('last_message_at', { ascending: false })
             .limit(60);
 
-        if (error || !convs || convs.length === 0) {
+        if (error) {
+            console.error('[QueueAutoReplies] ⚠️ Error consultando cola:', error.message);
+            return;
+        }
+        if (!convs || convs.length === 0) {
             return;
         }
 
@@ -175,78 +199,57 @@ export async function processQueueWaitingAlerts({ supabaseClient, supabaseUrl, s
             const patientMsgTimeMs = new Date(lastPatientMsg.created_at).getTime();
             const waitMinutes = (nowMs - patientMsgTimeMs) / 60000;
 
+            // Fuera de la ventana de 24 h no se puede enviar texto libre (solo plantillas aprobadas)
+            if (nowMs - patientMsgTimeMs >= WHATSAPP_SESSION_WINDOW_MS) continue;
+
             const aiSummary = typeof c.ai_summary === 'object' && c.ai_summary !== null ? { ...c.ai_summary } : {};
 
-            // ========================================================
-            // CASO 1: FUERA DE HORARIO LABORAL (Prioridad Máxima)
-            // ========================================================
+            // Máximo 1 aviso automático por cada mensaje nuevo del paciente
+            const lastAfterHoursAt = Number(aiSummary.last_after_hours_notice_at || 0);
+            const lastDelayAt = Number(aiSummary.last_delay_notice_at || 0);
+            const lastAnyNoticeAt = Math.max(lastAfterHoursAt, lastDelayAt);
+            if (lastAnyNoticeAt >= patientMsgTimeMs) continue;
+
+            let noticeText = null;
+            let source = null;
+            let summaryKey = null;
+
             if (!schedule.isOpen) {
-                const lastAfterHoursAt = Number(aiSummary.last_after_hours_notice_at || 0);
-
-                // Se envía si:
-                // a) Nunca se le envió aviso de fuera de horario en este período (hace más de 4 horas)
-                // b) O el paciente escribió después del último aviso de fuera de horario (y pasaron al menos 2 minutos)
-                const shouldSendOffHours = (nowMs - lastAfterHoursAt >= 4 * 60 * 60 * 1000) ||
-                    (patientMsgTimeMs > lastAfterHoursAt && (nowMs - patientMsgTimeMs) >= 2 * 60 * 1000 && (nowMs - lastAfterHoursAt) >= 30 * 60 * 1000);
-
-                if (shouldSendOffHours) {
-                    console.log(`[QueueAutoReplies] 🌙 Disparando aviso FUERA DE HORARIO a ${c.phone} (Espera: ${Math.round(waitMinutes)} min)...`);
-                    const offHoursReply = getAfterHoursMessage(schedule.nextOpeningText);
-                    const sent = await sendWhatsAppNotification({
-                        supabaseClient,
-                        supabaseUrl,
-                        serviceKey,
-                        phone: c.phone,
-                        text: offHoursReply,
-                        source: 'queue_worker_after_hours'
-                    });
-
-                    if (sent) {
-                        aiSummary.last_after_hours_notice_at = nowMs;
-                        await supabaseClient
-                            .from('contact_center_conversations')
-                            .update({
-                                ai_summary: aiSummary,
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('id', c.id);
-                    }
+                // CASO 1: FUERA DE HORARIO — tras 2 min del mensaje del paciente
+                if (nowMs - patientMsgTimeMs >= 2 * 60 * 1000) {
+                    noticeText = getAfterHoursMessage(schedule.nextOpeningText);
+                    source = 'queue_worker_after_hours';
+                    summaryKey = 'last_after_hours_notice_at';
                 }
-            } else {
-                // ========================================================
-                // CASO 2: EN HORARIO LABORAL - DEMORA CADA 20 MINUTOS
-                // ========================================================
-                // Solo si el paciente lleva esperando 20 minutos o más
-                if (waitMinutes >= 20) {
-                    const lastDelayAt = Number(aiSummary.last_delay_notice_at || 0);
-                    const referenceTime = lastDelayAt > 0 ? lastDelayAt : patientMsgTimeMs;
-                    const elapsedSinceNotice = nowMs - referenceTime;
+            } else if (waitMinutes >= 20) {
+                // CASO 2: EN HORARIO — demora de 20 min o más (una sola vez por espera)
+                noticeText = getDelayWaitNoticeMessage();
+                source = 'queue_worker_delay_notice';
+                summaryKey = 'last_delay_notice_at';
+            }
 
-                    // Si pasaron al menos 20 minutos desde el último aviso de demora
-                    if (elapsedSinceNotice >= 20 * 60 * 1000) {
-                        console.log(`[QueueAutoReplies] ⏳ Disparando aviso de DEMORA CADA 20 MIN a ${c.phone} (Espera acumulada: ${Math.round(waitMinutes)} min)...`);
-                        const delayReply = getDelayWaitNoticeMessage();
-                        const sent = await sendWhatsAppNotification({
-                            supabaseClient,
-                            supabaseUrl,
-                            serviceKey,
-                            phone: c.phone,
-                            text: delayReply,
-                            source: 'queue_worker_delay_notice'
-                        });
+            if (!noticeText) continue;
 
-                        if (sent) {
-                            aiSummary.last_delay_notice_at = nowMs;
-                            await supabaseClient
-                                .from('contact_center_conversations')
-                                .update({
-                                    ai_summary: aiSummary,
-                                    updated_at: new Date().toISOString()
-                                })
-                                .eq('id', c.id);
-                        }
-                    }
-                }
+            console.log(`[QueueAutoReplies] Aviso ${source} a ${c.phone} (Espera: ${Math.round(waitMinutes)} min)...`);
+            const sent = await sendWhatsAppNotification({
+                supabaseClient,
+                supabaseUrl,
+                serviceKey,
+                phone: c.phone,
+                text: noticeText,
+                source
+            });
+
+            if (sent) {
+                aiSummary[summaryKey] = nowMs;
+                const { error: updErr } = await supabaseClient
+                    .from('contact_center_conversations')
+                    .update({
+                        ai_summary: aiSummary,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('phone', c.phone);
+                if (updErr) console.error(`[QueueAutoReplies] ⚠️ Error actualizando ${c.phone}:`, updErr.message);
             }
         }
     } catch (err) {
