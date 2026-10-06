@@ -38,9 +38,9 @@ export default function TxtProvinciaPanel({ addToast }) {
 
     // Filtros de la tabla de auditoría
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterCategory, setFilterCategory] = useState('all'); // 'all' | 'discrepancias' | 'sobrantes' | 'faltantes' | 'errores_osp'
+    const [filterCategory, setFilterCategory] = useState('all'); // 'all' | 'exactos' | 'discrepancias' | 'sobrantes' | 'faltantes' | 'errores_osp'
     const [page, setPage] = useState(0);
-    const pageSize = 25;
+    const [pageSize, setPageSize] = useState(50);
 
     // Toast fallback
     const showToast = (msg, type = 'success') => {
@@ -222,7 +222,9 @@ export default function TxtProvinciaPanel({ addToast }) {
         });
 
         // Aplicar Filtro de Categoría
-        if (filterCategory === 'discrepancias') {
+        if (filterCategory === 'exactos') {
+            rows = rows.filter(r => r.status === 'EXACTO');
+        } else if (filterCategory === 'discrepancias') {
             rows = rows.filter(r => r.status === 'DISCREPANCIA');
         } else if (filterCategory === 'sobrantes') {
             rows = rows.filter(r => r.type === 'EXTRA');
@@ -247,12 +249,13 @@ export default function TxtProvinciaPanel({ addToast }) {
         return rows;
     }, [auditResult, filterCategory, searchTerm]);
 
+    const totalPages = pageSize === 0 ? 1 : Math.ceil(filteredRows.length / pageSize);
+
     const paginatedRows = useMemo(() => {
+        if (pageSize === 0) return filteredRows;
         const from = page * pageSize;
         return filteredRows.slice(from, from + pageSize);
-    }, [filteredRows, page]);
-
-    const totalPages = Math.ceil(filteredRows.length / pageSize);
+    }, [filteredRows, page, pageSize]);
 
     return (
         <div style={{ width: '100%', minHeight: '100vh', background: '#f8fafc', padding: '24px 32px', boxSizing: 'border-box' }}>
@@ -530,46 +533,154 @@ export default function TxtProvinciaPanel({ addToast }) {
                         </div>
                     </div>
 
-                    {/* Resumen de Hallazgos / Badges */}
+                    {/* Resumen de Hallazgos / Badges Filtro */}
                     <div style={{
                         background: '#ffffff', borderRadius: '10px', padding: '12px 18px',
                         border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex',
-                        alignItems: 'center', gap: '12px', flexWrap: 'wrap'
+                        alignItems: 'center', gap: '8px', flexWrap: 'wrap'
                     }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#475569' }}>
-                            ESTADO DE LÍNEAS:
+                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#475569', marginRight: '4px' }}>
+                            ESTADO DE LÍNEAS (FILTRO):
                         </span>
-                        <span style={{
-                            padding: '4px 10px', borderRadius: '20px', background: '#dcfce7',
-                            color: '#166534', fontSize: '0.74rem', fontWeight: 800
-                        }}>
+
+                        {/* Botón Ver Todos */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilterCategory('all');
+                                setActiveTab('discrepancias');
+                                setPage(0);
+                            }}
+                            title="Ver todos los registros sin filtro"
+                            style={{
+                                padding: '6px 14px', borderRadius: '20px',
+                                border: filterCategory === 'all' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                                background: filterCategory === 'all' ? '#e0f2fe' : '#f8fafc',
+                                color: filterCategory === 'all' ? '#0369a1' : '#475569',
+                                fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: filterCategory === 'all' ? '0 1px 4px rgba(2, 132, 199, 0.25)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            📋 Ver Todos ({auditResult.matchedPairs.length + auditResult.extraInTxt.length + auditResult.missingInTxt.length})
+                        </button>
+
+                        {/* Coincidencias Exactas */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilterCategory(prev => prev === 'exactos' ? 'all' : 'exactos');
+                                setActiveTab('discrepancias');
+                                setPage(0);
+                            }}
+                            title="Clic para filtrar Coincidencias Exactas (tocar de nuevo para ver todos)"
+                            style={{
+                                padding: '6px 14px', borderRadius: '20px',
+                                border: filterCategory === 'exactos' ? '2px solid #16a34a' : '1px solid #bbf7d0',
+                                background: filterCategory === 'exactos' ? '#bbf7d0' : '#dcfce7',
+                                color: '#166534', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: filterCategory === 'exactos' ? '0 2px 6px rgba(22, 163, 74, 0.3)' : 'none',
+                                transform: filterCategory === 'exactos' ? 'scale(1.03)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
                             ✓ {auditResult.exactCount} Coincidencias Exactas
-                        </span>
-                        <span style={{
-                            padding: '4px 10px', borderRadius: '20px', background: '#fef3c7',
-                            color: '#92400e', fontSize: '0.74rem', fontWeight: 800
-                        }}>
+                        </button>
+
+                        {/* Líneas con Discrepancias */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilterCategory(prev => prev === 'discrepancias' ? 'all' : 'discrepancias');
+                                setActiveTab('discrepancias');
+                                setPage(0);
+                            }}
+                            title="Clic para filtrar Líneas con Discrepancias (tocar de nuevo para ver todos)"
+                            style={{
+                                padding: '6px 14px', borderRadius: '20px',
+                                border: filterCategory === 'discrepancias' ? '2px solid #d97706' : '1px solid #fde68a',
+                                background: filterCategory === 'discrepancias' ? '#fde68a' : '#fef3c7',
+                                color: '#92400e', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: filterCategory === 'discrepancias' ? '0 2px 6px rgba(217, 119, 6, 0.3)' : 'none',
+                                transform: filterCategory === 'discrepancias' ? 'scale(1.03)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
                             ⚠️ {auditResult.discrepancyCount} Líneas con Discrepancias
-                        </span>
-                        <span style={{
-                            padding: '4px 10px', borderRadius: '20px', background: '#fee2e2',
-                            color: '#991b1b', fontSize: '0.74rem', fontWeight: 800
-                        }}>
+                        </button>
+
+                        {/* Sobrantes en TXT */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilterCategory(prev => prev === 'sobrantes' ? 'all' : 'sobrantes');
+                                setActiveTab('discrepancias');
+                                setPage(0);
+                            }}
+                            title="Clic para filtrar Sobrantes en TXT (tocar de nuevo para ver todos)"
+                            style={{
+                                padding: '6px 14px', borderRadius: '20px',
+                                border: filterCategory === 'sobrantes' ? '2px solid #dc2626' : '1px solid #fecaca',
+                                background: filterCategory === 'sobrantes' ? '#fecaca' : '#fee2e2',
+                                color: '#991b1b', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: filterCategory === 'sobrantes' ? '0 2px 6px rgba(220, 38, 38, 0.3)' : 'none',
+                                transform: filterCategory === 'sobrantes' ? 'scale(1.03)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
                             🔴 {auditResult.extraCount} Sobrantes en TXT (Excluidas)
-                        </span>
-                        <span style={{
-                            padding: '4px 10px', borderRadius: '20px', background: '#e0f2fe',
-                            color: '#075985', fontSize: '0.74rem', fontWeight: 800
-                        }}>
+                        </button>
+
+                        {/* Faltantes en TXT */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilterCategory(prev => prev === 'faltantes' ? 'all' : 'faltantes');
+                                setActiveTab('discrepancias');
+                                setPage(0);
+                            }}
+                            title="Clic para filtrar Faltantes en TXT (tocar de nuevo para ver todos)"
+                            style={{
+                                padding: '6px 14px', borderRadius: '20px',
+                                border: filterCategory === 'faltantes' ? '2px solid #0284c7' : '1px solid #bae6fd',
+                                background: filterCategory === 'faltantes' ? '#bae6fd' : '#e0f2fe',
+                                color: '#075985', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: filterCategory === 'faltantes' ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none',
+                                transform: filterCategory === 'faltantes' ? 'scale(1.03)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
                             🟡 {auditResult.missingCount} Faltantes en TXT
-                        </span>
+                        </button>
+
+                        {/* Errores de Formato OSP */}
                         {auditResult.ospErrorCount > 0 && (
-                            <span style={{
-                                padding: '4px 10px', borderRadius: '20px', background: '#fce7f3',
-                                color: '#9d174d', fontSize: '0.74rem', fontWeight: 800
-                            }}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFilterCategory(prev => prev === 'errores_osp' ? 'all' : 'errores_osp');
+                                    setActiveTab('discrepancias');
+                                    setPage(0);
+                                }}
+                                title="Clic para filtrar Errores de Formato OSP (tocar de nuevo para ver todos)"
+                                style={{
+                                    padding: '6px 14px', borderRadius: '20px',
+                                    border: filterCategory === 'errores_osp' ? '2px solid #be185d' : '1px solid #fbcfe8',
+                                    background: filterCategory === 'errores_osp' ? '#fbcfe8' : '#fce7f3',
+                                    color: '#9d174d', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                    boxShadow: filterCategory === 'errores_osp' ? '0 2px 6px rgba(190, 24, 93, 0.3)' : 'none',
+                                    transform: filterCategory === 'errores_osp' ? 'scale(1.03)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
                                 ❌ {auditResult.ospErrorCount} Errores de Formato OSP Corregidos
-                            </span>
+                            </button>
                         )}
                     </div>
 
@@ -634,6 +745,7 @@ export default function TxtProvinciaPanel({ addToast }) {
                                     <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#475569' }}>Filtro:</span>
                                     {[
                                         { id: 'all', label: 'Todos' },
+                                        { id: 'exactos', label: 'Solo Coincidencias' },
                                         { id: 'discrepancias', label: 'Solo Discrepancias' },
                                         { id: 'sobrantes', label: 'Solo Sobrantes TXT' },
                                         { id: 'faltantes', label: 'Solo Faltantes TXT' },
@@ -786,16 +898,44 @@ export default function TxtProvinciaPanel({ addToast }) {
                                     </tbody>
                                 </table>
 
-                                {/* Paginación */}
-                                {totalPages > 1 && (
-                                    <div style={{
-                                        padding: '12px 18px', background: '#f8fafc', borderTop: '1px solid #e2e8f0',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
-                                    }}>
+                                {/* Paginación y Selector de Tamaño de Página */}
+                                <div style={{
+                                    padding: '12px 18px', background: '#f8fafc', borderTop: '1px solid #e2e8f0',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem',
+                                    flexWrap: 'wrap', gap: '10px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                                         <span style={{ color: '#64748b' }}>
-                                            Mostrando {page * pageSize + 1} a {Math.min((page + 1) * pageSize, filteredRows.length)} de {filteredRows.length} registros
+                                            {pageSize === 0 ? (
+                                                <>Mostrando <strong>todos los {filteredRows.length}</strong> registros</>
+                                            ) : (
+                                                <>Mostrando <strong>{filteredRows.length === 0 ? 0 : page * pageSize + 1}</strong> a <strong>{Math.min((page + 1) * pageSize, filteredRows.length)}</strong> de <strong>{filteredRows.length}</strong> registros</>
+                                            )}
                                         </span>
 
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>Filas:</span>
+                                            {[25, 50, 100, 0].map(sz => (
+                                                <button
+                                                    key={sz}
+                                                    type="button"
+                                                    onClick={() => { setPageSize(sz); setPage(0); }}
+                                                    style={{
+                                                        padding: '2px 8px', borderRadius: '4px',
+                                                        border: pageSize === sz ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                                                        background: pageSize === sz ? '#e0f2fe' : '#ffffff',
+                                                        color: pageSize === sz ? '#0369a1' : '#64748b',
+                                                        fontSize: '0.72rem', fontWeight: pageSize === sz ? 800 : 600,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    {sz === 0 ? 'Ver Todos' : sz}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {pageSize > 0 && totalPages > 1 && (
                                         <div style={{ display: 'flex', gap: '6px' }}>
                                             <button
                                                 type="button"
@@ -825,8 +965,8 @@ export default function TxtProvinciaPanel({ addToast }) {
                                                 Siguiente
                                             </button>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
