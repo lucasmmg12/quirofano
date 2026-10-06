@@ -169,6 +169,7 @@ const VIEW_LABELS = {
     deudas: 'Deudas',
     altas: '2. Control de Altas',
     facturacion: '3. Facturación',
+    txt_provincia: 'Txt Provincia (OSP)',
     asignacion: 'Asignación',
     consultas: 'Consultas',
     auditoria_historias: 'Auditoría de Historias',
@@ -1122,6 +1123,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'facturacion' && (
                     <FacturacionPanel addToast={addToast} currentUser={currentUser} />
+                )}
+
+                {activeView === 'txt_provincia' && (
+                    <TxtProvinciaPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'asignaciones' && (
