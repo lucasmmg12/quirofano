@@ -1277,7 +1277,15 @@ const STOPWORDS_MEDICOS = new Set([
     'quedar', 'quedo', 'quedó', 'queda', 'quedan',
     'pasar', 'pasa', 'pasas', 'pasás', 'pasan', 'pasale', 'pasalo',
     'avisar', 'aviso', 'avisó', 'avisa', 'avisan', 'avisame', 'avisáme',
-    'ah', 'eh', 'oh', 'uh', 'em'
+    'ah', 'eh', 'oh', 'uh', 'em',
+    // Calles, Sedes, Zonas y Departamentos de San Juan (evitan confusión geográfica con médicos)
+    'santa', 'fe', 'santa fe', 'san', 'luis', 'san luis', 'san juan', 'juan',
+    'calle', 'avenida', 'sede', 'sedes', 'sucursal', 'centro', 'escuela', 'colegio',
+    'departamento', 'capital', 'chimbas', 'rawson', 'rivadavia', 'pocito', 'caucete',
+    'albardon', 'albardón', 'angaco', 'iglesia', 'jachal', 'jáchal', 'valle',
+    'fertil', 'fértil', 'valle fértil', 'valle fertil', 'calingasta', 'barreal',
+    'sarmiento', 'ullum', 'zonda', '25 de mayo', '9 de julio', 'villa', 'krause',
+    'lucia', 'lucía', 'santa lucia', 'santa lucía', 'lab', 'laboratorios', 'convenio'
 ]);
 
 const SPECIALTY_MAP: [RegExp, string][] = [
@@ -1377,6 +1385,17 @@ function formatTurnoTargetPhrase(target: string | null | undefined): string {
 function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: string; cleanSurnameAndName: string } {
     if (!rawDoc) return { displayName: 'Profesional', specialty: 'Consultorios', cleanSurnameAndName: 'Profesional' };
     let name = (rawDoc.profesional_nombre || '').trim();
+
+    // Si el nombre corresponde a una institución, centro, escuela o servicio operativo (no a una persona médica)
+    const isInstitution = /\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(name);
+    if (isInstitution) {
+        return {
+            displayName: name,
+            specialty: rawDoc.especialidad && rawDoc.especialidad !== 'Consulta Médica' ? rawDoc.especialidad : 'Atención Externa',
+            cleanSurnameAndName: name
+        };
+    }
+
     const isFemale = /\b(dra\.?|doctora|agustina|ana|sonia|laura|silvia|lucia|lucía|julieta|marisa|cintia|paulina|daniela|mariana|maria|valeria|patricia|carolina|veronica|romina|natalia|vanesa|gabriela|lorena|cecilia|marcela|andrea|elena|claudia|bertha)\b/i.test(name);
     const prefix = isFemale ? 'Dra.' : 'Dr.';
     
@@ -2398,6 +2417,8 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre'
         ]);
 
+        const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
+
         for (const w of wordsInText) {
             if (!nonDoctorWords.has(w) && !STOPWORDS_MEDICOS.has(w) && w.length >= 4) {
                 try {
@@ -2405,9 +2426,11 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                         .from('contact_center_doctor_parameters')
                         .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
                         .ilike('profesional_nombre', `${w} %`)
-                        .limit(5);
+                        .limit(10);
 
-                    if (dMatch && dMatch.length > 0) {
+                    const validMatch = (dMatch || []).filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
+
+                    if (validMatch.length > 0) {
                         doctorCandidate = w;
                         break;
                     }
@@ -2424,11 +2447,13 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             const isDoctorFemale = /\b(doctora|dra\.?|la\s+doctora)\b/i.test(clean);
             const isDoctorMale = /\b(doctor|dr\.?|el\s+doctor)\b/i.test(clean) && !isDoctorFemale;
 
-            const { data: docs } = await supabase
+            const { data: rawDocs } = await supabase
                 .from('contact_center_doctor_parameters')
                 .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
                 .ilike('profesional_nombre', `%${doctorCandidate}%`)
                 .limit(15);
+
+            const docs = (rawDocs || []).filter((d: any) => !/\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(d.profesional_nombre || ''));
 
             if (docs && docs.length > 0) {
                 // Formatear y asociar metadata de presentación clara a cada doctor
@@ -3772,13 +3797,17 @@ async function handleChatbotTriage(
             selectedDoc = storedDocs.find((d: any) => {
                 const info = d.formattedInfo || formatDoctorDisplay(d);
                 const docText = `${d.profesional_nombre} ${info.displayName} ${info.specialty} ${d.condiciones_consulta || ''}`.toLowerCase();
-                return words.some((w: string) => docText.includes(w));
+                return words.some((w: string) => {
+                    const rx = new RegExp(`\\b${w}\\b`, 'i');
+                    return rx.test(docText);
+                });
             });
             
-            // Si no se encontró en storedDocs, buscar coincidencia por palabras en el nombre
+            // Si no se encontró en storedDocs, buscar coincidencia por palabras completas en el nombre
             if (!selectedDoc && words.length > 0) {
                 for (const w of words) {
-                    const found = storedDocs.find((d: any) => d.profesional_nombre.toLowerCase().includes(w));
+                    const rx = new RegExp(`\\b${w}\\b`, 'i');
+                    const found = storedDocs.find((d: any) => rx.test(d.profesional_nombre));
                     if (found) { selectedDoc = found; break; }
                 }
             }
