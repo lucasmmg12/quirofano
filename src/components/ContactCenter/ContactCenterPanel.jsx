@@ -719,7 +719,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
 
     // Finalizar y archivar chat con motivo de resolución
-    const handleCloseChat = async (chatId, resolutionReason) => {
+    const handleCloseChat = async (chatId, resolutionReason, sendFarewell = true) => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
@@ -728,7 +728,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 chat: targetChat,
                 resolutionReason,
                 activeAgent,
-                currentUser
+                currentUser,
+                silent: !sendFarewell
             });
             setChats(prev => prev.map(c => c.id === chatId ? updated : c));
             setActiveChatId(currentId => {
@@ -739,7 +740,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 return currentId;
             });
             if (addToast) {
-                addToast(`Atención finalizada y mensaje de despedida/encuesta enviado al paciente (${resolutionReason})`, 'success');
+                addToast(
+                    sendFarewell
+                        ? `Atención finalizada y mensaje de despedida/encuesta enviado al paciente (${resolutionReason})`
+                        : `Conversación finalizada y archivada (${resolutionReason})`,
+                    'success'
+                );
             }
         } catch (err) {
             if (addToast) addToast(err.message || 'Error al finalizar atención', 'error');

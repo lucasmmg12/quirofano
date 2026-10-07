@@ -919,6 +919,7 @@ export default function ContactCenterChatConsole({
     // Modal de Cierre / Finalización de Atención
     const [closeModalOpen, setCloseModalOpen] = useState(false);
     const [resolutionReason, setResolutionReason] = useState('Turno Coordinado');
+    const [sendFarewellMessage, setSendFarewellMessage] = useState(true);
     const [isClosingChat, setIsClosingChat] = useState(false);
 
     // Modal Institucional de Reinicio de Bot y Notificaciones Toast
@@ -1932,7 +1933,7 @@ export default function ContactCenterChatConsole({
         if (!selectedChat?.id || !onCloseChat) return;
         setIsClosingChat(true);
         try {
-            await onCloseChat(selectedChat.id, resolutionReason);
+            await onCloseChat(selectedChat.id, resolutionReason, sendFarewellMessage);
             setCloseModalOpen(false);
         } catch (err) {
             console.error('Error cerrando:', err);
@@ -4531,33 +4532,67 @@ export default function ContactCenterChatConsole({
                                 </button>
                             </div>
                         ) : isBot ? (
-                            <button 
-                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                style={{
-                                    padding: '3px 10px', borderRadius: '6px', border: 'none',
-                                    background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-                                    color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                    height: '24px',
-                                    boxShadow: '0 1px 3px rgba(124, 58, 237, 0.25)'
-                                }}
-                            >
-                                <UserCheck size={12} /> Asignarme y pausar Bot
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button 
+                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                    title="Tomar el control de la conversación y pausar el bot automático"
+                                    style={{
+                                        padding: '3px 10px', borderRadius: '6px', border: 'none',
+                                        background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                        height: '24px',
+                                        boxShadow: '0 1px 3px rgba(124, 58, 237, 0.25)'
+                                    }}
+                                >
+                                    <UserCheck size={12} /> Asignarme y pausar Bot
+                                </button>
+                                <button
+                                    onClick={() => setCloseModalOpen(true)}
+                                    title="Finalizar esta charla y archivar conversación"
+                                    style={{
+                                        padding: '2px 8px', borderRadius: '6px', border: 'none',
+                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
+                                        height: '24px',
+                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
+                                    }}
+                                >
+                                    <CheckCircle2 size={11} /> Finalizar
+                                </button>
+                            </div>
                         ) : isUnassigned ? (
-                            <button 
-                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                style={{
-                                    padding: '3px 10px', borderRadius: '6px', border: 'none',
-                                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                    color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                    height: '24px',
-                                    boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)'
-                                }}
-                            >
-                                <UserCheck size={12} /> Asignarme
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button 
+                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                    title="Asignarme este chat para responder"
+                                    style={{
+                                        padding: '3px 10px', borderRadius: '6px', border: 'none',
+                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                        height: '24px',
+                                        boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)'
+                                    }}
+                                >
+                                    <UserCheck size={12} /> Asignarme
+                                </button>
+                                <button
+                                    onClick={() => setCloseModalOpen(true)}
+                                    title="Finalizar esta charla y archivar conversación"
+                                    style={{
+                                        padding: '2px 8px', borderRadius: '6px', border: 'none',
+                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
+                                        height: '24px',
+                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
+                                    }}
+                                >
+                                    <CheckCircle2 size={11} /> Finalizar
+                                </button>
+                            </div>
                         ) : null}
 
                         {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR (Solo si NO está cerrado) */}
@@ -5882,19 +5917,37 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                style={{
-                                    padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                    background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-                                    color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                    boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)', whiteSpace: 'nowrap'
-                                }}
-                            >
-                                <UserCheck size={14} /> Asignarme y pausar Bot
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setCloseModalOpen(true)}
+                                    title="Finalizar esta charla y archivar conversación"
+                                    style={{
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        border: '1.5px solid #059669',
+                                        background: '#FFFFFF',
+                                        color: '#059669', fontSize: '0.76rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        whiteSpace: 'nowrap',
+                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.15)'
+                                    }}
+                                >
+                                    <CheckCircle2 size={14} /> Finalizar charla
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                                        color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)', whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    <UserCheck size={14} /> Asignarme y pausar Bot
+                                </button>
+                            </div>
                         </div>
                     ) : isUnassigned ? (
                         /* CASO 3: SIN ASIGNAR -> BLOQUEO DE TECLADO HASTA ASIGNARSE */
@@ -5914,19 +5967,37 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                style={{
-                                    padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                    color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)', whiteSpace: 'nowrap'
-                                }}
-                            >
-                                <UserCheck size={14} /> Asignarme para responder
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setCloseModalOpen(true)}
+                                    title="Finalizar esta charla y archivar conversación"
+                                    style={{
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        border: '1.5px solid #059669',
+                                        background: '#FFFFFF',
+                                        color: '#059669', fontSize: '0.76rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        whiteSpace: 'nowrap',
+                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.15)'
+                                    }}
+                                >
+                                    <CheckCircle2 size={14} /> Finalizar charla
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                        color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)', whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    <UserCheck size={14} /> Asignarme para responder
+                                </button>
+                            </div>
                         </div>
                     ) : null}
 
@@ -8092,7 +8163,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
 
                         <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '0 0 14px 0', lineHeight: 1.45 }}>
                             Estás a punto de finalizar la conversación con <strong>{selectedChat.contactName}</strong>. 
-                            Se enviará automáticamente el mensaje de despedida y encuesta de 5 estrellas al paciente, la conversación pasará a <strong>Archivadas</strong> y se reactivará el bot automático.
+                            La conversación pasará a <strong>Archivadas</strong> y se reactivará el bot automático para futuros mensajes.
                         </p>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
@@ -8106,7 +8177,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 }}
                             >
                                 <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
+                                <option value="Auto-gestión Bot Completa">🤖 Auto-gestión Bot Completa / Resuelta</option>
                                 <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
+                                <option value="Consulta Fuera de Alcance">🚫 Consulta Fuera de Alcance / No Aplica</option>
                                 <option value="Derivado a Guardia / Sector">🏥 Derivado a Guardia / Sector Específico</option>
                                 <option value="Cancelación / Reprogramación Confirmada">🗓️ Cancelación / Reprogramación Confirmada</option>
                                 <option value="Paciente No Responde">⏳ Paciente No Responde</option>
@@ -8114,18 +8187,44 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </select>
                         </div>
 
-                        {/* PREVIEW DEL MENSAJE DE CIERRE OFICIAL */}
-                        <div style={{
-                            background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px',
-                            padding: '10px 12px', marginBottom: '18px', textAlign: 'left'
+                        {/* TOGGLE ENVIAR MENSAJE DE DESPEDIDA / CIERRE SILENCIOSO */}
+                        <label style={{
+                            display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+                            fontSize: '0.80rem', fontWeight: 600, color: '#334155', margin: '4px 0 14px 0',
+                            userSelect: 'none'
                         }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                <span>⭐ Mensaje que recibirá el paciente vía WhatsApp:</span>
+                            <input
+                                type="checkbox"
+                                checked={sendFarewellMessage}
+                                onChange={(e) => setSendFarewellMessage(e.target.checked)}
+                                style={{ width: '16px', height: '16px', accentColor: '#059669', cursor: 'pointer' }}
+                            />
+                            <span>Enviar mensaje de despedida y encuesta 5⭐ vía WhatsApp</span>
+                        </label>
+
+                        {/* PREVIEW DEL MENSAJE DE CIERRE OFICIAL O AVISO DE CIERRE SILENCIOSO */}
+                        {sendFarewellMessage ? (
+                            <div style={{
+                                background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px',
+                                padding: '10px 12px', marginBottom: '18px', textAlign: 'left'
+                            }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>⭐ Mensaje que recibirá el paciente vía WhatsApp:</span>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#166534', whiteSpace: 'pre-line', lineHeight: 1.35, fontStyle: 'italic' }}>
+                                    {FINAL_ATTENTION_MESSAGE}
+                                </div>
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: '#166534', whiteSpace: 'pre-line', lineHeight: 1.35, fontStyle: 'italic' }}>
-                                {FINAL_ATTENTION_MESSAGE}
+                        ) : (
+                            <div style={{
+                                background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px',
+                                padding: '10px 12px', marginBottom: '18px', textAlign: 'left',
+                                display: 'flex', alignItems: 'center', gap: '8px', color: '#64748B', fontSize: '0.75rem'
+                            }}>
+                                <AlertCircle size={16} color="#94A3B8" />
+                                <span><strong>Cierre directo / silencioso:</strong> Se archivará la charla y reactivará el bot sin enviar ningún mensaje de WhatsApp al paciente.</span>
                             </div>
-                        </div>
+                        )}
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                             <button

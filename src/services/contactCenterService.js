@@ -2009,14 +2009,14 @@ Si nuestra atención te fue de ayuda hoy, nos sumarías un montón dejándonos 5
  * Cierra o archiva una conversación con motivo de resolución y auditoría de agente
  * Envía automáticamente el mensaje oficial de despedida y encuesta de satisfacción al paciente vía WhatsApp
  */
-export async function closeConversationWithResolution({ chat, resolutionReason, activeAgent, currentUser }) {
+export async function closeConversationWithResolution({ chat, resolutionReason, activeAgent, currentUser, silent = false }) {
     if (!chat || !chat.phone) throw new Error('Chat o teléfono inválido');
     const norm = normalizeArgentinePhone(chat.phone);
     const now = new Date();
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
-    // 1. Enviar el mensaje oficial de finalización y encuesta al paciente vía WhatsApp (Línea Contact Center)
-    if (norm) {
+    // 1. Enviar el mensaje oficial de finalización y encuesta al paciente vía WhatsApp (Línea Contact Center) si no es silencioso
+    if (norm && !silent) {
         try {
             await sendWhatsAppMessage({
                 content: FINAL_ATTENTION_MESSAGE,
@@ -2065,10 +2065,12 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         assigned_agent_name: null,
         bot_active: true, // reactivar bot para futuros contactos
         bot_stage: 'inicio', // reiniciar flujo del bot
-        last_message_text: FINAL_ATTENTION_MESSAGE,
-        last_message_at: now.toISOString(),
         updated_at: now.toISOString()
     };
+    if (!silent) {
+        updateFields.last_message_text = FINAL_ATTENTION_MESSAGE;
+        updateFields.last_message_at = now.toISOString();
+    }
 
     const { error } = await supabase
         .from('contact_center_conversations')
@@ -2082,27 +2084,32 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         throw error;
     }
 
-    const finalOutMsg = {
-        id: 'msg_final_' + Date.now(),
-        sender: 'agent',
-        senderName: activeAgent?.name || 'Sanatorio Argentino',
-        senderAgentId: activeAgent?.id || null,
-        agentRole: activeAgent?.role || 'Atención al Paciente',
-        tagColor: activeAgent?.color || '#059669',
-        type: 'text',
-        text: FINAL_ATTENTION_MESSAGE,
-        isNote: false,
-        created_at: now.toISOString(),
-        timestamp: timeStr
-    };
+    const newMessages = [...(chat.messages || [])];
+    if (!silent) {
+        const finalOutMsg = {
+            id: 'msg_final_' + Date.now(),
+            sender: 'agent',
+            senderName: activeAgent?.name || 'Sanatorio Argentino',
+            senderAgentId: activeAgent?.id || null,
+            agentRole: activeAgent?.role || 'Atención al Paciente',
+            tagColor: activeAgent?.color || '#059669',
+            type: 'text',
+            text: FINAL_ATTENTION_MESSAGE,
+            isNote: false,
+            created_at: now.toISOString(),
+            timestamp: timeStr
+        };
+        newMessages.push(finalOutMsg);
+    }
 
     const sysMsg = {
         id: 'sys_' + Date.now(),
         sender: 'system',
-        text: `${activeAgent?.name || 'Operador'} finalizó la atención con motivo: "${resolutionReason || 'Resuelto'}". Se envió mensaje de cierre y encuesta al paciente. Bot reactivado.`,
+        text: `${activeAgent?.name || 'Operador'} finalizó la atención (${resolutionReason || 'Resuelto'}). ${silent ? 'Cierre directo sin envío de mensaje.' : 'Mensaje de despedida y encuesta enviado al paciente.'} Bot reactivado.`,
         created_at: now.toISOString(),
         timestamp: timeStr
     };
+    newMessages.push(sysMsg);
 
     return {
         ...chat,
@@ -2115,14 +2122,10 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         closed_at: now.toISOString(),
         closedByAgentId: activeAgent?.id || null,
         closedByAgentName: activeAgent?.name || null,
-        lastMessage: FINAL_ATTENTION_MESSAGE,
+        lastMessage: !silent ? FINAL_ATTENTION_MESSAGE : chat.lastMessage,
         lastMessageTimestamp: now.getTime(),
         timeAgo: 'hace unos segundos',
-        messages: [
-            ...(chat.messages || []),
-            finalOutMsg,
-            sysMsg
-        ]
+        messages: newMessages
     };
 }
 
