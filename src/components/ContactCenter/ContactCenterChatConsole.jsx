@@ -943,6 +943,7 @@ export default function ContactCenterChatConsole({
     const [resolutionReason, setResolutionReason] = useState('Turno Coordinado');
     const [sendFarewellMessage, setSendFarewellMessage] = useState(true);
     const [isClosingChat, setIsClosingChat] = useState(false);
+    const [justClosedChatInfo, setJustClosedChatInfo] = useState(null);
 
     // Modal Institucional de Reinicio de Bot y Notificaciones Toast
     const [resetBotModalOpen, setResetBotModalOpen] = useState(false);

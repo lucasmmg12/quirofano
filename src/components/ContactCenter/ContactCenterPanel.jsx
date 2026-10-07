@@ -741,44 +741,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     if (preferredNextChatId !== undefined) {
                         return preferredNextChatId;
                     }
-                    const targetAssigned = (targetChat.assignedTo || '').toLowerCase();
-                    const targetAssignedName = (targetChat.assignedToName || '').toLowerCase();
-                    const agentId = (activeAgent?.id || '').toLowerCase();
-                    const agentName = (activeAgent?.name || '').toLowerCase();
-                    const isMine = targetAssigned === agentId || (agentName && targetAssignedName.includes(agentName));
-
-                    if (isMine) {
-                        // Buscar el siguiente chat del mismo agente (NUNCA pasar al bot)
-                        const nextMyChat = chats.find(c => 
-                            c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c) && (
-                                (c.assignedTo || '').toLowerCase() === agentId ||
-                                (c.assignedToName || '').toLowerCase().includes(agentName)
-                            )
-                        );
-                        return nextMyChat?.id || null;
-                    }
-
-                    if (!targetChat.assignedTo && targetChat.status === 'sin_asignar') {
-                        const nextUnassigned = chats.find(c => 
-                            c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c) &&
-                            !c.assignedTo && c.status === 'sin_asignar'
-                        );
-                        return nextUnassigned?.id || null;
-                    }
-
-                    if (targetChat.status === 'bot' || targetChat.botActive) {
-                        const nextBot = chats.find(c => 
-                            c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c) &&
-                            (c.status === 'bot' || c.botActive)
-                        );
-                        return nextBot?.id || null;
-                    }
-
-                    const remaining = chats.filter(c => c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c));
-                    return remaining[0]?.id || null;
+                    return null;
                 }
                 return currentId;
             });
+            if (preferredNextChatId === null) {
+                try {
+                    localStorage.removeItem('sa_cc_active_chat_id');
+                } catch (_) {}
+            }
             if (addToast) {
                 addToast(
                     sendFarewell
