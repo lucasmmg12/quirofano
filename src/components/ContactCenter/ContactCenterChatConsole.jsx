@@ -155,6 +155,111 @@ import ContactCenterThemeModal from './ContactCenterThemeModal';
 const TEST_BOT_RESET_INDICATOR_ENABLED = false;
 
 /**
+ * Renderiza las etiquetas generadas por el bot:
+ * - 'Autorización' (cuando el paciente no está pidiendo turno, solamente está pidiendo autorización)
+ * - 'Cancelación' (cuando el paciente expresa de forma explícita que quiere cancelar un turno)
+ * - 'Reprogramación' (cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno)
+ * Diseñadas con bordes suaves, iconos específicos y tamaño pequeño para verse al lado de "Sin asignar".
+ */
+function renderBotTags(chat, theme) {
+    if (!chat) return null;
+    const rawTags = Array.isArray(chat.tags) ? chat.tags : [];
+    
+    const botTags = [];
+    const seen = new Set();
+    
+    for (const t of rawTags) {
+        if (!t || typeof t !== 'string') continue;
+        const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if ((norm === 'autorizacion' || norm === 'cancelacion' || norm === 'reprogramacion') && !seen.has(norm)) {
+            seen.add(norm);
+            botTags.push(norm);
+        }
+    }
+    
+    if (botTags.length === 0) return null;
+
+    return botTags.map((tagKey) => {
+        if (tagKey === 'cancelacion') {
+            return (
+                <span
+                    key="bot-tag-cancelacion"
+                    title="Solicitud explícita de Cancelación de Turno"
+                    style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '6px',
+                        background: theme?.isDark ? '#450A0A' : '#FEE2E2',
+                        color: theme?.isDark ? '#FCA5A5' : '#B91C1C',
+                        border: `1px solid ${theme?.isDark ? '#7F1D1D' : '#FCA5A5'}`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        lineHeight: 1.2,
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                    }}
+                >
+                    <X size={10} strokeWidth={2.5} />
+                    Cancelación
+                </span>
+            );
+        }
+        if (tagKey === 'reprogramacion') {
+            return (
+                <span
+                    key="bot-tag-reprogramacion"
+                    title="Solicitud explícita de Reprogramación / Modificación de Turno"
+                    style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '6px',
+                        background: theme?.isDark ? '#082F49' : '#E0F2FE',
+                        color: theme?.isDark ? '#7DD3FC' : '#0369A1',
+                        border: `1px solid ${theme?.isDark ? '#0369A1' : '#BAE6FD'}`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        lineHeight: 1.2,
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                    }}
+                >
+                    <RefreshCw size={10} strokeWidth={2} />
+                    Reprogramación
+                </span>
+            );
+        }
+        if (tagKey === 'autorizacion') {
+            return (
+                <span
+                    key="bot-tag-autorizacion"
+                    title="Solicitud exclusiva de Autorización de Orden Médica / Estudio"
+                    style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '6px',
+                        background: theme?.isDark ? '#2E1065' : '#F5F3FF',
+                        color: theme?.isDark ? '#DDD6FE' : '#6D28D9',
+                        border: `1px solid ${theme?.isDark ? '#6D28D9' : '#DDD6FE'}`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        lineHeight: 1.2,
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                    }}
+                >
+                    <FileCheck size={10} strokeWidth={2} />
+                    Autorización
+                </span>
+            );
+        }
+        return null;
+    });
+}
+
+/**
  * Formatea texto con sintaxis WhatsApp: *bold*, _italic_, ~strikethrough~
  * Devuelve array de elementos React con los estilos aplicados.
  */
@@ -2094,7 +2199,10 @@ export default function ContactCenterChatConsole({
             }
         }
 
-        // 5. Último mensaje, motivo de consulta, resumen IA u obra social
+        // 5. Último mensaje, motivo de consulta, resumen IA, etiquetas u obra social
+        if (Array.isArray(chat.tags) && chat.tags.some(t => normalizeSearch(t).includes(q))) {
+            return { isMatch: true, matchType: 'etiqueta', matchText: `Etiqueta: ${chat.tags.join(', ')}` };
+        }
         if (normalizeSearch(chat.lastMessage).includes(q)) {
             return { isMatch: true, matchType: 'mensaje', snippet: chat.lastMessage };
         }
@@ -3877,6 +3985,9 @@ export default function ContactCenterChatConsole({
                                             </span>
                                         )}
 
+                                        {/* ETIQUETAS GENERADAS POR EL BOT (Autorización, Cancelación, Reprogramación) */}
+                                        {renderBotTags(chat, ccTheme)}
+
                                         {/* Tag de Bloqueo Exclusivo */}
                                         {chatIsLocked && !isClosed && (
                                             <span style={{
@@ -4076,6 +4187,9 @@ export default function ContactCenterChatConsole({
                             >
                                 {selectedChat.customFields?.esPacienteExistente ? '✓ Paciente Registrado' : '+ Nuevo Paciente'}
                             </span>
+
+                            {/* ETIQUETAS BOT EN CABECERA */}
+                            {renderBotTags(selectedChat, ccTheme)}
                         </div>
                         <div style={{ fontSize: '0.67rem', color: ccTheme.chatHeaderColor || '#64748B', opacity: 0.9, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginTop: '2px', lineHeight: 1.2 }}>
                             <span>Tel: {selectedChat.phone}</span>

@@ -630,6 +630,91 @@ export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
 // =========================================================================
 
 /**
+ * Resuelve y extrae las etiquetas asignadas por el bot o detectadas por intención institucional:
+ * - 'Autorización' (cuando el paciente no está pidiendo turno, solamente está pidiendo autorización)
+ * - 'Cancelación' (cuando el paciente expresa de forma explícita que quiere cancelar un turno)
+ * - 'Reprogramación' (cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno)
+ */
+export function resolveConversationTags(conv, messages = []) {
+    const tagsSet = new Set();
+
+    // 1. Tags persistidos en la base de datos (contact_center_conversations.tags)
+    if (conv?.tags && Array.isArray(conv.tags)) {
+        conv.tags.forEach(t => {
+            if (t && typeof t === 'string') {
+                const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                if (norm === 'autorizacion') tagsSet.add('Autorización');
+                else if (norm === 'cancelacion') tagsSet.add('Cancelación');
+                else if (norm === 'reprogramacion') tagsSet.add('Reprogramación');
+                else if (t !== 'Contact Center' && t !== 'WhatsApp') tagsSet.add(t);
+            }
+        });
+    }
+
+    // 2. Detección retroactiva / Fallback sobre motivo_consulta y mensajes entrantes
+    const motivo = (conv?.motivo_consulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const stage = (conv?.bot_stage || '').toLowerCase();
+    
+    // Textos de mensajes del paciente
+    const patientMsgs = (messages || [])
+        .filter(m => m.direction === 'incoming' || m.sender === 'patient')
+        .map(m => (m.content || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase())
+        .slice(0, 10);
+    const fullPatientCorpus = patientMsgs.join(' ');
+    const lastMsgText = (conv?.last_message_text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    // A. CANCELACIÓN: cuando el paciente expresa de forma explícita que quiere cancelar un turno
+    const isCancel = 
+        motivo.includes('cancelar') || 
+        motivo.includes('cancelacion') || 
+        motivo.includes('baja de turno') ||
+        /\b(cancel\w*|cancelae|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir|no\s+voy\s+a\s+asistir)\b/i.test(lastMsgText) ||
+        /\b(cancel\w*|cancelae|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno)\b/i.test(fullPatientCorpus);
+
+    if (isCancel) {
+        tagsSet.add('Cancelación');
+        tagsSet.delete('Reprogramación');
+    }
+
+    // B. REPROGRAMACIÓN: cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno
+    const isReprog = 
+        motivo.includes('reprogramar') || 
+        motivo.includes('reprogramacion') || 
+        motivo.includes('modificar turno') ||
+        stage === 'esperando_preferencia_reprogramacion' ||
+        stage === 'esperando_profesional_reprogramacion' ||
+        /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita|fecha|dia|horario)|modificar\s+(?:el\s+|mi\s+)?(?:turno|cita|fecha|dia|horario)|mover\s+(?:el\s+|mi\s+)?(?:turno|cita)|pasar\s+(?:el\s+|mi\s+)?(?:turno|cita)\s+(?:para|a)|otro\s+dia|otra\s+fecha)\b/i.test(lastMsgText) ||
+        /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita))\b/i.test(fullPatientCorpus);
+
+    if (isReprog && !isCancel) {
+        tagsSet.add('Reprogramación');
+        tagsSet.delete('Cancelación');
+    }
+
+    // C. AUTORIZACIÓN: cuando el paciente no está pidiendo turno, solamente está pidiendo autorización
+    const asksTurno = 
+        motivo.includes('solicitud de turno') ||
+        /\b(nuevo\s+turno|sacar\s+turno|pedir\s+turno|solicitar\s+turno|quiero\s+un\s+turno|agendar\s+turno|dar\s+un\s+turno)\b/i.test(lastMsgText) ||
+        /\b(nuevo\s+turno|sacar\s+turno|pedir\s+turno|solicitar\s+turno)\b/i.test(fullPatientCorpus);
+
+    const isAutoriz = 
+        (stage === 'esperando_foto_autorizacion' ||
+        motivo.includes('autorizacion') || 
+        motivo.includes('autorizar') ||
+        /\b(autoriz\w*|autorizacion|auditar|auditoria|pedido\s+medico\s+para\s+autorizar|orden\s+para\s+autorizar|orden\s+medica\s+para\s+autorizar)\b/i.test(lastMsgText) ||
+        /\b(autoriz\w*|autorizacion|auditar|auditoria)\b/i.test(fullPatientCorpus)) &&
+        !asksTurno &&
+        !isCancel &&
+        !isReprog;
+
+    if (isAutoriz) {
+        tagsSet.add('Autorización');
+    }
+
+    return Array.from(tagsSet);
+}
+
+/**
  * Consulta los mensajes reales de la base de datos y los unifica con los chats de demo.
  * Si el usuario envía un mensaje desde su número alternativo de prueba, se crea
  * dinámicamente un chat real en la bandeja "sin_asignar".
@@ -1017,7 +1102,7 @@ export async function fetchLiveAndDemoChats() {
                 badgeTimeText: waitingInfo.badgeTimeText,
                 chatbot: '#triage-sanatorio',
                 avatarColor: '#0284C7',
-                tags: ['Contact Center', 'WhatsApp'],
+                tags: resolveConversationTags(conv, formattedMessages),
                 whatsappName: incomingSenderName || null,
                 lastIncomingAt: lastIncomingIso,
                 lastIncomingTimestamp: lastIncomingMs,
@@ -2989,7 +3074,7 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
                 badgeTimeText: null,
                 chatbot: '#triage-sanatorio',
                 avatarColor: '#64748B',
-                tags: ['Contact Center', 'WhatsApp'],
+                tags: resolveConversationTags(conv, []),
                 customFields: {
                     titularNombre: resolvedName,
                     titularTelefono: phone,

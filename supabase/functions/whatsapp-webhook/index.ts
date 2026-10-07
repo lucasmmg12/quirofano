@@ -2974,6 +2974,7 @@ async function handleGestionTurnoFlow(params: {
             status: 'bot',
             bot_active: true,
             motivo_consulta: `Gestión de turno (${verbo()}) en curso`,
+            tags: [g.accion === 'reprogramar' ? 'Reprogramación' : 'Cancelación'],
             ai_summary: { ...prevSummary, gestion_turno: { ...g, updated_at: Date.now() } },
             ...extra
         }
@@ -2986,6 +2987,7 @@ async function handleGestionTurnoFlow(params: {
             status: 'sin_asignar',
             bot_active: false,
             motivo_consulta: buildGestionMotivo(g),
+            tags: [g.accion === 'reprogramar' ? 'Reprogramación' : 'Cancelación'],
             medico_o_especialidad: seleccionados()[0]?.medico || seleccionados()[0]?.especialidad || null,
             ai_summary: { ...prevSummary, gestion_turno: { ...g, estado: 'derivado_agente', updated_at: Date.now() } }
         }
@@ -3221,8 +3223,95 @@ const VALID_CONVERSATION_COLUMNS = new Set([
     'es_paciente_existente', 'motivo_consulta', 'medico_o_especialidad',
     'last_message_text', 'last_message_at', 'created_at', 'updated_at',
     'ai_summary', 'nhc', 'resolution_reason', 'closed_at',
-    'closed_by_agent_id', 'closed_by_agent_name'
+    'closed_by_agent_id', 'closed_by_agent_name', 'tags'
 ]);
+
+/**
+ * Determina las etiquetas institucionales asignadas por el bot:
+ * - 'Autorización' (cuando el paciente no está pidiendo turno, solamente está pidiendo autorización)
+ * - 'Cancelación' (cuando el paciente expresa de forma explícita que quiere cancelar un turno)
+ * - 'Reprogramación' (cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno)
+ */
+function resolveBotTags(
+    cleanText: string,
+    existingTags: string[] = [],
+    context?: {
+        intent?: string | null;
+        botStage?: string | null;
+        motivoConsulta?: string | null;
+        gestionTurno?: any;
+    }
+): string[] {
+    const tagsSet = new Set<string>();
+
+    if (Array.isArray(existingTags)) {
+        for (const t of existingTags) {
+            if (!t || typeof t !== 'string') continue;
+            const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            if (norm === 'autorizacion') tagsSet.add('Autorización');
+            else if (norm === 'cancelacion') tagsSet.add('Cancelación');
+            else if (norm === 'reprogramacion') tagsSet.add('Reprogramación');
+            else tagsSet.add(t);
+        }
+    }
+
+    const norm = (cleanText || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const motivoNorm = (context?.motivoConsulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const intent = context?.intent || '';
+    const stage = context?.botStage || '';
+    const accion = context?.gestionTurno?.accion || '';
+
+    // 1. CANCELACIÓN: cuando el paciente expresa de forma explícita que quiere cancelar un turno
+    const isExplicitCancel = 
+        accion === 'cancelar' ||
+        intent === 'cancelar_turno_online' ||
+        stage === 'esperando_confirmacion_cancelacion' ||
+        /\b(cancel\w*|cancelae|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir|no\s+voy\s+a\s+asistir)\b/i.test(norm) ||
+        motivoNorm.includes('cancelar') || 
+        motivoNorm.includes('cancelacion') ||
+        motivoNorm.includes('baja de turno');
+
+    if (isExplicitCancel) {
+        tagsSet.add('Cancelación');
+        tagsSet.delete('Reprogramación');
+    }
+
+    // 2. REPROGRAMACIÓN: cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno
+    const isExplicitReprog = 
+        accion === 'reprogramar' ||
+        intent === 'reprogramar_turno_online' ||
+        stage === 'esperando_preferencia_reprogramacion' ||
+        stage === 'esperando_profesional_reprogramacion' ||
+        /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita|fecha|dia|horario)|modificar\s+(?:el\s+|mi\s+)?(?:turno|cita|fecha|dia|horario)|mover\s+(?:el\s+|mi\s+)?(?:turno|cita)|pasar\s+(?:el\s+|mi\s+)?(?:turno|cita)\s+(?:para|a)|postergar\s+(?:el\s+|mi\s+)?(?:turno|cita)|otro\s+dia|otra\s+fecha)\b/i.test(norm) ||
+        motivoNorm.includes('reprogramar') || 
+        motivoNorm.includes('reprogramacion') ||
+        motivoNorm.includes('modificar turno');
+
+    if (isExplicitReprog && !isExplicitCancel) {
+        tagsSet.add('Reprogramación');
+        tagsSet.delete('Cancelación');
+    }
+
+    // 3. AUTORIZACIÓN: cuando el paciente no está pidiendo turno, solamente está pidiendo autorización
+    const isTurnoRequest = 
+        motivoNorm.includes('solicitud de turno') ||
+        /\b(nuevo\s+turno|sacar\s+turno|pedir\s+turno|solicitar\s+turno|quiero\s+un\s+turno|dar\s+un\s+turno|agendar\s+turno|turno\s+con\s+(?:el|la|doctor|dra?)|turno\s+para\s+(?:clinico|medico|doctor))\b/i.test(norm);
+    
+    const isExplicitAutoriz = 
+        (intent === 'autorizacion' ||
+        stage === 'esperando_foto_autorizacion' ||
+        /\b(autoriz\w*|autorizacion|auditar|auditoria|pedido\s+medico\s+para\s+autorizar|orden\s+para\s+autorizar|orden\s+medica\s+para\s+autorizar|saber\s+si\s+(?:esta\s+)?autorizada)\b/i.test(norm) ||
+        (motivoNorm.includes('autorizacion') && !motivoNorm.includes('turno'))) &&
+        !isTurnoRequest &&
+        !isExplicitCancel &&
+        !isExplicitReprog;
+
+    if (isExplicitAutoriz) {
+        tagsSet.add('Autorización');
+    }
+
+    return Array.from(tagsSet);
+}
 
 // =============================================
 // MOTOR DE TRIAGE DEL CHATBOT (AHORRO DE MENSAJES Y EXTRACCIÓN CON IA)
@@ -3393,6 +3482,17 @@ async function handleChatbotTriage(
                 last_message_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
+            const additionalTags = resolveBotTags(
+                cleanText,
+                Array.isArray(conv?.tags) ? conv.tags : [],
+                {
+                    botStage: conv.bot_stage,
+                    motivoConsulta: conv.motivo_consulta
+                }
+            );
+            if (additionalTags.length > 0) {
+                silentUpdates.tags = additionalTags;
+            }
             const extractedDni = extractDniFromText(cleanText);
             if (extractedDni && isValidArgentineDni(extractedDni) && !conv.dni) {
                 silentUpdates.dni = extractedDni;
@@ -3471,6 +3571,7 @@ async function handleChatbotTriage(
         }
     }
 
+    let currentIntent: string | null = null;
     let currentStage = (wasClosed || isSessionExpiredByInactivity ? 'inicio' : (conv?.bot_stage || 'inicio'));
     let replyText = '';
     let nextStage = currentStage;
@@ -3503,6 +3604,26 @@ async function handleChatbotTriage(
             }
         }
         merged.bot_stage = finalStage;
+
+        // Asignación de etiquetas inteligentes institucionales (Autorización, Cancelación, Reprogramación)
+        const computedTags = resolveBotTags(
+            cleanText,
+            merged.tags || conv?.tags || [],
+            {
+                intent: currentIntent || merged.intent || extraUpdates.intent,
+                botStage: finalStage,
+                motivoConsulta: merged.motivo_consulta || conv?.motivo_consulta,
+                gestionTurno: extraUpdates.gestion_turno || merged.gestion_turno
+            }
+        );
+
+        if (finalStage === 'esperando_datos_turno' || merged.bot_stage === 'esperando_datos_turno') {
+            merged.tags = computedTags.filter(t => t !== 'Cancelación' && t !== 'Reprogramación');
+        } else if (isNavigationBackOrMenu(cleanText)) {
+            merged.tags = [];
+        } else {
+            merged.tags = computedTags;
+        }
 
         const cleanUpdates: Record<string, any> = {};
         for (const [key, val] of Object.entries(merged)) {
@@ -3775,6 +3896,7 @@ async function handleChatbotTriage(
     };
 
     const analysis = await detectIntentAndEntities(supabase, cleanText, conversationContext);
+    currentIntent = analysis?.intent || null;
     console.log(`[triage-bot] Análisis contextual para "${cleanText}":`, analysis);
 
     // =============================================
