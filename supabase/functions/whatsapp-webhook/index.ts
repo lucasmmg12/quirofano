@@ -3282,6 +3282,19 @@ async function handleChatbotTriage(
         return;
     }
 
+    // Comprobar si la sesión expiró por tiempo de inactividad
+    // Umbral de inactividad: 15 minutos sin mensajes nuevos (configurable en app_config)
+    // CRÍTICO: La expiración por inactividad SOLO aplica si la conversación NO está asignada a un agente humano.
+    // Si la conversación tiene una agente asignada (conv.assigned_agent_id), NUNCA debe expirar ni desasignarse automáticamente.
+    const INACTIVITY_TIMEOUT_MINUTES = cachedInactivityTimeoutMinutes || 15;
+    const lastMsgTime = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
+    const minutesSinceLastMsg = lastMsgTime > 0 ? (Date.now() - lastMsgTime) / (1000 * 60) : 0;
+    const isSessionExpiredByInactivity = Boolean(
+        conv && 
+        !conv.assigned_agent_id &&
+        lastMsgTime > 0 && 
+        minutesSinceLastMsg >= INACTIVITY_TIMEOUT_MINUTES
+    );
 
     // Si el chat estaba cerrado o una sesión NO asignada expiró por inactividad:
     // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVA SESIÓN
