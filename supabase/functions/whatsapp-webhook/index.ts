@@ -49,6 +49,70 @@ async function supabaseRetry<T>(
 }
 
 // =============================================
+// AUDITORÍA Y TELEMETRÍA DE TOKENS IA (OpenAI)
+// Registra consumo exacto de tokens y costo en contact_center_ai_usage_logs
+// =============================================
+async function recordAiUsage(
+    supabaseClient: any,
+    params: {
+        service_name: string;
+        model: string;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+        phone?: string | null;
+        execution_ms?: number;
+        metadata?: any;
+    }
+) {
+    if (!supabaseClient || !params.usage) return;
+    try {
+        const promptTokens = params.usage.prompt_tokens || 0;
+        const completionTokens = params.usage.completion_tokens || 0;
+        const totalTokens = params.usage.total_tokens || (promptTokens + completionTokens);
+
+        const m = (params.model || '').toLowerCase();
+        let promptCostPerM = 0.15; // default gpt-4o-mini ($0.15 / 1M)
+        let completionCostPerM = 0.60; // ($0.60 / 1M)
+
+        if (m.includes('gpt-4o-mini') || m.includes('4.1-mini')) {
+            promptCostPerM = 0.15;
+            completionCostPerM = 0.60;
+        } else if (m.includes('gpt-5.4-mini') || m.includes('gpt-5-mini')) {
+            promptCostPerM = 0.25;
+            completionCostPerM = 1.00;
+        } else if (m.includes('gpt-4o')) {
+            promptCostPerM = 2.50;
+            completionCostPerM = 10.00;
+        } else if (m.includes('gpt-5') || m.includes('o1') || m.includes('o3') || m.includes('o4')) {
+            promptCostPerM = 5.00;
+            completionCostPerM = 15.00;
+        }
+
+        const costUsd = ((promptTokens * promptCostPerM) + (completionTokens * completionCostPerM)) / 1_000_000;
+
+        supabaseClient
+            .from('contact_center_ai_usage_logs')
+            .insert({
+                phone: params.phone || null,
+                service_name: params.service_name,
+                model: params.model,
+                prompt_tokens: promptTokens,
+                completion_tokens: completionTokens,
+                total_tokens: totalTokens,
+                estimated_cost_usd: costUsd,
+                execution_ms: params.execution_ms || 0,
+                metadata: params.metadata || {}
+            })
+            .then(({ error }: any) => {
+                if (error) console.warn('[ai-usage] Error insertando log:', error.message);
+                else console.log(`[ai-usage] ✅ ${params.service_name} (${params.model}): ${totalTokens} tokens (USD $${costUsd.toFixed(6)})`);
+            })
+            .catch((e: any) => console.warn('[ai-usage] Excepción en log:', e?.message || e));
+    } catch (e: any) {
+        console.warn('[ai-usage] Error calculando telemetría de tokens:', e?.message || e);
+    }
+}
+
+// =============================================
 // VALIDACIÓN Y EXTRACCIÓN INFALIBLE DE DNI ARGENTINO
 // Evita confusiones con fechas de nacimiento (DD/MM/AAAA) o números telefónicos
 // =============================================
@@ -332,6 +396,7 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                         requestPayload.max_tokens = 800;
                     }
 
+                    const simStartTime = Date.now();
                     const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
                         method: 'POST',
                         headers: {
@@ -340,9 +405,18 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                         },
                         body: JSON.stringify(requestPayload)
                     });
+                    const simExecMs = Date.now() - simStartTime;
 
                     if (aiRes.ok) {
                         const json = await aiRes.json();
+                        await recordAiUsage(supabase, {
+                            service_name: 'bot_simulation',
+                            model: activeModel,
+                            usage: json.usage,
+                            phone: patientPhone || null,
+                            execution_ms: simExecMs,
+                            metadata: { simulated: true }
+                        });
                         const rawContent = json.choices?.[0]?.message?.content || '{}';
                         const parsed = JSON.parse(rawContent);
                         aiResult = {
@@ -2201,6 +2275,7 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
             requestPayload.max_tokens = 450;
         }
 
+        const convStartTime = Date.now();
         const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -2209,11 +2284,26 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
             },
             body: JSON.stringify(requestPayload)
         });
+        const convExecMs = Date.now() - convStartTime;
 
         if (aiRes.ok) {
             const aiData = await aiRes.json();
             const content = aiData.choices?.[0]?.message?.content || '{}';
             const parsed = JSON.parse(content);
+
+            // Registrar telemetría de tokens y costo
+            recordAiUsage(supabaseClient, {
+                service_name: 'conversational_bot',
+                model: selectedModel,
+                usage: aiData.usage,
+                phone: patientInfo?.phone || null,
+                execution_ms: convExecMs,
+                metadata: {
+                    intent: parsed.intent || 'general',
+                    transferToAgent: Boolean(parsed.transferToAgent)
+                }
+            });
+
             return {
                 replyText: parsed.replyText || `¡Hola *${pName}*! 🏥 ¿En qué podemos ayudarte hoy?`,
                 intent: parsed.intent || 'general',
@@ -2780,6 +2870,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                     return `${role}: ${m.content}`;
                 }).join('\n');
 
+                const intentStartTime = Date.now();
                 const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -2824,9 +2915,17 @@ Devuelve un JSON con:
                         max_tokens: 150
                     })
                 });
+                const intentExecMs = Date.now() - intentStartTime;
 
                 if (aiRes.ok) {
                     const aiData = await aiRes.json();
+                    recordAiUsage(supabase, {
+                        service_name: 'intent_detector',
+                        model: 'gpt-4o-mini',
+                        usage: aiData.usage,
+                        phone: context?.patientPhone || null,
+                        execution_ms: intentExecMs
+                    });
                     const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
                     if (parsed.intent && parsed.intent !== 'general') {
                         intent = parsed.intent as any;
@@ -6283,7 +6382,12 @@ async function handleNewPatientIntake(
 /**
  * Extrae variables estructuradas del paciente nuevo
  */
-async function extractPatientVariables(text: string, fallbackDni: string | null) {
+async function extractPatientVariables(
+    text: string, 
+    fallbackDni: string | null,
+    supabaseClient?: any,
+    phone?: string | null
+) {
     const vars: Record<string, any> = {};
 
     // 1. Extracción heurística rápida por patrones
@@ -6362,7 +6466,16 @@ async function extractPatientVariables(text: string, fallbackDni: string | null)
     // 2. Extracción enriquecida con OpenAI si está disponible
     const openAiKey = Deno.env.get('OPENAI_API_KEY');
     if (openAiKey) {
+        // Optimización de costos y tokens: Si ya extrajimos DNI y Obra Social y el texto es corto, no gastar llamada LLM
+        const hasDni = Boolean(vars.dni);
+        const hasOs = Boolean(vars.obra_social);
+        const isShortSimple = text.trim().length < 30;
+        if (hasDni && hasOs && isShortSimple) {
+            return vars;
+        }
+
         try {
+            const extractStartTime = Date.now();
             const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -6403,9 +6516,20 @@ Si un dato no fue aportado en el texto, indícalo como null.`
                     temperature: 0.1
                 })
             });
+            const extractExecMs = Date.now() - extractStartTime;
 
             if (aiRes.ok) {
                 const aiData = await aiRes.json();
+                const sb = supabaseClient || (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null);
+                if (sb) {
+                    recordAiUsage(sb, {
+                        service_name: 'extract_patient_data',
+                        model: 'gpt-4o-mini',
+                        usage: aiData.usage,
+                        phone: phone || null,
+                        execution_ms: extractExecMs
+                    });
+                }
                 const parsed = JSON.parse(aiData.choices?.[0]?.message?.content || '{}');
                 if (parsed.nombre_completo && !vars.nombre_completo) vars.nombre_completo = parsed.nombre_completo;
                 if (parsed.dni && isValidArgentineDni(parsed.dni)) {

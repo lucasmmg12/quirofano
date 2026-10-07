@@ -538,24 +538,32 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <optgroup label="🌟 Serie GPT-5 (Última Generación de OpenAI)">
-                                        <option value="gpt-5.5">gpt-5.5 (Recomendado - Nueva Generación Flagship GPT-5.5)</option>
-                                        <option value="gpt-5.4">gpt-5.4 (GPT-5.4 - Alto rendimiento y precisión)</option>
-                                        <option value="gpt-5.4-mini">gpt-5.4-mini (GPT-5.4 Ultra rápido)</option>
-                                        <option value="gpt-5">gpt-5 (Motor Base GPT-5)</option>
-                                        <option value="gpt-5-mini">gpt-5-mini (GPT-5 versión liviana)</option>
+                                    <optgroup label="⭐ Modelos de Alta Eficiencia (Recomendados para Producción - 97% Ahorro)">
+                                        <option value="gpt-4o-mini">gpt-4o-mini (⭐ Recomendado - $0.15/1M - Máximo Ahorro y Rapidez)</option>
+                                        <option value="gpt-5.4-mini">gpt-5.4-mini (Próxima Generación Mini - $0.25/1M)</option>
+                                        <option value="gpt-5-mini">gpt-5-mini (GPT-5 versión liviana - $0.25/1M)</option>
+                                        <option value="o3-mini">o3-mini (Razonamiento clínico y triage rápido - $1.10/1M)</option>
                                     </optgroup>
-                                    <optgroup label="🧠 Modelos de Razonamiento Clínico">
-                                        <option value="o3-mini">o3-mini (Razonamiento lógico y triage clínico ultra veloz)</option>
-                                        <option value="o1">o1 (Razonamiento profundo para análisis médico)</option>
-                                    </optgroup>
-                                    <optgroup label="⚡ Modelos Anteriores (Serie 4)">
-                                        <option value="gpt-4.5-preview">gpt-4.5-preview (Modelo transicional 4.5)</option>
+                                    <optgroup label="⚡ Modelos Flagship / Frontier (Mayor Capacidad - Alto Costo de Tokens)">
+                                        <option value="gpt-4o">gpt-4o ($2.50/1M - Omni balanceado)</option>
+                                        <option value="gpt-5.5">gpt-5.5 ($5.00/1M - Flagship Última Generación)</option>
+                                        <option value="gpt-5.4">gpt-5.4 ($3.50/1M - Alto rendimiento)</option>
+                                        <option value="gpt-5">gpt-5 ($3.00/1M - Motor Base GPT-5)</option>
+                                        <option value="o1">o1 ($15.00/1M - Razonamiento profundo)</option>
                                         <option value="chatgpt-4o-latest">chatgpt-4o-latest (Versión continua GPT-4o)</option>
-                                        <option value="gpt-4o">gpt-4o (Omni balanceado anterior)</option>
-                                        <option value="gpt-4o-mini">gpt-4o-mini (Mini anterior ultra rápido)</option>
                                     </optgroup>
                                 </select>
+                                {model === 'gpt-4o-mini' ? (
+                                    <div style={{ marginTop: '6px', fontSize: '0.72rem', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <CheckCircle2 size={13} />
+                                        <span>Modelo óptimo seleccionado. Costo estimado por 10.000 mensajes: <strong>~$4 USD</strong>.</span>
+                                    </div>
+                                ) : (
+                                    <div style={{ marginTop: '6px', fontSize: '0.72rem', color: '#D97706', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <AlertTriangle size={13} />
+                                        <span>Modelo de alto consumo. Con <strong>gpt-4o-mini</strong> ahorras hasta un 96.8% en tokens.</span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Temperatura */}

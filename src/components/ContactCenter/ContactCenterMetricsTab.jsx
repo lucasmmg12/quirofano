@@ -6,7 +6,7 @@ import {
     ChevronRight, ChevronDown, ChevronUp, Check, AlertCircle, AlertTriangle, 
     FileText, HelpCircle, PhoneCall, DollarSign, TrendingUp, X, 
     Calculator, Info, ShieldCheck, Zap, Award, UserCheck, Timer,
-    CheckSquare, TrendingDown, Smile, UserX, Layers, Target
+    CheckSquare, TrendingDown, Smile, UserX, Layers, Target, Cpu
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { CONTACT_CENTER_AGENTS, isClosedOrArchived } from '../../services/contactCenterService';
+import ContactCenterAiCostTab from './ContactCenterAiCostTab';
 
 const COSTO_POR_MENSAJE_USD = 0.026; // $0.026 USD por mensaje enviado a partir del 1.001
 const MENSAJES_GRATIS_MENSUALES = 1000; // Primeros 1.000 mensajes salientes sin costo (Meta Free Tier)
@@ -45,6 +46,9 @@ const DIAS_SEMANA_NOMBRES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves
 export default function ContactCenterMetricsTab({ addToast }) {
     const [loading, setLoading] = useState(true);
     
+    // Selector de vista: 'operativo' | 'ia_tokens'
+    const [activeMetricsView, setActiveMetricsView] = useState('operativo');
+
     // Filtros temporales requeridos: este_mes, mes_pasado, personalizado, hoy, semana
     const [timeRange, setTimeRange] = useState('this_month');
     const [customStartDate, setCustomStartDate] = useState(() => {
@@ -1038,8 +1042,110 @@ export default function ContactCenterMetricsTab({ addToast }) {
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 1. KPI CARDS PRINCIPALES (CON TOTAL ENVIADOS CLICKEABLE)          */}
+            {/* SUB-NAVEGACIÓN: OPERATIVO vs AUDITORÍA & PROYECCIONES IA        */}
             {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                display: 'flex',
+                gap: '8px',
+                background: '#FFFFFF',
+                padding: '6px',
+                borderRadius: '12px',
+                border: '1px solid #E2E8F0',
+                width: 'fit-content',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+            }}>
+                <button
+                    type="button"
+                    onClick={() => setActiveMetricsView('operativo')}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 18px',
+                        borderRadius: '9px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        background: activeMetricsView === 'operativo' ? '#0F2942' : 'transparent',
+                        color: activeMetricsView === 'operativo' ? '#FFFFFF' : '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <Users size={16} />
+                    Métricas Operativas & Agentes
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveMetricsView('ia_tokens')}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 18px',
+                        borderRadius: '9px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        background: activeMetricsView === 'ia_tokens' ? '#0284C7' : 'transparent',
+                        color: activeMetricsView === 'ia_tokens' ? '#FFFFFF' : '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <Cpu size={16} />
+                    Auditoría de Tokens & Proyecciones IA
+                    <span style={{
+                        background: activeMetricsView === 'ia_tokens' ? '#FFFFFF' : '#E0F2FE',
+                        color: activeMetricsView === 'ia_tokens' ? '#0284C7' : '#0369A1',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800
+                    }}>
+                        Control de Costos
+                    </span>
+                </button>
+            </div>
+
+            {activeMetricsView === 'ia_tokens' ? (
+                <ContactCenterAiCostTab
+                    timeRange={timeRange}
+                    setTimeRange={setTimeRange}
+                    customStartDate={customStartDate}
+                    setCustomStartDate={setCustomStartDate}
+                    customEndDate={customEndDate}
+                    setCustomEndDate={setCustomEndDate}
+                    arsRate={arsRate}
+                    setArsRate={setArsRate}
+                    addToast={addToast}
+                />
+            ) : (
+                <>
+                    {/* BANNER INFORMATIVO EN VISTA OPERATIVA HACIA TOKENS */}
+                    <div 
+                        onClick={() => setActiveMetricsView('ia_tokens')}
+                        style={{
+                            background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '10px',
+                            padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            cursor: 'pointer', transition: 'all 0.15s'
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <Cpu size={18} color="#0284C7" />
+                            <span style={{ fontSize: '0.78rem', color: '#0369A1', fontWeight: 600 }}>
+                                <strong>Control de Costos de IA:</strong> Se ha habilitado la auditoría en tiempo real de tokens consumidos por el Bot y proyecciones de gasto en USD/ARS.
+                            </span>
+                        </div>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.74rem', color: '#0284C7', fontWeight: 800 }}>
+                            Ver Auditoría & Proyecciones <ChevronRight size={14} />
+                        </span>
+                    </div>
+
+                    {/* ═════════════════════════════════════════════════════════════════ */}
+                    {/* 1. KPI CARDS PRINCIPALES (CON TOTAL ENVIADOS CLICKEABLE)          */}
+                    {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
@@ -2072,6 +2178,8 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     })}
                 </div>
             </div>
+            </>
+            )}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* MODAL INTERACTIVO DE CÁLCULO DE COSTO DE WHATSAPP (META API)     */}

@@ -196,6 +196,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
   }
 } `;
 
+        const summaryStartTime = Date.now();
         const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -203,7 +204,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
                 'Authorization': `Bearer ${OPENAI_API_KEY}`,
             },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: 'gpt-4o-mini',
                 temperature: 0.1,
                 response_format: { type: 'json_object' },
                 messages: [
@@ -218,6 +219,28 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         }
 
         const aiJson = await aiRes.json();
+        const summaryExecMs = Date.now() - summaryStartTime;
+
+        // Log de telemetría de tokens y costo
+        if (aiJson.usage) {
+            const promptTok = aiJson.usage.prompt_tokens || 0;
+            const compTok = aiJson.usage.completion_tokens || 0;
+            const cost = ((promptTok * 0.15) + (compTok * 0.60)) / 1_000_000;
+            supabase.from('contact_center_ai_usage_logs').insert({
+                phone: phone || null,
+                service_name: 'chat_summary',
+                model: 'gpt-4o-mini',
+                prompt_tokens: promptTok,
+                completion_tokens: compTok,
+                total_tokens: aiJson.usage.total_tokens || (promptTok + compTok),
+                estimated_cost_usd: cost,
+                execution_ms: summaryExecMs,
+                metadata: { message_count: messages.length }
+            }).then(({ error }: any) => {
+                if (error) console.warn('[chat-summary] Error guardando log de uso:', error.message);
+            }).catch(() => {});
+        }
+
         const rawContent = aiJson.choices?.[0]?.message?.content || '{}';
         const parsed = JSON.parse(rawContent);
 

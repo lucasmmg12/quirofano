@@ -107,6 +107,21 @@ Deno.serve(async (req) => {
 
         console.log(`[transcribe-audio] ✅ Transcripción obtenida: "${transcriptionText}"`);
 
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+        // Registrar costo estimado de Whisper
+        supabase.from('contact_center_ai_usage_logs').insert({
+            phone: phone || null,
+            service_name: 'transcribe_audio_whisper',
+            model: 'whisper-1',
+            prompt_tokens: 0,
+            completion_tokens: Math.round(transcriptionText.length / 4),
+            total_tokens: Math.round(transcriptionText.length / 4),
+            estimated_cost_usd: 0.003,
+            execution_ms: 800,
+            metadata: { transcription_chars: transcriptionText.length }
+        }).then(() => {}).catch(() => {});
+
         // 3. Extracción de entendimiento clínico e intención con GPT-4o-mini
         let understanding: any = null;
         if (transcriptionText) {
@@ -150,13 +165,26 @@ Analiza la siguiente transcripción de un audio enviado por un paciente por What
                     if (rawContent) {
                         understanding = JSON.parse(rawContent);
                     }
+                    if (aiData.usage) {
+                        const pTok = aiData.usage.prompt_tokens || 0;
+                        const cTok = aiData.usage.completion_tokens || 0;
+                        supabase.from('contact_center_ai_usage_logs').insert({
+                            phone: phone || null,
+                            service_name: 'transcribe_audio_triage',
+                            model: 'gpt-4o-mini',
+                            prompt_tokens: pTok,
+                            completion_tokens: cTok,
+                            total_tokens: aiData.usage.total_tokens || (pTok + cTok),
+                            estimated_cost_usd: ((pTok * 0.15) + (cTok * 0.60)) / 1_000_000,
+                            execution_ms: 350,
+                            metadata: { intencion: understanding?.intencion }
+                        }).then(() => {}).catch(() => {});
+                    }
                 }
             } catch (aiErr) {
                 console.warn('[transcribe-audio] Non-fatal understanding error:', aiErr);
             }
         }
-
-        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
         // 4. Si se proporcionó messageId, actualizar whatsapp_messages
         if (messageId) {
