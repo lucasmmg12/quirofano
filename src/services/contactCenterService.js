@@ -2884,7 +2884,7 @@ export async function fetchChatbotConfig() {
 
         return {
             systemPrompt: map['contact_center_system_prompt'] || DEFAULT_CHATBOT_SYSTEM_PROMPT,
-            model: map['contact_center_ai_model'] || 'gpt-5.5',
+            model: map['contact_center_ai_model'] || 'gpt-5.4-mini',
             temperature: map['contact_center_ai_temperature'] || '0.3',
             botName: map['contact_center_bot_name'] || 'Dora',
             handoffNormal: map['contact_center_handoff_normal'] || DEFAULT_HANDOFF_NORMAL,
@@ -2899,7 +2899,7 @@ export async function fetchChatbotConfig() {
         console.error('[contactCenterService] Exception fetching chatbot config:', err);
         return {
             systemPrompt: DEFAULT_CHATBOT_SYSTEM_PROMPT,
-            model: 'gpt-5.5',
+            model: 'gpt-5.4-mini',
             temperature: '0.3',
             botName: 'Dora',
             handoffNormal: DEFAULT_HANDOFF_NORMAL,
@@ -2918,7 +2918,7 @@ export async function fetchChatbotConfig() {
  */
 export async function saveChatbotConfig({
     systemPrompt,
-    model = 'gpt-5.5',
+    model = 'gpt-5.4-mini',
     temperature = '0.3',
     botName = 'Dora',
     handoffNormal = DEFAULT_HANDOFF_NORMAL,

@@ -2096,7 +2096,7 @@ async function getDynamicChatbotConfig(supabaseClient: any): Promise<{
                 }
                 const resolved = {
                     systemPrompt: map['contact_center_system_prompt'] || '',
-                    model: map['contact_center_ai_model'] || 'gpt-4o',
+                    model: map['contact_center_ai_model'] || 'gpt-5.4-mini',
                     temperature: map['contact_center_ai_temperature'] ? parseFloat(map['contact_center_ai_temperature']) : 0.3,
                     botName: map['contact_center_bot_name'] || 'Dora',
                     timestamp: now
@@ -2111,7 +2111,7 @@ async function getDynamicChatbotConfig(supabaseClient: any): Promise<{
 
     return {
         systemPrompt: '',
-        model: 'gpt-4o',
+        model: 'gpt-5.4-mini',
         temperature: 0.3,
         botName: 'Dora'
     };
@@ -2250,7 +2250,7 @@ Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 }`;
         }
 
-        const selectedModel = dynamicConfig.model || 'gpt-5.5';
+        const selectedModel = dynamicConfig.model || 'gpt-5.4-mini';
         const selectedTemp = Number.isFinite(dynamicConfig.temperature) ? dynamicConfig.temperature : 0.3;
         const isGpt5Series = selectedModel.startsWith('gpt-5');
         const isReasoningModel = selectedModel.startsWith('o1') || selectedModel.startsWith('o3') || selectedModel.startsWith('o4');

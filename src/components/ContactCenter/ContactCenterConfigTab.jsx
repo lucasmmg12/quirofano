@@ -38,7 +38,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     // Form state - AI Bot
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
     const [botName, setBotName] = useState('Dora');
-    const [model, setModel] = useState('gpt-5.5');
+    const [model, setModel] = useState('gpt-5.4-mini');
     const [temperature, setTemperature] = useState('0.3');
     const [lastUpdated, setLastUpdated] = useState(null);
     const [lastUser, setLastUser] = useState(null);
@@ -52,14 +52,13 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const textareaRef = useRef(null);
 
     // Cargar configuración activa
-    // Cargar configuración activa
     const loadConfig = async () => {
         setLoading(true);
         try {
             const cfg = await fetchChatbotConfig();
             setSystemPrompt(cfg.systemPrompt || DEFAULT_CHATBOT_SYSTEM_PROMPT);
             setBotName(cfg.botName || 'Dora');
-            setModel(cfg.model || 'gpt-5.5');
+            setModel(cfg.model || 'gpt-5.4-mini');
             setTemperature(cfg.temperature || '0.3');
             setHandoffNormal(cfg.handoffNormal || DEFAULT_HANDOFF_NORMAL);
             setHandoffDelay(cfg.handoffDelay || DEFAULT_HANDOFF_DELAY);
@@ -186,7 +185,7 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
     const handleResetDefault = () => {
         if (window.confirm('¿Estás seguro de restablecer los valores al texto predeterminado de fábrica? Perderás los cambios no guardados.')) {
             setSystemPrompt(DEFAULT_CHATBOT_SYSTEM_PROMPT);
-            setModel('gpt-5.5');
+            setModel('gpt-5.4-mini');
             setTemperature('0.3');
             setBotName('Dora');
             setHandoffNormal(DEFAULT_HANDOFF_NORMAL);

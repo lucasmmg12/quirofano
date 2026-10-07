@@ -57,11 +57,21 @@ export default function ContactCenterAiCostTab({
     const [volumeMultiplier, setVolumeMultiplier] = useState(1); // 1x, 1.5x, 2x, 3x
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedServiceFilter, setSelectedServiceFilter] = useState('all');
+    const [configuredModel, setConfiguredModel] = useState('gpt-5.4-mini');
 
     // Carga de telemetría de tokens desde contact_center_ai_usage_logs
     const loadAiUsageData = async () => {
         setLoading(true);
         try {
+            // Cargar modelo configurado
+            const { data: cfgRow } = await supabase
+                .from('app_config')
+                .select('value')
+                .eq('key', 'contact_center_ai_model')
+                .maybeSingle();
+            if (cfgRow?.value) {
+                setConfiguredModel(cfgRow.value);
+            }
             const now = new Date();
             let filterStart = null;
             let filterEnd = null;
@@ -638,7 +648,7 @@ export default function ContactCenterAiCostTab({
                         const simCostUsd = ((pTokens * mInfo.promptPerM) + (cTokens * mInfo.completionPerM)) / 1_000_000;
                         const simCostArs = Math.round(simCostUsd * arsRate);
                         const isRecommended = mKey === 'gpt-4o-mini';
-                        const isCurrentActive = mKey === 'gpt-5.5';
+                        const isCurrentActive = mKey === configuredModel;
 
                         return (
                             <div 
