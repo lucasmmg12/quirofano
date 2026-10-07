@@ -7,7 +7,7 @@
 //   Línea B (Messenger): https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_b
 //   Línea C:             https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/whatsapp-webhook?line=line_c
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -3256,9 +3256,11 @@ async function handleChatbotTriage(
     const minutesSinceClosed = closedAtMs > 0 ? (Date.now() - closedAtMs) / (1000 * 60) : Infinity;
 
     // Saludo o reinicio explícito del usuario ("hola", "menu", "atras", "volver", etc.)
+    // o intención clara de turno, estudio o consulta médica que deba despertar al bot si no hay operador asignado
     const isExplicitGreetingOrMenu = 
         /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(cleanText) ||
-        /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|atras+|atr[aá]s+|atrs+|volver|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/im.test(cleanText);
+        /\b(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?)\b/i.test(cleanText) ||
+        /\b(turno|cita|consulta|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|mamograf[ií]a|resonancia|densitometr[ií]a|m[eé]dico|doctor|dra?|especialidad|guardia|urgencia|autorizaci[oó]n|estudio|agente|operador|humano)\b/i.test(cleanText);
 
     // Detección de cortesía, agradecimiento o calificación en chat ya finalizado
     // Evita desarchivar el chat si el paciente responde "muchas gracias", "👍", "5 estrellas", etc.
@@ -3595,6 +3597,16 @@ async function handleChatbotTriage(
             }
         } catch (e) {
             console.warn('[triage-bot] Error consultando grupo familiar por teléfono:', e);
+        }
+    }
+
+    // Inteligencia institucional: Si no se identificó por DNI en el mensaje ni por DNI previo en conversación,
+    // pero la línea telefónica pertenece a un paciente del Sanatorio, resolver automáticamente al paciente titular
+    if (!paciente && pacientesGrupoFamiliar.length > 0) {
+        const titular = pacientesGrupoFamiliar.find(p => Number(p.edad || 0) >= 18) || pacientesGrupoFamiliar[0];
+        if (titular && titular.dni) {
+            paciente = titular;
+            console.log(`[triage-bot] 🔍 Paciente titular resuelto por línea telefónica (${cleanLocalPhone}): ${paciente.nombre} (DNI: ${paciente.dni}, Coseguro: ${paciente.coseguro})`);
         }
     }
 
@@ -4670,14 +4682,22 @@ async function handleChatbotTriage(
                     updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
                 }
             }
-            // CASO B: TENEMOS DNI Y MÉDICO, PERO FALTA OBRA SOCIAL -> PREGUNTAR SOLO POR LA OBRA SOCIAL
+            // CASO B: TENEMOS DNI Y MÉDICO/ESTUDIO, PERO FALTA OBRA SOCIAL -> PREGUNTAR SOLO POR LA OBRA SOCIAL
             else if (hasDni && hasDoctor && !hasOs) {
-                const targetPhrase = isMedicalSpecialty(effectiveDocOrSpec)
-                    ? `para la especialidad de *${effectiveDocOrSpec}*`
-                    : (effectiveDocOrSpec.startsWith('Dra.') ? `con la *${effectiveDocOrSpec}*` : `con el *${effectiveDocOrSpec}*`);
+                const estudioRequiere = detectEstudioConOrden(effectiveDocOrSpec) || detectEstudioConOrden(cleanText);
+                const hasSentOrderPhoto = isIncomingMedia || patientSentImageRecently || Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
+                const orderBullet = (estudioRequiere && !hasSentOrderPhoto)
+                    ? `\n• 📸 *Pedido médico:* Por favor adjuntanos la *foto clara o archivo de tu orden médica* (${estudioRequiere}).`
+                    : '';
+                const targetPhrase = estudioRequiere
+                    ? `para tu estudio de *${estudioRequiere}*`
+                    : (isMedicalSpecialty(effectiveDocOrSpec)
+                        ? `para la especialidad de *${effectiveDocOrSpec}*`
+                        : (effectiveDocOrSpec.startsWith('Dra.') ? `con la *${effectiveDocOrSpec}*` : `con el *${effectiveDocOrSpec}*`));
                 replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Ya registramos tu DNI *${targetDni}* y tu solicitud ${targetPhrase}.` +
                     (preferenciaHoraria ? ` (${preferenciaHoraria})` : '') +
-                    `\n\n📋 Para verificar tu cobertura en nuestro sistema y confirmar la cita, por favor indícanos tu *Obra Social / Prepaga y Plan* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):\n\n` +
+                    `\n\n📋 Para verificar tu cobertura en nuestro sistema y confirmar la cita, por favor indícanos tu *Obra Social / Prepaga y Plan* (ej: OSP Plan Tradicional, OSDE 210, Swiss Medical, o Particular):` +
+                    `${orderBullet}\n\n` +
                     `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                 updates.status = 'bot';
                 updates.bot_active = true;
@@ -4697,13 +4717,24 @@ async function handleChatbotTriage(
                 nextStage = 'esperando_datos_turno';
                 updates.motivo_consulta = `Solicitud de Turno: ${cleanName} (DNI ${targetDni}, esperando especialidad)`;
             }
-            // CASO D: TENEMOS MÉDICO PERO FALTA DNI -> PREGUNTAR SOLO POR EL DNI
+            // CASO D: TENEMOS MÉDICO/ESTUDIO PERO FALTA DNI -> PREGUNTAR SOLO POR EL DNI Y PEDIDO MÉDICO SI ES ESTUDIO
             else if (!hasDni && hasDoctor) {
-                replyText = `¡Perfecto *${whatsappName}*! Registramos tu solicitud para atenderte con *${effectiveDocOrSpec}*.` +
+                const estudioRequiere = detectEstudioConOrden(effectiveDocOrSpec) || detectEstudioConOrden(cleanText);
+                const orderBullet = estudioRequiere
+                    ? `• 📸 *Pedido médico:* Por favor adjuntanos la *foto clara o archivo de tu orden médica* (obligatoria para coordinar estudios de ${estudioRequiere}).\n`
+                    : '';
+                const targetPhrase = estudioRequiere
+                    ? `para tu estudio de *${estudioRequiere}*`
+                    : (isMedicalSpecialty(effectiveDocOrSpec)
+                        ? `para la especialidad de *${effectiveDocOrSpec}*`
+                        : (effectiveDocOrSpec.startsWith('Dra.') ? `con la *${effectiveDocOrSpec}*` : `con el *${effectiveDocOrSpec}*`));
+
+                replyText = `¡Perfecto *${whatsappName}*! Registramos tu solicitud ${targetPhrase}.` +
                     (preferenciaHoraria ? ` (${preferenciaHoraria})` : '') +
                     `\n\nPor favor indícanos:\n` +
                     `• Número de *DNI del paciente* (sin puntos ni espacios)\n` +
-                    (!hasOs ? `• *Obra Social / Prepaga* y plan (o si tu atención será Particular)\n\n` : '\n\n') +
+                    (!hasOs ? `• *Obra Social / Prepaga* y plan (o si tu atención será Particular)\n` : '') +
+                    `${orderBullet}\n` +
                     `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
                 updates.status = 'bot';
                 updates.bot_active = true;
@@ -5555,14 +5586,17 @@ async function handleChatbotTriage(
                 ? `• *DNI:* En tu ficha figura *${paciente.dni}* (si el turno es para otra persona, indícanos su DNI, Nombre y Apellido)\n` 
                 : `• Número de *DNI del paciente* (sin puntos ni espacios)\n`;
 
-            const specOrDocLine = (doctorDisplay || effectiveSpecialty)
-                ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
-                : `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`;
-
             const isEstudioTurno = detectEstudioConOrden(doctorDisplay) || 
                                    detectEstudioConOrden(effectiveSpecialty) || 
                                    detectEstudioConOrden(cleanText) || 
                                    detectEstudioConOrden(conv?.medico_o_especialidad);
+
+            const specOrDocLine = isEstudioTurno
+                ? `• *Estudio solicitado:* Registramos *${isEstudioTurno}* ✅\n`
+                : ((doctorDisplay || effectiveSpecialty)
+                    ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
+                    : `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`);
+
             const estudioBullet = isEstudioTurno
                 ? `• 📸 *Pedido médico:* Por favor adjuntanos la *foto clara o archivo de tu orden/pedido médico* (obligatoria para coordinar estudios de ${isEstudioTurno}).\n`
                 : '';
