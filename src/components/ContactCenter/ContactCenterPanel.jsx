@@ -723,7 +723,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
 
     // Finalizar y archivar chat con motivo de resolución
-    const handleCloseChat = async (chatId, resolutionReason, sendFarewell = true) => {
+    const handleCloseChat = async (chatId, resolutionReason, sendFarewell = true, preferredNextChatId = undefined) => {
         const targetChat = chats.find(c => c.id === chatId);
         if (!targetChat) return;
 
@@ -738,6 +738,42 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             setChats(prev => prev.map(c => c.id === chatId ? updated : c));
             setActiveChatId(currentId => {
                 if (currentId === chatId || currentId === targetChat.id) {
+                    if (preferredNextChatId !== undefined) {
+                        return preferredNextChatId;
+                    }
+                    const targetAssigned = (targetChat.assignedTo || '').toLowerCase();
+                    const targetAssignedName = (targetChat.assignedToName || '').toLowerCase();
+                    const agentId = (activeAgent?.id || '').toLowerCase();
+                    const agentName = (activeAgent?.name || '').toLowerCase();
+                    const isMine = targetAssigned === agentId || (agentName && targetAssignedName.includes(agentName));
+
+                    if (isMine) {
+                        // Buscar el siguiente chat del mismo agente (NUNCA pasar al bot)
+                        const nextMyChat = chats.find(c => 
+                            c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c) && (
+                                (c.assignedTo || '').toLowerCase() === agentId ||
+                                (c.assignedToName || '').toLowerCase().includes(agentName)
+                            )
+                        );
+                        return nextMyChat?.id || null;
+                    }
+
+                    if (!targetChat.assignedTo && targetChat.status === 'sin_asignar') {
+                        const nextUnassigned = chats.find(c => 
+                            c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c) &&
+                            !c.assignedTo && c.status === 'sin_asignar'
+                        );
+                        return nextUnassigned?.id || null;
+                    }
+
+                    if (targetChat.status === 'bot' || targetChat.botActive) {
+                        const nextBot = chats.find(c => 
+                            c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c) &&
+                            (c.status === 'bot' || c.botActive)
+                        );
+                        return nextBot?.id || null;
+                    }
+
                     const remaining = chats.filter(c => c.id !== chatId && c.id !== targetChat.id && !isClosedOrArchived(c));
                     return remaining[0]?.id || null;
                 }
@@ -776,8 +812,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             const closedSet = new Set(chatIds);
             setActiveChatId(currentId => {
                 if (closedSet.has(currentId)) {
-                    const remaining = chats.filter(c => !closedSet.has(c.id) && !isClosedOrArchived(c));
-                    return remaining[0]?.id || null;
+                    const agentId = (activeAgent?.id || '').toLowerCase();
+                    const agentName = (activeAgent?.name || '').toLowerCase();
+                    const nextMyChat = chats.find(c => 
+                        !closedSet.has(c.id) && !isClosedOrArchived(c) && (
+                            (c.assignedTo || '').toLowerCase() === agentId ||
+                            (c.assignedToName || '').toLowerCase().includes(agentName)
+                        )
+                    );
+                    return nextMyChat?.id || null;
                 }
                 return currentId;
             });

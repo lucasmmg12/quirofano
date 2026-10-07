@@ -1057,28 +1057,38 @@ export default function ContactCenterChatConsole({
     // se usa en el fallback de la pestaña "Mis chats" (antes provocaba ReferenceError TDZ).
     const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
 
+    const isMineChat = (c) => {
+        if (!c || isClosedOrArchived(c)) return false;
+        const a = (c.assignedTo || '').toLowerCase();
+        return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()));
+    };
+
     const isFinalizadosCurrentTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
     const activeChatFromPool = chats.find(c => matchChat(c, activeChatId)) || archivedChats.find(c => matchChat(c, activeChatId));
     const activeChatIsClosed = activeChatFromPool ? isClosedOrArchived(activeChatFromPool) : false;
 
     const selectedChat = (isFinalizadosCurrentTab && !activeChatIsClosed)
         ? (chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || {})
-        : (chats.find(c => matchChat(c, activeChatId)) 
-            || archivedChats.find(c => matchChat(c, activeChatId)) 
-            // Si no se encuentra activeChatId directamente (ej: cambio de ID tras recarga), buscar el chat previo que el operador ya estaba visualizando
-            || (lastChatIdRef.current ? (chats.find(c => matchChat(c, lastChatIdRef.current)) || archivedChats.find(c => matchChat(c, lastChatIdRef.current))) : null)
-            // Si estamos en la pestaña "Mis chats", mantener siempre un chat asignado a mí (NUNCA cambiar al bot de la nada)
-            || (filterTab === 'asignadas_mi' ? chats.find(c => {
-                const a = (c.assignedTo || '').toLowerCase();
-                return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) && !isClosedOrArchived(c);
-            }) : null)
-            // Si estamos en "Sin asignar", buscar dentro de sin asignar
-            || (filterTab === 'sin_asignar' ? chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) : null)
-            // Si estamos en "Finalizados", buscar dentro de finalizados
-            || (isFinalizadosCurrentTab ? (chats.find(c => isClosedOrArchived(c)) || archivedChats[0]) : null)
-            || chats[0] 
-            || archivedChats[0] 
-            || {});
+        : (filterTab === 'asignadas_mi'
+            ? ((activeChatId && chats.find(c => matchChat(c, activeChatId) && isMineChat(c)))
+                || chats.find(c => isMineChat(c))
+                || {})
+            : (filterTab === 'sin_asignar'
+                ? ((activeChatId && chats.find(c => matchChat(c, activeChatId) && (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)))
+                    || chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c))
+                    || {})
+                : (filterTab === 'bot'
+                    ? ((activeChatId && chats.find(c => matchChat(c, activeChatId) && (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)))
+                        || chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c))
+                        || {})
+                    : (isFinalizadosCurrentTab
+                        ? (chats.find(c => matchChat(c, activeChatId) && isClosedOrArchived(c)) || archivedChats.find(c => matchChat(c, activeChatId)) || chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || {})
+                        : (chats.find(c => matchChat(c, activeChatId)) 
+                            || archivedChats.find(c => matchChat(c, activeChatId)) 
+                            || chats.find(c => !isClosedOrArchived(c)) 
+                            || chats[0] 
+                            || archivedChats[0] 
+                            || {})))));
 
     // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
     const lastIncomingMsg = useMemo(() => {
@@ -1292,6 +1302,10 @@ export default function ContactCenterChatConsole({
             return () => clearTimeout(minTimer);
         } else {
             setReplyingToMessage(null);
+            setIsSidebarLoading(false);
+            setPatientHistory(null);
+            setAiSummaryData(null);
+            setAssociatedPatients([]);
         }
     }, [selectedChat?.id]);
 
@@ -1933,7 +1947,28 @@ export default function ContactCenterChatConsole({
         if (!selectedChat?.id || !onCloseChat) return;
         setIsClosingChat(true);
         try {
-            await onCloseChat(selectedChat.id, resolutionReason, sendFarewellMessage);
+            // Calcular el siguiente chat dentro de la pestaña actual (filteredChats)
+            let nextChatId = null;
+            if (filteredChats && filteredChats.length > 0) {
+                const currentIndex = filteredChats.findIndex(c => matchChat(c, selectedChat.id));
+                const remainingInTab = filteredChats.filter(c => !matchChat(c, selectedChat.id));
+                if (remainingInTab.length > 0) {
+                    const nextItem = (currentIndex >= 0 && filteredChats[currentIndex + 1])
+                        ? filteredChats[currentIndex + 1]
+                        : (currentIndex > 0 && filteredChats[currentIndex - 1])
+                            ? filteredChats[currentIndex - 1]
+                            : remainingInTab[0];
+                    if (nextItem && !matchChat(nextItem, selectedChat.id)) {
+                        nextChatId = nextItem.id;
+                    }
+                }
+            }
+
+            await onCloseChat(selectedChat.id, resolutionReason, sendFarewellMessage, nextChatId);
+            lastChatIdRef.current = nextChatId;
+            if (onSelectChat) {
+                onSelectChat(nextChatId);
+            }
             setCloseModalOpen(false);
         } catch (err) {
             console.error('Error cerrando:', err);
@@ -1944,8 +1979,10 @@ export default function ContactCenterChatConsole({
 
     // Sincronizar estado del bot al cambiar de chat
     useEffect(() => {
-        if (selectedChat) {
+        if (selectedChat?.id) {
             setBotActive(selectedChat.botActive !== false && !selectedChat.assignedTo);
+        } else {
+            setBotActive(false);
         }
     }, [selectedChat?.id, selectedChat?.botActive, selectedChat?.assignedTo]);
 
@@ -2036,10 +2073,14 @@ export default function ContactCenterChatConsole({
     useEffect(() => { assignedAgentObjRef.current = assignedAgentObj; }, [assignedAgentObj]);
 
     // Auto-alinear pestaña del sidebar para que contenga al chat activo al recargar la página (F5)
+    const hasInitialAlignedRef = useRef(false);
     useEffect(() => {
+        if (hasInitialAlignedRef.current) return;
         if (!activeChatId || !chats || chats.length === 0) return;
         const currentChat = chats.find(c => matchChat(c, activeChatId));
         if (!currentChat) return;
+
+        hasInitialAlignedRef.current = true;
 
         const isMine = (currentChat.assignedTo && myAliases.includes(currentChat.assignedTo.toLowerCase())) ||
                        (currentChat.assignedToName && currentChat.assignedToName.toLowerCase().includes(activeAgent.name.toLowerCase()));
@@ -2445,9 +2486,16 @@ export default function ContactCenterChatConsole({
         if (!selectedChatIds.size || !onBulkCloseChats) return;
         setIsBulkClosing(true);
         try {
-            await onBulkCloseChats(Array.from(selectedChatIds), bulkResolutionReason);
+            const closingIds = new Set(selectedChatIds);
+            await onBulkCloseChats(Array.from(closingIds), bulkResolutionReason);
             setSelectedChatIds(new Set());
             setBulkCloseModalOpen(false);
+            if (closingIds.has(activeChatId) || closingIds.has(selectedChat?.id)) {
+                const remainingInTab = filteredChats.filter(c => !closingIds.has(c.id));
+                const nextId = remainingInTab[0]?.id || null;
+                lastChatIdRef.current = nextId;
+                if (onSelectChat) onSelectChat(nextId);
+            }
         } catch (err) {
             console.error('Error cerrando masivamente:', err);
         } finally {
@@ -4153,6 +4201,43 @@ export default function ContactCenterChatConsole({
                 overflow: 'hidden', 
                 background: ccTheme.chatBgColor || '#F8FAFC' 
             }}>
+                {!selectedChat?.id ? (
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '100%',
+                        padding: '32px',
+                        textAlign: 'center',
+                        color: ccTheme.chatHeaderColor || '#64748B'
+                    }}>
+                        <div style={{
+                            width: '64px',
+                            height: '64px',
+                            borderRadius: '50%',
+                            background: ccTheme.isDark ? '#1E293B' : '#E0F2FE',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginBottom: '16px',
+                            color: '#0284C7'
+                        }}>
+                            <MessageSquare size={32} />
+                        </div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 8px 0', color: ccTheme.isDark ? '#F1F5F9' : '#0F172A' }}>
+                            {filterTab === 'asignadas_mi' 
+                                ? 'No tienes conversaciones asignadas activas' 
+                                : 'Selecciona una conversación para comenzar'}
+                        </h3>
+                        <p style={{ fontSize: '0.82rem', maxWidth: '380px', margin: 0, lineHeight: 1.5, opacity: 0.8 }}>
+                            {filterTab === 'asignadas_mi'
+                                ? 'Todas tus conversaciones han sido finalizadas. Puedes tomar nuevos chats desde la pestaña "Sin asignar" o "Bot".'
+                                : 'Elige un contacto del panel izquierdo para visualizar su historial médico, notas y mensajes.'}
+                        </p>
+                    </div>
+                ) : (
+                    <>
                 {/* Barra Superior del Chat con Control de Asignación Exclusiva */}
                 <div style={{
                     padding: '5px 14px',
@@ -6763,6 +6848,8 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     </form>
                 )}
                 </div>
+                </>
+                )}
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
@@ -6857,7 +6944,32 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                 </div>
 
                 <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {isSidebarLoading ? (
+                    {!selectedChat?.id ? (
+                        <div style={{
+                            padding: '40px 16px',
+                            textAlign: 'center',
+                            color: themeCardSubtext,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}>
+                            <div style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '50%',
+                                background: ccTheme.isDark ? '#1E293B' : '#F1F5F9',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: themeCardSubtext
+                            }}>
+                                <UserCheck size={24} style={{ opacity: 0.5 }} />
+                            </div>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: themeCardText }}>Sin paciente seleccionado</span>
+                            <span style={{ fontSize: '0.72rem', opacity: 0.8 }}>Selecciona una conversación para ver su ficha clínica y notas.</span>
+                        </div>
+                    ) : isSidebarLoading ? (
                         <SidebarLoadingSkeleton 
                             ccTheme={ccTheme} 
                             rightCardBg={rightCardBg} 
@@ -8134,6 +8246,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     )}
                         </>
                     )}
+                    )}
                 </div>
             </div>
 
@@ -8162,7 +8275,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                         </div>
 
                         <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '0 0 14px 0', lineHeight: 1.45 }}>
-                            Estás a punto de finalizar la conversación con <strong>{selectedChat.contactName}</strong>. 
+                            Estás a punto de finalizar la conversación con <strong>{selectedChat?.contactName || 'el contacto'}</strong>. 
                             La conversación pasará a <strong>Archivadas</strong> y se reactivará el bot automático para futuros mensajes.
                         </p>
 
