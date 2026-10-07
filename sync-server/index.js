@@ -2183,7 +2183,7 @@ async function syncFacturacionInternada(db, fastSync = false) {
     const entries = [...facturadoMap.entries()];
     const CHUNK_SIZE = 50;
     let altasActualizadas = 0;
-    const estadosPreservar = new Set(['Parcial', 'Alta prox. mes', 'Falta biopsia', 'Sin alta adm', 'Hc incompleta', 'Suspendida']);
+    const estadosPreservar = new Set(['Parcial', 'Falta biopsia', 'Sin alta adm', 'Hc incompleta', 'Suspendida']);
 
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);

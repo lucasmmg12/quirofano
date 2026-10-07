@@ -302,13 +302,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                 if (a.usuario_facturo && !a.responsable_fac) {
                     updates.responsable_fac = a.usuario_facturo;
                 }
-                // Si SALUS marcó facturada=true: respetar Julio y Agosto si fueron modificados manualmente,
-                // pero a partir de Septiembre en adelante, si fue Devuelta y luego facturada en SALUS, auto-promover a Facturada
-                const fechaRef = a.fecha_alta || a.fecha_ingreso;
-                const isJulioAgosto = fechaRef && fechaRef >= '2026-07-01' && fechaRef < '2026-09-01';
-
-                if (!isJulioAgosto && a.facturada) {
-                    if (!a.estado_fac || a.estado_fac === 'Pendiente') {
+                // Si SALUS marcó facturada=true: auto-promover si está nulo, Pendiente o 'Alta prox. mes'
+                // pero si el usuario le puso 'Parcial' (o estados clínicos calificados), RESPETAR la decisión
+                if (a.facturada) {
+                    if (!a.estado_fac || a.estado_fac === 'Pendiente' || a.estado_fac === 'Alta prox. mes') {
                         updates.estado_fac = 'Facturada';
                     } else if (a.estado_fac === 'Devuelta') {
                         const devueltaFecha = a.devuelta_at ? a.devuelta_at.split('T')[0] : null;
@@ -626,6 +623,16 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             
             if (isDuplicate && isLatestAdmission) {
                 const entries = dupInfo.entries || [];
+                // Estados manuales prioritarios que nunca deben ser pisados por la bandera 'facturada'
+                const estadosManualesPrioritarios = ['Parcial', 'Devuelta', 'Falta biopsia', 'Hc incompleta', 'Sin alta adm', 'Suspendida'];
+                let manualEstado = null;
+                for (const m of estadosManualesPrioritarios) {
+                    if (entries.some(e => e.estado_fac === m)) {
+                        manualEstado = m;
+                        break;
+                    }
+                }
+
                 for (const e of entries) {
                     if (!doctor && e.doctor) doctor = e.doctor;
                     if (!proceso && e.proceso) proceso = e.proceso;
@@ -645,16 +652,19 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         traspasada_por = e.traspasada_por;
                     }
                     if (!en_carrito_traspaso && e.en_carrito_traspaso) en_carrito_traspaso = e.en_carrito_traspaso;
-                    if (e.facturada || e.estado_fac === 'Facturada') {
-                        facturada = true;
-                        estado_fac = 'Facturada';
-                        if (e.responsable_fac) responsable_fac = e.responsable_fac;
-                    } else if ((!estado_fac || estado_fac === 'Pendiente') && e.estado_fac && e.estado_fac !== 'Pendiente') {
-                        estado_fac = e.estado_fac;
-                    }
+                    if (e.facturada) facturada = true;
                     if (!responsable_fac && e.responsable_fac) responsable_fac = e.responsable_fac;
-                    if (!facturada && e.facturada) facturada = e.facturada;
                 }
+
+                if (manualEstado) {
+                    estado_fac = manualEstado;
+                } else if (facturada || entries.some(e => e.estado_fac === 'Facturada')) {
+                    estado_fac = 'Facturada';
+                } else {
+                    const nonPend = entries.find(e => e.estado_fac && e.estado_fac !== 'Pendiente');
+                    if (nonPend) estado_fac = nonPend.estado_fac;
+                }
+
                 mergedAdmissions = duplicateAdmissions;
             }
 
@@ -665,10 +675,6 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const siblingAdmissionNumbers = siblingAdmissions ? siblingAdmissions.map(a => a.numero_admision) : null;
 
             let computed_fecha_ingreso = alta.fecha_ingreso;
-            // Hemos eliminado la lógica que absorbía estado de facturación, responsable 
-            // y fecha de ingreso de internaciones hermanas (de fechas diferentes),
-            // ya que causaba que internaciones nuevas (ej: agosto) heredaran erróneamente
-            // el estado facturado y la fecha de ingreso de internaciones pasadas (ej: abril).
 
             // Detectar "Cruza Mes": internación que trasciende el mes seleccionado
             const [selY, selM] = selectedMonth.split('-').map(Number);
@@ -679,11 +685,10 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             const lastDayPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
             const fechaCierreSugerida = cruzaMes ? `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDayPrevMonth).padStart(2, '0')}` : null;
 
-            const fechaRefAlta = alta.fecha_alta || computed_fecha_ingreso;
-            const isJulioAgostoAlta = fechaRefAlta && fechaRefAlta >= '2026-07-01' && fechaRefAlta < '2026-09-01';
-
-            if (!isJulioAgostoAlta && facturada) {
-                if (!estado_fac || estado_fac === 'Pendiente') {
+            if (facturada) {
+                // Si ya fue facturada en SALUS:
+                // Si su estado es nulo, 'Pendiente' o 'Alta prox. mes' -> promover a 'Facturada'
+                if (!estado_fac || estado_fac === 'Pendiente' || estado_fac === 'Alta prox. mes') {
                     estado_fac = 'Facturada';
                 } else if (estado_fac === 'Devuelta') {
                     const devueltaFecha = alta.devuelta_at ? alta.devuelta_at.split('T')[0] : null;
@@ -692,6 +697,7 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         estado_fac = 'Facturada';
                     }
                 }
+                // Si estado_fac ya es 'Parcial' (o manual calificado), se respeta y NO se pisa
             }
 
             return {
@@ -958,7 +964,13 @@ export default function FacturacionPanel({ addToast, currentUser }) {
         setProcessing(true);
         try {
             const updated = await updateEstadoFac(id, newEstado, currentUser?.nombre || 'operador');
-            setAltas(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
+            setAltas(prev => prev.map(a => {
+                if (a.id === id) return { ...a, ...updated, estado_fac: newEstado };
+                if (updated?.paciente && a.paciente === updated.paciente && a.fecha_ingreso === updated.fecha_ingreso) {
+                    return { ...a, estado_fac: newEstado, operador: currentUser?.nombre || 'operador' };
+                }
+                return a;
+            }));
             addToast?.(`Estado actualizado: ${newEstado}`, 'success');
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');

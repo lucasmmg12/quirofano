@@ -512,6 +512,17 @@ export async function updateEstadoFac(id, estado_fac, operador = 'operador') {
         .select()
         .single();
     if (error) throw error;
+
+    // Sincronizar también admisiones hermanas/gemelas del mismo paciente y fecha de ingreso
+    if (data?.paciente && data?.fecha_ingreso) {
+        await supabase
+            .from('altas_administrativas')
+            .update({ estado_fac, operador })
+            .eq('paciente', data.paciente)
+            .eq('fecha_ingreso', data.fecha_ingreso)
+            .neq('id', id);
+    }
+
     return data;
 }
 
