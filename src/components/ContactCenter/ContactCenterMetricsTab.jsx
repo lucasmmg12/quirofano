@@ -752,9 +752,9 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 : 0;
             const queueWaitMedian = calcMedian(allQueueWaitTimes);
             const queueUnder5m = allQueueWaitTimes.filter(t => t <= 5).length;
-            const queueUnder5mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder5m / allQueueWaitTimes.length) * 100) : 100;
+            const queueWaitUnder5mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder5m / allQueueWaitTimes.length) * 100) : 100;
             const queueUnder15m = allQueueWaitTimes.filter(t => t <= 15).length;
-            const queueUnder15mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder15m / allQueueWaitTimes.length) * 100) : 100;
+            const queueWaitUnder15mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder15m / allQueueWaitTimes.length) * 100) : 100;
 
             const agentFRTAvg = allAgentFRTTimes.length > 0
                 ? Number((allAgentFRTTimes.reduce((a, b) => a + b, 0) / allAgentFRTTimes.length).toFixed(1))
