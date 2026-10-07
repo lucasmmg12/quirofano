@@ -1985,16 +1985,127 @@ export async function lookupPatientFromSalus(query) {
     }
 }
 
+const associatedPatientsPhoneCache = new Map();
+const ASSOCIATED_PHONE_CACHE_TTL_MS = 5 * 60 * 1000;
+
 /**
- * Busca pacientes asociados en el padrón maestro (hospital_pacientes) que compartan
+ * Busca pacientes asociados en el padrón maestro (hospital_pacientes / SALUS) que compartan
  * el mismo número de teléfono (ej: grupo familiar, padres e hijos, dependientes).
+ * Admite todos los formatos de teléfono registrados en SALUS:
+ * - +5492645438114 / 5492645438114 (internacional con 9)
+ * - 2645438114 (código de área + abonado local)
+ * - 155438114 / 15-5438114 (celular local con prefijo 15)
+ * - 542645438114 (internacional sin 9)
+ * - 5438114 / 543-8114 / 543 8114 (abonado local de 7 dígitos)
+ * - (0264)155438114 / (264) 543-8114 (formatos con paréntesis y guiones)
+ * 
  * @param {string} phone - Teléfono del remitente o paciente
+ * @param {boolean} [force=false] - Si es true, omite la caché en memoria
  * @returns {Promise<Array>} Lista de pacientes encontrados
  */
-export async function getAssociatedPatientsByPhone(phone) {
-    // Deprecado para prevenir bloqueos de CPU y timeouts en PostgreSQL por escaneo secuencial en hospital_pacientes (300k filas)
-    // Conforme a la directiva institucional, la vinculación y padrón de pacientes se realiza de forma estricta y segura por DNI.
-    return [];
+export async function getAssociatedPatientsByPhone(phone, force = false) {
+    if (!phone) return [];
+    const clean = String(phone).replace(/\D/g, '');
+    if (clean.length < 6) return [];
+
+    // Clave de caché por los últimos 7 dígitos significativos (abonado local)
+    const last7 = clean.slice(-7);
+    if (!force) {
+        const cached = associatedPatientsPhoneCache.get(last7);
+        if (cached && (Date.now() - cached.timestamp < ASSOCIATED_PHONE_CACHE_TTL_MS)) {
+            return cached.data;
+        }
+    }
+
+    // 1. Prioridad: Consulta en tiempo real a SQL Server de SALUS vía sync-server (timeout 2.5s)
+    const baseUrl = getSalusSyncBaseUrl();
+    if (baseUrl) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch(`${baseUrl}/api/salus/familiares/${clean}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && Array.isArray(json.familiares) && json.familiares.length > 0) {
+                    associatedPatientsPhoneCache.set(last7, { data: json.familiares, timestamp: Date.now() });
+                    return json.familiares;
+                }
+            }
+        } catch (_) {
+            // Fallback a Supabase si sync-server no responde
+        }
+    }
+
+    // 2. Búsqueda exhaustiva en Supabase hospital_pacientes (con soporte multiformato)
+    try {
+        const p1 = last7.slice(0, 3);
+        const p2 = last7.slice(3);
+
+        const filters = [
+            `telefono.ilike.%${last7}%`,
+            `telefono.ilike.%${p1}-${p2}%`,
+            `telefono.ilike.%${p1} ${p2}%`,
+            `telefono.ilike.%${p1}.${p2}%`,
+            `telefono.ilike.%15${last7}%`,
+            `telefono.ilike.%15-${last7}%`
+        ];
+
+        if (clean.length >= 8) {
+            filters.push(`telefono.ilike.%${clean.slice(-8)}%`);
+        }
+        if (clean.length >= 10) {
+            filters.push(`telefono.ilike.%${clean.slice(-10)}%`);
+        }
+
+        const { data, error } = await supabase
+            .from('hospital_pacientes')
+            .select('id_paciente, nombre, dni, telefono, email, fecha_nacimiento, coseguro, nhc, centro')
+            .or(filters.join(','))
+            .limit(30);
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            associatedPatientsPhoneCache.set(last7, { data: [], timestamp: Date.now() });
+            return [];
+        }
+
+        // Post-filtro estricto: confirmar coincidencia de abonado (últimos 7 dígitos)
+        const valid = data.filter(item => {
+            const itemDigits = String(item.telefono || '').replace(/\D/g, '');
+            if (itemDigits.length < 7) return false;
+            return itemDigits.slice(-7) === last7 || 
+                   (clean.length >= 8 && itemDigits.length >= 8 && itemDigits.slice(-8) === clean.slice(-8));
+        });
+
+        // Deduplicar por DNI o id_paciente
+        const seen = new Set();
+        const deduplicated = [];
+        for (const p of valid) {
+            const key = p.dni || p.id_paciente || p.nombre;
+            if (key && !seen.has(key)) {
+                seen.add(key);
+                deduplicated.push(p);
+            }
+        }
+
+        // Ordenar: primero registros con DNI, luego con obra social
+        deduplicated.sort((a, b) => {
+            if (a.dni && !b.dni) return -1;
+            if (!a.dni && b.dni) return 1;
+            if (a.coseguro && !b.coseguro) return -1;
+            if (!a.coseguro && b.coseguro) return 1;
+            return 0;
+        });
+
+        associatedPatientsPhoneCache.set(last7, { data: deduplicated, timestamp: Date.now() });
+        return deduplicated;
+    } catch (err) {
+        console.error('[contact-center] Error buscando pacientes asociados por teléfono:', err);
+        return [];
+    }
 }
 
 /**

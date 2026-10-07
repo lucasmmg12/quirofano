@@ -1296,14 +1296,14 @@ export default function ContactCenterChatConsole({
     }, [selectedChat?.id]);
 
     // Cargar pacientes asociados al número de teléfono en segundo plano (Grupo Familiar)
-    const loadAssociatedPatients = async (phone) => {
+    const loadAssociatedPatients = async (phone, force = false) => {
         if (!phone) {
             setAssociatedPatients([]);
             return;
         }
         setIsLoadingAssociated(true);
         try {
-            const list = await getAssociatedPatientsByPhone(phone);
+            const list = await getAssociatedPatientsByPhone(phone, force);
             setAssociatedPatients(list || []);
         } catch (err) {
             console.error('Error al cargar pacientes asociados:', err);
@@ -7288,7 +7288,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <button
                                                 type="button"
-                                                onClick={() => loadAssociatedPatients(selectedChat?.phone)}
+                                                onClick={() => loadAssociatedPatients(selectedChat?.phone, true)}
                                                 title="Actualizar búsqueda de contactos asociados en SALUS"
                                                 disabled={isLoadingAssociated}
                                                 style={{
@@ -7312,7 +7312,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
 
                                     <div style={{ fontSize: '0.67rem', color: themeCardSubtext, lineHeight: '1.3' }}>
-                                        Pacientes registrados en el padrón de SALUS con el número <strong>+{selectedChat?.phone}</strong>:
+                                        Pacientes registrados en el padrón de SALUS con el número <strong>{selectedChat?.phone?.startsWith('+') ? selectedChat.phone : `+${selectedChat?.phone || ''}`}</strong>:
                                     </div>
 
                                     {isLoadingAssociated ? (
