@@ -6,7 +6,8 @@ import {
     ChevronRight, ChevronDown, ChevronUp, Check, AlertCircle, AlertTriangle, 
     FileText, HelpCircle, PhoneCall, DollarSign, TrendingUp, X, 
     Calculator, Info, ShieldCheck, Zap, Award, UserCheck, Timer,
-    CheckSquare, TrendingDown, Smile, UserX, Layers, Target, Cpu
+    CheckSquare, TrendingDown, Smile, UserX, Layers, Target, Cpu,
+    ChevronLeft, Printer
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -25,6 +26,7 @@ import {
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { CONTACT_CENTER_AGENTS, isClosedOrArchived } from '../../services/contactCenterService';
+import { INCENTIVO_CONFIG, calculateEscalon } from '../../services/incentivoContactCenterService';
 import ContactCenterAiCostTab from './ContactCenterAiCostTab';
 
 const COSTO_POR_MENSAJE_USD = 0.026; // $0.026 USD por mensaje enviado a partir del 1.001
@@ -43,11 +45,50 @@ const MOTIVOS_FINALIZACION_CATALOGO = [
 
 const DIAS_SEMANA_NOMBRES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-export default function ContactCenterMetricsTab({ addToast }) {
+export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentivos }) {
     const [loading, setLoading] = useState(true);
+    const [streamingProgress, setStreamingProgress] = useState(null);
     
     // Selector de vista: 'operativo' | 'ia_tokens'
     const [activeMetricsView, setActiveMetricsView] = useState('operativo');
+
+    // Selector de mes a mes (Formato 'YYYY-MM')
+    const getCurrentMonthKey = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+    const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey);
+    const [showMonthlyReportModal, setShowMonthlyReportModal] = useState(false);
+
+    // Opciones de los últimos 12 meses para selector y reportes mes a mes
+    const monthOptions = useMemo(() => {
+        const list = [];
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const labelRaw = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+            const label = labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1);
+            list.push({ key, label, year: d.getFullYear(), month: d.getMonth() });
+        }
+        return list;
+    }, []);
+
+    const handlePrevMonth = () => {
+        const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+        if (idx < monthOptions.length - 1) {
+            setSelectedMonth(monthOptions[idx + 1].key);
+            setTimeRange('this_month');
+        }
+    };
+
+    const handleNextMonth = () => {
+        const idx = monthOptions.findIndex(m => m.key === selectedMonth);
+        if (idx > 0) {
+            setSelectedMonth(monthOptions[idx - 1].key);
+            setTimeRange('this_month');
+        }
+    };
 
     // Filtros temporales requeridos: este_mes, mes_pasado, personalizado, hoy, semana
     const [timeRange, setTimeRange] = useState('this_month');
@@ -151,9 +192,10 @@ export default function ContactCenterMetricsTab({ addToast }) {
         }
     });
 
-    // Carga y cómputo de métricas desde Supabase
+    // Carga y cómputo de métricas desde Supabase con streaming en lotes (Optimizado para RAM < 5MB)
     const loadMetrics = async () => {
         setLoading(true);
+        setStreamingProgress({ current: 0, text: 'Iniciando carga de datos...' });
         try {
             // 1. Determinar fechas de inicio y fin según el filtro seleccionado
             let filterStart = null;
@@ -161,8 +203,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
             const now = new Date();
 
             if (timeRange === 'this_month') {
-                filterStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-                filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+                const [yStr, mStr] = (selectedMonth || getCurrentMonthKey()).split('-');
+                const y = parseInt(yStr, 10);
+                const m = parseInt(mStr, 10) - 1;
+                filterStart = new Date(y, m, 1, 0, 0, 0);
+                filterEnd = new Date(y, m + 1, 0, 23, 59, 59);
             } else if (timeRange === 'last_month') {
                 filterStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
                 filterEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
@@ -183,53 +228,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }
             }
 
-            // Consultar mensajes de la línea de Contact Center (Optimizado para RAM)
-            let msgQuery = supabase
-                .from('whatsapp_messages')
-                .select('id, phone, direction, sender_name, content, created_at, raw_payload')
-                .eq('line_id', 'contact_center')
-                .order('created_at', { ascending: true })
-                .limit(4000); // Límite de seguridad para no agotar la RAM
-
-            // Consultar conversaciones con datos completos de asignación y cierre
-            let convQuery = supabase
-                .from('contact_center_conversations')
-                .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, motivo_consulta, ai_summary, created_at, updated_at, last_message_at')
-                .order('created_at', { ascending: true })
-                .limit(2500);
-
-            if (filterStart) {
-                msgQuery = msgQuery.gte('created_at', filterStart.toISOString());
-                convQuery = convQuery.gte('created_at', filterStart.toISOString());
-            }
-            if (filterEnd) {
-                msgQuery = msgQuery.lte('created_at', filterEnd.toISOString());
-                convQuery = convQuery.lte('created_at', filterEnd.toISOString());
-            }
-
-            // Historial ampliado de los últimos 6 meses para la comparativa mes a mes (Solo salientes y con proyección ligera)
-            const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1, 0, 0, 0);
-            const monthlyPromise = supabase
-                .from('whatsapp_messages')
-                .select('id, direction, created_at')
-                .eq('line_id', 'contact_center')
-                .eq('direction', 'outgoing')
-                .gte('created_at', sixMonthsAgo.toISOString())
-                .limit(10000);
-
-            const [{ data: messages, error: msgErr }, { data: convs, error: convErr }, { data: monthlyRawMsgs }] = await Promise.all([
-                msgQuery,
-                convQuery,
-                monthlyPromise
-            ]);
-
-            if (msgErr) throw msgErr;
-            if (convErr) throw convErr;
-
-            const filteredMessages = messages || [];
-            const filteredConvs = convs || [];
-
-            // ── A. Métricas de Volumen de Mensajes ──
+            // ── A. Estructuras de Acumulación Escalar (RAM ultrabaja < 5MB) ──
             let totalOut = 0;
             let totalIn = 0;
             let botCount = 0;
@@ -254,15 +253,9 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     hourlyMap: Array(24).fill(0),
                     dayOfWeekMap: Array(7).fill(0),
                     responseTimesMin: [],
-                    firstResponseTimesMin: [], // Desde toma de caso hasta 1er mensaje saliente
-                    handleTimesMin: [],        // Desde toma de caso hasta finalización (AHT)
-                    categoriesTally: {
-                        turnos: 0,
-                        autorizaciones: 0,
-                        guardias: 0,
-                        informes: 0,
-                        otros: 0
-                    }
+                    firstResponseTimesMin: [],
+                    handleTimesMin: [],
+                    categoriesTally: { turnos: 0, autorizaciones: 0, guardias: 0, informes: 0, otros: 0 }
                 };
             });
             agentDataMap['otros_operadores'] = {
@@ -282,152 +275,202 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 categoriesTally: { turnos: 0, autorizaciones: 0, guardias: 0, informes: 0, otros: 0 }
             };
 
-            // Estructuras temporales para Demanda Horaria y Días de la Semana
             const hourlyIncomingCounts = Array(24).fill(0);
             const dailyOutTally = {};
             const responseTimesByDay = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
             const allFirstResponseTimes = [];
-            const allResolutionTimes = [];
-
-            // ── Estructuras para Métricas de Calidad de Atención al Paciente ──
-            const allQueueWaitTimes = [];     // Minutos en cola (solicitud -> toma asesora)
-            const allAgentFRTTimes = [];      // Minutos hasta 1er contacto de la asesora (toma -> 1er msg)
-            const allAgentHandleTimes = [];   // Minutos netos de gestión de chat (toma -> cierre)
-            const hourlyWaitMap = Array.from({ length: 24 }, () => []); // Espera por hora del día
-            let abandonedCount = 0;           // Pacientes que abandonaron en cola sin atención
-            const resolvedPhonesWithCloseDate = []; // Registro para verificar FCR (sin reingreso en 24h)
-
-            // Agrupar mensajes por teléfono para analizar conversaciones y tiempos
-            const msgsByPhone = {};
-            filteredMessages.forEach(m => {
-                if (!m.phone) return;
-                if (!msgsByPhone[m.phone]) msgsByPhone[m.phone] = [];
-                msgsByPhone[m.phone].push(m);
-
-                const mDate = new Date(m.created_at);
-                const dayKey = mDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-
-                if (m.direction === 'outgoing') {
-                    totalOut++;
-                    dailyOutTally[dayKey] = (dailyOutTally[dayKey] || 0) + 1;
-
-                    const sender = (m.sender_name || '').toLowerCase();
-                    const rawAgent = (m.raw_payload?.agent || '').toLowerCase();
-                    const isBot = m.raw_payload?.bot || 
-                                  m.raw_payload?.source === 'bot_triage' || 
-                                  sender.includes('bot') || 
-                                  sender.includes('sistema adm-qui');
-
-                    if (isBot) {
-                        botCount++;
-                    } else {
-                        agentCount++;
-                        let matched = false;
-                        for (const ag of ALL_AGENTS_METRICS) {
-                            if (
-                                rawAgent === ag.id || 
-                                rawAgent === (ag.username || '').toLowerCase() ||
-                                (ag.legacyId && rawAgent === ag.legacyId) ||
-                                sender.includes(ag.id) ||
-                                (ag.legacyId && sender.includes(ag.legacyId)) ||
-                                sender.includes((ag.name || '').toLowerCase())
-                            ) {
-                                agentDataMap[ag.id].count++;
-                                agentDataMap[ag.id].hourlyMap[mDate.getHours()]++;
-                                agentDataMap[ag.id].dayOfWeekMap[mDate.getDay()]++;
-                                matched = true;
-                                break;
-                            }
-                        }
-                        if (!matched) {
-                            agentDataMap['otros_operadores'].count++;
-                            agentDataMap['otros_operadores'].hourlyMap[mDate.getHours()]++;
-                            agentDataMap['otros_operadores'].dayOfWeekMap[mDate.getDay()]++;
-                        }
-                    }
-                } else if (m.direction === 'incoming') {
-                    totalIn++;
-                    hourlyIncomingCounts[mDate.getHours()]++;
-                }
-            });
-
-            // Helper para identificar mensajes automáticos del Bot
-            const isBotMsg = (msg) => {
-                if (!msg) return false;
-                const s = (msg.sender_name || '').toLowerCase();
-                const r = (msg.raw_payload?.agent || '').toLowerCase();
-                return !!(
-                    msg.raw_payload?.bot || 
-                    msg.raw_payload?.source === 'bot_triage' || 
-                    s.includes('bot') || 
-                    s.includes('sistema adm-qui')
-                );
-            };
-
-            // ── B. Cálculo de Tiempos de Demora y Respuestas por Conversación ──
             const allHumanResponseTimes = [];
 
-            Object.values(msgsByPhone).forEach(pMsgs => {
-                // pMsgs ya viene ordenado cronológicamente (ascending: true)
-                for (let i = 0; i < pMsgs.length; i++) {
-                    const m = pMsgs[i];
-                    if (m.direction === 'incoming') {
-                        const inDate = new Date(m.created_at);
-                        const subsequentOuts = pMsgs.slice(i + 1).filter(x => x.direction === 'outgoing');
+            // Tracker ultraliviano indexado por teléfono (solo timestamps primitivos: <100 KB total)
+            const phoneTracker = new Map();
 
-                        // 1. Primera respuesta humana (asesora)
-                        const nextHumanOut = subsequentOuts.find(x => !isBotMsg(x));
-                        if (nextHumanOut) {
-                            const outDate = new Date(nextHumanOut.created_at);
-                            const diffMin = (outDate - inDate) / 60000;
-                            if (diffMin >= 0 && diffMin < 2880) { // filtrar outliers mayores a 48hs
-                                const valMin = Number(diffMin.toFixed(1));
-                                allHumanResponseTimes.push(valMin);
-                                responseTimesByDay[inDate.getDay()].push(valMin);
+            // Triage en vuelo (sólo primer mensaje de cada paciente)
+            const choicesTally = {
+                solicitar_turno: 0,
+                reprogramar_turno: 0,
+                autorizar: 0,
+                guardia: 0,
+                informes: 0,
+                otros: 0
+            };
+            const phoneTriageDone = new Set();
 
-                                // Atribuir a la asesora correspondiente
-                                const sender = (nextHumanOut.sender_name || '').toLowerCase();
-                                const rawAgent = (nextHumanOut.raw_payload?.agent || '').toLowerCase();
-                                let matched = false;
-                                for (const ag of ALL_AGENTS_METRICS) {
-                                    if (
-                                        rawAgent === ag.id || 
-                                        rawAgent === (ag.username || '').toLowerCase() ||
-                                        (ag.legacyId && rawAgent === ag.legacyId) ||
-                                        sender.includes(ag.id) ||
-                                        (ag.legacyId && sender.includes(ag.legacyId)) ||
-                                        sender.includes((ag.name || '').toLowerCase())
-                                    ) {
-                                        agentDataMap[ag.id].responseTimesMin.push(valMin);
-                                        matched = true;
-                                        break;
-                                    }
+            // ── B. Streaming en Lotes de Mensajes (Paginación de a 1.000 para no saturar memoria) ──
+            const pageSize = 1000;
+            let offset = 0;
+            let hasMore = true;
+            let totalFetched = 0;
+
+            while (hasMore) {
+                let q = supabase
+                    .from('whatsapp_messages')
+                    .select('id, phone, direction, sender_name, content, created_at, raw_payload')
+                    .eq('line_id', 'contact_center')
+                    .order('created_at', { ascending: true })
+                    .range(offset, offset + pageSize - 1);
+
+                if (filterStart) q = q.gte('created_at', filterStart.toISOString());
+                if (filterEnd) q = q.lte('created_at', filterEnd.toISOString());
+
+                const { data: chunk, error: chunkErr } = await q;
+                if (chunkErr) throw chunkErr;
+
+                if (!chunk || chunk.length === 0) {
+                    hasMore = false;
+                    break;
+                }
+
+                totalFetched += chunk.length;
+                setStreamingProgress({ current: totalFetched, text: `Procesando ${totalFetched.toLocaleString()} mensajes...` });
+
+                for (let i = 0; i < chunk.length; i++) {
+                    const m = chunk[i];
+                    const mDate = new Date(m.created_at);
+                    const mTime = mDate.getTime();
+                    const normPhone = m.phone ? m.phone.trim() : null;
+
+                    if (m.direction === 'outgoing') {
+                        totalOut++;
+                        const dayKey = mDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+                        dailyOutTally[dayKey] = (dailyOutTally[dayKey] || 0) + 1;
+
+                        const sender = (m.sender_name || '').toLowerCase();
+                        const rawAgent = (m.raw_payload?.agent || '').toLowerCase();
+                        const isBot = !!(
+                            m.raw_payload?.bot || 
+                            m.raw_payload?.source === 'bot_triage' || 
+                            sender.includes('bot') || 
+                            sender.includes('sistema adm-qui')
+                        );
+
+                        let matchedAgId = null;
+                        if (isBot) {
+                            botCount++;
+                        } else {
+                            agentCount++;
+                            for (const ag of ALL_AGENTS_METRICS) {
+                                if (
+                                    rawAgent === ag.id || 
+                                    rawAgent === (ag.username || '').toLowerCase() ||
+                                    (ag.legacyId && rawAgent === ag.legacyId) ||
+                                    sender.includes(ag.id) ||
+                                    (ag.legacyId && sender.includes(ag.legacyId)) ||
+                                    sender.includes((ag.name || '').toLowerCase())
+                                ) {
+                                    matchedAgId = ag.id;
+                                    break;
                                 }
-                                if (!matched) {
-                                    agentDataMap['otros_operadores'].responseTimesMin.push(valMin);
+                            }
+                            if (!matchedAgId) matchedAgId = 'otros_operadores';
+
+                            agentDataMap[matchedAgId].count++;
+                            agentDataMap[matchedAgId].hourlyMap[mDate.getHours()]++;
+                            agentDataMap[matchedAgId].dayOfWeekMap[mDate.getDay()]++;
+                        }
+
+                        if (normPhone) {
+                            let tracker = phoneTracker.get(normPhone);
+                            if (!tracker) {
+                                tracker = {
+                                    firstInTime: null,
+                                    firstHumanOutTime: null,
+                                    firstHumanOutAgent: null,
+                                    firstAnyOutTime: null,
+                                    inDayOfWeek: null,
+                                    incomingTimestamps: [],
+                                    humanOutTimestamps: []
+                                };
+                                phoneTracker.set(normPhone, tracker);
+                            }
+
+                            if (!isBot) {
+                                tracker.humanOutTimestamps.push(mTime);
+                                if (tracker.firstInTime && !tracker.firstHumanOutTime && mTime >= tracker.firstInTime) {
+                                    tracker.firstHumanOutTime = mTime;
+                                    tracker.firstHumanOutAgent = matchedAgId;
+                                }
+                            }
+
+                            if (tracker.firstInTime && !tracker.firstAnyOutTime && mTime >= tracker.firstInTime) {
+                                tracker.firstAnyOutTime = mTime;
+                            }
+                        }
+                    } else if (m.direction === 'incoming') {
+                        totalIn++;
+                        hourlyIncomingCounts[mDate.getHours()]++;
+
+                        if (normPhone) {
+                            let tracker = phoneTracker.get(normPhone);
+                            if (!tracker) {
+                                tracker = {
+                                    firstInTime: mTime,
+                                    firstHumanOutTime: null,
+                                    firstHumanOutAgent: null,
+                                    firstAnyOutTime: null,
+                                    inDayOfWeek: mDate.getDay(),
+                                    incomingTimestamps: [mTime],
+                                    humanOutTimestamps: []
+                                };
+                                phoneTracker.set(normPhone, tracker);
+                            } else {
+                                if (!tracker.firstInTime) {
+                                    tracker.firstInTime = mTime;
+                                    tracker.inDayOfWeek = mDate.getDay();
+                                }
+                                tracker.incomingTimestamps.push(mTime);
+                            }
+
+                            // Triage inicial ultraliviano: sólo se analiza la 1ra vez por teléfono
+                            if (!phoneTriageDone.has(normPhone) && m.content) {
+                                phoneTriageDone.add(normPhone);
+                                const txt = m.content.toLowerCase();
+                                if (/\b(reprogramar|cambiar\s+turno|cambio\s+de\s+turno|otra\s+fecha|otro\s+dia|no\s+puedo\s+ir)\b/i.test(txt)) {
+                                    choicesTally.reprogramar_turno++;
+                                } else if (/\b(autoriz|estudio|orden|ecograf|laboratorio|pap|mamograf|tomograf|rayos|rx|resonanc)\b/i.test(txt) || txt.includes('2')) {
+                                    choicesTally.autorizar++;
+                                } else if (/\b(guardia|urgencia|emergencia)\b/i.test(txt) || txt.includes('3')) {
+                                    choicesTally.guardia++;
+                                } else if (/\b(informe|resultado|horario|telefono|web|direccion|consulta|donde\s+queda|atencion)\b/i.test(txt) || txt.includes('4')) {
+                                    choicesTally.informes++;
+                                } else if (/\b(turno|turnos|solicitar|nuevo|doctor|doctora|dr|dra|cita|consulta|atencion|especialidad|ginecolog|pediatr|cardiolog|oftalmolog)\b/i.test(txt) || txt.includes('1')) {
+                                    choicesTally.solicitar_turno++;
+                                } else {
+                                    choicesTally.otros++;
                                 }
                             }
                         }
-
-                        // 2. Primera respuesta general (Bot o Humana)
-                        const nextAnyOut = subsequentOuts[0];
-                        if (nextAnyOut) {
-                            const outDate = new Date(nextAnyOut.created_at);
-                            const diffMin = Math.max(0, (outDate - inDate) / 60000);
-                            if (diffMin < 2880) {
-                                const valMin = Number(diffMin.toFixed(1));
-                                allFirstResponseTimes.push(valMin);
-                                // Si en este día NO hubo respuesta humana aún, registrar la muestra del bot
-                                if (!nextHumanOut) {
-                                    responseTimesByDay[inDate.getDay()].push(valMin);
-                                }
-                            }
-                        }
-
-                        break; // Solo contabilizar el primer ciclo de respuesta de la conversación
                     }
                 }
-            });
+
+                if (chunk.length < pageSize) {
+                    hasMore = false;
+                } else {
+                    offset += pageSize;
+                }
+            }
+
+            // ── C. Calcular Tiempos de Respuesta de Asesoras desde phoneTracker ──
+            for (const tracker of phoneTracker.values()) {
+                if (tracker.firstInTime && tracker.firstHumanOutTime) {
+                    const diffMin = (tracker.firstHumanOutTime - tracker.firstInTime) / 60000;
+                    if (diffMin >= 0 && diffMin < 2880) { // menos de 48 hs
+                        const valMin = Number(diffMin.toFixed(1));
+                        allHumanResponseTimes.push(valMin);
+                        if (tracker.inDayOfWeek !== null) {
+                            responseTimesByDay[tracker.inDayOfWeek].push(valMin);
+                        }
+                        if (tracker.firstHumanOutAgent && agentDataMap[tracker.firstHumanOutAgent]) {
+                            agentDataMap[tracker.firstHumanOutAgent].responseTimesMin.push(valMin);
+                        }
+                    }
+                }
+                if (tracker.firstInTime && tracker.firstAnyOutTime) {
+                    const diffMin = Math.max(0, (tracker.firstAnyOutTime - tracker.firstInTime) / 60000);
+                    if (diffMin < 2880) {
+                        allFirstResponseTimes.push(Number(diffMin.toFixed(1)));
+                    }
+                }
+            }
 
             // ── C. Demora por Día de la Semana y Detección del Día Crítico ──
             let maxDelayDayName = null;
@@ -454,10 +497,50 @@ export default function ContactCenterMetricsTab({ addToast }) {
             });
 
             // ── D. Tiempos Totales de Resolución ──
+            // ── D. Carga Paginada de Conversaciones de Contact Center ──
+            let convOffset = 0;
+            let convHasMore = true;
+            const filteredConvs = [];
+
+            while (convHasMore) {
+                let cq = supabase
+                    .from('contact_center_conversations')
+                    .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at')
+                    .order('created_at', { ascending: true })
+                    .range(convOffset, convOffset + pageSize - 1);
+
+                if (filterStart) cq = cq.gte('created_at', filterStart.toISOString());
+                if (filterEnd) cq = cq.lte('created_at', filterEnd.toISOString());
+
+                const { data: cChunk, error: cErr } = await cq;
+                if (cErr) throw cErr;
+
+                if (!cChunk || cChunk.length === 0) {
+                    convHasMore = false;
+                    break;
+                }
+
+                filteredConvs.push(...cChunk);
+                if (cChunk.length < pageSize) {
+                    convHasMore = false;
+                } else {
+                    convOffset += pageSize;
+                }
+            }
+
+            // ── E. Métricas de Calidad de Atención al Paciente ──
             let closedCount = 0;
             let activeCount = 0;
             const reasonsMap = {};
             MOTIVOS_FINALIZACION_CATALOGO.forEach(c => { reasonsMap[c.key] = 0; });
+
+            const allQueueWaitTimes = [];
+            const allAgentFRTTimes = [];
+            const allAgentHandleTimes = [];
+            const allResolutionTimes = [];
+            const hourlyWaitMap = Array.from({ length: 24 }, () => []);
+            let abandonedCount = 0;
+            const resolvedPhonesWithCloseDate = [];
 
             // Helper estadístico para mediana (P50)
             const calcMedian = (arr) => {
@@ -471,8 +554,8 @@ export default function ContactCenterMetricsTab({ addToast }) {
 
             filteredConvs.forEach(c => {
                 const isClosed = isClosedOrArchived(c) || !!c.closed_at || !!c.resolution_reason;
-                const normPhone = c.phone;
-                const pMsgs = msgsByPhone[normPhone] || [];
+                const normPhone = c.phone ? c.phone.trim() : null;
+                const tracker = normPhone ? phoneTracker.get(normPhone) : null;
 
                 // Identificar agente asignado
                 const assignedAgentId = (c.assigned_agent_id || '').toLowerCase();
@@ -494,14 +577,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
 
                 // Determinar fecha de asignación efectiva
                 let assignedDate = c.assigned_at ? new Date(c.assigned_at) : null;
-                if (!assignedDate) {
-                    // Fallback para chats anteriores: primer mensaje saliente humano
-                    const firstHumanMsg = pMsgs.find(m => m.direction === 'outgoing' && !isBotMsg(m));
-                    if (firstHumanMsg) assignedDate = new Date(firstHumanMsg.created_at);
+                if (!assignedDate && tracker?.firstHumanOutTime) {
+                    assignedDate = new Date(tracker.firstHumanOutTime);
                 }
 
                 // ── 1. TIEMPO DE ESPERA EN COLA (QUEUE WAIT TIME) ──
-                // Desde que entra la consulta hasta que un agente toma/se asigna el chat
                 if (assignedDate && c.created_at) {
                     const createdDate = new Date(c.created_at);
                     const waitMin = (assignedDate - createdDate) / 60000;
@@ -516,16 +596,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }
 
                 // ── 2. TIEMPO HASTA 1ER CONTACTO CON LA ASESORA (AGENT FRT) ──
-                // Desde que la asesora toma el chat (assigned_at) hasta que emite su 1er mensaje humano
-                if (assignedDate) {
+                if (assignedDate && tracker?.humanOutTimestamps?.length > 0) {
                     const assignedTimeMs = assignedDate.getTime();
-                    const firstOutAfterAssign = pMsgs.find(m => 
-                        m.direction === 'outgoing' && 
-                        !isBotMsg(m) && 
-                        new Date(m.created_at).getTime() >= (assignedTimeMs - 30000)
-                    );
+                    const firstOutAfterAssign = tracker.humanOutTimestamps.find(t => t >= (assignedTimeMs - 30000));
                     if (firstOutAfterAssign) {
-                        const frtMin = Math.max(0, (new Date(firstOutAfterAssign.created_at).getTime() - assignedTimeMs) / 60000);
+                        const frtMin = Math.max(0, (firstOutAfterAssign - assignedTimeMs) / 60000);
                         if (frtMin < 1440) { // menos de 24 hs
                             const valFRT = Number(frtMin.toFixed(1));
                             allAgentFRTTimes.push(valFRT);
@@ -589,7 +664,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     }
 
                     // Guardar para cálculo de First Contact Resolution (FCR)
-                    if (c.closed_at) {
+                    if (c.closed_at && normPhone) {
                         resolvedPhonesWithCloseDate.push({
                             phone: normPhone,
                             closedAt: new Date(c.closed_at).getTime()
@@ -600,8 +675,7 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 }
 
                 // ── 4. DETECCIÓN DE ABANDONO EN COLA ──
-                // Paciente que nunca fue atendido por un humano o timeout sin asignación
-                const hasAgentMsg = pMsgs.some(m => m.direction === 'outgoing' && !isBotMsg(m));
+                const hasAgentMsg = tracker?.humanOutTimestamps?.length > 0;
                 const isAbandonedTimeout = (c.resolution_reason || '').toLowerCase().includes('no responde');
                 if ((!hasAgentMsg && isClosed) || (isAbandonedTimeout && !c.assigned_at)) {
                     abandonedCount++;
@@ -611,13 +685,11 @@ export default function ContactCenterMetricsTab({ addToast }) {
             // ── Cómputo de FCR (First Contact Resolution en 24h) ──
             let fcrSuccessCount = 0;
             resolvedPhonesWithCloseDate.forEach(item => {
-                const pMsgs = msgsByPhone[item.phone] || [];
-                const nextIncomingWithin24h = pMsgs.find(m => {
-                    if (m.direction !== 'incoming') return false;
-                    const msgTime = new Date(m.created_at).getTime();
-                    return msgTime > item.closedAt && msgTime <= (item.closedAt + 24 * 3600 * 1000);
-                });
-                if (!nextIncomingWithin24h) {
+                const tracker = phoneTracker.get(item.phone);
+                const hasReentry = tracker?.incomingTimestamps?.some(
+                    t => t > item.closedAt && t <= (item.closedAt + 24 * 3600 * 1000)
+                );
+                if (!hasReentry) {
                     fcrSuccessCount++;
                 }
             });
@@ -643,35 +715,6 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     esperaMin: avg,
                     casos: times.length
                 };
-            });
-
-            // ── E. Triage Inicial de Pacientes ──
-            const choicesTally = {
-                solicitar_turno: 0,
-                reprogramar_turno: 0,
-                autorizar: 0,
-                guardia: 0,
-                informes: 0,
-                otros: 0
-            };
-
-            Object.entries(msgsByPhone).forEach(([phone, msgList]) => {
-                const incomingMsgs = msgList.filter(m => m.direction === 'incoming').map(m => m.content || '');
-                const combined = incomingMsgs.slice(0, 3).join(' ').toLowerCase();
-
-                if (/\b(reprogramar|cambiar\s+turno|cambio\s+de\s+turno|otra\s+fecha|otro\s+dia|no\s+puedo\s+ir)\b/i.test(combined)) {
-                    choicesTally.reprogramar_turno++;
-                } else if (/\b(autoriz|estudio|orden|ecograf|laboratorio|pap|mamograf|tomograf|rayos|rx|resonanc)\b/i.test(combined) || combined.includes('2')) {
-                    choicesTally.autorizar++;
-                } else if (/\b(guardia|urgencia|emergencia)\b/i.test(combined) || combined.includes('3')) {
-                    choicesTally.guardia++;
-                } else if (/\b(informe|resultado|horario|telefono|web|direccion|consulta|donde\s+queda|atencion)\b/i.test(combined) || combined.includes('4')) {
-                    choicesTally.informes++;
-                } else if (/\b(turno|turnos|solicitar|nuevo|doctor|doctora|dr|dra|cita|consulta|atencion|especialidad|ginecolog|pediatr|cardiolog|oftalmolog)\b/i.test(combined) || combined.includes('1')) {
-                    choicesTally.solicitar_turno++;
-                } else {
-                    choicesTally.otros++;
-                }
             });
 
             // ── F. Gráfico de Demanda por Horarios ──
@@ -710,28 +753,37 @@ export default function ContactCenterMetricsTab({ addToast }) {
                 };
             });
 
-            // ── H. Comparativa Histórica Mes a Mes ──
-            const monthsMap = {};
-            (monthlyRawMsgs || []).forEach(m => {
-                if (m.direction === 'outgoing') {
-                    const d = new Date(m.created_at);
-                    const mKey = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-                    const label = d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
-                    if (!monthsMap[mKey]) {
-                        monthsMap[mKey] = { mes: label, enviados: 0 };
-                    }
-                    monthsMap[mKey].enviados++;
-                }
-            });
+            // ── H. Comparativa Histórica Mes a Mes (HEAD Counts paralelos: 0 Bytes RAM) ──
+            const last6Months = [];
+            for (let i = 5; i >= 0; i--) {
+                const dStart = new Date(now.getFullYear(), now.getMonth() - i, 1, 0, 0, 0);
+                const dEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+                last6Months.push({
+                    label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
+                    startIso: dStart.toISOString(),
+                    endIso: dEnd.toISOString()
+                });
+            }
 
-            const monthlyComparisonData = Object.values(monthsMap).map(item => {
-                const billable = Math.max(0, item.enviados - MENSAJES_GRATIS_MENSUALES);
-                return {
-                    ...item,
-                    costoUsd: +(billable * COSTO_POR_MENSAJE_USD).toFixed(2),
-                    gratis: Math.min(item.enviados, MENSAJES_GRATIS_MENSUALES)
-                };
-            });
+            const monthlyComparisonData = await Promise.all(
+                last6Months.map(async (m) => {
+                    const { count } = await supabase
+                        .from('whatsapp_messages')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('line_id', 'contact_center')
+                        .eq('direction', 'outgoing')
+                        .gte('created_at', m.startIso)
+                        .lte('created_at', m.endIso);
+                    const sent = count || 0;
+                    const billable = Math.max(0, sent - MENSAJES_GRATIS_MENSUALES);
+                    return {
+                        mes: m.label,
+                        enviados: sent,
+                        costoUsd: +(billable * COSTO_POR_MENSAJE_USD).toFixed(2),
+                        gratis: Math.min(sent, MENSAJES_GRATIS_MENSUALES)
+                    };
+                })
+            );
 
             // Promedios y Medianas Generales
             const firstResponseAvg = allFirstResponseTimes.length > 0 
@@ -894,12 +946,29 @@ export default function ContactCenterMetricsTab({ addToast }) {
             if (addToast) addToast('Error al cargar métricas del Contact Center: ' + err.message, 'error');
         } finally {
             setLoading(false);
+            setStreamingProgress(null);
         }
     };
 
     useEffect(() => {
         loadMetrics();
-    }, [timeRange, customStartDate, customEndDate]);
+    }, [timeRange, selectedMonth, customStartDate, customEndDate]);
+
+    // Cálculo en tiempo real de la Bolsa 1 de Incentivos (50% de Productividad Mensual)
+    const incentivoBolsa1 = useMemo(() => {
+        const bolsaConfig = INCENTIVO_CONFIG.bolsas.mensajes;
+        const totalMsgs = metrics.agentMessages || 0;
+        const res = calculateEscalon(totalMsgs, 'mensajes');
+        return {
+            ...res,
+            config: bolsaConfig,
+            totalMsgs,
+            base: bolsaConfig.base,
+            meta: bolsaConfig.meta,
+            tope: bolsaConfig.tope,
+            maxMonto: bolsaConfig.maxMonto
+        };
+    }, [metrics.agentMessages]);
 
     // Cálculos de costo derivados de la regla de Meta
     const costCalculations = useMemo(() => {
@@ -1002,6 +1071,71 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         ))}
                     </div>
 
+                    {/* SELECTOR Y NAVEGACIÓN MES A MES (DISPONIBLE EN ESTE MES O AL REVISAR HISTÓRICO) */}
+                    {timeRange === 'this_month' && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#F8FAFC',
+                            padding: '3px 6px',
+                            borderRadius: '8px',
+                            border: '1px solid #CBD5E1'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={handlePrevMonth}
+                                title="Mes anterior"
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '5px',
+                                    padding: '4px 6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: '#475569'
+                                }}
+                            >
+                                <ChevronLeft size={13} />
+                            </button>
+                            <select
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    color: '#0F2942',
+                                    outline: 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {monthOptions.map(m => (
+                                    <option key={m.key} value={m.key}>{m.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={handleNextMonth}
+                                title="Mes siguiente"
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '5px',
+                                    padding: '4px 6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: '#475569'
+                                }}
+                            >
+                                <ChevronRight size={13} />
+                            </button>
+                        </div>
+                    )}
+
                     {/* SELECTORES DE FECHA PARA RANGO PERSONALIZADO */}
                     {timeRange === 'custom' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F8FAFC', padding: '3px 8px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
@@ -1022,6 +1156,31 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         </div>
                     )}
 
+                    {/* BOTÓN INFORME MENSUAL EJECUTIVO */}
+                    <button
+                        type="button"
+                        onClick={() => setShowMonthlyReportModal(true)}
+                        title="Generar e imprimir informe mensual ejecutivo"
+                        style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid #BAE6FD',
+                            background: '#F0F9FF',
+                            color: '#0284C7',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 1px 3px rgba(2, 132, 199, 0.08)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <Printer size={13} />
+                        Informe Mensual
+                    </button>
+
                     <button
                         type="button"
                         onClick={loadMetrics}
@@ -1040,6 +1199,25 @@ export default function ContactCenterMetricsTab({ addToast }) {
                     </button>
                 </div>
             </div>
+
+            {/* BARRA INFORMATIVA DE STREAMING EN VIVO */}
+            {streamingProgress && (
+                <div style={{
+                    background: '#F0F9FF',
+                    border: '1px solid #BAE6FD',
+                    borderRadius: '10px',
+                    padding: '10px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    boxShadow: '0 1px 4px rgba(2, 132, 199, 0.08)'
+                }}>
+                    <RefreshCw size={15} className="spin" color="#0284C7" />
+                    <span style={{ fontSize: '0.76rem', color: '#0369A1', fontWeight: 700 }}>
+                        {streamingProgress.text || 'Descargando y procesando mensajes en memoria ultra-eficiente...'}
+                    </span>
+                </div>
+            )}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* SUB-NAVEGACIÓN: OPERATIVO vs AUDITORÍA & PROYECCIONES IA        */}
@@ -1334,6 +1512,175 @@ export default function ContactCenterMetricsTab({ addToast }) {
                         {metrics.activeConversationsCount} conversaciones en curso
                     </div>
                 </div>
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 1.5. TARJETA DESTACADA: INCENTIVO CONTACT CENTER - BOLSA 1        */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: 'linear-gradient(180deg, #F0F9FF 0%, #FFFFFF 100%)',
+                borderRadius: '14px',
+                border: '1.5px solid #BAE6FD',
+                padding: '20px 24px',
+                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.08)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                            width: '42px', height: '42px', borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                            color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
+                        }}>
+                            <Award size={22} />
+                        </div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Incentivo Contact Center — Bolsa 1 (50% Productividad)
+                                </h3>
+                                <span style={{
+                                    background: incentivoBolsa1.escalon >= 5 ? '#ECFDF5' : '#FFFBEB',
+                                    color: incentivoBolsa1.escalon >= 5 ? '#059669' : '#D97706',
+                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '20px',
+                                    border: `1px solid ${incentivoBolsa1.escalon >= 5 ? '#A7F3D0' : '#FDE68A'}`
+                                }}>
+                                    {incentivoBolsa1.escalon === 10 ? '🏆 TOPE ALCANZADO' : incentivoBolsa1.escalon >= 5 ? '🎯 META SUPERADA' : `ESCALÓN ${incentivoBolsa1.escalon} / 10`}
+                                </span>
+                            </div>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                Conversaciones y Mensajes Humanos del equipo en el mes. Base: 6.500 msgs • Meta: 7.500 msgs • Tope: 8.500 msgs (Máx: $69.735,29 ARS)
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Monto Bolsa 1</div>
+                            <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#059669', lineHeight: 1.1 }}>
+                                ${incentivoBolsa1.monto.toLocaleString('es-AR')} <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>ARS</span>
+                            </div>
+                            <div style={{ fontSize: '0.66rem', color: '#0284C7', fontWeight: 600 }}>
+                                de $69.735,29 ARS máx
+                            </div>
+                        </div>
+
+                        {onNavigateToIncentivos && (
+                            <button
+                                type="button"
+                                onClick={onNavigateToIncentivos}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 14px', borderRadius: '8px', border: 'none',
+                                    background: '#0F2942', color: '#FFFFFF', fontSize: '0.74rem',
+                                    fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 6px rgba(15, 41, 66, 0.2)'
+                                }}
+                            >
+                                <Target size={13} />
+                                Tablero Completo de Incentivos
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* BARRA DE PROGRESO DE LA BOLSA 1 */}
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748B', marginBottom: '6px' }}>
+                        <span>
+                            Total Mensajes Asesoras: <strong style={{ color: '#0F2942' }}>{metrics.agentMessages.toLocaleString('es-AR')}</strong>
+                        </span>
+                        <span>
+                            {metrics.agentMessages >= 8500 
+                                ? '🎉 100% de la Bolsa 1 Completada'
+                                : `Faltan ${(Math.max(0, 7500 - metrics.agentMessages)).toLocaleString('es-AR')} msgs para la Meta (7.500)`}
+                        </span>
+                    </div>
+
+                    <div style={{
+                        width: '100%', height: '14px', background: '#E2E8F0', borderRadius: '8px',
+                        overflow: 'hidden', position: 'relative'
+                    }}>
+                        <div style={{
+                            width: `${Math.min(100, Math.max(0, (metrics.agentMessages / 8500) * 100))}%`,
+                            height: '100%',
+                            background: metrics.agentMessages >= 8500 
+                                ? 'linear-gradient(90deg, #10B981, #059669)'
+                                : metrics.agentMessages >= 7500
+                                ? 'linear-gradient(90deg, #0284C7, #059669)'
+                                : 'linear-gradient(90deg, #38BDF8, #0284C7)',
+                            transition: 'width 0.4s ease'
+                        }} />
+                    </div>
+
+                    {/* MARCADORES DE LA BARRA (BASE 6.500, META 7.500, TOPE 8.500) */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.68rem', color: '#94A3B8' }}>
+                        <span>0</span>
+                        <span style={{ color: metrics.agentMessages >= 6500 ? '#0284C7' : '#94A3B8', fontWeight: 600 }}>
+                            Base: 6.500 msgs
+                        </span>
+                        <span style={{ color: metrics.agentMessages >= 7500 ? '#059669' : '#94A3B8', fontWeight: 700 }}>
+                            🎯 Meta: 7.500 msgs ($34.867)
+                        </span>
+                        <span style={{ color: metrics.agentMessages >= 8500 ? '#059669' : '#94A3B8', fontWeight: 800 }}>
+                            🏆 Tope: 8.500 msgs ($69.735)
+                        </span>
+                    </div>
+                </div>
+
+                {/* DESGLOSE RÁPIDO DE ASESORAS EN LA BOLSA 1 */}
+                {metrics.byAgentList && metrics.byAgentList.length > 0 && (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '8px',
+                        paddingTop: '10px',
+                        borderTop: '1px dashed #BAE6FD'
+                    }}>
+                        {metrics.byAgentList.map(ag => {
+                            const totalHumano = Math.max(metrics.agentMessages, 1);
+                            const contribPct = Math.round((ag.count / totalHumano) * 100);
+                            return (
+                                <div key={ag.id} style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '8px',
+                                    border: '1px solid #E2E8F0',
+                                    padding: '8px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{
+                                            width: '26px', height: '26px', borderRadius: '50%',
+                                            background: ag.color || '#0284C7', color: '#FFFFFF',
+                                            fontSize: '0.68rem', fontWeight: 800,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            {ag.avatar || ag.name.substring(0, 2).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0F2942' }}>
+                                                {ag.name.split(' ')[0]} {ag.name.split(' ')[1] ? ag.name.split(' ')[1].charAt(0) + '.' : ''}
+                                            </div>
+                                            <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                {contribPct}% del equipo
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F2942' }}>
+                                            {ag.count.toLocaleString('es-AR')}
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#94A3B8' }}>msgs</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
@@ -2354,6 +2701,229 @@ export default function ContactCenterMetricsTab({ addToast }) {
                                 }}
                             >
                                 Entendido / Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* MODAL INFORME MENSUAL EJECUTIVO IMPRIMIBLE                        */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {showMonthlyReportModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(15, 41, 66, 0.75)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1100, padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '16px', width: '100%', maxWidth: '880px',
+                        maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.25)',
+                        border: '1px solid #CBD5E1', display: 'flex', flexDirection: 'column'
+                    }}>
+                        {/* CABECERA DEL INFORME (NO IMPRIMIBLE LOS BOTONES) */}
+                        <div style={{
+                            padding: '20px 28px', borderBottom: '1px solid #E2E8F0',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: '#F8FAFC'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: '38px', height: '38px', borderRadius: '10px',
+                                    background: '#0284C7', color: '#FFFFFF', display: 'flex',
+                                    alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <FileText size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F2942' }}>
+                                        Informe Ejecutivo Mensual · Contact Center
+                                    </h3>
+                                    <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748B' }}>
+                                        Sanatorio Argentino · Periodo: {monthOptions.find(m => m.key === selectedMonth)?.label || selectedMonth}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => window.print()}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.78rem',
+                                        fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                >
+                                    <Printer size={14} />
+                                    Imprimir / Guardar PDF
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowMonthlyReportModal(false)}
+                                    style={{
+                                        padding: '8px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#64748B', cursor: 'pointer', display: 'flex'
+                                    }}
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* CUERPO DEL INFORME */}
+                        <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+                            {/* BLOQUE 1: RESUMEN DE VOLUMEN */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    1. Resumen de Volumen y Capacidad
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>TOTAL SALIENTES</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0F2942' }}>{metrics.totalOutgoing.toLocaleString('es-AR')}</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>TOTAL ENTRANTES</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#059669' }}>{metrics.totalIncoming.toLocaleString('es-AR')}</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>ATENCIÓN ASESORAS</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0284C7' }}>{metrics.agentMessages.toLocaleString('es-AR')}</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{agentPct}% del total</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>AUTOMATIZACIÓN BOT</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#8B5CF6' }}>{metrics.botMessages.toLocaleString('es-AR')}</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{botPct}% del total</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* BLOQUE 2: CALIDAD Y TIEMPOS */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    2. Indicadores de Calidad de Atención al Paciente
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>ESPERA EN COLA (AVG)</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0F2942' }}>{metrics.patientQuality.queueWaitAvgMin} min</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>Mediana: {metrics.patientQuality.queueWaitMedianMin} min</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>FRT ASESORA (AVG)</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0284C7' }}>{metrics.patientQuality.agentFRTAvgMin} min</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>Mediana: {metrics.patientQuality.agentFRTMedianMin} min</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>FCR (RESOLUCIÓN 24H)</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#059669' }}>{metrics.patientQuality.fcrPct}%</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#059669', fontWeight: 600 }}>Sin reingreso en 24h</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>CUMPLIMIENTO SLA (&le;15m)</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10B981' }}>{metrics.slaStats.cumplimientoPct}%</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{metrics.slaStats.optimo} de {metrics.slaStats.totalCasos} casos</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* BLOQUE 3: INCENTIVOS - BOLSA 1 */}
+                            <div style={{ background: '#F0F9FF', padding: '14px 18px', borderRadius: '10px', border: '1px solid #BAE6FD' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                                            Incentivo Contact Center · Bolsa 1 (50% Productividad)
+                                        </div>
+                                        <div style={{ fontSize: '0.74rem', color: '#0F2942', marginTop: '2px' }}>
+                                            Total mensajes humanos logrados: <strong>{metrics.agentMessages.toLocaleString('es-AR')}</strong> (Base: 6.500 • Meta: 7.500 • Tope: 8.500)
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '0.72rem', color: '#0369A1', fontWeight: 700 }}>
+                                            Escalón: {incentivoBolsa1.escalon} / 10
+                                        </div>
+                                        <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#059669' }}>
+                                            ${incentivoBolsa1.monto.toLocaleString('es-AR')} ARS
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* BLOQUE 4: TABLA DE ASESORAS */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    3. Rendimiento Operativo por Asesora
+                                </h4>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', textAlign: 'left' }}>
+                                            <th style={{ padding: '8px 10px', color: '#475569' }}>Asesora</th>
+                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Mensajes</th>
+                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Asignados</th>
+                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Finalizados</th>
+                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Demora Prom.</th>
+                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>SLA (&le;15m)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {metrics.byAgentList.map(ag => (
+                                            <tr key={ag.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
+                                                <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0F2942' }}>{ag.name}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>{ag.count.toLocaleString('es-AR')}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>{ag.assignedCount}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{ag.resolvedCount}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>{ag.avgResponseTimeMin} min</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: ag.slaCumplimientoPct >= 80 ? '#059669' : '#D97706' }}>
+                                                    {ag.slaCumplimientoPct}%
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* BLOQUE 5: MOTIVOS DE CIERRE */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    4. Distribución de Motivos de Finalización
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                                    {MOTIVOS_FINALIZACION_CATALOGO.map(motivo => {
+                                        const count = metrics.byResolutionReason[motivo.key] || 0;
+                                        const total = Math.max(metrics.closedConversationsCount, 1);
+                                        const pct = metrics.closedConversationsCount > 0 ? Math.round((count / total) * 100) : 0;
+                                        return (
+                                            <div key={motivo.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: '#F8FAFC', borderRadius: '6px', fontSize: '0.72rem' }}>
+                                                <span style={{ color: '#0F2942' }}>{motivo.label}</span>
+                                                <strong style={{ color: motivo.color }}>{count} ({pct}%)</strong>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* PIE DEL MODAL */}
+                        <div style={{
+                            padding: '14px 28px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '0 0 16px 16px'
+                        }}>
+                            <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
+                                Reporte generado automáticamente por Antigravity IDE · Sanatorio Argentino
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setShowMonthlyReportModal(false)}
+                                style={{
+                                    padding: '8px 18px', borderRadius: '8px', border: 'none',
+                                    background: '#0F2942', color: '#FFFFFF', fontSize: '0.76rem',
+                                    fontWeight: 700, cursor: 'pointer'
+                                }}
+                            >
+                                Cerrar Informe
                             </button>
                         </div>
                     </div>

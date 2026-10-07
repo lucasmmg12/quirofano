@@ -1283,6 +1283,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             {activeSubTab === 'metricas' && (
                 <ContactCenterMetricsTab 
                     addToast={addToast}
+                    onNavigateToIncentivos={() => handleNavigateTab('incentivos')}
                 />
             )}
 
