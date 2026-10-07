@@ -12,7 +12,7 @@ import {
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy,
     FileText, FileSpreadsheet, File, Maximize2, Palette, LayoutTemplate,
     Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users,
-    CheckCheck, Reply, Smile
+    CheckCheck, Reply, Smile, ArrowLeft
 } from 'lucide-react';
 
 /**
@@ -302,6 +302,28 @@ function formatWhatsAppText(text) {
             </React.Fragment>
         );
     });
+}
+
+/**
+ * Ilustración SVG para estado de chat cerrado con estilo Sanatorio Argentino
+ */
+function ChatFinalizadoIllustration({ isDark }) {
+    return (
+        <svg width="130" height="130" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="70" cy="70" r="64" fill={isDark ? '#064E3B' : '#ECFDF5'} stroke={isDark ? '#059669' : '#A7F3D0'} strokeWidth="3" strokeDasharray="6 6" />
+            <circle cx="70" cy="70" r="50" fill={isDark ? '#065F46' : '#D1FAE5'} />
+            {/* Burbuja de chat estilizada */}
+            <rect x="42" y="44" width="56" height="42" rx="12" fill={isDark ? '#047857' : '#FFFFFF'} stroke={isDark ? '#34D399' : '#10B981'} strokeWidth="2.5" />
+            {/* Cola de la burbuja */}
+            <path d="M52 86 L48 94 L60 86 Z" fill={isDark ? '#047857' : '#FFFFFF'} stroke={isDark ? '#34D399' : '#10B981'} strokeWidth="2.5" strokeLinejoin="round" />
+            {/* Tilde Check verde grande */}
+            <path d="M56 64 L65 73 L84 54" stroke={isDark ? '#A7F3D0' : '#059669'} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+            {/* Estrellitas o brillos */}
+            <circle cx="98" cy="40" r="3" fill="#10B981" />
+            <circle cx="38" cy="50" r="2.5" fill="#34D399" />
+            <circle cx="95" cy="85" r="2" fill="#059669" />
+        </svg>
+    );
 }
 
 /**
