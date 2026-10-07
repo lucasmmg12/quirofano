@@ -2130,6 +2130,29 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
 }
 
 /**
+ * Auto-archiva conversaciones inactivas del Bot tras X minutos (por defecto 20 min).
+ * Invoca el RPC auto_archive_inactive_bot_conversations en Supabase.
+ */
+export async function autoArchiveInactiveBotConversations(inactivityMinutes = 20) {
+    try {
+        const { data, error } = await supabase.rpc('auto_archive_inactive_bot_conversations', {
+            p_inactivity_minutes: inactivityMinutes
+        });
+        if (error) {
+            console.warn('[contact-center] Error en RPC auto_archive_inactive_bot_conversations:', error);
+            return { count: 0, error };
+        }
+        if (data?.archived_count > 0) {
+            console.log(`[contact-center] 🧹 Auto-archivadas ${data.archived_count} conversaciones de bot inactivas (> ${inactivityMinutes} min)`);
+        }
+        return data;
+    } catch (err) {
+        console.warn('[contact-center] Error ejecutando autoArchiveInactiveBotConversations:', err);
+        return { count: 0, error: err };
+    }
+}
+
+/**
  * Finaliza o archiva múltiples conversaciones de forma MASIVA Y SILENCIOSA.
  * REGLA ESTRICTA: NO se envía ningún mensaje de WhatsApp a los pacientes.
  * Actualiza contact_center_conversations en Supabase con status: 'archivado',

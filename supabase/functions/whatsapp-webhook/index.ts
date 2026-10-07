@@ -3732,6 +3732,11 @@ async function handleChatbotTriage(
             }
         }
 
+        if (reply) {
+            cleanUpdates.last_message_text = reply;
+            cleanUpdates.last_message_at = new Date().toISOString();
+        }
+
         const { error: upsertErr } = await supabaseRetry(
             () => supabase
                 .from('contact_center_conversations')
@@ -6598,6 +6603,23 @@ async function sendBotWhatsAppReply(supabase: any, phone: string, text: string, 
                     bot: true
                 }
             });
+
+        // 2. Mantener sincronizado last_message_text y last_message_at en la conversación
+        try {
+            await supabase
+                .from('contact_center_conversations')
+                .update({
+                    last_message_text: finalContent,
+                    last_message_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq('phone', phone);
+        } catch (_) {}
+
+        // 3. Mantenimiento proactivo de cola: auto-archivar sesiones de bot inactivas (> 20 min)
+        try {
+            supabase.rpc('auto_archive_inactive_bot_conversations', { p_inactivity_minutes: 20 }).then(() => {}).catch(() => {});
+        } catch (_) {}
 
         // 2. Invocar Edge Function send-whatsapp para despachar a BuilderBot
         const sendUrl = `${SUPABASE_URL}/functions/v1/send-whatsapp`;

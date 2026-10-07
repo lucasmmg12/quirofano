@@ -17,7 +17,7 @@ import {
     CONTACT_CENTER_AGENTS, getAgentById, fetchLiveAndDemoChats,
     sendContactCenterMessage, sendContactCenterTemplate, assignChatExclusively, unassignChat,
     transferChatToAgent, closeConversationWithResolution,
-    bulkCloseConversationsSilent,
+    bulkCloseConversationsSilent, autoArchiveInactiveBotConversations,
     subscribeToContactCenterRealtime, playContactCenterChime,
     isClosedOrArchived, toggleMessageReaction
 } from '../../services/contactCenterService';
@@ -266,6 +266,9 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             });
         }, 600);
 
+        // Auto-archivar conversaciones inactivas del Bot (> 20 min) al montar y en heartbeat
+        autoArchiveInactiveBotConversations(20);
+
         // Heartbeat adaptativo: cada 90 segundos para verificar consistencia si la pestaña está visible.
         // Los mensajes nuevos llegan por Realtime; el heartbeat es solo red de seguridad.
         // Pausado automáticamente si el operador minimiza o cambia de pestaña.
@@ -273,6 +276,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         let lastFetchTime = Date.now();
         const heartbeatInterval = setInterval(() => {
             if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
+            autoArchiveInactiveBotConversations(20);
             reloadChats(true);
             lastFetchTime = Date.now();
         }, HEARTBEAT_MS);
