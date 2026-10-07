@@ -17,6 +17,8 @@ import {
     Bar,
     AreaChart,
     Area,
+    PieChart,
+    Pie,
     XAxis,
     YAxis,
     Tooltip,
@@ -505,7 +507,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             while (convHasMore) {
                 let cq = supabase
                     .from('contact_center_conversations')
-                    .select('phone, status, resolution_reason, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at')
+                    .select('phone, status, resolution_reason, motivo_consulta, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at')
                     .order('created_at', { ascending: true })
                     .range(convOffset, convOffset + pageSize - 1);
 
@@ -528,11 +530,21 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             }
 
-            // ── E. Métricas de Calidad de Atención al Paciente ──
+            // ── E. Métricas de Calidad de Atención al Paciente & Tipos de Consulta ──
             let closedCount = 0;
             let activeCount = 0;
             const reasonsMap = {};
             MOTIVOS_FINALIZACION_CATALOGO.forEach(c => { reasonsMap[c.key] = 0; });
+
+            const inquiryTypesMap = {
+                turnos: 0,
+                reprogramaciones: 0,
+                autorizaciones: 0,
+                guardia: 0,
+                informes: 0,
+                asesora: 0,
+                otros: 0
+            };
 
             const allQueueWaitTimes = [];
             const allAgentFRTTimes = [];
@@ -611,14 +623,42 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     }
                 }
 
+                // ── CLASIFICACIÓN DE TIPO DE CONSULTA DEL PACIENTE (TRIAGE CLÍNICO) ──
+                const mQuery = (c.motivo_consulta || '').toLowerCase();
+                if (mQuery) {
+                    if (mQuery.includes('reprogram') || mQuery.includes('cambio de turno') || mQuery.includes('cancel')) {
+                        inquiryTypesMap.reprogramaciones++;
+                    } else if (mQuery.includes('autoriz') || mQuery.includes('estudio') || mQuery.includes('orden') || mQuery.includes('ecograf') || mQuery.includes('laboratorio') || mQuery.includes('flebolog') || mQuery.includes('pap')) {
+                        inquiryTypesMap.autorizaciones++;
+                    } else if (mQuery.includes('guardia') || mQuery.includes('urgencia')) {
+                        inquiryTypesMap.guardia++;
+                    } else if (mQuery.includes('informe') || mQuery.includes('resultado') || mQuery.includes('precio') || mQuery.includes('costo') || mQuery.includes('horario')) {
+                        inquiryTypesMap.informes++;
+                    } else if (mQuery.includes('turno') || mQuery.includes('cita') || mQuery.includes('especialidad') || mQuery.includes('médico') || mQuery.includes('doctor') || mQuery.includes('clínica') || mQuery.includes('clinica')) {
+                        inquiryTypesMap.turnos++;
+                    } else if (mQuery.includes('agente') || mQuery.includes('asesora') || mQuery.includes('humano')) {
+                        inquiryTypesMap.asesora++;
+                    } else {
+                        inquiryTypesMap.otros++;
+                    }
+                }
+
                 // ── 3. RESOLUCIÓN DE CASOS & AHT NETO DEL AGENTE ──
                 if (isClosed) {
                     closedCount++;
-                    const r = c.resolution_reason || 'Otro / Aclaración en Nota';
+                    const r = (c.resolution_reason || 'Otro / Aclaración en Nota').toLowerCase();
                     let foundMatch = false;
+
                     for (const cat of MOTIVOS_FINALIZACION_CATALOGO) {
-                        if (r.toLowerCase().includes(cat.key.toLowerCase()) || cat.key.toLowerCase().includes(r.toLowerCase())) {
-                            reasonsMap[cat.key]++;
+                        const catKeyLow = cat.key.toLowerCase();
+                        if (r.includes(catKeyLow) || catKeyLow.includes(r) ||
+                            (cat.key === 'Turno Coordinado' && (r.includes('turno') || r.includes('coordinado') || r.includes('otorgado'))) ||
+                            (cat.key === 'Consulta Informativa Resuelta' && (r.includes('informativa') || r.includes('información') || r.includes('resuelta'))) ||
+                            (cat.key === 'Auto-gestión Bot Completa (Inactividad)' && (r.includes('auto-gestión') || r.includes('inactividad') || r.includes('bot'))) ||
+                            (cat.key === 'Paciente No Responde' && (r.includes('no responde') || r.includes('time-out'))) ||
+                            (cat.key === 'Cierre masivo de cola' && (r.includes('masivo') || r.includes('cola')))
+                        ) {
+                            reasonsMap[cat.key] = (reasonsMap[cat.key] || 0) + 1;
                             foundMatch = true;
                             break;
                         }
@@ -753,7 +793,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 };
             });
 
-            // ── H. Comparativa Histórica Mes a Mes (HEAD Counts paralelos: 0 Bytes RAM) ──
+            // ── H. Comparativa Histórica Mes a Mes (Bot vs Agentes + Desglose por Asesora: 0 Bytes RAM) ──
             const last6Months = [];
             for (let i = 5; i >= 0; i--) {
                 const dStart = new Date(now.getFullYear(), now.getMonth() - i, 1, 0, 0, 0);
@@ -767,20 +807,54 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             const monthlyComparisonData = await Promise.all(
                 last6Months.map(async (m) => {
-                    const { count } = await supabase
-                        .from('whatsapp_messages')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('line_id', 'contact_center')
-                        .eq('direction', 'outgoing')
-                        .gte('created_at', m.startIso)
-                        .lte('created_at', m.endIso);
-                    const sent = count || 0;
+                    const [resTotal, resBot, resVirginia, resSofia, resDaniela, resErica] = await Promise.all([
+                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
+                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
+                            .gte('created_at', m.startIso).lte('created_at', m.endIso),
+                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
+                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
+                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
+                            .ilike('sender_name', '%bot%'),
+                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
+                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
+                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
+                            .ilike('sender_name', '%virginia%'),
+                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
+                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
+                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
+                            .ilike('sender_name', '%sofia%'),
+                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
+                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
+                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
+                            .ilike('sender_name', '%daniela%'),
+                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
+                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
+                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
+                            .ilike('sender_name', '%erica%')
+                    ]);
+
+                    const sent = resTotal.count || 0;
+                    const botSent = resBot.count || 0;
+                    const agentSent = Math.max(0, sent - botSent);
                     const billable = Math.max(0, sent - MENSAJES_GRATIS_MENSUALES);
+                    const costoUsd = +(billable * COSTO_POR_MENSAJE_USD).toFixed(2);
+                    const costoArs = Math.round(costoUsd * (arsRate || COTIZACION_DOLAR_REF));
+
                     return {
                         mes: m.label,
                         enviados: sent,
-                        costoUsd: +(billable * COSTO_POR_MENSAJE_USD).toFixed(2),
-                        gratis: Math.min(sent, MENSAJES_GRATIS_MENSUALES)
+                        bot: botSent,
+                        agentes: agentSent,
+                        botPct: sent > 0 ? Math.round((botSent / sent) * 100) : 0,
+                        agentPct: sent > 0 ? Math.round((agentSent / sent) * 100) : 0,
+                        virginia: resVirginia.count || 0,
+                        sofia: resSofia.count || 0,
+                        daniela: resDaniela.count || 0,
+                        erica: resErica.count || 0,
+                        gratis: Math.min(sent, MENSAJES_GRATIS_MENSUALES),
+                        facturables: billable,
+                        costoUsd,
+                        costoArs
                     };
                 })
             );
@@ -897,6 +971,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 closedConversationsCount: closedCount,
                 activeConversationsCount: activeCount,
                 byResolutionReason: reasonsMap,
+                inquiryTypes: inquiryTypesMap,
                 firstMessageChoices: choicesTally,
                 totalTriageCases: Object.values(choicesTally).reduce((a, b) => a + b, 0),
                 byAgentList: agentList,
@@ -969,6 +1044,49 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             maxMonto: bolsaConfig.maxMonto
         };
     }, [metrics.agentMessages]);
+
+    // Gráfico de Torta: Distribución de Mensajes Tomados por Asesora (Excluyendo expresamente al Agente Lucas Marinero)
+    const pieAsesorasData = useMemo(() => {
+        const operadoras = (metrics.byAgentList || []).filter(ag => {
+            const n = (ag.name || '').toLowerCase();
+            return ag.id !== 'lmarinero' && !n.includes('lucas') && !n.includes('marinero');
+        });
+
+        const totalOperadoras = operadoras.reduce((sum, ag) => sum + (ag.count || 0), 0);
+
+        return operadoras.map(ag => {
+            const count = ag.count || 0;
+            const pct = totalOperadoras > 0 ? Math.round((count / totalOperadoras) * 100) : 0;
+            return {
+                id: ag.id,
+                name: ag.name,
+                nombreCorto: ag.name.split(' ')[0],
+                value: count,
+                percentage: pct,
+                color: ag.color || '#0284C7',
+                avatar: ag.avatar || ag.name.substring(0, 2).toUpperCase(),
+                assignedCount: ag.assignedCount || 0,
+                avgResponseTimeMin: ag.avgResponseTimeMin || 0,
+                slaCumplimientoPct: ag.slaCumplimientoPct || 100
+            };
+        });
+    }, [metrics.byAgentList]);
+
+    // Resumen de Tipos de Consulta del Paciente (Triage Clínico)
+    const inquiryBreakdown = useMemo(() => {
+        const inq = metrics.inquiryTypes || { turnos: 0, reprogramaciones: 0, autorizaciones: 0, guardia: 0, informes: 0, asesora: 0, otros: 0 };
+        const total = Object.values(inq).reduce((a, b) => a + b, 0) || 1;
+
+        return [
+            { key: 'turnos', label: 'Solicitud / Gestión de Turnos', count: inq.turnos, color: '#0284C7', pct: Math.round((inq.turnos / total) * 100) },
+            { key: 'reprogramaciones', label: 'Reprogramación / Cambio de Cita', count: inq.reprogramaciones, color: '#8B5CF6', pct: Math.round((inq.reprogramaciones / total) * 100) },
+            { key: 'autorizaciones', label: 'Autorizaciones y Estudios Médicos', count: inq.autorizaciones, color: '#059669', pct: Math.round((inq.autorizaciones / total) * 100) },
+            { key: 'guardia', label: 'Guardia & Urgencias 24hs', count: inq.guardia, color: '#DC2626', pct: Math.round((inq.guardia / total) * 100) },
+            { key: 'informes', label: 'Informes, Resultados y Costos', count: inq.informes, color: '#D97706', pct: Math.round((inq.informes / total) * 100) },
+            { key: 'asesora', label: 'Pase Directo a Asesora Humana', count: inq.asesora, color: '#0F2942', pct: Math.round((inq.asesora / total) * 100) },
+            { key: 'otros', label: 'Otras Consultas / General', count: inq.otros, color: '#64748B', pct: Math.round((inq.otros / total) * 100) }
+        ];
+    }, [metrics.inquiryTypes]);
 
     // Cálculos de costo derivados de la regla de Meta
     const costCalculations = useMemo(() => {
@@ -1515,172 +1633,407 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 1.5. TARJETA DESTACADA: INCENTIVO CONTACT CENTER - BOLSA 1        */}
+            {/* 1. SECCIÓN INCENTIVOS & DISTRIBUCIÓN OPERATIVA DE ASESORAS        */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{
-                background: 'linear-gradient(180deg, #F0F9FF 0%, #FFFFFF 100%)',
-                borderRadius: '14px',
-                border: '1.5px solid #BAE6FD',
-                padding: '20px 24px',
-                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.08)',
-                display: 'flex',
-                flexDirection: 'column',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
                 gap: '16px'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '42px', height: '42px', borderRadius: '12px',
-                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                            color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
-                        }}>
-                            <Award size={22} />
-                        </div>
-                        <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
-                                    Incentivo Contact Center — Bolsa 1 (50% Productividad)
-                                </h3>
-                                <span style={{
-                                    background: incentivoBolsa1.escalon >= 5 ? '#ECFDF5' : '#FFFBEB',
-                                    color: incentivoBolsa1.escalon >= 5 ? '#059669' : '#D97706',
-                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '20px',
-                                    border: `1px solid ${incentivoBolsa1.escalon >= 5 ? '#A7F3D0' : '#FDE68A'}`
-                                }}>
-                                    {incentivoBolsa1.escalon === 10 ? '🏆 TOPE ALCANZADO' : incentivoBolsa1.escalon >= 5 ? '🎯 META SUPERADA' : `ESCALÓN ${incentivoBolsa1.escalon} / 10`}
-                                </span>
+                {/* ── TARJETA A: BOLSA 1 DE INCENTIVOS (50% PRODUCTIVIDAD) ── */}
+                <div style={{
+                    background: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
+                    border: '1.5px solid #BAE6FD',
+                    borderRadius: '14px',
+                    padding: '18px 20px',
+                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                                width: '38px', height: '38px', borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
+                            }}>
+                                <Award size={20} />
                             </div>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                Conversaciones y Mensajes Humanos del equipo en el mes. Base: 6.500 msgs • Meta: 7.500 msgs • Tope: 8.500 msgs (Máx: $69.735,29 ARS)
-                            </p>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0F2942' }}>
+                                        Bolsa 1 — Mensajes Asesoras
+                                    </h3>
+                                    <span style={{
+                                        background: incentivoBolsa1.escalon >= 5 ? '#ECFDF5' : '#FFFBEB',
+                                        color: incentivoBolsa1.escalon >= 5 ? '#059669' : '#D97706',
+                                        fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: '20px',
+                                        border: `1px solid ${incentivoBolsa1.escalon >= 5 ? '#A7F3D0' : '#FDE68A'}`
+                                    }}>
+                                        {incentivoBolsa1.escalon === 10 ? '🏆 TOPE ALCANZADO' : incentivoBolsa1.escalon >= 5 ? '🎯 META SUPERADA' : `ESCALÓN ${incentivoBolsa1.escalon} / 10`}
+                                    </span>
+                                </div>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748B' }}>
+                                    Base: 6.500 • Meta: 7.500 • Tope: 8.500 msgs (Máx: $69.735,29 ARS)
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Monto Bolsa 1</div>
+                            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#059669', lineHeight: 1.1 }}>
+                                ${incentivoBolsa1.monto.toLocaleString('es-AR')} <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>ARS</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Monto Bolsa 1</div>
-                            <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#059669', lineHeight: 1.1 }}>
-                                ${incentivoBolsa1.monto.toLocaleString('es-AR')} <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>ARS</span>
-                            </div>
-                            <div style={{ fontSize: '0.66rem', color: '#0284C7', fontWeight: 600 }}>
-                                de $69.735,29 ARS máx
-                            </div>
+                    {/* BARRA DE PROGRESO DE LA BOLSA 1 */}
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748B', marginBottom: '5px' }}>
+                            <span>
+                                Total Equipo: <strong style={{ color: '#0F2942' }}>{metrics.agentMessages.toLocaleString('es-AR')} msgs</strong>
+                            </span>
+                            <span>
+                                {metrics.agentMessages >= 8500 
+                                    ? '🎉 100% de la Bolsa 1 Logrado' 
+                                    : `Faltan ${(Math.max(0, 7500 - metrics.agentMessages)).toLocaleString('es-AR')} msgs p/ Meta`}
+                            </span>
                         </div>
 
-                        {onNavigateToIncentivos && (
+                        <div style={{
+                            width: '100%', height: '12px', background: '#E2E8F0', borderRadius: '6px',
+                            overflow: 'hidden', position: 'relative'
+                        }}>
+                            <div style={{
+                                width: `${Math.min(100, Math.max(0, (metrics.agentMessages / 8500) * 100))}%`,
+                                height: '100%',
+                                background: metrics.agentMessages >= 8500 
+                                    ? 'linear-gradient(90deg, #10B981, #059669)'
+                                    : metrics.agentMessages >= 7500
+                                    ? 'linear-gradient(90deg, #0284C7, #059669)'
+                                    : 'linear-gradient(90deg, #38BDF8, #0284C7)',
+                                transition: 'width 0.4s ease'
+                            }} />
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '0.66rem', color: '#94A3B8' }}>
+                            <span>0</span>
+                            <span style={{ color: metrics.agentMessages >= 6500 ? '#0284C7' : '#94A3B8', fontWeight: 600 }}>Base: 6.500</span>
+                            <span style={{ color: metrics.agentMessages >= 7500 ? '#059669' : '#94A3B8', fontWeight: 700 }}>🎯 Meta: 7.500 ($34.867)</span>
+                            <span style={{ color: metrics.agentMessages >= 8500 ? '#059669' : '#94A3B8', fontWeight: 800 }}>🏆 Tope: 8.500 ($69.735)</span>
+                        </div>
+                    </div>
+
+                    {/* ENLACE AL TABLERO COMPLETO DE INCENTIVOS */}
+                    {onNavigateToIncentivos && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '6px' }}>
                             <button
                                 type="button"
                                 onClick={onNavigateToIncentivos}
                                 style={{
                                     display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                    padding: '8px 14px', borderRadius: '8px', border: 'none',
-                                    background: '#0F2942', color: '#FFFFFF', fontSize: '0.74rem',
-                                    fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 6px rgba(15, 41, 66, 0.2)'
+                                    padding: '6px 12px', borderRadius: '8px', border: 'none',
+                                    background: '#0F2942', color: '#FFFFFF', fontSize: '0.72rem',
+                                    fontWeight: 700, cursor: 'pointer'
                                 }}
                             >
-                                <Target size={13} />
-                                Tablero Completo de Incentivos
+                                <Target size={12} />
+                                Abrir Pestaña de Incentivos
                             </button>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* BARRA DE PROGRESO DE LA BOLSA 1 */}
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748B', marginBottom: '6px' }}>
-                        <span>
-                            Total Mensajes Asesoras: <strong style={{ color: '#0F2942' }}>{metrics.agentMessages.toLocaleString('es-AR')}</strong>
-                        </span>
-                        <span>
-                            {metrics.agentMessages >= 8500 
-                                ? '🎉 100% de la Bolsa 1 Completada'
-                                : `Faltan ${(Math.max(0, 7500 - metrics.agentMessages)).toLocaleString('es-AR')} msgs para la Meta (7.500)`}
+                {/* ── TARJETA B: GRÁFICO DE TORTA DE MENSAJES POR ASESORA (EXCLUYE LUCAS MARINERO) ── */}
+                <div style={{
+                    background: '#FFFFFF',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '14px',
+                    padding: '18px 20px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                                width: '32px', height: '32px', borderRadius: '8px',
+                                background: '#ECFDF5', color: '#059669',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <Users size={16} />
+                            </div>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Distribución de Mensajes del Equipo
+                                </h3>
+                                <p style={{ margin: '1px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
+                                    Volumen despachado por operadora en el período
+                                </p>
+                            </div>
+                        </div>
+
+                        <span style={{
+                            fontSize: '0.64rem', fontWeight: 700, padding: '3px 8px', borderRadius: '20px',
+                            background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0'
+                        }}>
+                            Excluye supervisión (L. Marinero)
                         </span>
                     </div>
 
-                    <div style={{
-                        width: '100%', height: '14px', background: '#E2E8F0', borderRadius: '8px',
-                        overflow: 'hidden', position: 'relative'
-                    }}>
-                        <div style={{
-                            width: `${Math.min(100, Math.max(0, (metrics.agentMessages / 8500) * 100))}%`,
-                            height: '100%',
-                            background: metrics.agentMessages >= 8500 
-                                ? 'linear-gradient(90deg, #10B981, #059669)'
-                                : metrics.agentMessages >= 7500
-                                ? 'linear-gradient(90deg, #0284C7, #059669)'
-                                : 'linear-gradient(90deg, #38BDF8, #0284C7)',
-                            transition: 'width 0.4s ease'
-                        }} />
-                    </div>
+                    {/* GRÁFICO DE TORTA Y LISTA DE ASESORAS */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{ width: '130px', height: '130px', flexShrink: 0, position: 'relative' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={pieAsesorasData}
+                                        dataKey="value"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={36}
+                                        outerRadius={58}
+                                        paddingAngle={3}
+                                    >
+                                        {pieAsesorasData.map((entry, index) => (
+                                            <Cell key={`cell-pie-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip 
+                                        formatter={(val, name, item) => [
+                                            `${val.toLocaleString('es-AR')} msgs (${item.payload.percentage}%)`,
+                                            item.payload.name
+                                        ]}
+                                        contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.72rem' }}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                            <div style={{
+                                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                                textAlign: 'center', pointerEvents: 'none'
+                            }}>
+                                <div style={{ fontSize: '0.62rem', color: '#94A3B8', fontWeight: 600 }}>Total</div>
+                                <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0F2942', lineHeight: 1 }}>
+                                    {pieAsesorasData.reduce((s, a) => s + a.value, 0).toLocaleString('es-AR')}
+                                </div>
+                            </div>
+                        </div>
 
-                    {/* MARCADORES DE LA BARRA (BASE 6.500, META 7.500, TOPE 8.500) */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.68rem', color: '#94A3B8' }}>
-                        <span>0</span>
-                        <span style={{ color: metrics.agentMessages >= 6500 ? '#0284C7' : '#94A3B8', fontWeight: 600 }}>
-                            Base: 6.500 msgs
-                        </span>
-                        <span style={{ color: metrics.agentMessages >= 7500 ? '#059669' : '#94A3B8', fontWeight: 700 }}>
-                            🎯 Meta: 7.500 msgs ($34.867)
-                        </span>
-                        <span style={{ color: metrics.agentMessages >= 8500 ? '#059669' : '#94A3B8', fontWeight: 800 }}>
-                            🏆 Tope: 8.500 msgs ($69.735)
-                        </span>
-                    </div>
-                </div>
-
-                {/* DESGLOSE RÁPIDO DE ASESORAS EN LA BOLSA 1 */}
-                {metrics.byAgentList && metrics.byAgentList.length > 0 && (
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                        gap: '8px',
-                        paddingTop: '10px',
-                        borderTop: '1px dashed #BAE6FD'
-                    }}>
-                        {metrics.byAgentList.map(ag => {
-                            const totalHumano = Math.max(metrics.agentMessages, 1);
-                            const contribPct = Math.round((ag.count / totalHumano) * 100);
-                            return (
+                        {/* LISTA RESUMEN DE ASESORAS */}
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {pieAsesorasData.map((ag) => (
                                 <div key={ag.id} style={{
-                                    background: '#FFFFFF',
-                                    borderRadius: '8px',
-                                    border: '1px solid #E2E8F0',
-                                    padding: '8px 12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between'
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    fontSize: '0.72rem', padding: '3px 6px', borderRadius: '6px',
+                                    background: '#F8FAFC'
                                 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <div style={{
-                                            width: '26px', height: '26px', borderRadius: '50%',
-                                            background: ag.color || '#0284C7', color: '#FFFFFF',
-                                            fontSize: '0.68rem', fontWeight: 800,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                        }}>
-                                            {ag.avatar || ag.name.substring(0, 2).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0F2942' }}>
-                                                {ag.name.split(' ')[0]} {ag.name.split(' ')[1] ? ag.name.split(' ')[1].charAt(0) + '.' : ''}
-                                            </div>
-                                            <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
-                                                {contribPct}% del equipo
-                                            </div>
-                                        </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ag.color, display: 'inline-block' }} />
+                                        <span style={{ fontWeight: 700, color: '#0F2942' }}>{ag.nombreCorto}</span>
                                     </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F2942' }}>
-                                            {ag.count.toLocaleString('es-AR')}
-                                        </div>
-                                        <div style={{ fontSize: '0.62rem', color: '#94A3B8' }}>msgs</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <strong style={{ color: '#0F2942' }}>{ag.value.toLocaleString('es-AR')}</strong>
+                                        <span style={{
+                                            fontSize: '0.64rem', fontWeight: 800, color: ag.color,
+                                            background: '#FFFFFF', padding: '1px 5px', borderRadius: '4px',
+                                            border: `1px solid ${ag.color}40`
+                                        }}>
+                                            {ag.percentage}%
+                                        </span>
                                     </div>
                                 </div>
-                            );
-                        })}
+                            ))}
+                        </div>
                     </div>
-                )}
+                </div>
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* COMPARATIVA HISTÓRICA MES A MES: BOT VS ASESORAS Y COSTOS META   */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
+                padding: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '34px', height: '34px', borderRadius: '8px',
+                            background: '#F0F9FF', color: '#0284C7',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            <BarChart3 size={18} />
+                        </div>
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F2942' }}>
+                                Evolución Mensual: Automatización Bot vs Asesoras Humanas y Costos Meta
+                            </h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                Comparativa histórica de los últimos 6 meses (Regla Meta: 1.000 msgs gratis/mes, luego $0.026 USD/msg saliente)
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                            fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
+                            background: '#EFF6FF', color: '#0284C7', border: '1px solid #BFDBFE'
+                        }}>
+                            🤖 Bot: {metrics.monthlyComparison?.[metrics.monthlyComparison.length - 1]?.botPct || 0}% de Automatización
+                        </span>
+                        <span style={{
+                            fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
+                            background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0'
+                        }}>
+                            👩‍⚕️ Asesoras: {metrics.monthlyComparison?.[metrics.monthlyComparison.length - 1]?.agentPct || 0}% Atención Humana
+                        </span>
+                    </div>
+                </div>
+
+                {/* GRÁFICO DE BARRAS APILADAS MES A MES */}
+                <div style={{ width: '100%', height: '220px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={metrics.monthlyComparison || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                            <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748B' }} />
+                            <YAxis tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} />
+                            <Tooltip 
+                                cursor={{ fill: 'rgba(2, 132, 199, 0.05)' }}
+                                contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem' }}
+                                formatter={(val, name) => [`${val.toLocaleString('es-AR')} msgs`, name]}
+                            />
+                            <Legend wrapperStyle={{ fontSize: '0.74rem', paddingTop: '6px' }} />
+                            <Bar dataKey="bot" name="Bot Sanatorio (Automatizado)" stackId="a" fill="#38BDF8" radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="agentes" name="Asesoras Humanas" stackId="a" fill="#0F2942" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+
+                {/* TABLA COMPARATIVA MES A MES CON DESGLOSE POR AGENTE Y COSTO META */}
+                <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800 }}>
+                                <th style={{ padding: '10px 14px' }}>Mes</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Total Enviados</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Bot Sanatorio</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Asesoras Totales</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#0284C7' }}>Virginia J.</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#8B5CF6' }}>Sofía O.</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#10B981' }}>Daniela A.</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#F59E0B' }}>Érica L.</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#059669' }}>Gratis Meta</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#DC2626' }}>Facturables</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Costo USD</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right' }}>Costo ARS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(metrics.monthlyComparison || []).map((m, idx) => (
+                                <tr key={m.mes || idx} style={{
+                                    borderBottom: '1px solid #F1F5F9',
+                                    background: idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA'
+                                }}>
+                                    <td style={{ padding: '9px 14px', fontWeight: 800, color: '#0F2942' }}>{m.mes}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>{m.enviados?.toLocaleString('es-AR')}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#0284C7', fontWeight: 600 }}>
+                                        {m.bot?.toLocaleString('es-AR')} ({m.botPct || 0}%)
+                                    </td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#0F2942', fontWeight: 700 }}>
+                                        {m.agentes?.toLocaleString('es-AR')} ({m.agentPct || 0}%)
+                                    </td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#0284C7', fontWeight: 600 }}>{m.virginia?.toLocaleString('es-AR') || 0}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#8B5CF6', fontWeight: 600 }}>{m.sofia?.toLocaleString('es-AR') || 0}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#10B981', fontWeight: 600 }}>{m.daniela?.toLocaleString('es-AR') || 0}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#F59E0B', fontWeight: 600 }}>{m.erica?.toLocaleString('es-AR') || 0}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#059669', fontWeight: 600 }}>{m.gratis?.toLocaleString('es-AR')}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', color: '#DC2626', fontWeight: 700 }}>{m.facturables?.toLocaleString('es-AR')}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 800, color: '#0F2942' }}>${m.costoUsd?.toFixed(2)}</td>
+                                    <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>${m.costoArs?.toLocaleString('es-AR')}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* DEMANDA CLÍNICA Y TIPOS DE CONSULTA DEL PACIENTE (TRIAGE)         */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
+                padding: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '16px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '34px', height: '34px', borderRadius: '8px',
+                            background: '#ECFDF5', color: '#059669',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            <Stethoscope size={18} />
+                        </div>
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F2942' }}>
+                                Tipos de Consulta del Paciente (Demanda y Triage Clínico)
+                            </h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                Clasificación médica de requerimientos según el triage inicial y motivo de consulta registrado
+                            </p>
+                        </div>
+                    </div>
+
+                    <span style={{
+                        fontSize: '0.74rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
+                        background: '#F0F9FF', color: '#0284C7', border: '1px solid #BAE6FD'
+                    }}>
+                        🏥 Auditoría de Atención Sanatorio Argentino
+                    </span>
+                </div>
+
+                {/* TARJETAS DE CATEGORÍAS CLÍNICAS */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                    gap: '12px'
+                }}>
+                    {inquiryBreakdown.map((item) => (
+                        <div key={item.key} style={{
+                            padding: '12px 14px', borderRadius: '10px',
+                            background: '#FFFFFF', border: '1px solid #E2E8F0',
+                            display: 'flex', flexDirection: 'column', gap: '6px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0F2942' }}>
+                                    {item.label}
+                                </span>
+                                <span style={{
+                                    fontSize: '0.66rem', fontWeight: 800, color: item.color,
+                                    background: `${item.color}15`, padding: '2px 6px', borderRadius: '4px'
+                                }}>
+                                    {item.pct}%
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: item.color }}>
+                                {item.count.toLocaleString('es-AR')} <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 500 }}>casos</span>
+                            </div>
+                            <div style={{ height: '4px', background: '#F1F5F9', borderRadius: '2px', overflow: 'hidden' }}>
+                                <div style={{
+                                    height: '100%',
+                                    width: `${item.pct}%`,
+                                    background: item.color,
+                                    borderRadius: '2px',
+                                    transition: 'width 0.4s ease'
+                                }} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
@@ -2885,10 +3238,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 </table>
                             </div>
 
-                            {/* BLOQUE 5: MOTIVOS DE CIERRE */}
+                            {/* BLOQUE 5: DEMANDA CLÍNICA / TRIAGE */}
                             <div>
                                 <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    4. Distribución de Motivos de Finalización
+                                    4. Tipos de Consulta del Paciente (Triage Clínico)
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                                    {inquiryBreakdown.map(item => (
+                                        <div key={item.key} style={{ padding: '8px 10px', background: '#F8FAFC', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.72rem', color: '#0F2942', fontWeight: 600 }}>{item.label}</span>
+                                            <strong style={{ fontSize: '0.76rem', color: item.color }}>{item.count.toLocaleString('es-AR')} ({item.pct}%)</strong>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* BLOQUE 6: MOTIVOS DE CIERRE */}
+                            <div>
+                                <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    5. Distribución de Motivos de Finalización
                                 </h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                                     {MOTIVOS_FINALIZACION_CATALOGO.map(motivo => {
@@ -2902,6 +3270,31 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             </div>
                                         );
                                     })}
+                                </div>
+                            </div>
+
+                            {/* BLOQUE 7: CONSUMO Y FACTURACIÓN WHATSAPP BUSINESS API (META) */}
+                            <div style={{ background: '#F8FAFC', padding: '14px 18px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                    6. Facturación y Consumo WhatsApp Business API (Meta)
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', fontSize: '0.74rem' }}>
+                                    <div>
+                                        <div style={{ color: '#64748B' }}>Mensajes Enviados:</div>
+                                        <strong style={{ fontSize: '1rem', color: '#0F2942' }}>{costCalculations.totalEnviados.toLocaleString('es-AR')}</strong>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: '#64748B' }}>Franquicia Gratis:</div>
+                                        <strong style={{ fontSize: '1rem', color: '#059669' }}>{costCalculations.franquiciaGratis} msgs</strong>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: '#64748B' }}>Facturables (&gt;1.000):</div>
+                                        <strong style={{ fontSize: '1rem', color: '#DC2626' }}>{costCalculations.facturables.toLocaleString('es-AR')} msgs</strong>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: '#64748B' }}>Costo Estimado:</div>
+                                        <strong style={{ fontSize: '1rem', color: '#B45309' }}>${costCalculations.totalUsd} USD (~${costCalculations.totalArs.toLocaleString('es-AR')} ARS)</strong>
+                                    </div>
                                 </div>
                             </div>
                         </div>
