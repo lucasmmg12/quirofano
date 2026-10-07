@@ -885,6 +885,10 @@ export default function ContactCenterChatConsole({
 
             setReassignModalOpen(false);
             setReassignNote('');
+            setFilterTab('asignadas_mi');
+            if (selectedChat?.id) {
+                setActiveChatId(selectedChat.id);
+            }
             showToast(`Conversación reasignada a tu nombre. Ya podés responder al paciente.`, 'success');
 
             if (typeof onReloadChats === 'function') {
@@ -895,6 +899,19 @@ export default function ContactCenterChatConsole({
             showToast('Error al reasignar conversación: ' + (err.message || 'Error'), 'error');
         } finally {
             setIsReassigning(false);
+        }
+    };
+
+    // Asignar conversación y conmutar automáticamente a la pestaña 'Mis Chats' para que nunca desaparezca del operador
+    const handleAssignChatAndSwitchTab = async (chatId, agentId, options) => {
+        if (!onAssignChat) return;
+        try {
+            await onAssignChat(chatId, agentId, options);
+        } finally {
+            setFilterTab('asignadas_mi');
+            if (chatId) {
+                setActiveChatId(chatId);
+            }
         }
     };
 
@@ -2604,7 +2621,7 @@ export default function ContactCenterChatConsole({
             if (onAssignChat) {
                 const confirmAssign = window.confirm('Debes asignarte esta conversación para responder. ¿Deseas asignártela ahora y enviar la imagen?');
                 if (confirmAssign) {
-                    await onAssignChat(selectedChat.id, activeAgent.id);
+                    await handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id);
                 } else {
                     return;
                 }
@@ -4388,7 +4405,7 @@ export default function ContactCenterChatConsole({
                                     Finalizada {selectedChat.resolutionReason ? `(${selectedChat.resolutionReason})` : ''}
                                 </div>
                                 <button
-                                    onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                     title="Reabrir esta conversación para continuar atendiendo al paciente"
                                     style={{
                                         padding: '2px 8px', borderRadius: '6px', border: '1px solid #0284C7',
@@ -4401,7 +4418,7 @@ export default function ContactCenterChatConsole({
                             </div>
                         ) : isBot ? (
                             <button 
-                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                 style={{
                                     padding: '3px 10px', borderRadius: '6px', border: 'none',
                                     background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
@@ -4415,7 +4432,7 @@ export default function ContactCenterChatConsole({
                             </button>
                         ) : isUnassigned ? (
                             <button 
-                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                 style={{
                                     padding: '3px 10px', borderRadius: '6px', border: 'none',
                                     background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
@@ -5690,7 +5707,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
                             <button
                                 type="button"
-                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                 style={{
                                     padding: '6px 14px', borderRadius: '6px', border: 'none',
                                     background: '#059669', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700,
@@ -5721,7 +5738,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             {isSupervisor && (
                                 <button
                                     type="button"
-                                    onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id, { forceReassign: true })}
+                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id, { forceReassign: true })}
                                     style={{
 
                                         padding: '6px 14px', borderRadius: '6px', border: '1px solid #DC2626',
@@ -5753,7 +5770,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
                             <button
                                 type="button"
-                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                 style={{
                                     padding: '8px 16px', borderRadius: '8px', border: 'none',
                                     background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
@@ -5785,7 +5802,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
                             <button
                                 type="button"
-                                onClick={() => onAssignChat && onAssignChat(selectedChat.id, activeAgent.id)}
+                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                 style={{
                                     padding: '8px 16px', borderRadius: '8px', border: 'none',
                                     background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
@@ -9924,7 +9941,7 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                                 {onAssignChat && (
                                     <button
                                         type="button"
-                                        onClick={() => onAssignChat(selectedChat.id, activeAgent.id)}
+                                        onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                         style={{
                                             padding: '4px 10px',
                                             borderRadius: '6px',

@@ -1477,22 +1477,22 @@ const SPECIALTY_MAP: [RegExp, string][] = [
     [/\b(alergia|alergistas?|inmunolog[ií]a)\b/i, 'Alergia e Inmunología'],
     [/\b(mastolog[ií]a|mast[oó]log[ao]s?)\b/i, 'Mastología'],
     [/\b(fertilidad|reproducci[oó]n\s+asistida)\b/i, 'Medicina Reproductiva / Fertilidad'],
-    [/\b(ecograf[ií]a|ecograf[ií]as|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma)\b/i, 'Ecografía'],
-    [/\b(tomograf[ií]a|tomograf[ií]as|tac\b|tomograf[ií]a\s+computada)\b/i, 'Tomografía'],
-    [/\b(radiograf[ií]a|radiograf[ií]as|rayos\s*x|espinograf[ií]a|placa[s]?\b)\b/i, 'Radiografía'],
+    [/\b(ecograf[ií]a|ecograf[ií]as|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma|eco\b)\b/i, 'Ecografía'],
+    [/\b(tomograf[ií]a|tomograf[ií]as|tac\b|tc\b|tomograf[ií]a\s+computada)\b/i, 'Tomografía'],
+    [/\b(radiograf[ií]a|radiograf[ií]as|rayos\s*x|espinograf[ií]a|placa[s]?\b|rx\b)\b/i, 'Radiografía'],
     [/\b(densitometr[ií]a|densitometr[ií]as|densitometr[ií]a\s+[oó]sea)\b/i, 'Densitometría Ósea'],
-    [/\b(mamograf[ií]a|mamograf[ií]as|mamograf[ií]a\s+digital|mamograf[ií]a\s+bilateral)\b/i, 'Mamografía'],
-    [/\b(resonancia|resonancias|resonancia\s+magn[eé]tica|rmn\b)\b/i, 'Resonancia Magnética']
+    [/\b(mamograf[ií]a|mamograf[ií]as|mamograf[ií]a\s+digital|mamograf[ií]a\s+bilateral|mamo\b)\b/i, 'Mamografía'],
+    [/\b(resonancia|resonancias|resonancia\s+magn[eé]tica|rmn\b|mri\b)\b/i, 'Resonancia Magnética']
 ];
 
 // Estudios de Diagnóstico por Imágenes que exigen obligatoriamente la presentación de Orden / Pedido Médico
 export const ESTUDIOS_CON_ORDEN_MAPPING: [RegExp, string][] = [
-    [/\b(ecograf[ií]a[s]?|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma|ecogr[aá]fic[ao]s?)\b/i, 'Ecografía'],
-    [/\b(tomograf[ií]a[s]?|tac\b|tomogr[aá]fic[ao]s?)\b/i, 'Tomografía'],
-    [/\b(radiograf[ií]a[s]?|rayos\s*x|espinograf[ií]a[s]?|placa[s]?\b)\b/i, 'Radiografía'],
+    [/\b(ecograf[ií]a[s]?|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma|ecogr[aá]fic[ao]s?|eco\b)\b/i, 'Ecografía'],
+    [/\b(tomograf[ií]a[s]?|tac\b|tc\b|tomogr[aá]fic[ao]s?)\b/i, 'Tomografía'],
+    [/\b(radiograf[ií]a[s]?|rayos\s*x|espinograf[ií]a[s]?|placa[s]?\b|rx\b)\b/i, 'Radiografía'],
     [/\b(densitometr[ií]a[s]?|densitometr[ií]a\s+[oó]sea)\b/i, 'Densitometría Ósea'],
-    [/\b(mamograf[ií]a[s]?|mamogr[aá]fic[ao]s?)\b/i, 'Mamografía'],
-    [/\b(resonancia[s]?|resonancia\s+magn[eé]tica|rmn\b)\b/i, 'Resonancia Magnética']
+    [/\b(mamograf[ií]a[s]?|mamogr[aá]fic[ao]s?|mamo\b)\b/i, 'Mamografía'],
+    [/\b(resonancia[s]?|resonancia\s+magn[eé]tica|rmn\b|mri\b)\b/i, 'Resonancia Magnética']
 ];
 
 export function detectEstudiosConOrden(text: string | null | undefined): string[] {
@@ -3252,14 +3252,25 @@ async function handleChatbotTriage(
         conv?.closed_by_agent_id
     );
 
+    const closedAtMs = conv?.closed_at ? new Date(conv.closed_at).getTime() : 0;
+    const minutesSinceClosed = closedAtMs > 0 ? (Date.now() - closedAtMs) / (1000 * 60) : Infinity;
+
+    // Saludo o reinicio explícito del usuario ("hola", "menu", "atras", "volver", etc.)
+    const isExplicitGreetingOrMenu = 
+        /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(cleanText) ||
+        /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|atras+|atr[aá]s+|atrs+|volver|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/im.test(cleanText);
+
     // Detección de cortesía, agradecimiento o calificación en chat ya finalizado
     // Evita desarchivar el chat si el paciente responde "muchas gracias", "👍", "5 estrellas", etc.
     const isCourtesyOrRating = 
-        /^(gracias+|muchas\s+gracias|mil\s+gracias|muchisimas\s+gracias|much[ií]simas\s+gracias|gracias\s+por\s+todo|gracias\s+por\s+la\s+atenci[oó]n|muy\s+amable|muy\s+atentos?|ok+|okei|okay|dale|listo|perfecto|joya|genial|buenisimo|buen[ií]simo|excelente|de\s+diez|de\s+10|chau+|adi[oó]s|adios|hasta\s+luego|saludos|que\s+tengas?\s+buen\s+d[ií]a|buen\s+d[ií]a\s+gracias|[1-5](\s*estrellas?)?|10|[👍👌🙏❤️👏⭐]+)[!.\s]*$/i.test(cleanText.trim()) ||
-        (/\b(gracias|muchas gracias|mil gracias|muchisimas gracias|excelente atencion|muy amable|saludos)\b/i.test(cleanText.trim()) && cleanText.trim().length <= 60);
+        /^(gracias+|muchas\s+gracias|mil\s+gracias|muchisimas\s+gracias|much[ií]simas\s+gracias|gracias\s+por\s+todo|gracias\s+por\s+la\s+atenci[oó]n|gracias\s+a\s+vos|gracias\s+a\s+ustedes|gracias\s+chicos?|gracias\s+chicas?|muy\s+amable|muy\s+atentos?|de\s+nada|por\s+nada|ok+|okei|okay|dale|listo|perfecto|joya|genial|buenisimo|buen[ií]simo|excelente|impecable|de\s+diez|de\s+10|chau+|adi[oó]s|adios|hasta\s+luego|saludos|que\s+tengas?\s+buen\s+d[ií]a|buen\s+d[ií]a\s+gracias|igualmente|[1-5](\s*estrellas?)?|10|[👍👌🙏❤️👏⭐]+)[!.\s]*$/i.test(cleanText.trim()) ||
+        (/\b(gracias|muchas gracias|mil gracias|muchisimas gracias|excelente atencion|muy amable|saludos|gracias a vos|gracias chicos)\b/i.test(cleanText.trim()) && cleanText.trim().length <= 70);
 
-    if (wasClosed && isCourtesyOrRating) {
-        console.log(`[triage-bot] Chat ${phone} está finalizado y recibió mensaje de cortesía/calificación ("${cleanText}"). Manteniendo estado ARCHIVADO.`);
+    // Ventana de gracia pos-cierre (15 minutos):
+    // Si la conversación fue finalizada hace menos de 15 minutos y el paciente envía cortesías o mensajes cortos,
+    // NO despertar al bot de inmediato (evita que el bot le hable con el menú de bienvenida tras un 'gracias').
+    if (wasClosed && (isCourtesyOrRating || (minutesSinceClosed < 15 && !isExplicitGreetingOrMenu && cleanText.length <= 45))) {
+        console.log(`[triage-bot] Chat ${phone} finalizado hace ${minutesSinceClosed.toFixed(1)} min. Mensaje de cortesía pos-cierre ("${cleanText}"). Manteniendo estado ARCHIVADO sin activar bot.`);
         await supabase
             .from('contact_center_conversations')
             .update({
@@ -3270,25 +3281,6 @@ async function handleChatbotTriage(
             .eq('phone', phone);
         return;
     }
-
-    // Comprobar si la sesión expiró por tiempo de inactividad
-    // Umbral de inactividad: 15 minutos sin mensajes nuevos (configurable en app_config)
-    // CRÍTICO: La expiración por inactividad SOLO aplica si la conversación NO está asignada a un agente humano.
-    // Si la conversación tiene una agente asignada (conv.assigned_agent_id), NUNCA debe expirar ni desasignarse automáticamente.
-    const INACTIVITY_TIMEOUT_MINUTES = cachedInactivityTimeoutMinutes || 15;
-    const lastMsgTime = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
-    const minutesSinceLastMsg = lastMsgTime > 0 ? (Date.now() - lastMsgTime) / (1000 * 60) : 0;
-    const isSessionExpiredByInactivity = Boolean(
-        conv && 
-        !conv.assigned_agent_id &&
-        lastMsgTime > 0 && 
-        minutesSinceLastMsg >= INACTIVITY_TIMEOUT_MINUTES
-    );
-
-    // Saludo o reinicio explícito del usuario ("hola", "menu", "atras", "volver", etc.)
-    const isExplicitGreetingOrMenu = 
-        /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(cleanText) ||
-        /^(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?|menu+|men[uú]+|atras+|atr[aá]s+|atrs+|volver|inicio|comenzar|empezar|reiniciar|hola\s+buenas)[!.\s]*$/im.test(cleanText);
 
 
     // Si el chat estaba cerrado o una sesión NO asignada expiró por inactividad:
@@ -4308,25 +4300,153 @@ async function handleChatbotTriage(
         }
     }
     // =============================================
-    // FLUJO 0A-3: DERIVACIÓN DIRECTA A AGENTE HUMANO (ALTA PRIORIDAD)
+    // FLUJO 0A-2E: ESPERANDO DATOS OBLIGATORIOS PARA DERIVACIÓN A AGENTE
+    // (El paciente solicitó hablar con un operador pero el sistema exige DNI, Nombre y Motivo antes de pasar a 'sin_asignar')
+    // =============================================
+    else if (
+        currentStage === 'esperando_datos_agente' &&
+        analysis.intent !== 'volver_atras'
+    ) {
+        const candidateDniInMsg = candidateDni || extractDniFromText(cleanText);
+        const effectiveDni = (candidateDniInMsg && isValidArgentineDni(candidateDniInMsg))
+            ? candidateDniInMsg
+            : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) ? String(paciente.dni) : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
+
+        if (effectiveDni) {
+            let resolvedName = updates.nombre_completo || paciente?.nombre || conv?.nombre_completo || null;
+            let salusFound = Boolean(paciente?.id_paciente);
+
+            if (!salusFound) {
+                const { data: pFound } = await supabase
+                    .from('hospital_pacientes')
+                    .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                    .eq('dni', effectiveDni)
+                    .limit(1)
+                    .maybeSingle();
+
+                if (pFound) {
+                    paciente = pFound;
+                    resolvedName = pFound.nombre;
+                    updates.dni = pFound.dni;
+                    updates.nombre_completo = pFound.nombre;
+                    updates.nhc = pFound.nhc;
+                    updates.fecha_nacimiento = pFound.fecha_nacimiento;
+                    updates.es_paciente_existente = true;
+                    salusFound = true;
+                } else {
+                    updates.dni = effectiveDni;
+                    updates.es_paciente_existente = false;
+                }
+            } else {
+                updates.dni = effectiveDni;
+                updates.es_paciente_existente = true;
+            }
+
+            if (!resolvedName) {
+                resolvedName = analysis.patientNameCandidate || whatsappName || 'Paciente';
+                updates.nombre_completo = resolvedName;
+            }
+
+            const isJustDniOrShort = /^[0-9\s.-]+$/.test(cleanText.trim()) || cleanText.trim().length <= 8;
+            const motivoDesc = isJustDniOrShort
+                ? (conv?.motivo_consulta && !conv.motivo_consulta.includes('aguardando datos') && !conv.motivo_consulta.includes('esperando datos') ? conv.motivo_consulta : 'Atención General con Asesor')
+                : cleanText.trim();
+
+            const targetStudy = detectEstudioConOrden(cleanText);
+            const studyTag = targetStudy ? ` [Estudio: ${targetStudy}]` : '';
+
+            updates.motivo_consulta = `Consulta con Agente: ${resolvedName} (DNI ${effectiveDni})${studyTag} - ${motivoDesc.slice(0, 90)}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            nextStage = 'esperando_agente';
+
+            updates.ai_summary = {
+                ...buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, updates.es_paciente_existente, paciente?.edad),
+                dni_aportado: effectiveDni,
+                paciente_identificado: resolvedName,
+                motivo_explicitado: motivoDesc
+            };
+
+            replyText = `¡Muchas gracias *${resolvedName}*! 🏥 Ya registramos tus datos (DNI: *${effectiveDni}*) y el motivo de tu consulta.\n\n` +
+                `Un agente de nuestro equipo de atención tomará tu conversación a la brevedad para asistirte de forma personalizada.\n\n` +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else {
+            // El paciente escribió pero NO brindó un DNI válido
+            // BLOQUEO ESTRICTO: NO PASA A 'sin_asignar'
+            console.log(`[triage-bot] Chat ${phone} está en esperando_datos_agente y aún NO proporcionó DNI válido. Manteniendo en bot.`);
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_datos_agente';
+            nextStage = 'esperando_datos_agente';
+
+            replyText = `Para poder derivar tu caso a un asesor de nuestro equipo, *es indispensable que nos indiques tus datos mínimos*:\n\n` +
+                `• Número de *DNI del paciente* (solo números, sin puntos ni espacios)\n` +
+                `• *Nombre y Apellido*\n` +
+                `• *Motivo de tu consulta* (¿qué gestión o trámite precisás realizar?)\n\n` +
+                `⚠️ *Sin tu número de DNI el sistema no puede asignar un operador a tu chat.* Por favor escribí tu DNI para continuar.\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+    }
+    // =============================================
+    // FLUJO 0A-3: DERIVACIÓN DIRECTA A AGENTE HUMANO (OPCIÓN 5)
     // =============================================
     else if (analysis.intent === 'derivacion_agente') {
-        updates.motivo_consulta = 'Solicitud de Atención con Agente';
-        if (isExistingPatient) {
-            replyText = `¡Hola *${fullName}*! 🏥\n\n` +
-                `Ya mismo te comunico con un agente de nuestro equipo de atención para que continúe asistiéndote de forma personalizada.\n\n` +
-                `📝 *Por favor, indícanos el motivo de tu consulta y detallanos qué necesitas* (podés enviarnos mensajes de texto o fotos/imágenes de pedidos médicos, estudios o credenciales) para que en breve te respondamos con la gestión lista.\n\n` +
-                `${getAgentHandoffNotice()}`;
-        } else {
-            replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
+        const candidateDniInMsg = candidateDni || extractDniFromText(cleanText);
+        const effectiveDni = (candidateDniInMsg && isValidArgentineDni(candidateDniInMsg)) 
+            ? candidateDniInMsg 
+            : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) ? String(paciente.dni) : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
+
+        const isSimpleAgentTrigger = /^(5|opcion\s*5|agente|asesor|operador|humano|persona|hablar\s+con\s+(un\s+)?(agente|asesor|humano|operador|alguien))$/i.test(cleanText.trim());
+
+        // Si ya cuenta con DNI válido Y el mensaje contiene el motivo detallado (no es un simple "5" o "agente"):
+        if (effectiveDni && !isSimpleAgentTrigger && cleanText.length >= 15) {
+            updates.dni = effectiveDni;
+            const patientName = paciente?.nombre || conv?.nombre_completo || whatsappName || 'Paciente';
+            updates.nombre_completo = patientName;
+            updates.motivo_consulta = `Consulta con Agente: ${patientName} (DNI ${effectiveDni}) - ${cleanText.slice(0, 90)}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+
+            replyText = `¡Muchas gracias *${patientName}*! 🏥 Registramos tus datos y tu solicitud.\n\n` +
                 `Ya mismo te comunicamos con un agente de nuestro equipo de atención para asistirte.\n\n` +
-                `📝 *Por favor, indícanos tu Nombre y Apellido, DNI y el motivo de tu consulta* (también podés enviarnos fotos/imágenes de pedidos médicos, estudios o credenciales que necesites gestionar) para que en breve te respondamos con mayor rapidez.\n\n` +
-                `${getAgentHandoffNotice()}`;
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+        } else {
+            // SI EL PACIENTE NO BRINDÓ SUS DATOS O ES UN SIMPLE DISPARADOR ("5", "agente"):
+            // EL CHAT NO PASA A 'sin_asignar'. SE QUEDA EN EL BOT PIDIENDO LOS DATOS OBLIGATORIOS.
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_datos_agente';
+            nextStage = 'esperando_datos_agente';
+            updates.motivo_consulta = 'Solicitud de Atención con Agente (aguardando datos)';
+
+            if (effectiveDni && (paciente?.nombre || conv?.nombre_completo)) {
+                const pName = paciente?.nombre || conv?.nombre_completo;
+                replyText = `¡Hola *${pName}*! 🏥 Con gusto te comunicamos con un asesor de nuestro equipo.\n\n` +
+                    `Para que el operador pueda tomar tu caso y ayudarte de inmediato, por favor indícanos:\n` +
+                    `• *Motivo de tu consulta:* ¿Qué trámite, estudio o consulta médica precisás realizar?\n` +
+                    `• ¿La atención es para vos (*DNI ${effectiveDni}*) o para otra persona/familiar? (si es para otra persona, indícanos su DNI, Nombre y Apellido).\n` +
+                    `• _Podés adjuntar fotos o archivos si disponés de órdenes médicas o comprobantes._\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            } else {
+                replyText = `¡Hola! 👋 Te damos la bienvenida a *Sanatorio Argentino*.\n\n` +
+                    `Con gusto te comunicamos con un agente de nuestro equipo de atención. Para que el sistema pueda derivar tu conversación a un operador, *es obligatorio que nos indiques tus datos*:\n\n` +
+                    `• Número de *DNI del paciente* (sin puntos ni espacios)\n` +
+                    `• *Nombre y Apellido*\n` +
+                    `• *Motivo de tu consulta* (¿qué trámite, estudio o consulta precisás gestionar?)\n` +
+                    `• _Podés adjuntar fotos o archivos si disponés de órdenes médicas o credenciales._\n\n` +
+                    `⚠️ *Importante:* Es indispensable que nos brindes estos datos para que un agente pueda atenderte.\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            }
         }
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        nextStage = 'esperando_agente';
-        updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
     }
     // =============================================
     // FLUJO 0C: PACIENTE RESPONDIENDO DATOS O PREFERENCIAS DE NUEVO TURNO (PRIORIDAD DE CONTEXTO)
@@ -5331,13 +5451,19 @@ async function handleChatbotTriage(
                 ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
                 : `• ¿Con qué *profesional* o para qué *especialidad médica* solicita la atención?\n`;
 
+            const isEstudioTurnoOther = detectEstudioConOrden(doctorDisplay) || detectEstudioConOrden(effectiveSpecialty) || detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad);
+            const estudioBulletOther = isEstudioTurnoOther
+                ? `• 📸 *Pedido médico:* Por favor adjuntanos la *foto clara o archivo de la orden médica* (obligatoria para agendar estudios de ${isEstudioTurnoOther}).\n`
+                : '';
+
             replyText = `¡Hola! 🏥 Con gusto te ayudamos a coordinar el turno para tu familiar u otra persona.\n\n` +
                 `Por favor indícanos:\n` +
                 `• Número de *DNI del paciente* (sin puntos ni espacios)\n` +
                 `• *Nombre y Apellido* del paciente\n` +
                 `${specOrDocLine}` +
                 `• *Obra Social / Prepaga y Plan* del paciente (o si la atención será Particular)\n` +
-                `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                `• Preferencia de *días y horarios* (mañana o tarde)\n` +
+                `${estudioBulletOther}\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
             updates.bot_stage = 'esperando_datos_turno';
             updates.bot_active = true;
@@ -5376,7 +5502,7 @@ async function handleChatbotTriage(
             const targetForMsg = updates.medico_o_especialidad || validDisplay || null;
             const docMsg = formatTurnoTargetPhrase(targetForMsg);
 
-            const estudioRequiereOrden = detectEstudioConOrden(targetForMsg) || detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad);
+            const estudioRequiereOrden = detectEstudioConOrden(targetForMsg) || detectEstudioConOrden(effectiveSpecialty) || detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad);
             const hasSentOrderPhoto = isIncomingMedia || patientSentImageRecently || Boolean(conv?.order_analysis) || Boolean((conv?.ai_summary as any)?.medical_order);
 
             if (estudioRequiereOrden && !hasSentOrderPhoto) {
@@ -5420,9 +5546,12 @@ async function handleChatbotTriage(
                 ? `• *Especialidad / Profesional:* Registramos *${doctorDisplay || effectiveSpecialty}* ✅\n`
                 : `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n`;
 
-            const isEstudioTurno = detectEstudioConOrden(doctorDisplay || effectiveSpecialty || cleanText);
+            const isEstudioTurno = detectEstudioConOrden(doctorDisplay) || 
+                                   detectEstudioConOrden(effectiveSpecialty) || 
+                                   detectEstudioConOrden(cleanText) || 
+                                   detectEstudioConOrden(conv?.medico_o_especialidad);
             const estudioBullet = isEstudioTurno
-                ? `• 📸 *Pedido médico:* Por favor adjuntanos la foto o archivo de tu orden médica (obligatoria para agendar estudios de diagnóstico por imágenes).\n`
+                ? `• 📸 *Pedido médico:* Por favor adjuntanos la *foto clara o archivo de tu orden/pedido médico* (obligatoria para coordinar estudios de ${isEstudioTurno}).\n`
                 : '';
 
             replyText = `¡Hola${paciente ? ` *${fullName}*` : ''}! 🏥 Te ayudamos a coordinar tu nuevo turno médico${doctorNoteMsg}.\n\n` +
