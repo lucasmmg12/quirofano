@@ -91,6 +91,21 @@ function extractDniFromText(text: string | null | undefined): string | null {
     return null;
 }
 
+// =============================================
+// DETECCIÓN INFALIBLE DE MENÚ / VOLVER ATRÁS (TOLERANTE A TILDES Y RÁFAGAS)
+// =============================================
+export function isNavigationBackOrMenu(text: string | null | undefined): boolean {
+    if (!text) return false;
+    const clean = text.toLowerCase().trim();
+    const norm = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return (
+        /\b(menu|atras|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(norm) ||
+        /^(volver|atras|atrs|regresar|menu|inicio|reiniciar|cancelar|opciones|salir)[!.\s]*$/im.test(norm) ||
+        /\b(?:volver|regresar|ir)\s+(?:al\s+|a\s+)?(?:menu|inicio|atras)\b/i.test(norm) ||
+        clean.includes('menú') || clean.includes('menu') || clean.includes('atrás') || clean.includes('atras') || clean.includes('volver')
+    );
+}
+
 Deno.serve(async (req) => {
     // CORS headers
     const corsHeaders = {
@@ -984,8 +999,8 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                             }
                         }
                         const lastFragment = fragments[fragments.length - 1] || '';
-                        if (/\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar)\b/i.test(lastFragment)) {
-                            consolidatedText = lastFragment;
+                        if (isNavigationBackOrMenu(lastFragment) || fragments.some(f => isNavigationBackOrMenu(f))) {
+                            consolidatedText = 'Menú';
                         } else {
                             consolidatedText = fragments.join('\n').trim();
                         }
@@ -2284,18 +2299,13 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
         if (!enGestionTurno && !esVolverExplicito) {
             if (reprogFuerte && (mencionaTurno || turnoCtx || /\breprogram/i.test(clean))) return R('reprogramar_turno_online');
-            if ((verboCancelar || noAsistire) && (mencionaTurno || turnoCtx)) return R('cancelar_turno_online');
+            if ((verboCancelar || noAsistire) && (mencionaTurno || turnoCtx || /\b(lo\s+quiero|quiero|deseo|necesito|para)\s+cancel\w*/i.test(clean) || stage === 'esperando_datos_turno')) return R('cancelar_turno_online');
             if (reprogDebil && turnoCtx) return R('reprogramar_turno_online');
         }
     }
 
     // 0.0b VOLVER ATRÁS / MENÚ PRINCIPAL / REINICIO DE GESTIÓN
-    const isVolverAtras = 
-        /\b(volver|atras|atrás|atrs|regresar|menu|menú|inicio|reiniciar|cancelar)\b/i.test(clean) ||
-        /^(volver|atras|atrás|atrs|regresar|volver\s+atras|volver\s+atrás|menu|menú|menu\s+principal|menú\s+principal|inicio|reiniciar|cancelar|no\s+era\s+eso|me\s+equivoque|me\s+equivoqué|otra\s+cosa|opciones|ver\s+opciones|salir)[!.\s]*$/im.test(clean) ||
-        /\b(?:quiero\s+)?(?:volver|regresar)\s+(?:al\s+|a\s+)?(?:menu|menú|inicio|atras|atrás|atrs)\b/i.test(clean) ||
-        /\b(?:volver\s+al\s+menu\s+principal|ir\s+al\s+menu|ver\s+menu)\b/i.test(clean);
-    if (isVolverAtras) {
+    if (isNavigationBackOrMenu(clean)) {
         return { intent: 'volver_atras', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
 
@@ -3255,12 +3265,13 @@ async function handleChatbotTriage(
     const closedAtMs = conv?.closed_at ? new Date(conv.closed_at).getTime() : 0;
     const minutesSinceClosed = closedAtMs > 0 ? (Date.now() - closedAtMs) / (1000 * 60) : Infinity;
 
-    // Saludo o reinicio explícito del usuario ("hola", "menu", "atras", "volver", etc.)
-    // o intención clara de turno, estudio o consulta médica que deba despertar al bot si no hay operador asignado
+    // Saludo o reinicio explícito del usuario ("hola", "menu", "atras", "volver", etc.),
+    // selección numérica o intención clara que deba despertar al bot si no hay operador asignado
     const isExplicitGreetingOrMenu = 
-        /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(cleanText) ||
+        isNavigationBackOrMenu(cleanText) ||
+        /^[1-5]$/.test(cleanText.trim()) ||
         /\b(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?)\b/i.test(cleanText) ||
-        /\b(turno|cita|consulta|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|mamograf[ií]a|resonancia|densitometr[ií]a|m[eé]dico|doctor|dra?|especialidad|guardia|urgencia|autorizaci[oó]n|estudio|agente|operador|humano)\b/i.test(cleanText);
+        /\b(turno|cita|consulta|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|mamograf[ií]a|resonancia|densitometr[ií]a|m[eé]dico|doctor|dra?|especialidad|guardia|urgencia|autorizaci[oó]n|estudio|agente|operador|humano|cancel\w*|reprogram\w*)\b/i.test(cleanText);
 
     // Detección de cortesía, agradecimiento o calificación en chat ya finalizado
     // Evita desarchivar el chat si el paciente responde "muchas gracias", "👍", "5 estrellas", etc.
@@ -3922,7 +3933,7 @@ async function handleChatbotTriage(
     // =============================================
     // FLUJO 0A-2: VOLVER ATRÁS / MENÚ PRINCIPAL (REACTIVACIÓN OBLIGATORIA A ESTADO 'BOT')
     // =============================================
-    else if (analysis.intent === 'volver_atras' || /\b(menu|men[uú]|atras|atrás|atrs|volver|regresar|inicio|reiniciar)\b/i.test(cleanText)) {
+    else if (analysis.intent === 'volver_atras' || isNavigationBackOrMenu(cleanText)) {
         replyText = `¡Entendido! Te muestro nuevamente nuestras opciones principales de atención:\n\n` + getWelcomeMenuMessage(whatsappName);
         updates.status = 'bot'; // OBLIGATORIO: volver al estado 'bot', NUNCA 'sin_asignar'
         updates.bot_active = true;
