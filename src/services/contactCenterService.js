@@ -2689,7 +2689,7 @@ DIRECTIVAS PRINCIPALES:
    - NUNCA vuelvas a pedir un dato que el paciente ya haya proporcionado en cualquier parte del texto o del historial. Si ya tienes los datos necesarios, procede directamente a resolver su consulta o al siguiente paso.
 13. DISTINCIÓN OBLIGATORIA ENTRE DNI Y FECHA DE NACIMIENTO:
    - NUNCA confundas una fecha de nacimiento (DD/MM/AAAA, ej: 04/07/2002 o 04072002) con un número de DNI.
-   - Los DNI argentinos tienen entre 7 y 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 65.000.000).
+   - Los DNI argentinos tienen entre 7 y 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 99.999.999, incluyendo serie 90M+ de residentes extranjeros).
    - Si el paciente en un mensaje posterior envía sus datos personales de admisión (ej: "Ramiro Javier Gutiérrez\n04/07/2002\nDepartamento rawson"), la fecha 04/07/2002 corresponde a su fecha de nacimiento y NUNCA debe sobreescribir ni sustituir el DNI ya informado en el mensaje anterior.`;
 
 export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá a la brevedad.\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;

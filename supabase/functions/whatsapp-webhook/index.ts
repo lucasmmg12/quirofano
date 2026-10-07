@@ -119,10 +119,11 @@ async function recordAiUsage(
 function isValidArgentineDni(str: string | null | undefined): boolean {
     if (!str) return false;
     const clean = String(str).replace(/\D/g, '');
-    // Un DNI argentino tiene entre 7 y 8 dígitos y NUNCA empieza con 0
+    // Un DNI argentino tiene entre 7 y 8 dígitos y NUNCA empieza con 0.
+    // Abarca ciudadanos nativos (1M a ~60M) y residentes extranjeros con DNI emitido por RENAPER (serie 90M a 99M).
     if (!/^[1-9]\d{6,7}$/.test(clean)) return false;
     const num = parseInt(clean, 10);
-    return num >= 1000000 && num <= 65000000;
+    return num >= 1000000 && num <= 99999999;
 }
 
 function extractDniFromText(text: string | null | undefined): string | null {
@@ -2237,7 +2238,7 @@ DIRECTIVAS PRINCIPALES:
      "Podés responder con la letra (*a*, *b*...) o escribir el nombre."
 12. DISTINCIÓN OBLIGATORIA ENTRE DNI Y FECHA DE NACIMIENTO:
    - NUNCA confundas una fecha de nacimiento (DD/MM/AAAA, ej: 04/07/2002 o 04072002) con un número de DNI.
-   - Los DNI argentinos tienen 7 u 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 65.000.000).
+   - Los DNI argentinos tienen 7 u 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 99.999.999, incluyendo serie 90M+ de residentes extranjeros).
    - Si el paciente en un mensaje posterior envía sus datos personales de admisión (ej: "Ramiro Javier Gutiérrez\n04/07/2002\nDepartamento rawson"), la fecha 04/07/2002 es su fecha de nacimiento y NUNCA debe sobreescribir ni sustituir el DNI ya informado en el mensaje anterior.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
