@@ -8246,7 +8246,6 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     )}
                         </>
                     )}
-                    )}
                 </div>
             </div>
 

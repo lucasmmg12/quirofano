@@ -109,6 +109,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
     // Acordeón de Agentes desplegables
     const [expandedAgents, setExpandedAgents] = useState({});
+    // Modo de métrica para el gráfico de torta de asesoras: 'mensajes' | 'conversaciones'
+    const [agentPieMetricMode, setAgentPieMetricMode] = useState('mensajes');
 
     const toggleAgentExpanded = (agentId) => {
         setExpandedAgents(prev => ({
@@ -124,6 +126,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
         botMessages: 0,
         totalIncoming: 0,
         totalConversations: 0,
+        uniquePatientsCount: 0,
+        humanConversationsCount: 0,
+        botOnlyConversationsCount: 0,
+        botConversationAutomationPct: 0,
+        humanConversationPct: 0,
+        avgConversationsPerPatient: 0,
+        avgMessagesPerConversation: 0,
+        multiSessionPatientsCount: 0,
+        multiSessionPatientsPct: 0,
         closedConversationsCount: 0,
         activeConversationsCount: 0,
         byResolutionReason: {},
@@ -236,6 +247,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             let botCount = 0;
             let agentCount = 0;
 
+            // Variables para Diferenciación de Conversaciones Únicas (Regla: inactividad >= 4h)
+            const SESSION_GAP_MS = 4 * 60 * 60 * 1000;
+            let totalConversationsCount = 0;
+            let humanConversationsCount = 0;
+            let botOnlyConversationsCount = 0;
+
             const ALL_AGENTS_METRICS = [
                 ...CONTACT_CENTER_AGENTS,
                 { id: 'lmarinero', username: 'lmarinero', legacyId: 'lucas', name: 'Lucas Marinero', fullName: 'Lucas Marinero', role: 'Supervisor Contact Center', color: '#0284C7', avatar: 'LM' }
@@ -250,6 +267,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     color: ag.color,
                     avatar: ag.avatar,
                     count: 0,
+                    conversationsCount: 0,
                     assignedCount: 0,
                     resolvedCount: 0,
                     hourlyMap: Array(24).fill(0),
@@ -267,6 +285,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 color: '#64748B',
                 avatar: 'OP',
                 count: 0,
+                conversationsCount: 0,
                 assignedCount: 0,
                 resolvedCount: 0,
                 hourlyMap: Array(24).fill(0),
@@ -380,12 +399,44 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     firstAnyOutTime: null,
                                     inDayOfWeek: null,
                                     incomingTimestamps: [],
-                                    humanOutTimestamps: []
+                                    humanOutTimestamps: [],
+                                    // Control de Conversaciones / Sesiones de Atención (Corte 4h inactividad)
+                                    sessionsCount: 0,
+                                    lastMsgTime: 0,
+                                    currentSessionStartTime: 0,
+                                    currentSessionHumanAgent: null,
+                                    currentSessionMsgCount: 0
                                 };
                                 phoneTracker.set(normPhone, tracker);
                             }
 
+                            // Verificar si inicia una nueva conversación tras >= 4h de inactividad
+                            const isNewSession = !tracker.currentSessionStartTime || (mTime - tracker.lastMsgTime >= SESSION_GAP_MS);
+                            if (isNewSession) {
+                                if (tracker.currentSessionStartTime) {
+                                    tracker.sessionsCount++;
+                                    totalConversationsCount++;
+                                    if (tracker.currentSessionHumanAgent) {
+                                        humanConversationsCount++;
+                                        if (agentDataMap[tracker.currentSessionHumanAgent]) {
+                                            agentDataMap[tracker.currentSessionHumanAgent].conversationsCount++;
+                                        }
+                                    } else {
+                                        botOnlyConversationsCount++;
+                                    }
+                                }
+                                tracker.currentSessionStartTime = mTime;
+                                tracker.currentSessionHumanAgent = null;
+                                tracker.currentSessionMsgCount = 0;
+                            }
+
+                            tracker.lastMsgTime = mTime;
+                            tracker.currentSessionMsgCount++;
+
                             if (!isBot) {
+                                if (matchedAgId) {
+                                    tracker.currentSessionHumanAgent = matchedAgId;
+                                }
                                 tracker.humanOutTimestamps.push(mTime);
                                 if (tracker.firstInTime && !tracker.firstHumanOutTime && mTime >= tracker.firstInTime) {
                                     tracker.firstHumanOutTime = mTime;
@@ -411,7 +462,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     firstAnyOutTime: null,
                                     inDayOfWeek: mDate.getDay(),
                                     incomingTimestamps: [mTime],
-                                    humanOutTimestamps: []
+                                    humanOutTimestamps: [],
+                                    // Control de Conversaciones / Sesiones de Atención (Corte 4h inactividad)
+                                    sessionsCount: 0,
+                                    lastMsgTime: 0,
+                                    currentSessionStartTime: 0,
+                                    currentSessionHumanAgent: null,
+                                    currentSessionMsgCount: 0
                                 };
                                 phoneTracker.set(normPhone, tracker);
                             } else {
@@ -421,6 +478,29 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 }
                                 tracker.incomingTimestamps.push(mTime);
                             }
+
+                            // Verificar si inicia una nueva conversación tras >= 4h de inactividad
+                            const isNewSession = !tracker.currentSessionStartTime || (mTime - tracker.lastMsgTime >= SESSION_GAP_MS);
+                            if (isNewSession) {
+                                if (tracker.currentSessionStartTime) {
+                                    tracker.sessionsCount++;
+                                    totalConversationsCount++;
+                                    if (tracker.currentSessionHumanAgent) {
+                                        humanConversationsCount++;
+                                        if (agentDataMap[tracker.currentSessionHumanAgent]) {
+                                            agentDataMap[tracker.currentSessionHumanAgent].conversationsCount++;
+                                        }
+                                    } else {
+                                        botOnlyConversationsCount++;
+                                    }
+                                }
+                                tracker.currentSessionStartTime = mTime;
+                                tracker.currentSessionHumanAgent = null;
+                                tracker.currentSessionMsgCount = 0;
+                            }
+
+                            tracker.lastMsgTime = mTime;
+                            tracker.currentSessionMsgCount++;
 
                             // Triage inicial ultraliviano: sólo se analiza la 1ra vez por teléfono
                             if (!phoneTriageDone.has(normPhone) && m.content) {
@@ -450,6 +530,43 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     offset += pageSize;
                 }
             }
+
+            // ── C1. Consolidación de la Última Conversación/Sesión Activa de Cada Paciente ──
+            let multiSessionPatientsCount = 0;
+            for (const tracker of phoneTracker.values()) {
+                if (tracker.currentSessionStartTime) {
+                    tracker.sessionsCount++;
+                    totalConversationsCount++;
+                    if (tracker.currentSessionHumanAgent) {
+                        humanConversationsCount++;
+                        if (agentDataMap[tracker.currentSessionHumanAgent]) {
+                            agentDataMap[tracker.currentSessionHumanAgent].conversationsCount++;
+                        }
+                    } else {
+                        botOnlyConversationsCount++;
+                    }
+                }
+                if (tracker.sessionsCount > 1) {
+                    multiSessionPatientsCount++;
+                }
+            }
+
+            const uniquePatientsCount = phoneTracker.size;
+            const avgConversationsPerPatient = uniquePatientsCount > 0 
+                ? Number((totalConversationsCount / uniquePatientsCount).toFixed(2)) 
+                : 0;
+            const avgMessagesPerConversation = totalConversationsCount > 0 
+                ? Number(((totalOut + totalIn) / totalConversationsCount).toFixed(1)) 
+                : 0;
+            const multiSessionPatientsPct = uniquePatientsCount > 0 
+                ? Math.round((multiSessionPatientsCount / uniquePatientsCount) * 100) 
+                : 0;
+            const botConversationAutomationPct = totalConversationsCount > 0 
+                ? Math.round((botOnlyConversationsCount / totalConversationsCount) * 100) 
+                : 0;
+            const humanConversationPct = totalConversationsCount > 0 
+                ? Math.round((humanConversationsCount / totalConversationsCount) * 100) 
+                : 0;
 
             // ── C. Calcular Tiempos de Respuesta de Asesoras desde phoneTracker ──
             for (const tracker of phoneTracker.values()) {
@@ -898,7 +1015,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             // Rendimiento detallado por asesora
             const agentList = Object.values(agentDataMap)
-                .filter(a => a.id !== 'otros_operadores' || a.count > 0)
+                .filter(a => a.id !== 'otros_operadores' || a.count > 0 || a.conversationsCount > 0)
                 .map(a => {
                     const avgTime = a.responseTimesMin.length > 0
                         ? Number((a.responseTimesMin.reduce((x, y) => x + y, 0) / a.responseTimesMin.length).toFixed(1))
@@ -921,8 +1038,18 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     const withinSla = a.responseTimesMin.filter(x => x <= 15).length;
                     const agentSlaPct = a.responseTimesMin.length > 0 ? Math.round((withinSla / a.responseTimesMin.length) * 100) : 100;
 
+                    const convPct = humanConversationsCount > 0
+                        ? Math.round((a.conversationsCount / humanConversationsCount) * 100)
+                        : 0;
+                    const msgPerConv = a.conversationsCount > 0
+                        ? Number((a.count / a.conversationsCount).toFixed(1))
+                        : (a.count > 0 ? a.count : 0);
+
                     return {
                         ...a,
+                        conversationsCount: a.conversationsCount,
+                        conversationsPct: convPct,
+                        avgMessagesPerConversation: msgPerConv,
                         avgResponseTimeMin: avgTime,
                         avgAgentFRTMin: avgFRT,
                         avgHandleTimeMin: avgHandle,
@@ -930,7 +1057,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         peakHour: `${maxHIdx.toString().padStart(2, '0')}:00 hs`,
                         slaCumplimientoPct: agentSlaPct,
                         totalAtendidos: a.responseTimesMin.length,
-                        assignedCount: a.assignedCount || a.resolvedCount || a.responseTimesMin.length
+                        assignedCount: a.assignedCount || a.resolvedCount || a.conversationsCount || a.responseTimesMin.length
                     };
                 })
                 .sort((a, b) => b.count - a.count);
@@ -967,7 +1094,16 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 agentMessages: agentCount,
                 botMessages: botCount,
                 totalIncoming: totalIn,
-                totalConversations: filteredConvs.length,
+                totalConversations: totalConversationsCount,
+                uniquePatientsCount,
+                humanConversationsCount,
+                botOnlyConversationsCount,
+                botConversationAutomationPct,
+                humanConversationPct,
+                avgConversationsPerPatient,
+                avgMessagesPerConversation,
+                multiSessionPatientsCount,
+                multiSessionPatientsPct,
                 closedConversationsCount: closedCount,
                 activeConversationsCount: activeCount,
                 byResolutionReason: reasonsMap,
@@ -1628,6 +1764,40 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '10px' }}>
                         {metrics.activeConversationsCount} conversaciones en curso
+                    </div>
+                </div>
+
+                {/* 6. CONVERSACIONES TOTALES (SESIONES DE ATENCIÓN) */}
+                <div style={{
+                    background: '#FFFFFF', borderRadius: '12px', padding: '18px 20px',
+                    border: '1px solid #E2E8F0', boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
+                    display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                Conversaciones
+                            </span>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942', marginTop: '4px' }}>
+                                {loading ? '...' : (metrics.totalConversations || 0).toLocaleString()}
+                            </div>
+                        </div>
+                        <div style={{
+                            width: '36px', height: '36px', borderRadius: '10px', background: '#F0F9FF',
+                            color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            border: '1px solid #BAE6FD'
+                        }}>
+                            <MessageSquare size={18} />
+                        </div>
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span style={{ color: '#0284C7', fontWeight: 700 }}>
+                            {metrics.uniquePatientsCount ? `${metrics.uniquePatientsCount.toLocaleString()} pacientes` : 'Pacientes únicos'}
+                        </span>
+                        <span>•</span>
+                        <span style={{ color: '#059669', fontWeight: 700 }}>
+                            ~{metrics.avgMessagesPerConversation || 0} msgs/conv
+                        </span>
                     </div>
                 </div>
             </div>
@@ -2666,6 +2836,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         </div>
 
                                         <div style={{
+                                            padding: '4px 8px', borderRadius: '6px', background: '#ECFDF5',
+                                            color: '#047857', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #A7F3D0'
+                                        }}>
+                                            💬 {ag.conversationsCount || 0} conv ({ag.conversationsPct || 0}%)
+                                        </div>
+
+                                        <div style={{
                                             padding: '4px 8px', borderRadius: '6px', background: '#F0F9FF',
                                             color: '#0369A1', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #BAE6FD'
                                         }}>
@@ -2710,7 +2887,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         }}>
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Total Despachos</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0F2942', marginTop: '2px' }}>{ag.count}</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0F2942', marginTop: '2px' }}>{ag.count.toLocaleString('es-AR')}</div>
+                                            </div>
+                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                                <div style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 700 }}>Conversaciones Atendidas</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.conversationsCount || 0}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>~{ag.avgMessagesPerConversation || 0} msgs/conv</div>
                                             </div>
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Chats Tomados</div>
@@ -3144,12 +3326,35 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                         <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>ATENCIÓN ASESORAS</div>
                                         <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0284C7' }}>{metrics.agentMessages.toLocaleString('es-AR')}</div>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{agentPct}% del total</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{agentPct}% de msgs salientes</div>
                                     </div>
                                     <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                         <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>AUTOMATIZACIÓN BOT</div>
                                         <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#8B5CF6' }}>{metrics.botMessages.toLocaleString('es-AR')}</div>
-                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{botPct}% del total</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{botPct}% de msgs salientes</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginTop: '10px' }}>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>CONVERSACIONES TOTALES</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0F2942' }}>{(metrics.totalConversations || 0).toLocaleString('es-AR')}</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>~{metrics.avgMessagesPerConversation || 0} msgs/conv</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>PACIENTES ÚNICOS</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0284C7' }}>{(metrics.uniquePatientsCount || 0).toLocaleString('es-AR')}</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{metrics.avgConversationsPerPatient || 1} conv/paciente</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>100% RESUELTO POR BOT</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#059669' }}>{(metrics.botOnlyConversationsCount || 0).toLocaleString('es-AR')}</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#059669', fontWeight: 600 }}>{metrics.botConversationAutomationPct || 0}% sin derivar</div>
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>CON ATENCIÓN ASESORA</div>
+                                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#D97706' }}>{(metrics.humanConversationsCount || 0).toLocaleString('es-AR')}</div>
+                                        <div style={{ fontSize: '0.65rem', color: '#64748B' }}>{metrics.humanConversationPct || 0}% derivadas</div>
                                     </div>
                                 </div>
                             </div>
@@ -3188,7 +3393,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
                                         <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
-                                            Incentivo Contact Center · Bolsa 1 (50% Productividad)
+                                             Incentivo Contact Center · Bolsa 1 (50% Productividad)
                                         </div>
                                         <div style={{ fontSize: '0.74rem', color: '#0F2942', marginTop: '2px' }}>
                                             Total mensajes humanos logrados: <strong>{metrics.agentMessages.toLocaleString('es-AR')}</strong> (Base: 6.500 • Meta: 7.500 • Tope: 8.500)
@@ -3215,6 +3420,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', textAlign: 'left' }}>
                                             <th style={{ padding: '8px 10px', color: '#475569' }}>Asesora</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Mensajes</th>
+                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Conversaciones</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Asignados</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Finalizados</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Demora Prom.</th>
@@ -3226,6 +3432,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             <tr key={ag.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                                                 <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0F2942' }}>{ag.name}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>{ag.count.toLocaleString('es-AR')}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>
+                                                    {ag.conversationsCount || 0}
+                                                    <span style={{ fontSize: '0.62rem', color: '#64748B', marginLeft: '4px', fontWeight: 400 }}>
+                                                        (~{ag.avgMessagesPerConversation || 0}/conv)
+                                                    </span>
+                                                </td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>{ag.assignedCount}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{ag.resolvedCount}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>{ag.avgResponseTimeMin} min</td>
