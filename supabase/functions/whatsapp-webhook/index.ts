@@ -6244,7 +6244,8 @@ async function handleNewPatientIntake(
     doctorDisplay: string | null,
     intentPromptPrefix?: string
 ): Promise<{ nextStage: string; replyText: string }> {
-    const extracted = await extractPatientVariables(cleanText, candidateDni);
+    const supabaseClient = (globalThis as any)._lastSupabaseClient || (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null);
+    const extracted = await extractPatientVariables(cleanText, candidateDni, supabaseClient, phone);
 
     // Prioridad DNI: Si la conversación ya tiene un DNI válido confirmado, se PRESERVA obligatoriamente.
     // Solo si no existe DNI previo se acepta candidateDni o extracted.dni (siempre que sean DNI válidos argentinos).
@@ -6264,6 +6265,40 @@ async function handleNewPatientIntake(
         motivo_consulta: extracted.motivo_consulta || updates.motivo_consulta || conv?.motivo_consulta || null,
         medico_o_especialidad: extracted.medico_o_especialidad || updates.medico_o_especialidad || conv?.medico_o_especialidad || null
     };
+
+    // REGLA CRÍTICA DE SEGURIDAD: Verificar que el nombre extraído NO sea un profesional médico o especialidad
+    if (mergedPatientData.nombre_completo) {
+        const docCheck = await detectIfCandidateIsDoctor(mergedPatientData.nombre_completo, cleanText, supabaseClient);
+        if (docCheck.isDoctor) {
+            console.log(`[triage-bot] ⚠️ mergedPatientData corregido: "${mergedPatientData.nombre_completo}" es profesional médico (${docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty}).`);
+            if (!mergedPatientData.medico_o_especialidad) {
+                mergedPatientData.medico_o_especialidad = docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty || mergedPatientData.nombre_completo;
+                updates.medico_o_especialidad = mergedPatientData.medico_o_especialidad;
+            }
+            mergedPatientData.nombre_completo = null;
+            delete updates.nombre_completo;
+        }
+    }
+
+    // Si tenemos DNI pero no nombre_completo, consultar si ya existe en hospital_pacientes para autocompletarlo
+    if (finalDni && !mergedPatientData.nombre_completo && supabaseClient) {
+        try {
+            const { data: pFound } = await supabaseClient
+                .from('hospital_pacientes')
+                .select('nombre, coseguro, fecha_nacimiento, centro')
+                .eq('dni', finalDni)
+                .maybeSingle();
+
+            if (pFound?.nombre) {
+                mergedPatientData.nombre_completo = pFound.nombre;
+                updates.nombre_completo = pFound.nombre;
+                updates.es_paciente_existente = true;
+                if (!mergedPatientData.obra_social && pFound.coseguro) mergedPatientData.obra_social = pFound.coseguro;
+                if (!mergedPatientData.fecha_nacimiento && pFound.fecha_nacimiento) mergedPatientData.fecha_nacimiento = pFound.fecha_nacimiento;
+                if (!mergedPatientData.departamento && pFound.centro) mergedPatientData.departamento = pFound.centro;
+            }
+        } catch (_) {}
+    }
 
     if (mergedPatientData.fecha_nacimiento && !mergedPatientData.edad) {
         mergedPatientData.edad = calculateAgeFromBirthDate(mergedPatientData.fecha_nacimiento);
@@ -6386,6 +6421,76 @@ async function handleNewPatientIntake(
 }
 
 /**
+ * Regex y funciones de seguridad clínica para evitar que el nombre de un médico o especialista
+ * sea confundido y cargado como el nombre de un paciente.
+ */
+const DOCTOR_SPECIALTY_PREFIX_REGEX = /^(?:dr\.?|dra\.?|doctora?|medico|médica|especialista|neumon[oó]log[ao]|neum[oó]log[ao]|pediatra|ginec[oó]log[ao]|obstetra|traumat[oó]log[ao]|cardi[oó]log[ao]|dermat[oó]log[ao]|oftalm[oó]log[ao]|ur[oó]log[ao]|otorrino(?:laring[oó]log[ao])?|neur[oó]log[ao]|nutricionista|cirujan[ao]|kinesi[oó]log[ao]|endocrin[oó]log[ao]|gastroenter[oó]log[ao]|psiquiatra|psic[oó]log[ao]|reumat[oó]log[ao]|hemat[oó]log[ao]|onc[oó]log[ao]|infect[oó]log[ao]|fisiatra|alergista)\b/i;
+
+function normalizeDoctorSearchStr(str: string): string {
+    return (str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .trim();
+}
+
+async function detectIfCandidateIsDoctor(
+    candidateName: string | null, 
+    fullText: string, 
+    supabaseClient?: any
+): Promise<{ isDoctor: boolean; matchedDoctor?: any; specialty?: string }> {
+    if (!candidateName) return { isDoctor: false };
+    const cleanCand = candidateName.trim();
+
+    // 1. Si el nombre comienza directamente con título o especialidad médica
+    if (DOCTOR_SPECIALTY_PREFIX_REGEX.test(cleanCand)) {
+        return { isDoctor: true, specialty: cleanCand };
+    }
+
+    // 2. Si alguna línea del texto completo comienza con título médico y contiene este nombre
+    const lines = fullText.split(/[\r\n,]+/).map(l => l.trim()).filter(Boolean);
+    for (const line of lines) {
+        if (DOCTOR_SPECIALTY_PREFIX_REGEX.test(line)) {
+            const firstWord = cleanCand.split(/\s+/)[0].toLowerCase();
+            if (firstWord.length >= 3 && line.toLowerCase().includes(firstWord)) {
+                return { isDoctor: true, specialty: line };
+            }
+        }
+    }
+
+    // 3. Verificación exhaustiva contra contact_center_doctor_parameters
+    if (supabaseClient) {
+        const normCand = normalizeDoctorSearchStr(cleanCand);
+        const parts = normCand.split(/\s+/).filter(p => p.length >= 3);
+        if (parts.length > 0) {
+            for (const part of parts) {
+                try {
+                    const { data: docs } = await supabaseClient
+                        .from('contact_center_doctor_parameters')
+                        .select('profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                        .ilike('profesional_nombre', `%${part}%`)
+                        .limit(10);
+
+                    if (docs && docs.length > 0) {
+                        for (const d of docs) {
+                            const normDoc = normalizeDoctorSearchStr(d.profesional_nombre);
+                            const docWords = normDoc.split(/\s+/).filter((w: string) => w.length >= 3);
+                            // Si todas las palabras del médico están en el nombre candidato
+                            if (docWords.length >= 2 && docWords.every((w: string) => parts.includes(w))) {
+                                return { isDoctor: true, matchedDoctor: d, specialty: d.especialidad };
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+        }
+    }
+
+    return { isDoctor: false };
+}
+
+/**
  * Extrae variables estructuradas del paciente nuevo
  */
 async function extractPatientVariables(
@@ -6496,7 +6601,11 @@ async function extractPatientVariables(
                             role: 'system',
                             content: `Eres el extractor clínico y administrativo del Contact Center de Sanatorio Argentino en San Juan, Argentina.
 Extrae del mensaje del paciente un JSON con los siguientes campos:
-- nombre_completo: Nombre y apellido del paciente a atender (string o null). No incluyas palabras como "Hola", "Doctor", "Turno", etc.
+- nombre_completo: Nombre y apellido del paciente a atender (string o null).
+  ¡REGLA ABSOLUTA DE SEGURIDAD CLÍNICA - NO CONFUNDIR CON MÉDICO/A!:
+  Si el paciente menciona el nombre de un profesional, doctor/a, médico/a o especialista (ej: "Neumologa Gómez Yamila Clarisa", "Dra. Gomez", "Dr Marquez", "con traumatologo Perez", "pediatra Maria Lopez"), ese nombre corresponde al PROFESIONAL MÉDICO SOLICITADO y DEBE ir obligatoriamente en "medico_o_especialidad".
+  BAJO NINGUNA CIRCUNSTANCIA pongas el nombre del médico/a en "nombre_completo".
+  Si el mensaje no contiene el nombre propio del paciente que se atenderá, "nombre_completo" DEBE SER null.
 - dni: Número de Documento Nacional de Identidad del paciente (solo 7 u 8 dígitos numéricos válidos en Argentina, que comiencen del 1 al 9) o null.
   ¡REGLA ABSOLUTA DE SEGURIDAD CLÍNICA!: NUNCA extraigas una fecha de nacimiento (ej: "04/07/2002", "04-07-2002", "04072002") como DNI. Un DNI argentino NUNCA comienza con 0.
   Si el paciente envía únicamente su nombre, fecha de nacimiento y localidad (ej: "Ramiro Javier Gutiérrez\\n04/07/2002\\nDepartamento rawson"), el campo "dni" DEBE SER OBLIGATORIAMENTE null.
@@ -6511,7 +6620,7 @@ Extrae del mensaje del paciente un JSON con los siguientes campos:
 - departamento: Localidad o departamento de San Juan donde reside (ej: Capital, Rawson, Rivadavia, Santa Lucía, Chimbas, Pocito, Caucete, etc.) o null.
 - telefono_contacto: Número de teléfono alternativo o null.
 - motivo_consulta: Breve síntesis de lo que necesita o null.
-- medico_o_especialidad: Profesional o especialidad requerida o null.
+- medico_o_especialidad: Profesional o especialidad requerida o null. Si menciona "Neumologa Gómez Yamila Clarisa", aquí va "Dra. Gómez Yamila Clarisa (Neumonóloga)".
 Si un dato no fue aportado en el texto, indícalo como null.`
                         },
                         {
@@ -6563,17 +6672,58 @@ Si un dato no fue aportado en el texto, indícalo como null.`
         }
     }
 
-    // Si tiene fecha de nacimiento y no tiene edad, calcularla
-    if (vars.fecha_nacimiento && !vars.edad) {
-        vars.edad = calculateAgeFromBirthDate(vars.fecha_nacimiento);
+    const sb = supabaseClient || (globalThis as any)._lastSupabaseClient;
+
+    // FILTRO DETERMINÍSTICO DE SEGURIDAD: Verificar que vars.nombre_completo NO sea un profesional médico o especialidad
+    if (vars.nombre_completo) {
+        const docCheck = await detectIfCandidateIsDoctor(vars.nombre_completo, text, sb);
+        if (docCheck.isDoctor) {
+            console.log(`[triage-bot] ⚠️ Corrección de seguridad: "${vars.nombre_completo}" es un profesional médico (${docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty}), no un paciente.`);
+            if (!vars.medico_o_especialidad) {
+                vars.medico_o_especialidad = docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty || vars.nombre_completo;
+            }
+            vars.nombre_completo = null;
+        }
     }
 
     // Fallback de nombre si no se obtuvo
     if (!vars.nombre_completo) {
         const lines = text.split(/[\r\n,]+/).map(l => l.trim()).filter(Boolean);
-        if (lines.length > 0 && lines[0].length < 40 && !/\d/.test(lines[0]) && !/^(hola|buenas|buen dia|turno|consulta)/i.test(lines[0])) {
-            vars.nombre_completo = lines[0];
+        for (const line of lines) {
+            if (line.length < 40 && !/\d/.test(line) && !/^(hola|buenas|buen dia|turno|consulta)/i.test(line) && !DOCTOR_SPECIALTY_PREFIX_REGEX.test(line)) {
+                const check = await detectIfCandidateIsDoctor(line, text, sb);
+                if (!check.isDoctor) {
+                    vars.nombre_completo = line;
+                    break;
+                } else if (!vars.medico_o_especialidad) {
+                    vars.medico_o_especialidad = check.matchedDoctor?.profesional_nombre || check.specialty || line;
+                }
+            }
         }
+    }
+
+    // Si tenemos DNI válido, verificar si ya existe en hospital_pacientes para autocompletar su nombre legal
+    if (vars.dni && isValidArgentineDni(vars.dni) && sb) {
+        try {
+            const { data: pFound } = await sb
+                .from('hospital_pacientes')
+                .select('nombre, coseguro, fecha_nacimiento, centro')
+                .eq('dni', vars.dni)
+                .maybeSingle();
+
+            if (pFound?.nombre) {
+                vars.nombre_completo = pFound.nombre;
+                vars.es_paciente_existente = true;
+                if (!vars.obra_social && pFound.coseguro) vars.obra_social = pFound.coseguro;
+                if (!vars.fecha_nacimiento && pFound.fecha_nacimiento) vars.fecha_nacimiento = pFound.fecha_nacimiento;
+                if (!vars.departamento && pFound.centro) vars.departamento = pFound.centro;
+            }
+        } catch (_) {}
+    }
+
+    // Si tiene fecha de nacimiento y no tiene edad, calcularla
+    if (vars.fecha_nacimiento && !vars.edad) {
+        vars.edad = calculateAgeFromBirthDate(vars.fecha_nacimiento);
     }
 
     return vars;
