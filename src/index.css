@@ -556,7 +556,9 @@ a {
   }
 
   .print-area,
-  .print-area * {
+  .print-area *,
+  .print-constancia-fichas,
+  .print-constancia-fichas * {
     visibility: visible !important;
   }
 
@@ -566,6 +568,15 @@ a {
     top: 0;
     width: 100%;
     display: block !important;
+  }
+
+  .print-constancia-fichas {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
   }
 
   .print-page {

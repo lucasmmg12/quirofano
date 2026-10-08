@@ -1,153 +1,240 @@
 /**
  * PrintConstanciaFichas.jsx — Plantilla de impresión A4 institucional para Entrega de Fichas de Admisión
+ * Sistema ADM-QUI · Sanatorio Argentino
  * 
- * Estética idéntica a Asociaciones / Garantías con logo oficial,
- * resumen de lote, detalle de admisiones, estado documental y firmas digitales.
+ * Estética institucional oficial:
+ * - Azul Sanatorio (#0D3B66) con acentos cyan (#0284C7)
+ * - Logo oficial con fallback vector / base64
+ * - Info Card de metadatos clínicos/administrativos del lote
+ * - Tabla estructurada con cabecera repetible y saltos de página fluidos
+ * - Badges de Documentación Completa / Incompleta
+ * - Bloque de Firmas digitales pre-cargadas / espacios para aclaración
+ * - Paginación y pie de página legal institucional
  */
 import React, { forwardRef } from 'react';
+import { SANATORIO_LOGO_BASE64 } from '../utils/sanatorioLogoBase64';
 
 const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }, ref) {
     if (!data || !data.items || data.items.length === 0) {
-        return <div ref={ref} />;
+        return <div ref={ref} className="print-constancia-fichas" style={{ display: 'none' }} />;
     }
 
     const {
-        codigo,
-        fecha,
-        responsableEntrega,
-        responsableRecibe,
-        firmaEntrega,
-        firmaRecibe,
-        observaciones,
+        codigo = 'ENT-FICHA-S/N',
+        fecha = new Date(),
+        responsableEntrega = 'Francisco',
+        responsableRecibe = 'Administración',
+        firmaEntrega = null,
+        firmaRecibe = null,
+        observaciones = '',
         items = []
     } = data;
 
-    const fechaHora = new Date(fecha || new Date()).toLocaleString('es-AR', {
+    const fechaHora = new Date(fecha).toLocaleString('es-AR', {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
     });
 
-    const completasCount = items.filter(i => (i.docEstado || i.estado_documentacion || i.ficha_doc_estado) !== 'incompleta').length;
+    const completasCount = items.filter(i => {
+        const est = (i.docEstado || i.estado_documentacion || i.ficha_doc_estado || '').toLowerCase();
+        return est !== 'incompleta';
+    }).length;
     const incompletasCount = items.length - completasCount;
 
     return (
-        <div ref={ref} className="print-constancia-fichas" style={{ display: 'none' }}>
+        <div ref={ref} className="print-constancia-fichas">
             <style>{`
+                @media screen {
+                    .print-constancia-fichas {
+                        display: none !important;
+                    }
+                }
                 @media print {
                     @page {
                         size: A4 portrait;
-                        margin: 10mm;
+                        margin: 10mm 10mm 14mm 10mm;
                     }
-                    body {
+                    html, body {
+                        background: #ffffff !important;
+                        color: #0f172a !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
+                    body * {
+                        visibility: hidden !important;
+                    }
+                    .print-constancia-fichas,
+                    .print-constancia-fichas * {
+                        visibility: visible !important;
+                        box-sizing: border-box !important;
+                    }
                     .print-constancia-fichas {
                         display: block !important;
-                        position: fixed;
-                        top: 0; left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: #fff;
-                        z-index: 9999999;
-                        font-family: 'Segoe UI', Arial, -apple-system, sans-serif;
-                        font-size: 10pt;
-                        color: #0f172a;
-                        padding: 12mm 10mm;
-                        box-sizing: border-box;
+                        position: absolute !important;
+                        top: 0 !important;
+                        left: 0 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        min-height: 100% !important;
+                        overflow: visible !important;
+                        background: #ffffff !important;
+                        z-index: 9999999 !important;
+                        font-family: 'Segoe UI', Arial, -apple-system, BlinkMacSystemFont, sans-serif !important;
+                        font-size: 8.5pt !important;
+                        color: #0f172a !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
                     }
-                    .print-constancia-fichas * {
-                        box-sizing: border-box;
+                    .print-constancia-table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        page-break-inside: auto !important;
                     }
-                    .no-print { display: none !important; }
+                    .print-constancia-table thead {
+                        display: table-header-group !important;
+                    }
+                    .print-constancia-table tbody tr {
+                        page-break-inside: avoid !important;
+                        page-break-after: auto !important;
+                    }
+                    .print-constancia-signatures {
+                        page-break-inside: avoid !important;
+                        margin-top: 16px !important;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
                 }
             `}</style>
 
-            {/* Header Institucional */}
+            {/* Encabezado Azul Institucional */}
             <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                borderBottom: '3px solid #0f172a', paddingBottom: '12px', marginBottom: '14px',
+                background: '#0D3B66',
+                color: '#ffffff',
+                padding: '12px 16px',
+                borderRadius: '6px 6px 0 0',
+                borderBottom: '3px solid #0284C7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '12px'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <img
-                        src="/logosanatorio.png"
-                        alt="Sanatorio Argentino"
-                        style={{ width: '48px', height: '48px', objectFit: 'contain' }}
-                        onError={(e) => { e.target.style.display = 'none'; }}
-                    />
+                    <div style={{
+                        width: '44px',
+                        height: '44px',
+                        background: '#ffffff',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        padding: '2px',
+                        flexShrink: 0
+                    }}>
+                        <img
+                            src="/logosanatorio.png"
+                            alt="Sanatorio Argentino"
+                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = SANATORIO_LOGO_BASE64;
+                            }}
+                        />
+                    </div>
                     <div>
-                        <div style={{ fontSize: '13pt', fontWeight: 900, letterSpacing: '-0.3px', color: '#0f172a' }}>
+                        <div style={{ fontSize: '13pt', fontWeight: 900, letterSpacing: '-0.3px', color: '#ffffff' }}>
                             SANATORIO ARGENTINO
                         </div>
-                        <div style={{ fontSize: '8.5pt', color: '#64748b', fontWeight: 600 }}>
-                            Recepción · Mesa de Entradas & Administración
+                        <div style={{ fontSize: '8pt', color: '#cbd5e1', fontWeight: 600 }}>
+                            Mesa de Entradas · Recepción & Control de Admisiones
+                        </div>
+                        <div style={{ fontSize: '7.5pt', color: '#94a3b8' }}>
+                            Transferencia Oficial de Documentación y Fichas Físicas
                         </div>
                     </div>
                 </div>
+
                 <div style={{ textAlign: 'right' }}>
                     <div style={{
-                        fontSize: '11pt', fontWeight: 900,
-                        color: '#0284c7', letterSpacing: '0.3px',
+                        fontSize: '11pt',
+                        fontWeight: 900,
+                        color: '#38bdf8',
+                        letterSpacing: '0.4px'
                     }}>
-                        CONSTANCIA DE ENTREGA DE FICHAS
+                        CONSTANCIA DE ENTREGA
                     </div>
-                    <div style={{ fontSize: '8.5pt', color: '#64748b', fontWeight: 700 }}>
-                        Control de Admisiones y Documentación
+                    <div style={{ fontSize: '8pt', color: '#cbd5e1', fontWeight: 700 }}>
+                        Circuito Administrativo ADM-QUI
+                    </div>
+                    <div style={{ fontSize: '8pt', color: '#ffffff', fontFamily: 'monospace', fontWeight: 800, marginTop: '2px' }}>
+                        Ref: {codigo}
                     </div>
                 </div>
             </div>
 
-            {/* Info Box */}
+            {/* Info Box / Resumen del Lote */}
             <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
-                padding: '8px 12px', marginBottom: '14px',
-                background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(5, 1fr)',
+                padding: '8px 12px',
+                marginBottom: '12px',
+                background: '#f8fafc',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
                 gap: '8px'
             }}>
                 <div>
-                    <span style={{ fontSize: '7.5pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Remito / Código</span>
-                    <div style={{ fontSize: '9.5pt', fontWeight: 800, fontFamily: 'monospace', color: '#0f172a' }}>{codigo || '—'}</div>
+                    <span style={{ fontSize: '7pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Remito / Código</span>
+                    <div style={{ fontSize: '9pt', fontWeight: 800, fontFamily: 'monospace', color: '#0d3b66' }}>{codigo || '—'}</div>
                 </div>
                 <div>
-                    <span style={{ fontSize: '7.5pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Fecha y Hora</span>
-                    <div style={{ fontSize: '9pt', fontWeight: 700, color: '#0f172a' }}>{fechaHora}</div>
+                    <span style={{ fontSize: '7pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Fecha y Hora</span>
+                    <div style={{ fontSize: '8.5pt', fontWeight: 700, color: '#0f172a' }}>{fechaHora}</div>
                 </div>
                 <div>
-                    <span style={{ fontSize: '7.5pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Entrega (Recepción)</span>
-                    <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0284c7' }}>{responsableEntrega || 'Francisco'}</div>
+                    <span style={{ fontSize: '7pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Entrega (Recepción)</span>
+                    <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0284c7' }}>{responsableEntrega || 'Francisco'}</div>
                 </div>
                 <div>
-                    <span style={{ fontSize: '7.5pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Recibe (Administración)</span>
-                    <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0f172a' }}>{responsableRecibe || 'Administración'}</div>
+                    <span style={{ fontSize: '7pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Recibe (Administración)</span>
+                    <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0f172a' }}>{responsableRecibe || 'Administración'}</div>
                 </div>
                 <div>
-                    <span style={{ fontSize: '7.5pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Total Fichas</span>
-                    <div style={{ fontSize: '9.5pt', fontWeight: 800, color: '#0f172a' }}>
+                    <span style={{ fontSize: '7pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Total Fichas</span>
+                    <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0f172a' }}>
                         {items.length} {incompletasCount > 0 ? (
-                            <span style={{ fontSize: '7.5pt', color: '#d97706', fontWeight: 700 }}>({incompletasCount} inc.)</span>
+                            <span style={{ fontSize: '7.5pt', color: '#b45309', fontWeight: 800 }}>({incompletasCount} inc.)</span>
                         ) : (
-                            <span style={{ fontSize: '7.5pt', color: '#16a34a', fontWeight: 700 }}>(100% comp.)</span>
+                            <span style={{ fontSize: '7.5pt', color: '#16a34a', fontWeight: 800 }}>(100% comp.)</span>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* Tabla de Fichas */}
-            <table style={{
-                width: '100%', borderCollapse: 'collapse', marginBottom: '14px',
-                fontSize: '8.5pt', border: '1px solid #cbd5e1'
+            {/* Tabla de Fichas de Admisión */}
+            <table className="print-constancia-table" style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                marginBottom: '14px',
+                fontSize: '8pt',
+                border: '1px solid #cbd5e1'
             }}>
                 <thead>
-                    <tr style={{ background: '#0f172a', color: '#ffffff' }}>
-                        <th style={{ padding: '5px 6px', textAlign: 'center', width: '24px', fontWeight: 700 }}>#</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700, width: '65px' }}>Ingreso</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700, width: '65px' }}>N° Adm.</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700 }}>Paciente</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700, width: '70px' }}>DNI / NHC</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700 }}>Obra Social / Prepaga</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700 }}>Especialidad</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'left', fontWeight: 700 }}>Recepcionó</th>
-                        <th style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 700, width: '90px' }}>Estado Docs</th>
+                    <tr style={{ background: '#0D3B66', color: '#ffffff' }}>
+                        <th style={{ padding: '6px 5px', textAlign: 'center', width: '22px', fontWeight: 800, border: '1px solid #0D3B66' }}>#</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'center', fontWeight: 800, width: '55px', border: '1px solid #0D3B66' }}>Ingreso</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'left', fontWeight: 800, width: '65px', border: '1px solid #0D3B66' }}>N° Adm.</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'left', fontWeight: 800, border: '1px solid #0D3B66' }}>Paciente</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'left', fontWeight: 800, width: '75px', border: '1px solid #0D3B66' }}>DNI / NHC</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'left', fontWeight: 800, border: '1px solid #0D3B66' }}>Obra Social / Prepaga</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'left', fontWeight: 800, border: '1px solid #0D3B66' }}>Especialidad</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'left', fontWeight: 800, width: '75px', border: '1px solid #0D3B66' }}>Recepcionó</th>
+                        <th style={{ padding: '6px 5px', textAlign: 'center', fontWeight: 800, width: '85px', border: '1px solid #0D3B66' }}>Estado Docs</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -160,44 +247,44 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
                                 background: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
                                 borderBottom: '1px solid #e2e8f0',
                             }}>
-                                <td style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 700, color: '#64748b' }}>
+                                <td style={{ padding: '4px 5px', textAlign: 'center', fontWeight: 700, color: '#64748b', border: '1px solid #e2e8f0' }}>
                                     {idx + 1}
                                 </td>
-                                <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '4px 5px', textAlign: 'center', whiteSpace: 'nowrap', border: '1px solid #e2e8f0' }}>
                                     {item.fecha_ingreso ? new Date(item.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—'}
                                 </td>
-                                <td style={{ padding: '4px 6px', fontWeight: 700, fontFamily: 'monospace' }}>
+                                <td style={{ padding: '4px 5px', fontWeight: 800, fontFamily: 'monospace', color: '#0d3b66', border: '1px solid #e2e8f0' }}>
                                     {item.numero_admision || '—'}
                                 </td>
-                                <td style={{ padding: '4px 6px', fontWeight: 700, color: '#0f172a' }}>
+                                <td style={{ padding: '4px 5px', fontWeight: 700, color: '#0f172a', border: '1px solid #e2e8f0' }}>
                                     {item.paciente}
                                 </td>
-                                <td style={{ padding: '4px 6px', fontFamily: 'monospace', fontSize: '8pt' }}>
+                                <td style={{ padding: '4px 5px', fontFamily: 'monospace', fontSize: '7.5pt', border: '1px solid #e2e8f0' }}>
                                     {item.dni || item.id_paciente || '—'}
-                                    {item.nhc && item.nhc !== '—' && <span style={{ color: '#64748b' }}> ({item.nhc})</span>}
+                                    {item.nhc && item.nhc !== '—' && <div style={{ color: '#64748b', fontSize: '7pt' }}>NHC: {item.nhc}</div>}
                                 </td>
-                                <td style={{ padding: '4px 6px' }}>
+                                <td style={{ padding: '4px 5px', border: '1px solid #e2e8f0' }}>
                                     {item.cliente || 'Particular'}
                                 </td>
-                                <td style={{ padding: '4px 6px', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '4px 5px', border: '1px solid #e2e8f0', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {item.especialidad || '—'}
                                 </td>
-                                <td style={{ padding: '4px 6px', color: '#475569' }}>
+                                <td style={{ padding: '4px 5px', color: '#475569', border: '1px solid #e2e8f0', fontSize: '7.5pt' }}>
                                     {item.responsableRecepcion || item.responsable_recepcion || item.operador || 'Recepción'}
                                 </td>
-                                <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                <td style={{ padding: '4px 5px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
                                     {isIncompleta ? (
                                         <div style={{
-                                            background: '#fef3c7', color: '#92400e', padding: '2px 5px',
-                                            borderRadius: '4px', fontSize: '7pt', fontWeight: 800, border: '1px solid #fde68a'
+                                            background: '#fef3c7', color: '#92400e', padding: '2px 4px',
+                                            borderRadius: '4px', fontSize: '6.8pt', fontWeight: 800, border: '1px solid #fde68a'
                                         }}>
                                             ⚠️ INCOMPLETA
-                                            {motivo && <div style={{ fontWeight: 500, fontSize: '6.5pt' }}>{motivo}</div>}
+                                            {motivo && <div style={{ fontWeight: 500, fontSize: '6pt', marginTop: '1px' }}>{motivo}</div>}
                                         </div>
                                     ) : (
                                         <div style={{
-                                            background: '#dcfce7', color: '#166534', padding: '2px 5px',
-                                            borderRadius: '4px', fontSize: '7pt', fontWeight: 800, border: '1px solid #bbf7d0'
+                                            background: '#dcfce7', color: '#166534', padding: '2px 4px',
+                                            borderRadius: '4px', fontSize: '6.8pt', fontWeight: 800, border: '1px solid #bbf7d0'
                                         }}>
                                             ✓ COMPLETA
                                         </div>
@@ -209,54 +296,73 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
                 </tbody>
             </table>
 
-            {/* Observaciones si las hay */}
-            {observaciones && (
+            {/* Observaciones Generales */}
+            {observaciones && observaciones.trim() && (
                 <div style={{
-                    padding: '6px 10px', marginBottom: '14px',
-                    background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px',
-                    fontSize: '8.5pt', color: '#92400e'
+                    padding: '8px 12px',
+                    marginBottom: '14px',
+                    background: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: '6px',
+                    fontSize: '8pt',
+                    color: '#92400e',
+                    pageBreakInside: 'avoid'
                 }}>
-                    <strong>Observaciones generales:</strong> {observaciones}
+                    <strong style={{ textTransform: 'uppercase', marginRight: '6px' }}>Observaciones generales:</strong>
+                    <span>{observaciones}</span>
                 </div>
             )}
 
-            {/* Bloque de Firmas Digitales */}
-            <div style={{
-                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px',
-                marginTop: '16px', pageBreakInside: 'avoid'
+            {/* Bloque de Firmas Institucionales */}
+            <div className="print-constancia-signatures" style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '24px',
+                marginTop: '16px',
+                pageBreakInside: 'avoid'
             }}>
                 {/* Firma Entrega */}
                 <div style={{
-                    border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px 14px',
-                    textAlign: 'center', background: '#f8fafc'
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '10px 14px',
+                    textAlign: 'center',
+                    background: '#f8fafc'
                 }}>
                     <div style={{
-                        fontSize: '7.5pt', fontWeight: 800, textTransform: 'uppercase',
-                        color: '#64748b', letterSpacing: '0.5px', marginBottom: '6px'
+                        fontSize: '7pt',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#64748b',
+                        letterSpacing: '0.5px',
+                        marginBottom: '4px'
                     }}>
                         ENTREGADO POR (RECEPCIÓN / CADETERÍA)
                     </div>
 
                     <div style={{
-                        height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        height: '52px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         marginBottom: '4px'
                     }}>
                         {firmaEntrega ? (
                             <img
                                 src={firmaEntrega}
                                 alt="Firma Entrega"
-                                style={{ maxHeight: '55px', maxWidth: '85%', objectFit: 'contain' }}
+                                style={{ maxHeight: '48px', maxWidth: '80%', objectFit: 'contain' }}
                             />
                         ) : (
-                            <div style={{ borderBottom: '1px dashed #94a3b8', width: '70%', height: '35px' }} />
+                            <div style={{ borderBottom: '1px dashed #94a3b8', width: '70%', height: '30px' }} />
                         )}
                     </div>
 
-                    <div style={{ borderTop: '2px solid #0f172a', paddingTop: '4px', width: '85%', margin: '0 auto' }}>
-                        <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0f172a' }}>
+                    <div style={{ borderTop: '2px solid #0D3B66', paddingTop: '4px', width: '85%', margin: '0 auto' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0D3B66' }}>
                             {responsableEntrega || 'Francisco'}
                         </div>
-                        <div style={{ fontSize: '7.5pt', color: '#64748b' }}>
+                        <div style={{ fontSize: '7pt', color: '#64748b' }}>
                             Firma y Aclaración de quien entrega
                         </div>
                     </div>
@@ -264,36 +370,46 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
 
                 {/* Firma Recibe */}
                 <div style={{
-                    border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px 14px',
-                    textAlign: 'center', background: '#f8fafc'
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '10px 14px',
+                    textAlign: 'center',
+                    background: '#f8fafc'
                 }}>
                     <div style={{
-                        fontSize: '7.5pt', fontWeight: 800, textTransform: 'uppercase',
-                        color: '#64748b', letterSpacing: '0.5px', marginBottom: '6px'
+                        fontSize: '7pt',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#64748b',
+                        letterSpacing: '0.5px',
+                        marginBottom: '4px'
                     }}>
                         RECIBIDO POR (ADMINISTRACIÓN)
                     </div>
 
                     <div style={{
-                        height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        height: '52px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         marginBottom: '4px'
                     }}>
                         {firmaRecibe ? (
                             <img
                                 src={firmaRecibe}
                                 alt="Firma Recibe"
-                                style={{ maxHeight: '55px', maxWidth: '85%', objectFit: 'contain' }}
+                                style={{ maxHeight: '48px', maxWidth: '80%', objectFit: 'contain' }}
                             />
                         ) : (
-                            <div style={{ borderBottom: '1px dashed #94a3b8', width: '70%', height: '35px' }} />
+                            <div style={{ borderBottom: '1px dashed #94a3b8', width: '70%', height: '30px' }} />
                         )}
                     </div>
 
-                    <div style={{ borderTop: '2px solid #0f172a', paddingTop: '4px', width: '85%', margin: '0 auto' }}>
-                        <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0f172a' }}>
+                    <div style={{ borderTop: '2px solid #0D3B66', paddingTop: '4px', width: '85%', margin: '0 auto' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 800, color: '#0D3B66' }}>
                             {responsableRecibe || 'Administración'}
                         </div>
-                        <div style={{ fontSize: '7.5pt', color: '#64748b' }}>
+                        <div style={{ fontSize: '7pt', color: '#64748b' }}>
                             Firma y Aclaración de quien recibe
                         </div>
                     </div>
@@ -302,12 +418,17 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
 
             {/* Pie de página institucional */}
             <div style={{
-                position: 'fixed', bottom: '10mm', left: '10mm', right: '10mm',
-                borderTop: '1px solid #e2e8f0', paddingTop: '6px',
-                display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#94a3b8'
+                marginTop: '16px',
+                borderTop: '1px solid #cbd5e1',
+                paddingTop: '6px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '6.8pt',
+                color: '#94a3b8',
+                pageBreakInside: 'avoid'
             }}>
                 <span>Sanatorio Argentino · Constancia Oficial de Transferencia de Admisiones Físicas</span>
-                <span>Documento generado por Plataforma Integral de Sanatorio Argentino</span>
+                <span>Sistema ADM-QUI · Generado el {fechaHora}</span>
             </div>
         </div>
     );

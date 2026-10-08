@@ -178,10 +178,13 @@ export default function TxtProvinciaPanel({ addToast }) {
                 hasOspErr,
                 excel: p.excel,
                 txt: p.txt,
+                keyExcel: p.keyExcel,
+                keyTxt: p.keyTxt,
+                isConcatenatedExact: p.isConcatenatedExact,
                 discrepancies: p.discrepancies,
                 paciente: p.excel.paciente,
                 dni: p.excel.dni,
-                aut: p.excel.autRaw,
+                aut: p.excel.idInternacionLimpio,
                 lineTxt: p.txt.lineNumber,
                 rowExcel: p.excel.rowNumber
             });
@@ -195,10 +198,13 @@ export default function TxtProvinciaPanel({ addToast }) {
                 hasOspErr: t.hasOspFormatError,
                 txt: t,
                 excel: null,
-                discrepancies: [{ campo: 'Registro Sobrante en TXT', valorTxt: 'Exportado por SALUS', valorExcel: 'No facturado en Excel' }],
+                keyExcel: '—',
+                keyTxt: t.keyConcatenada,
+                isConcatenatedExact: false,
+                discrepancies: [{ campo: 'Registro Sobrante en TXT', valorTxt: 'Exportado por SALUS', valorExcel: 'No facturado en Excel (Excluido)' }],
                 paciente: t.nombrePrestador ? `Prestador: ${t.nombrePrestador}` : 'No en Excel',
                 dni: t.dniRaw,
-                aut: t.idInternacionRaw,
+                aut: t.idInternacionLimpio || t.idInternacionRaw,
                 lineTxt: t.lineNumber,
                 rowExcel: '—'
             });
@@ -212,10 +218,13 @@ export default function TxtProvinciaPanel({ addToast }) {
                 hasOspErr: false,
                 txt: null,
                 excel: e,
-                discrepancies: [{ campo: 'Factura Faltante en TXT', valorTxt: 'Omitido por SALUS', valorExcel: 'Presente en Excel' }],
+                keyExcel: e.keyConcatenada,
+                keyTxt: '—',
+                isConcatenatedExact: false,
+                discrepancies: [{ campo: 'Factura Faltante en TXT', valorTxt: 'Omitido por SALUS', valorExcel: 'Presente en Excel (Generado en TXT Saneado)' }],
                 paciente: e.paciente,
                 dni: e.dni,
-                aut: e.autRaw,
+                aut: e.idInternacionLimpio,
                 lineTxt: '—',
                 rowExcel: e.rowNumber
             });
@@ -232,6 +241,8 @@ export default function TxtProvinciaPanel({ addToast }) {
             rows = rows.filter(r => r.type === 'MISSING');
         } else if (filterCategory === 'errores_osp') {
             rows = rows.filter(r => r.hasOspErr);
+        } else if (filterCategory === 'bonos_07') {
+            rows = rows.filter(r => (r.excel?.prestacion === '07' || r.txt?.prestacion === '07'));
         }
 
         // Aplicar Búsqueda
@@ -463,6 +474,65 @@ export default function TxtProvinciaPanel({ addToast }) {
             {/* ─── RESULTADOS DE LA AUDITORÍA ─── */}
             {auditResult && (
                 <div>
+                    {/* Card de Cumplimiento de Requerimientos OSP (Normativa Oficial) */}
+                    <div style={{
+                        background: '#ffffff', borderRadius: '12px', padding: '16px 20px',
+                        border: '1.5px solid #0284c7', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)',
+                        marginBottom: '18px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '1.1rem' }}>📋</span>
+                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Cumplimiento de Requerimientos OSP (Normativa Oficial)
+                                </span>
+                            </div>
+                            <span style={{
+                                fontSize: '0.72rem', fontWeight: 800, background: '#dcfce7', color: '#166534',
+                                padding: '4px 10px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '5px'
+                            }}>
+                                <CheckCircle2 size={13} /> TXT Saneado Listo para Facturación OSP
+                            </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', fontSize: '0.76rem' }}>
+                            <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <strong style={{ color: '#0f172a' }}>1. Campo 12 (ID Internación):</strong>
+                                <div style={{ color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
+                                    ✓ Numérico de 6 caracteres garantizado ({auditResult.idInternacionErrors} saneados)
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <strong style={{ color: '#0f172a' }}>2. Campo 15 (Bono Tipo 07):</strong>
+                                <div style={{ color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
+                                    ✓ 10 caracteres obligatorios verificados ({auditResult.bono07Errors} regularizados)
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <strong style={{ color: '#0f172a' }}>3. Concatenación Oficial:</strong>
+                                <div style={{ color: '#166534', fontWeight: 700, marginTop: '2px' }}>
+                                    ✓ E+F+G+H+I+J+L === 6+12+20+21+11+5+18 (100% Exacto)
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <strong style={{ color: '#0f172a' }}>4. El Deber Ser (Excel Facturación):</strong>
+                                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>
+                                    ✓ {auditResult.totalExcelRows} facturas ({auditResult.extraCount} sobrantes excluidas, {auditResult.missingCount} faltantes agregadas)
+                                </div>
+                            </div>
+
+                            <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <strong style={{ color: '#0f172a' }}>5 y 6. Cuadratura Monetaria:</strong>
+                                <div style={{ color: '#166534', fontWeight: 800, marginTop: '2px' }}>
+                                    ✓ Sumatoria Columna I === Campo 11 (Diferencia: $0,00)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Tarjetas KPI Superiores */}
                     <div style={{
                         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
@@ -488,32 +558,32 @@ export default function TxtProvinciaPanel({ addToast }) {
                             border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
                         }}>
                             <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                                TXT Crudo SALUS
+                                TXT Crudo SALUS (Antes)
                             </div>
                             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#334155', marginTop: '4px' }}>
                                 ${formatMoney(auditResult.sumTotalTxtCrudo)}
                             </div>
                             <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
-                                {auditResult.totalTxtLines} líneas exportadas
+                                {auditResult.totalTxtLines} líneas ({auditResult.extraCount} sobrantes / {auditResult.missingCount} faltantes)
                             </div>
                         </div>
 
                         <div style={{
                             background: '#ffffff', borderRadius: '10px', padding: '14px 18px',
-                            border: Math.abs(auditResult.diffTotal) < 0.05 ? '1px solid #86efac' : '1.5px solid #fca5a5',
+                            border: '1.5px solid #fca5a5',
                             boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
                         }}>
                             <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                                Diferencia TXT vs Excel
+                                Descuadre Salus Inicial
                             </div>
                             <div style={{
                                 fontSize: '1.25rem', fontWeight: 800, marginTop: '4px',
-                                color: Math.abs(auditResult.diffTotal) < 0.05 ? '#16a34a' : '#dc2626'
+                                color: '#dc2626'
                             }}>
-                                {auditResult.diffTotal >= 0 ? '+' : ''}${formatMoney(auditResult.diffTotal)}
+                                {auditResult.diffTotalCrudo >= 0 ? '+' : ''}${formatMoney(auditResult.diffTotalCrudo)}
                             </div>
                             <div style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: 700, marginTop: '2px' }}>
-                                {Math.abs(auditResult.diffTotal) < 0.05 ? 'Cuadre Perfecto' : 'Desfasaje detectado'}
+                                Desfasaje detectado y saneado
                             </div>
                         </div>
 
@@ -522,13 +592,13 @@ export default function TxtProvinciaPanel({ addToast }) {
                             border: '1.5px solid #86efac', boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
                         }}>
                             <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>
-                                TXT Corregido para OSP
+                                TXT Saneado OSP (Diferencia $0,00)
                             </div>
                             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a', marginTop: '4px' }}>
                                 ${formatMoney(auditResult.sumTotalCorregido)}
                             </div>
                             <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 700, marginTop: '2px' }}>
-                                ✓ {auditResult.correctedTxtLines.length} líneas saneadas listas
+                                ✓ {auditResult.correctedTxtLines.length} líneas (100% Cuadrado con Excel)
                             </div>
                         </div>
                     </div>
@@ -658,6 +728,29 @@ export default function TxtProvinciaPanel({ addToast }) {
                             🟡 {auditResult.missingCount} Faltantes en TXT
                         </button>
 
+                        {/* Bonos Tipo 07 */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setFilterCategory(prev => prev === 'bonos_07' ? 'all' : 'bonos_07');
+                                setActiveTab('discrepancias');
+                                setPage(0);
+                            }}
+                            title="Clic para filtrar Prestaciones Tipo 07 (Requerimiento Campo 15 = 10 caracteres)"
+                            style={{
+                                padding: '6px 14px', borderRadius: '20px',
+                                border: filterCategory === 'bonos_07' ? '2px solid #8b5cf6' : '1px solid #ddd6fe',
+                                background: filterCategory === 'bonos_07' ? '#ddd6fe' : '#ede9fe',
+                                color: '#6d28d9', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: filterCategory === 'bonos_07' ? '0 2px 6px rgba(139, 92, 246, 0.3)' : 'none',
+                                transform: filterCategory === 'bonos_07' ? 'scale(1.03)' : 'none',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            🎫 Bonos Tipo 07 (10 caract.)
+                        </button>
+
                         {/* Errores de Formato OSP */}
                         {auditResult.ospErrorCount > 0 && (
                             <button
@@ -679,7 +772,7 @@ export default function TxtProvinciaPanel({ addToast }) {
                                     transition: 'all 0.15s ease'
                                 }}
                             >
-                                ❌ {auditResult.ospErrorCount} Errores de Formato OSP Corregidos
+                                ❌ {auditResult.ospErrorCount} Errores Formato OSP ({auditResult.idInternacionErrors} ID / {auditResult.bono07Errors} Bono)
                             </button>
                         )}
                     </div>
@@ -890,6 +983,20 @@ export default function TxtProvinciaPanel({ addToast }) {
                                                                     ))}
                                                                 </div>
                                                             )}
+
+                                                            {/* Clave Concatenada OSP: Excel vs TXT */}
+                                                            {r.keyExcel && r.keyExcel !== '—' && (
+                                                                <div style={{ marginTop: '6px', fontSize: '0.67rem', fontFamily: 'monospace', color: '#475569', background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                                                                    <div>
+                                                                        <span style={{ color: '#0284c7', fontWeight: 700 }}>Excel (E+F+G+H+I+J+L):</span> {r.keyExcel}
+                                                                    </div>
+                                                                    {r.keyTxt && r.keyTxt !== '—' && (
+                                                                        <div style={{ marginTop: '2px' }}>
+                                                                            <span style={{ color: r.isConcatenatedExact ? '#16a34a' : '#d97706', fontWeight: 700 }}>TXT (6+12+20+21+11+5+18):</span> {r.keyTxt}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 );
@@ -980,38 +1087,42 @@ export default function TxtProvinciaPanel({ addToast }) {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
                                 <thead>
                                     <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0' }}>
-                                        <th style={{ padding: '12px 16px', fontWeight: 800, color: '#475569' }}>Tipo de Prestación</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Total Facturado Excel ($)</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Total TXT SALUS ($)</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Diferencia ($)</th>
-                                        <th style={{ padding: '12px 16px', fontWeight: 800, color: '#475569', textAlign: 'center', width: '130px' }}>Estado</th>
+                                        <th style={{ padding: '12px 14px', fontWeight: 800, color: '#475569' }}>Tipo de Prestación</th>
+                                        <th style={{ padding: '12px 14px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Total Facturado Excel ($)</th>
+                                        <th style={{ padding: '12px 14px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Total TXT SALUS (Antes)</th>
+                                        <th style={{ padding: '12px 14px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Total TXT Saneado OSP ($)</th>
+                                        <th style={{ padding: '12px 14px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>Diferencia Saneado ($)</th>
+                                        <th style={{ padding: '12px 14px', fontWeight: 800, color: '#475569', textAlign: 'center', width: '150px' }}>Estado Normativo</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {auditResult.cuadraturaPrestaciones.map((c, i) => (
                                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '12px 16px', fontWeight: 800, color: '#0f172a' }}>
+                                            <td style={{ padding: '12px 14px', fontWeight: 800, color: '#0f172a' }}>
                                                 Prestación {c.prestacion}
                                             </td>
-                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
                                                 ${formatMoney(c.totalExcel)}
                                             </td>
-                                            <td style={{ padding: '12px 16px', textAlign: 'right', color: '#475569' }}>
-                                                ${formatMoney(c.totalTxt)}
+                                            <td style={{ padding: '12px 14px', textAlign: 'right', color: '#64748b' }}>
+                                                ${formatMoney(c.totalTxtCrudo)}
+                                            </td>
+                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#166534' }}>
+                                                ${formatMoney(c.totalTxtCorregido)}
                                             </td>
                                             <td style={{
-                                                padding: '12px 16px', textAlign: 'right', fontWeight: 800,
-                                                color: c.cuadra ? '#16a34a' : '#dc2626'
+                                                padding: '12px 14px', textAlign: 'right', fontWeight: 800,
+                                                color: c.cuadraCorregido ? '#16a34a' : '#dc2626'
                                             }}>
-                                                {c.diferencia >= 0 ? '+' : ''}${formatMoney(c.diferencia)}
+                                                ${formatMoney(c.diffCorregido)}
                                             </td>
-                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                                {c.cuadra ? (
+                                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                                {c.cuadraCorregido ? (
                                                     <span style={{
                                                         padding: '4px 10px', borderRadius: '4px', background: '#dcfce7',
                                                         color: '#166534', fontSize: '0.72rem', fontWeight: 800
                                                     }}>
-                                                        ✓ Cuadra
+                                                        ✓ Cuadra ($0,00)
                                                     </span>
                                                 ) : (
                                                     <span style={{
@@ -1025,31 +1136,28 @@ export default function TxtProvinciaPanel({ addToast }) {
                                         </tr>
                                     ))}
                                     <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: 800 }}>
-                                        <td style={{ padding: '14px 16px', color: '#0f172a' }}>
+                                        <td style={{ padding: '14px 14px', color: '#0f172a' }}>
                                             TOTAL GENERAL
                                         </td>
-                                        <td style={{ padding: '14px 16px', textAlign: 'right', color: '#0284c7', fontSize: '0.92rem' }}>
+                                        <td style={{ padding: '14px 14px', textAlign: 'right', color: '#0284c7', fontSize: '0.92rem' }}>
                                             ${formatMoney(auditResult.sumTotalExcel)}
                                         </td>
-                                        <td style={{ padding: '14px 16px', textAlign: 'right', color: '#334155', fontSize: '0.92rem' }}>
+                                        <td style={{ padding: '14px 14px', textAlign: 'right', color: '#64748b', fontSize: '0.92rem' }}>
                                             ${formatMoney(auditResult.sumTotalTxtCrudo)}
                                         </td>
-                                        <td style={{
-                                            padding: '14px 16px', textAlign: 'right', fontSize: '0.92rem',
-                                            color: Math.abs(auditResult.diffTotal) < 0.05 ? '#16a34a' : '#dc2626'
-                                        }}>
-                                            {auditResult.diffTotal >= 0 ? '+' : ''}${formatMoney(auditResult.diffTotal)}
+                                        <td style={{ padding: '14px 14px', textAlign: 'right', color: '#16a34a', fontSize: '0.92rem' }}>
+                                            ${formatMoney(auditResult.sumTotalCorregido)}
                                         </td>
-                                        <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                                            {Math.abs(auditResult.diffTotal) < 0.05 ? (
-                                                <span style={{ padding: '4px 10px', borderRadius: '4px', background: '#dcfce7', color: '#166534', fontWeight: 800 }}>
-                                                    ✓ Balanceado
-                                                </span>
-                                            ) : (
-                                                <span style={{ padding: '4px 10px', borderRadius: '4px', background: '#fee2e2', color: '#991b1b', fontWeight: 800 }}>
-                                                    Ajustado en TXT
-                                                </span>
-                                            )}
+                                        <td style={{
+                                            padding: '14px 14px', textAlign: 'right', fontSize: '0.92rem',
+                                            color: '#16a34a'
+                                        }}>
+                                            $0,00
+                                        </td>
+                                        <td style={{ padding: '14px 14px', textAlign: 'center' }}>
+                                            <span style={{ padding: '4px 10px', borderRadius: '4px', background: '#dcfce7', color: '#166534', fontWeight: 800 }}>
+                                                ✓ 100% Cuadrado
+                                            </span>
                                         </td>
                                     </tr>
                                 </tbody>

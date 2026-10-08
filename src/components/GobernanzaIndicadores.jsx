@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Target, ChevronDown, ChevronUp, Save, Loader2, CheckCircle2, Circle, BarChart3, LayoutDashboard } from 'lucide-react';
 import GuardiaClinicaDashboard from './Gobernanza/GuardiaClinicaDashboard';
+import QuirofanoDashboard from './Gobernanza/QuirofanoDashboard';
 
 function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
     const textareaRef = useRef(null);
@@ -43,7 +44,12 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
         proyecto?.nombre?.toLowerCase().includes('guardia') ||
         proyectoId === '15533f6c-df44-42ae-a6f7-e3376d3b58fc'
     );
-    const [viewMode, setViewMode] = useState(isGuardia ? 'graficos' : 'especificaciones');
+    const isQuirofano = Boolean(
+        proyecto?.nombre?.toLowerCase().includes('quirofano') ||
+        proyecto?.nombre?.toLowerCase().includes('quirófano') ||
+        proyectoId === 'cf0caff1-e6b6-4142-ac3d-24e3eaff9273'
+    );
+    const [viewMode, setViewMode] = useState((isGuardia || isQuirofano) ? 'graficos' : 'especificaciones');
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -192,12 +198,14 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                     <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
                         {isGuardia 
                             ? 'Monitoreo asistencial y analítico del Servicio de Guardia Clínica (SALUS)' 
+                            : isQuirofano
+                            ? 'Monitoreo de actividad quirúrgica, ocupación de salas, bloques y suspensiones (SALUS)'
                             : 'Catálogo técnico de indicadores de gobernanza y queries SQL asociadas.'}
                     </p>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    {isGuardia && (
+                    {(isGuardia || isQuirofano) && (
                         <div style={{
                             display: 'flex',
                             background: '#f1f5f9',
@@ -266,8 +274,13 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                 <GuardiaClinicaDashboard />
             )}
 
+            {/* Vista 1.b: Tablero de Control con Gráficos Interactivos de Quirófano */}
+            {isQuirofano && viewMode === 'graficos' && (
+                <QuirofanoDashboard />
+            )}
+
             {/* Vista 2: Catálogo de Especificaciones Técnicas y SQL */}
-            {(!isGuardia || viewMode === 'especificaciones') && (
+            {((!isGuardia && !isQuirofano) || viewMode === 'especificaciones') && (
                 <>
                     {showNew && (
                         <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #3b82f6', marginBottom: '24px', display: 'flex', gap: '12px' }}>

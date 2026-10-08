@@ -15,7 +15,7 @@ import {
     AlertCircle, RotateCcw, Printer, Trash2, Check, X,
     Copy, UserCheck, ShieldCheck, ArrowRight, CornerDownLeft,
     RefreshCw, Filter, ChevronDown, ChevronRight, AlertTriangle,
-    Clock, Building2, Send
+    Clock, Building2, Send, Download, Eye
 } from 'lucide-react';
 import {
     fetchAdmisionesFichas,
@@ -33,6 +33,7 @@ import {
 import DigitalSignaturePad from './common/DigitalSignaturePad';
 import PrintConstanciaFichas from './PrintConstanciaFichas';
 import CircuitoFichasBanner from './common/CircuitoFichasBanner';
+import { generarPdfConstanciaFichas } from '../utils/fichasEntregaPdf';
 
 export default function FichasAdmisionesPanel({ isPublic = false, currentUser = null }) {
     // Pestañas
@@ -148,15 +149,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
         }
     }, [activeTab, loadPendientes, loadCarrito, loadHistorial]);
 
-    // Disparar impresión cuando printData cambie
-    useEffect(() => {
-        if (printData && printRef.current) {
-            const timer = setTimeout(() => {
-                window.print();
-            }, 300);
-            return () => clearTimeout(timer);
-        }
-    }, [printData]);
+    // Impresión manejada directamente vía generador oficial PDF Sanatorio Argentino (fichasEntregaPdf)
 
     // ─── Búsqueda con Enter o Botón ───
     const handleSearchSubmit = (e) => {
@@ -279,11 +272,18 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                 items: entregaCreada.detalles || cartItems
             };
 
-            setPrintData(printPayload);
             setCartItems([]);
             showToast(`Entrega ${entregaCreada.codigo} emitida exitosamente`);
             setActiveTab('historial');
             loadHistorial();
+
+            // Imprimir de inmediato el PDF oficial con membrete del Sanatorio
+            try {
+                showToast('Generando remito oficial Sanatorio Argentino...', 'info');
+                await generarPdfConstanciaFichas(printPayload, { action: 'print' });
+            } catch (errPdf) {
+                console.error('[FichasAdmisiones] Error imprimiendo remito oficial:', errPdf);
+            }
         } catch (err) {
             console.error('[FichasAdmisiones] Error emitiendo entrega:', err);
             showToast('Error emitiendo entrega de fichas', 'error');
@@ -309,25 +309,107 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
         }
     };
 
-    // ─── Reimprimir Remito Histórico ───
+    // ─── Reimprimir Remito Histórico (PDF Oficial Sanatorio Argentino) ───
     const handleReimprimirEntrega = async (entrega) => {
-        let detalleCompleto = entregaDetalles[entrega.id];
-        if (!detalleCompleto) {
-            const res = await fetchEntregaConDetalle(entrega.id);
-            detalleCompleto = res;
-            setEntregaDetalles(prev => ({ ...prev, [entrega.id]: res }));
-        }
+        try {
+            showToast('Preparando impresión de remito oficial...', 'info');
+            let detalleCompleto = entregaDetalles[entrega.id];
+            if (!detalleCompleto) {
+                const res = await fetchEntregaConDetalle(entrega.id);
+                detalleCompleto = res;
+                setEntregaDetalles(prev => ({ ...prev, [entrega.id]: res }));
+            }
 
-        setPrintData({
-            codigo: entrega.codigo,
-            fecha: entrega.fecha_entrega,
-            responsableEntrega: entrega.responsable_entrega,
-            responsableRecibe: entrega.responsable_recibe,
-            firmaEntrega: entrega.firma_entrega,
-            firmaRecibe: entrega.firma_recibe,
-            observaciones: entrega.observaciones,
-            items: detalleCompleto.detalles || []
-        });
+            const items = detalleCompleto?.detalles || [];
+            if (items.length === 0) {
+                showToast('No hay fichas asociadas a este lote', 'error');
+                return;
+            }
+
+            await generarPdfConstanciaFichas({
+                codigo: entrega.codigo,
+                fecha: entrega.fecha_entrega,
+                responsableEntrega: entrega.responsable_entrega,
+                responsableRecibe: entrega.responsable_recibe,
+                firmaEntrega: entrega.firma_entrega,
+                firmaRecibe: entrega.firma_recibe,
+                observaciones: entrega.observaciones,
+                items
+            }, { action: 'print' });
+
+            showToast(`Remito ${entrega.codigo} enviado a impresión`);
+        } catch (err) {
+            console.error('[FichasAdmisiones] Error preparando remito:', err);
+            showToast('Error al preparar impresión: ' + err.message, 'error');
+        }
+    };
+
+    // ─── Ver Remito PDF en Pantalla (Nueva Pestaña) ───
+    const handleVerPdf = async (entrega) => {
+        try {
+            showToast('Abriendo PDF oficial...', 'info');
+            let detalleCompleto = entregaDetalles[entrega.id];
+            if (!detalleCompleto) {
+                const res = await fetchEntregaConDetalle(entrega.id);
+                detalleCompleto = res;
+                setEntregaDetalles(prev => ({ ...prev, [entrega.id]: res }));
+            }
+
+            const items = detalleCompleto?.detalles || [];
+            if (items.length === 0) {
+                showToast('No hay fichas asociadas a este lote', 'error');
+                return;
+            }
+
+            await generarPdfConstanciaFichas({
+                codigo: entrega.codigo,
+                fecha: entrega.fecha_entrega,
+                responsableEntrega: entrega.responsable_entrega,
+                responsableRecibe: entrega.responsable_recibe,
+                firmaEntrega: entrega.firma_entrega,
+                firmaRecibe: entrega.firma_recibe,
+                observaciones: entrega.observaciones,
+                items
+            }, { action: 'preview' });
+        } catch (err) {
+            console.error('[FichasAdmisiones] Error abriendo PDF:', err);
+            showToast('Error abriendo PDF: ' + err.message, 'error');
+        }
+    };
+
+    // ─── Descargar PDF Oficial con Membrete Sanatorio Argentino ───
+    const handleDescargarPdf = async (entrega) => {
+        try {
+            showToast('Generando PDF oficial...', 'info');
+            let detalleCompleto = entregaDetalles[entrega.id];
+            if (!detalleCompleto) {
+                const res = await fetchEntregaConDetalle(entrega.id);
+                detalleCompleto = res;
+                setEntregaDetalles(prev => ({ ...prev, [entrega.id]: res }));
+            }
+
+            const items = detalleCompleto?.detalles || [];
+            if (items.length === 0) {
+                showToast('No hay fichas asociadas a este lote', 'error');
+                return;
+            }
+
+            await generarPdfConstanciaFichas({
+                codigo: entrega.codigo,
+                fecha: entrega.fecha_entrega,
+                responsableEntrega: entrega.responsable_entrega,
+                responsableRecibe: entrega.responsable_recibe,
+                firmaEntrega: entrega.firma_entrega,
+                firmaRecibe: entrega.firma_recibe,
+                observaciones: entrega.observaciones,
+                items
+            }, { action: 'download' });
+
+            showToast(`PDF oficial ${entrega.codigo} descargado con éxito`);
+        } catch (err) {
+            console.error('[FichasAdmisiones] Error generando PDF:', err);
+            showToast('Error generando PDF: ' + err.message, 'error');
+        }
     };
 
     // ─── Devolver Ficha a Recepción ───
@@ -1208,6 +1290,38 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <button
                                                     type="button"
+                                                    onClick={() => handleVerPdf(entrega)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                                        padding: '7px 12px', borderRadius: '6px',
+                                                        background: '#f0f9ff', border: '1px solid #bae6fd',
+                                                        color: '#0284c7', fontWeight: 700, fontSize: '0.78rem',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                    title="Ver PDF oficial con membrete en pantalla completa"
+                                                >
+                                                    <Eye size={15} />
+                                                    Ver PDF
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDescargarPdf(entrega)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                                        padding: '7px 14px', borderRadius: '6px',
+                                                        background: '#0D3B66', border: 'none',
+                                                        color: '#ffffff', fontWeight: 700, fontSize: '0.78rem',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                    title="Descargar PDF A4 oficial con membrete del Sanatorio"
+                                                >
+                                                    <Download size={15} />
+                                                    Descargar PDF
+                                                </button>
+
+                                                <button
+                                                    type="button"
                                                     onClick={() => handleReimprimirEntrega(entrega)}
                                                     style={{
                                                         display: 'flex', alignItems: 'center', gap: '6px',
@@ -1216,6 +1330,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                                         color: '#0f172a', fontWeight: 700, fontSize: '0.78rem',
                                                         cursor: 'pointer'
                                                     }}
+                                                    title="Imprimir remito oficial con membrete del Sanatorio"
                                                 >
                                                     <Printer size={15} />
                                                     Imprimir Remito

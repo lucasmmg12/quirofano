@@ -30,6 +30,8 @@ antigravity-awesome-skills/
 *.xlsx
 *.xls
 *.csv
+*.dat
+*.pdf
 
 # Import scripts and migration payloads (may contain sensitive data)
 import_pacientes.mjs

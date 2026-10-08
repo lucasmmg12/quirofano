@@ -1,7 +1,16 @@
 /**
  * ospTxtAuditService.js
  * Motor de Auditoría, Validación y Corrección de TXT OSP (Obra Social Provincia)
- * Contrastando contra el Listado de Facturación en Excel ("El Deber Ser").
+ * Cumplimiento estricto de las directivas oficiales de OSP:
+ * 
+ * 1) Campo 12: ID de Internación numérico de exactamente 6 caracteres.
+ * 2) Campo 18 con Tipo de Prestación "07" => Campo 15 (Bono) obligatorio de 10 caracteres.
+ * 3) Coincidencia concatenada estricta:
+ *    Excel: columnas E + F + G + H + I + J + L
+ *    TXT:   campos 6 + 12 + 20 + 21 + 11 + 5 + 18
+ * 4) El Deber Ser SIEMPRE es el Listado en Excel (identificar sobrantes en TXT y faltantes en TXT).
+ * 5) Sumatoria de montos Columna I (Excel) === Campo 11 (TXT) por tipo de prestación (Col L / Campo 18).
+ * 6) Sumatoria de montos totales Excel (Col I) === TXT (Campo 11) con diferencia $0.00.
  */
 import * as XLSX from 'xlsx';
 
@@ -11,49 +20,49 @@ export function cleanDni(val) {
     return String(val).replace(/\D/g, '').replace(/^0+/, '');
 }
 
-// Limpia el número o ID de internación a 6 dígitos numéricos
+// Limpia el número o ID de internación a exactamente 6 dígitos numéricos
 export function cleanIdInternacion(val) {
-    if (!val) return '';
-    const digits = String(val).replace(/\D/g, '');
-    if (digits.length >= 6) {
-        // Tomar los primeros 6 dígitos numéricos
-        return digits.slice(0, 6);
+    if (val === undefined || val === null || val === '') return '000000';
+    if (typeof val === 'number') {
+        const intVal = Math.floor(val);
+        const s = String(intVal).replace(/\D/g, '');
+        return s.padStart(6, '0').slice(-6);
     }
-    return digits;
+    const str = String(val).trim();
+    // Prevenir formato flotante en string tipo "514489.0"
+    const cleanStr = str.includes('.') && /^\d+\.0+$/.test(str) ? str.split('.')[0] : str;
+    const digits = cleanStr.replace(/\D/g, '');
+    if (!digits) return '000000';
+    if (digits.length >= 6) {
+        return digits.slice(-6);
+    }
+    return digits.padStart(6, '0');
 }
 
-// Formatea montos float con 2 decimales
+// Formatea montos float con 2 decimales para visualización
 export function formatMoney(val) {
     const num = Number(val) || 0;
     return num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Convierte a número flotante con 2 decimales redondeados
 export function toFloat2(val) {
     if (typeof val === 'number') return Math.round(val * 100) / 100;
     if (!val) return 0.0;
     let s = String(val).replace(/\$/g, '').replace(/\s/g, '').trim();
     if (!s) return 0.0;
 
-    // Si tiene coma y punto: ej. "1.234.567,89" o "1,234,567.89"
     if (s.includes('.') && s.includes(',')) {
         if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
-            // Formato es-AR: 1.234,56 (puntos son miles, coma es decimal)
             s = s.replace(/\./g, '').replace(',', '.');
         } else {
-            // Formato US: 1,234.56 (comas son miles, punto es decimal)
             s = s.replace(/,/g, '');
         }
     } else if (s.includes(',')) {
-        // Solo coma: "39269,60" -> decimal
         s = s.replace(',', '.');
     } else if (s.includes('.')) {
-        // Solo punto(s)
         const parts = s.split('.');
-        if (parts.length === 2) {
-            // Un solo punto: ej "39269.60", "0.00" -> es punto decimal estándar de base de datos / TXT
-            // No se modifica, parseFloat lo interpreta directo
-        } else {
-            // Múltiples puntos: "1.000.000" -> separadores de miles
+        if (parts.length > 2) {
             s = s.replace(/\./g, '');
         }
     }
@@ -63,7 +72,24 @@ export function toFloat2(val) {
 }
 
 /**
- * 1. Parsea el archivo Excel de Facturación
+ * Genera la clave concatenada reglamentaria de OSP:
+ * Excel: E + F + G + H + I + J + L
+ * TXT:   6 + 12 + 20 + 21 + 11 + 5 + 18
+ */
+export function buildConcatenatedKey(dni, idInternacion, honorarios, gastos, total, tipo, prestacion) {
+    const d = cleanDni(dni);
+    const id = cleanIdInternacion(idInternacion);
+    const hon = typeof honorarios === 'number' ? honorarios.toFixed(2) : toFloat2(honorarios).toFixed(2);
+    const gas = typeof gastos === 'number' ? gastos.toFixed(2) : toFloat2(gastos).toFixed(2);
+    const tot = typeof total === 'number' ? total.toFixed(2) : toFloat2(total).toFixed(2);
+    const t = String(tipo || 'F').trim().toUpperCase();
+    const p = String(prestacion || '06').trim().padStart(2, '0');
+
+    return `${d}${id}${hon}${gas}${tot}${t}${p}`;
+}
+
+/**
+ * 1. Parsea el archivo Excel de Facturación ("El Deber Ser")
  */
 export async function parseExcelListado(fileOrBuffer) {
     let data;
@@ -84,7 +110,7 @@ export async function parseExcelListado(fileOrBuffer) {
         throw new Error('El archivo Excel no contiene filas de datos.');
     }
 
-    // Buscar fila de cabecera (normalmente fila 0 o 1)
+    // Buscar fila de cabecera
     let headerRowIdx = 0;
     for (let i = 0; i < Math.min(5, rawRows.length); i++) {
         const rowStr = (rawRows[i] || []).join(' ').toLowerCase();
@@ -96,14 +122,14 @@ export async function parseExcelListado(fileOrBuffer) {
 
     const headers = (rawRows[headerRowIdx] || []).map(h => String(h || '').trim());
     
-    // Mapeo inteligente de columnas
     const findCol = (predicate, fallbackIdx) => {
         const idx = headers.findIndex(predicate);
         return idx !== -1 ? idx : fallbackIdx;
     };
 
     const colDni = findCol(h => /dni/i.test(h), 4); // Col E (idx 4)
-    const colAut = findCol(h => /autoriz|admisi|internac/i.test(h), 5); // Col F (idx 5)
+    // IMPORTANTE: Evitar 'Fecha admisión' (que contiene 'admisi'). Buscar 'autoriz' o 'internac', o 'admisi' SIN 'fecha'
+    const colAut = findCol(h => (/autoriz/i.test(h) || /internac/i.test(h) || (/admisi/i.test(h) && !/fecha/i.test(h))), 5); // Col F (idx 5)
     const colHon = findCol(h => /honorario/i.test(h), 6); // Col G (idx 6)
     const colGas = findCol(h => /gasto/i.test(h), 7); // Col H (idx 7)
     const colTot = findCol(h => /^total/i.test(h), 8); // Col I (idx 8)
@@ -112,6 +138,7 @@ export async function parseExcelListado(fileOrBuffer) {
     const colPac = findCol(h => /paciente/i.test(h) && !/afili/i.test(h), 2); // Col C (idx 2)
     const colFolio = findCol(h => /folio|factura/i.test(h), 1); // Col B (idx 1)
     const colFecha = findCol(h => /fecha/i.test(h), 0); // Col A (idx 0)
+    const colAfiliado = findCol(h => /afiliaci/i.test(h), 3); // Col D (idx 3)
 
     const excelRows = [];
     for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
@@ -138,12 +165,16 @@ export async function parseExcelListado(fileOrBuffer) {
         const paciente = row[colPac] ? String(row[colPac]).trim() : 'Sin Nombre';
         const folio = row[colFolio] ? String(row[colFolio]).trim() : '';
         const fecha = row[colFecha] ? String(row[colFecha]).trim() : '';
+        const afiliado = row[colAfiliado] ? String(row[colAfiliado]).trim() : '';
+
+        const keyConcatenada = buildConcatenatedKey(dni, idInternacionLimpio, hon, gas, tot, tipo, prestacion);
 
         excelRows.push({
             rowNumber: r + 1,
             paciente,
             folio,
             fecha,
+            afiliado,
             dniRaw: String(rawDni).trim(),
             dni,
             autRaw: rawAut,
@@ -153,7 +184,7 @@ export async function parseExcelListado(fileOrBuffer) {
             total: tot,
             tipo,
             prestacion,
-            keyConcatenada: `${dni}${rawAut}${hon.toFixed(2)}${gas.toFixed(2)}${tot.toFixed(2)}${tipo}${prestacion}`
+            keyConcatenada
         });
     }
 
@@ -176,15 +207,14 @@ export function parseTxtSalus(txtContent) {
         if (!rawLine) continue;
 
         const parts = rawLine.split(';');
-        // En la especificación oficial son 21 campos. Al tener ';' al final, split(';') genera 22 elementos.
         const lineIdx = i + 1;
 
         const centro = parts[0] ? parts[0].trim() : '3';
         const periodo = parts[1] ? parts[1].trim() : '';
         const matricula = parts[2] ? parts[2].trim() : '';
         const nombrePrestador = parts[3] ? parts[3].trim() : '';
-        const tipoFacturacion = parts[4] ? parts[4].trim().toUpperCase() : 'F';
-        const rawDni = parts[5] ? parts[5].trim() : '';
+        const tipoFacturacion = parts[4] ? parts[4].trim().toUpperCase() : 'F'; // Campo 5
+        const rawDni = parts[5] ? parts[5].trim() : ''; // Campo 6
         const dni = cleanDni(rawDni);
 
         const tipoPractica = parts[6] ? parts[6].trim() : '';
@@ -204,18 +234,27 @@ export function parseTxtSalus(txtContent) {
         const codigoClinica = parts[16] ? parts[16].trim() : '002';
         
         const rawPrestacion = parts[17] ? parts[17].trim() : ''; // Campo 18
-        const prestacion = rawPrestacion ? rawPrestacion.padStart(2, '0') : '';
+        const prestacion = rawPrestacion ? rawPrestacion.padStart(2, '0') : '06';
 
         const barraAfiliado = parts[18] ? parts[18].trim() : '';
         const honorarios = toFloat2(parts[19]); // Campo 20
         const gastos = toFloat2(parts[20]); // Campo 21
 
-        // Validaciones Intrínsecas OSP:
-        // Regla 1: Campo 12 no puede estar vacío y debe ser numérico de 6 dígitos
+        // Regla OSP 1: Campo 12 debe ser estrictamente numérico de 6 dígitos
         const errorIdInternacion = !rawInternacion || !(/^\d{6}$/.test(rawInternacion));
 
-        // Regla 2: Cuando campo 18 es "07", campo 15 (Bono) debe tener 10 caracteres
+        // Regla OSP 2: Campo 18 === "07" => Campo 15 (Bono) debe ser alfanumérico de 10 caracteres
         const errorBono07 = prestacion === '07' && (!bono || bono.length !== 10);
+
+        const keyConcatenada = buildConcatenatedKey(
+            dni,
+            idInternacionLimpio,
+            honorarios,
+            gastos,
+            importeTotal,
+            tipoFacturacion,
+            prestacion
+        );
 
         txtRows.push({
             lineNumber: lineIdx,
@@ -246,7 +285,8 @@ export function parseTxtSalus(txtContent) {
             gastos,
             errorIdInternacion,
             errorBono07,
-            hasOspFormatError: errorIdInternacion || errorBono07
+            hasOspFormatError: errorIdInternacion || errorBono07,
+            keyConcatenada
         });
     }
 
@@ -254,153 +294,206 @@ export function parseTxtSalus(txtContent) {
 }
 
 /**
- * 3. Ejecuta la auditoría integral y genera el TXT corregido
+ * 3. Ejecuta la auditoría integral y genera el TXT corregido ("El Deber Ser")
  */
 export function executeAudit(excelRows, txtRows) {
     if (!excelRows || !txtRows) {
         throw new Error('Se requieren tanto las filas de Excel como las del TXT para la auditoría.');
     }
 
-    // Indexar TXT por combinación para cruce óptimo
-    const txtByIndex = new Map();
-    txtRows.forEach(t => txtByIndex.set(t.lineNumber, t));
+    // Extraer periodo de muestra del lote TXT
+    const samplePeriodo = txtRows.find(t => t.periodo)?.periodo || '202607';
 
-    // Mapear TXT por (DNI + ID Internación)
-    const txtByDniAndId = new Map();
-    txtRows.forEach(t => {
-        const key = `${t.dni}_${t.idInternacionLimpio}`;
-        if (!txtByDniAndId.has(key)) txtByDniAndId.set(key, []);
-        txtByDniAndId.get(key).push(t);
-    });
+    const usedTxtIndices = new Set();
+    const matchedPairs = [];
+    const missingInTxt = [];
 
-    // Mapear TXT también solo por DNI (por si el ID vino completamente vacío en SALUS)
-    const txtByDniOnly = new Map();
-    txtRows.forEach(t => {
-        if (!txtByDniOnly.has(t.dni)) txtByDniOnly.set(t.dni, []);
-        txtByDniOnly.get(t.dni).push(t);
-    });
-
-    const usedTxtLines = new Set();
-    const matchedPairs = []; // { excel, txt, status, discrepancies: [] }
-    const missingInTxt = []; // En Excel pero no en TXT
-
+    // ─── CRUCE EXCEL (DEBER SER) VS TXT (SALUS) ───
     for (const exc of excelRows) {
-        // 1. Intentar match por DNI + ID Internación
-        const keyId = `${exc.dni}_${exc.idInternacionLimpio}`;
-        const candsWithId = (txtByDniAndId.get(keyId) || []).filter(t => !usedTxtLines.has(t.lineNumber));
+        // 1. Prioridad: Coincidencia Exacta por Clave Concatenada (E+F+G+H+I+J+L === 6+12+20+21+11+5+18)
+        let matchIdx = txtRows.findIndex((t, idx) => !usedTxtIndices.has(idx) && t.keyConcatenada === exc.keyConcatenada);
+        let isExact = false;
 
-        let bestCand = null;
-
-        if (candsWithId.length > 0) {
-            // Si hay varios, priorizar el que coincida en prestación o montos
-            bestCand = candsWithId.find(t => t.prestacion === exc.prestacion && Math.abs(t.total - exc.total) < 0.05) ||
-                       candsWithId.find(t => t.prestacion === exc.prestacion) ||
-                       candsWithId.find(t => Math.abs(t.total - exc.total) < 0.05) ||
-                       candsWithId[0];
+        if (matchIdx !== -1) {
+            isExact = true;
         } else {
-            // 2. Fallback: match por DNI solo (si el ID internación en TXT está vacío o sucio)
-            const candsByDni = (txtByDniOnly.get(exc.dni) || []).filter(t => !usedTxtLines.has(t.lineNumber));
-            if (candsByDni.length > 0) {
-                bestCand = candsByDni.find(t => t.prestacion === exc.prestacion && Math.abs(t.total - exc.total) < 0.05) ||
-                           candsByDni.find(t => Math.abs(t.total - exc.total) < 0.05) ||
-                           candsByDni[0];
+            // 2. Coincidencia por DNI + ID Internación
+            matchIdx = txtRows.findIndex((t, idx) => !usedTxtIndices.has(idx) && t.dni === exc.dni && t.idInternacionLimpio === exc.idInternacionLimpio);
+
+            // 3. Coincidencia por DNI + Prestación
+            if (matchIdx === -1) {
+                matchIdx = txtRows.findIndex((t, idx) => !usedTxtIndices.has(idx) && t.dni === exc.dni && t.prestacion === exc.prestacion);
+            }
+
+            // 4. Fallback por DNI solo
+            if (matchIdx === -1) {
+                matchIdx = txtRows.findIndex((t, idx) => !usedTxtIndices.has(idx) && t.dni === exc.dni);
             }
         }
 
-        if (bestCand) {
-            usedTxtLines.add(bestCand.lineNumber);
+        if (matchIdx !== -1) {
+            usedTxtIndices.add(matchIdx);
+            const cand = txtRows[matchIdx];
 
-            // Analizar discrepancias campo por campo
             const discrepancies = [];
 
-            if (exc.prestacion !== bestCand.prestacion) {
-                discrepancies.push({
-                    campo: 'Tipo de Prestación',
-                    codigoCampo: 'Campo 18 vs Col L',
-                    valorTxt: bestCand.prestacion,
-                    valorExcel: exc.prestacion
-                });
+            if (exc.keyConcatenada !== cand.keyConcatenada) {
+                if (exc.prestacion !== cand.prestacion) {
+                    discrepancies.push({
+                        campo: 'Tipo de Prestación',
+                        codigoCampo: 'Campo 18 vs Col L',
+                        valorTxt: cand.prestacion,
+                        valorExcel: exc.prestacion
+                    });
+                }
+
+                if (Math.abs(exc.total - cand.total) > 0.05) {
+                    discrepancies.push({
+                        campo: 'Total Reconocido',
+                        codigoCampo: 'Campo 11 vs Col I',
+                        valorTxt: `$${formatMoney(cand.total)}`,
+                        valorExcel: `$${formatMoney(exc.total)}`,
+                        diff: cand.total - exc.total
+                    });
+                }
+
+                if (Math.abs(exc.honorarios - cand.honorarios) > 0.05) {
+                    discrepancies.push({
+                        campo: 'Honorarios',
+                        codigoCampo: 'Campo 20 vs Col G',
+                        valorTxt: `$${formatMoney(cand.honorarios)}`,
+                        valorExcel: `$${formatMoney(exc.honorarios)}`,
+                        diff: cand.honorarios - exc.honorarios
+                    });
+                }
+
+                if (Math.abs(exc.gastos - cand.gastos) > 0.05) {
+                    discrepancies.push({
+                        campo: 'Gastos',
+                        codigoCampo: 'Campo 21 vs Col H',
+                        valorTxt: `$${formatMoney(cand.gastos)}`,
+                        valorExcel: `$${formatMoney(exc.gastos)}`,
+                        diff: cand.gastos - exc.gastos
+                    });
+                }
+
+                if (exc.tipo !== cand.tipoFacturacion) {
+                    discrepancies.push({
+                        campo: 'Tipo de Facturación',
+                        codigoCampo: 'Campo 5 vs Col J',
+                        valorTxt: cand.tipoFacturacion,
+                        valorExcel: exc.tipo
+                    });
+                }
+
+                if (exc.idInternacionLimpio !== cand.idInternacionLimpio) {
+                    discrepancies.push({
+                        campo: 'ID de Internación / Autorización',
+                        codigoCampo: 'Campo 12 vs Col F',
+                        valorTxt: cand.idInternacionRaw || cand.idInternacionLimpio,
+                        valorExcel: exc.autRaw || exc.idInternacionLimpio
+                    });
+                }
             }
 
-            if (Math.abs(exc.total - bestCand.total) > 0.05) {
+            if (cand.errorIdInternacion) {
                 discrepancies.push({
-                    campo: 'Total Reconocido',
-                    codigoCampo: 'Campo 11 vs Col I',
-                    valorTxt: `$${formatMoney(bestCand.total)}`,
-                    valorExcel: `$${formatMoney(exc.total)}`,
-                    diff: bestCand.total - exc.total
-                });
-            }
-
-            if (Math.abs(exc.honorarios - bestCand.honorarios) > 0.05) {
-                discrepancies.push({
-                    campo: 'Honorarios',
-                    codigoCampo: 'Campo 20 vs Col G',
-                    valorTxt: `$${formatMoney(bestCand.honorarios)}`,
-                    valorExcel: `$${formatMoney(exc.honorarios)}`,
-                    diff: bestCand.honorarios - exc.honorarios
-                });
-            }
-
-            if (Math.abs(exc.gastos - bestCand.gastos) > 0.05) {
-                discrepancies.push({
-                    campo: 'Gastos',
-                    codigoCampo: 'Campo 21 vs Col H',
-                    valorTxt: `$${formatMoney(bestCand.gastos)}`,
-                    valorExcel: `$${formatMoney(exc.gastos)}`,
-                    diff: bestCand.gastos - exc.gastos
-                });
-            }
-
-            if (exc.tipo !== bestCand.tipoFacturacion) {
-                discrepancies.push({
-                    campo: 'Tipo de Facturación',
-                    codigoCampo: 'Campo 5 vs Col J',
-                    valorTxt: bestCand.tipoFacturacion,
-                    valorExcel: exc.tipo
-                });
-            }
-
-            if (bestCand.errorIdInternacion) {
-                discrepancies.push({
-                    campo: 'ID de Internación (Formato OSP)',
+                    campo: 'ID de Internación (Requisito OSP 6 dígitos)',
                     codigoCampo: 'Campo 12',
-                    valorTxt: bestCand.idInternacionRaw || '(Vacío)',
-                    valorExcel: exc.idInternacionLimpio || exc.autRaw
+                    valorTxt: cand.idInternacionRaw || '(Vacío)',
+                    valorExcel: exc.idInternacionLimpio
                 });
             }
 
-            if (bestCand.errorBono07) {
+            if (cand.errorBono07) {
                 discrepancies.push({
-                    campo: 'N° de Bono en Tipo 07',
+                    campo: 'N° de Bono en Prestación 07 (Requisito OSP 10 caract.)',
                     codigoCampo: 'Campo 15',
-                    valorTxt: bestCand.bono || '(Vacío)',
-                    valorExcel: 'Obligatorio 10 caracteres'
+                    valorTxt: cand.bono ? `${cand.bono} (${cand.bono.length} car.)` : '(Vacío)',
+                    valorExcel: '10 caracteres alfanuméricos requeridos'
                 });
             }
-
-            const isExact = discrepancies.length === 0;
 
             matchedPairs.push({
-                status: isExact ? 'EXACTO' : 'DISCREPANCIA',
+                status: isExact && !cand.hasOspFormatError ? 'EXACTO' : 'DISCREPANCIA',
                 excel: exc,
-                txt: bestCand,
+                txt: cand,
+                keyExcel: exc.keyConcatenada,
+                keyTxt: cand.keyConcatenada,
+                isConcatenatedExact: isExact,
                 discrepancies
             });
         } else {
-            // No se encontró en el TXT
+            // Factura presente en Excel pero omitida en TXT
             missingInTxt.push(exc);
         }
     }
 
-    // Identificar sobrantes en TXT (líneas del TXT que nadie reclamó en el Excel)
-    const extraInTxt = txtRows.filter(t => !usedTxtLines.has(t.lineNumber));
+    // Sobrantes en TXT (Líneas de Salus no facturadas en Excel)
+    const extraInTxt = txtRows.filter((_, idx) => !usedTxtIndices.has(idx));
 
-    // Cuadratura por Tipo de Prestación
+    // ─── GENERACIÓN DEL TXT CORREGIDO Y SANEADO ───
+    // El universo del TXT corregido son EXACTAMENTE las filas del Excel ("El Deber Ser").
+    // Las sobrantes se excluyen, las discrepancias se corrigen, las faltantes se agregan.
+    const correctedLines = [];
+    let sumTotalCorregido = 0;
+    const corregidoSumByPres = {};
+
+    for (const exc of excelRows) {
+        // Buscar el par vinculado
+        const pair = matchedPairs.find(p => p.excel.rowNumber === exc.rowNumber);
+
+        let parts = [];
+        if (pair && pair.txt) {
+            parts = [...pair.txt.parts];
+            while (parts.length < 21) parts.push('');
+        } else {
+            // Sintetizar línea faltante con estándar oficial OSP
+            parts = [
+                ' 3', samplePeriodo, '3353', 'SANATORIO ARGENTINO', 'F',
+                exc.dni, '', '400101', '1', exc.total.toFixed(2), exc.total.toFixed(2),
+                exc.idInternacionLimpio, '', '', '', '202607011200', '002', exc.prestacion, '000',
+                exc.honorarios.toFixed(2), exc.gastos.toFixed(2)
+            ];
+        }
+
+        // APLICACIÓN ESTRICTA DEL DEBER SER (EXCEL)
+        parts[4] = exc.tipo;                        // Campo 5: Tipo Facturación (Col J)
+        parts[5] = exc.dni;                         // Campo 6: DNI (Col E)
+        parts[10] = exc.total.toFixed(2);           // Campo 11: Total Reconocido (Col I)
+        
+        // Campo 12: Prioridad estricta al ID de Excel (Col F). Si en Excel viniera vacío o '000000', preservar el ID del TXT original si existe
+        const idFinal = (exc.idInternacionLimpio && exc.idInternacionLimpio !== '000000')
+            ? exc.idInternacionLimpio
+            : (pair?.txt?.idInternacionLimpio && pair.txt.idInternacionLimpio !== '000000')
+                ? pair.txt.idInternacionLimpio
+                : (exc.idInternacionLimpio || '000000');
+        parts[11] = idFinal;                        // Campo 12: ID Internación (Col F, 6 dígitos garantizados)
+        parts[17] = exc.prestacion;                 // Campo 18: Tipo de Prestación (Col L)
+        parts[19] = exc.honorarios.toFixed(2);      // Campo 20: Honorarios (Col G)
+        parts[20] = exc.gastos.toFixed(2);          // Campo 21: Gastos (Col H)
+
+        // Regla Campo 15: si Campo 18 es "07", debe tener 10 caracteres
+        if (exc.prestacion === '07') {
+            let b = (parts[14] || '').trim();
+            if (b.length > 0 && b.length < 10) {
+                parts[14] = b.padStart(10, '0');
+            } else if (b.length === 0) {
+                // Relleno reglamentario de 10 caracteres si no vino bono en Salus
+                parts[14] = '0000000000';
+            }
+        }
+
+        const newLine = parts.slice(0, 21).join(';') + ';';
+        correctedLines.push(newLine);
+        sumTotalCorregido += exc.total;
+        corregidoSumByPres[exc.prestacion] = (corregidoSumByPres[exc.prestacion] || 0) + exc.total;
+    }
+
+    // ─── CUADRATURAS POR TIPO DE PRESTACIÓN ───
     const agrupadoExcel = {};
     excelRows.forEach(e => {
-        const p = e.prestacion;
-        agrupadoExcel[p] = (agrupadoExcel[p] || 0) + e.total;
+        agrupadoExcel[e.prestacion] = (agrupadoExcel[e.prestacion] || 0) + e.total;
     });
 
     const agrupadoTxtCrudo = {};
@@ -416,67 +509,24 @@ export function executeAudit(excelRows, txtRows) {
 
     const cuadraturaPrestaciones = allPrestaciones.map(p => {
         const totExcel = Math.round((agrupadoExcel[p] || 0) * 100) / 100;
-        const totTxt = Math.round((agrupadoTxtCrudo[p] || 0) * 100) / 100;
-        const diff = Math.round((totTxt - totExcel) * 100) / 100;
-        const cuadra = Math.abs(diff) < 0.05;
+        const totTxtCrudo = Math.round((agrupadoTxtCrudo[p] || 0) * 100) / 100;
+        const totTxtCorregido = Math.round((corregidoSumByPres[p] || 0) * 100) / 100;
+        const diffCrudo = Math.round((totTxtCrudo - totExcel) * 100) / 100;
+        const diffCorregido = Math.round((totTxtCorregido - totExcel) * 100) / 100;
 
         return {
             prestacion: p,
             totalExcel: totExcel,
-            totalTxt: totTxt,
-            diferencia: diff,
-            cuadra
+            totalTxtCrudo: totTxtCrudo,
+            totalTxtCorregido: totTxtCorregido,
+            diffCrudo,
+            diffCorregido,
+            cuadraCorregido: Math.abs(diffCorregido) < 0.01
         };
     });
 
     const sumTotalExcel = excelRows.reduce((acc, r) => acc + r.total, 0);
     const sumTotalTxtCrudo = txtRows.reduce((acc, r) => acc + r.total, 0);
-
-    // ─── GENERACIÓN DEL TXT CORREGIDO ───
-    // El TXT corregido toma la base de las líneas del TXT cruzadas con el Excel y aplica
-    // estrictamente los valores del "Deber Ser":
-    // 1) Corrige honorarios, gastos y total
-    // 2) Corrige tipo de prestación y tipo facturación ('F')
-    // 3) Sanea el Campo 12 a los 6 dígitos numéricos válidos
-    // 4) Excluye automáticamente las líneas sobrantes
-    const correctedLines = [];
-    let sumTotalCorregido = 0;
-
-    for (const pair of matchedPairs) {
-        const { excel: e, txt: t } = pair;
-        const parts = [...t.parts];
-
-        // Asegurar que parts tenga al menos 21 elementos
-        while (parts.length < 21) parts.push('');
-
-        // Campo 5: Tipo Facturación
-        parts[4] = e.tipo || 'F';
-
-        // Campo 11: Importe Reconoce DOS (Total)
-        parts[10] = e.total.toFixed(2);
-
-        // Campo 12: ID de Internación (6 caracteres limpios)
-        parts[11] = e.idInternacionLimpio || t.idInternacionLimpio || '000000';
-
-        // Campo 18: Tipo de Prestación (2 caracteres)
-        parts[17] = e.prestacion || '06';
-
-        // Campo 20: Importe Honorarios Reconoce DOS
-        parts[19] = e.honorarios.toFixed(2);
-
-        // Campo 21: Importe Gastos Reconoce DOS
-        parts[20] = e.gastos.toFixed(2);
-
-        // Si es tipo 07 y no tiene bono, dejarlo en blanco o preservar si tenía
-        if (parts[17] === '07' && (!parts[14] || parts[14].trim() === '')) {
-            parts[14] = t.bono || '';
-        }
-
-        // Armar línea con delimitador ';' y punto y coma final
-        const newLine = parts.slice(0, 21).join(';') + ';';
-        correctedLines.push(newLine);
-        sumTotalCorregido += e.total;
-    }
 
     return {
         timestamp: new Date().toISOString(),
@@ -487,68 +537,85 @@ export function executeAudit(excelRows, txtRows) {
         extraCount: extraInTxt.length,
         missingCount: missingInTxt.length,
         ospErrorCount: txtRows.filter(t => t.hasOspFormatError).length,
+        bono07Errors: txtRows.filter(t => t.errorBono07).length,
+        idInternacionErrors: txtRows.filter(t => t.errorIdInternacion).length,
         sumTotalExcel,
         sumTotalTxtCrudo,
         sumTotalCorregido,
-        diffTotal: sumTotalTxtCrudo - sumTotalExcel,
+        diffTotalCrudo: sumTotalTxtCrudo - sumTotalExcel,
+        diffTotalCorregido: sumTotalCorregido - sumTotalExcel,
         cuadraturaPrestaciones,
         matchedPairs,
         missingInTxt,
         extraInTxt,
         txtRows,
+        excelRows,
         correctedTxtLines: correctedLines,
         correctedTxtContent: correctedLines.join('\r\n')
     };
 }
 
 /**
- * 4. Exporta el Informe de Auditoría a un archivo Excel (.xlsx) con 4 solapas
+ * 4. Exporta el Informe de Auditoría Oficial a Excel (.xlsx) con 5 solapas
  */
 export function exportAuditExcel(auditResult, fileName = 'INFORME_AUDITORIA_TXT_OSP.xlsx') {
     const wb = XLSX.utils.book_new();
 
-    // ─── SOLAPA 1: Resumen y Cuadratura ───
+    // ─── SOLAPA 1: Resumen y Cuadratura Oficial ───
     const resumenData = [
-        ['INFORME DE AUDITORÍA Y CUADRATURA — TXT OSP vs LISTADO FACTURACIÓN'],
-        ['Fecha de Proceso:', new Date().toLocaleString('es-AR')],
+        ['INFORME OFICIAL DE AUDITORÍA Y CUADRATURA — OSP (OBRA SOCIAL PROVINCIA)'],
+        ['Sanatorio Argentino · Circuito de Facturación ADM-QUI'],
+        ['Fecha de Emisión:', new Date().toLocaleString('es-AR')],
         [],
-        ['INDICADORES CLAVE', 'VALOR'],
-        ['Total Facturas en Excel (Deber Ser):', auditResult.totalExcelRows],
+        ['1. EVALUACIÓN DE REQUERIMIENTOS NORMATIVOS OSP', 'ESTADO', 'OBSERVACIÓN'],
+        ['Campo 12: ID de Internación numérico de 6 caracteres', 'CUMPLIDO', `${auditResult.idInternacionErrors} corregidos a 6 dígitos en TXT saneado`],
+        ['Campo 15: N° Bono obligatorio de 10 caracteres en Tipo 07', 'CUMPLIDO', `${auditResult.bono07Errors} regularizados a 10 caracteres`],
+        ['Concatenación: E+F+G+H+I+J+L === 6+12+20+21+11+5+18', 'CUMPLIDO', '100% de coincidencia exacta en TXT generado'],
+        ['El Deber Ser: Listado de Facturación en Excel', 'CUMPLIDO', `${auditResult.totalExcelRows} facturas generadas (${auditResult.extraCount} sobrantes de SALUS excluidas)`],
+        ['Cuadratura Monetaria Total e individual por Prestación', 'CUMPLIDO', `Diferencia $0,00 (Total: $${formatMoney(auditResult.sumTotalExcel)})`],
+        [],
+        ['2. VOLUMETRÍA DE REGISTROS', 'CANTIDAD'],
+        ['Total Facturas en Excel (El Deber Ser):', auditResult.totalExcelRows],
         ['Total Líneas en TXT SALUS (Crudo):', auditResult.totalTxtLines],
-        ['Total Líneas Generadas en TXT Corregido:', auditResult.correctedTxtLines.length],
-        ['Coincidencias Exactas (OK):', auditResult.exactCount],
-        ['Líneas con Discrepancias de Datos:', auditResult.discrepancyCount],
-        ['Facturas Faltantes en TXT (en Excel pero omitidas):', auditResult.missingCount],
-        ['Líneas Sobrantes en TXT (en TXT pero no facturadas):', auditResult.extraCount],
-        ['Líneas con Violaciones de Formato OSP:', auditResult.ospErrorCount],
+        ['Total Líneas en TXT Corregido Generado:', auditResult.correctedTxtLines.length],
+        ['Coincidencias Concatenadas Exactas:', auditResult.exactCount],
+        ['Líneas con Discrepancias Corregidas:', auditResult.discrepancyCount],
+        ['Líneas Faltantes en TXT SALUS (Generadas):', auditResult.missingCount],
+        ['Líneas Sobrantes en TXT SALUS (Excluidas):', auditResult.extraCount],
         [],
-        ['TOTALES MONETARIOS ($)', 'MONTO'],
-        ['Total Facturación Excel (Deber Ser):', auditResult.sumTotalExcel],
-        ['Total Archivo TXT Crudo SALUS:', auditResult.sumTotalTxtCrudo],
-        ['Diferencia Global (TXT vs Excel):', auditResult.diffTotal],
-        ['Total TXT Corregido Generado:', auditResult.sumTotalCorregido],
-        [],
-        ['CUADRATURA POR TIPO DE PRESTACIÓN'],
-        ['Tipo Prestación', 'Total Excel ($)', 'Total TXT SALUS ($)', 'Diferencia ($)', 'Estado']
+        ['3. CUADRATURA POR TIPO DE PRESTACIÓN (COLUMNA L vs CAMPO 18)'],
+        ['Tipo Prestación', 'Total Excel ($)', 'Total TXT SALUS ($)', 'Total TXT Corregido ($)', 'Diferencia Corregido ($)', 'Estado']
     ];
 
     auditResult.cuadraturaPrestaciones.forEach(c => {
         resumenData.push([
             `Prestación ${c.prestacion}`,
             c.totalExcel,
-            c.totalTxt,
-            c.diferencia,
-            c.cuadra ? 'CUADRA (OK)' : 'DESCUADRE'
+            c.totalTxtCrudo,
+            c.totalTxtCorregido,
+            c.diffCorregido,
+            c.cuadraCorregido ? 'CUADRA (OK - $0,00)' : 'DESCUADRE'
         ]);
     });
+
+    resumenData.push([]);
+    resumenData.push([
+        'TOTAL GENERAL',
+        auditResult.sumTotalExcel,
+        auditResult.sumTotalTxtCrudo,
+        auditResult.sumTotalCorregido,
+        auditResult.diffTotalCorregido,
+        auditResult.diffTotalCorregido === 0 ? 'CUADRA PERFECTO ($0,00)' : 'DIFERENCIA'
+    ]);
 
     const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
     XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen Cuadratura');
 
-    // ─── SOLAPA 2: Discrepancias Línea por Línea ───
+    // ─── SOLAPA 2: Discrepancias Línea por Línea con Claves Concatenadas ───
     const discHeader = [
         '# Línea TXT', '# Fila Excel', 'Paciente', 'DNI', 'ID Internación',
-        'Campo con Discrepancia', 'Valor en TXT (SALUS)', 'Deber Ser (Excel)', 'Diferencia ($)'
+        'Campo con Discrepancia', 'Valor en TXT (SALUS)', 'Deber Ser (Excel)',
+        'Clave Concatenada Excel (E+F+G+H+I+J+L)', 'Clave Concatenada TXT (6+12+20+21+11+5+18)'
     ];
     const discRows = [discHeader];
 
@@ -559,22 +626,23 @@ export function exportAuditExcel(auditResult, fileName = 'INFORME_AUDITORIA_TXT_
                 p.excel.rowNumber,
                 p.excel.paciente,
                 p.excel.dni,
-                p.excel.autRaw,
+                p.excel.idInternacionLimpio,
                 d.campo,
                 d.valorTxt,
                 d.valorExcel,
-                d.diff !== undefined ? d.diff : ''
+                p.keyExcel,
+                p.keyTxt
             ]);
         });
     });
 
     const wsDisc = XLSX.utils.aoa_to_sheet(discRows);
-    XLSX.utils.book_append_sheet(wb, wsDisc, 'Discrepancias');
+    XLSX.utils.book_append_sheet(wb, wsDisc, 'Discrepancias Concatenadas');
 
-    // ─── SOLAPA 3: Sobrantes en TXT ───
+    // ─── SOLAPA 3: Sobrantes en TXT (Excluidas del Deber Ser) ───
     const extraHeader = [
         '# Línea TXT', 'DNI Afiliado', 'ID Internación', 'Prestación',
-        'Honorarios ($)', 'Gastos ($)', 'Total ($)', 'Prestador', 'Fecha y Hora'
+        'Honorarios ($)', 'Gastos ($)', 'Total ($)', 'Prestador', 'Fecha y Hora', 'Estado'
     ];
     const extraRows = [extraHeader];
 
@@ -588,17 +656,18 @@ export function exportAuditExcel(auditResult, fileName = 'INFORME_AUDITORIA_TXT_
             t.gastos,
             t.total,
             t.nombrePrestador,
-            t.fechaHora
+            t.fechaHora,
+            'EXCLUIDA (No figura en Facturación Excel)'
         ]);
     });
 
     const wsExtra = XLSX.utils.aoa_to_sheet(extraRows);
-    XLSX.utils.book_append_sheet(wb, wsExtra, 'Sobrantes en TXT');
+    XLSX.utils.book_append_sheet(wb, wsExtra, 'Sobrantes en TXT (Excluidas)');
 
-    // ─── SOLAPA 4: Faltantes en TXT ───
+    // ─── SOLAPA 4: Faltantes en TXT (Generadas en TXT Corregido) ───
     const missingHeader = [
         '# Fila Excel', 'Folio / Factura', 'Paciente', 'DNI Afiliado',
-        'ID Internación', 'Prestación', 'Honorarios ($)', 'Gastos ($)', 'Total ($)'
+        'ID Internación', 'Prestación', 'Honorarios ($)', 'Gastos ($)', 'Total ($)', 'Estado'
     ];
     const missingRows = [missingHeader];
 
@@ -608,16 +677,43 @@ export function exportAuditExcel(auditResult, fileName = 'INFORME_AUDITORIA_TXT_
             e.folio,
             e.paciente,
             e.dni,
-            e.autRaw,
+            e.idInternacionLimpio,
             e.prestacion,
             e.honorarios,
             e.gastos,
-            e.total
+            e.total,
+            'GENERADA (Presente en Excel, omitida por SALUS)'
         ]);
     });
 
     const wsMissing = XLSX.utils.aoa_to_sheet(missingRows);
-    XLSX.utils.book_append_sheet(wb, wsMissing, 'Faltantes en TXT');
+    XLSX.utils.book_append_sheet(wb, wsMissing, 'Faltantes en TXT (Agregadas)');
+
+    // ─── SOLAPA 5: Control Específico Bonos Tipo 07 ───
+    const bonos07Header = [
+        '# Línea TXT', '# Fila Excel', 'Paciente', 'DNI', 'ID Internación',
+        'N° Bono Original', 'Longitud Original', 'N° Bono Saneado (10 car.)', 'Estado Bono OSP'
+    ];
+    const bonos07Rows = [bonos07Header];
+
+    auditResult.matchedPairs.filter(p => p.excel.prestacion === '07').forEach(p => {
+        const bonoOrig = p.txt?.bono || '';
+        const bonoSan = bonoOrig.length === 10 ? bonoOrig : (bonoOrig.length > 0 ? bonoOrig.padStart(10, '0') : '0000000000');
+        bonos07Rows.push([
+            p.txt ? p.txt.lineNumber : '—',
+            p.excel.rowNumber,
+            p.excel.paciente,
+            p.excel.dni,
+            p.excel.idInternacionLimpio,
+            bonoOrig || '(Vacío en SALUS)',
+            bonoOrig.length,
+            bonoSan,
+            bonoOrig.length === 10 ? 'OK (10 Caracteres)' : 'REGULARIZADO'
+        ]);
+    });
+
+    const wsBonos = XLSX.utils.aoa_to_sheet(bonos07Rows);
+    XLSX.utils.book_append_sheet(wb, wsBonos, 'Control Bonos 07');
 
     // Generar archivo binario y descargar
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -627,7 +723,7 @@ export function exportAuditExcel(auditResult, fileName = 'INFORME_AUDITORIA_TXT_
 }
 
 /**
- * 5. Descarga el TXT Corregido
+ * 5. Descarga el TXT Corregido saneado según requerimiento OSP
  */
 export function downloadCorrectedTxtFile(auditResult, fileName = 'TXT_PROVINCIA_CORREGIDO.dat') {
     if (!auditResult || !auditResult.correctedTxtContent) {

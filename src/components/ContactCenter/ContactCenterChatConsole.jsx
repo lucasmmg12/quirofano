@@ -171,7 +171,7 @@ function renderBotTags(chat, theme) {
     for (const t of rawTags) {
         if (!t || typeof t !== 'string') continue;
         const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-        if ((norm === 'autorizacion' || norm === 'cancelacion' || norm === 'reprogramacion') && !seen.has(norm)) {
+        if ((norm === 'autorizacion' || norm === 'cancelacion' || norm === 'reprogramacion' || norm === 'triage completo' || norm === 'triage_completo') && !seen.has(norm)) {
             seen.add(norm);
             botTags.push(norm);
         }
@@ -252,6 +252,31 @@ function renderBotTags(chat, theme) {
                 >
                     <FileCheck size={10} strokeWidth={2} />
                     Autorización
+                </span>
+            );
+        }
+        if (tagKey === 'triage completo' || tagKey === 'triage_completo') {
+            return (
+                <span
+                    key="bot-tag-triage-completo"
+                    title="Triage completo por bot: DNI, Obra Social y Profesional confirmados"
+                    style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '6px',
+                        background: theme?.isDark ? '#064E3B' : '#ECFDF5',
+                        color: theme?.isDark ? '#6EE7B7' : '#047857',
+                        border: `1px solid ${theme?.isDark ? '#047857' : '#A7F3D0'}`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        lineHeight: 1.2,
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                    }}
+                >
+                    <CheckCircle2 size={10} strokeWidth={2.5} />
+                    Triage Completo
                 </span>
             );
         }
@@ -1015,8 +1040,8 @@ export default function ContactCenterChatConsole({
             setReassignModalOpen(false);
             setReassignNote('');
             setFilterTab('asignadas_mi');
-            if (selectedChat?.id) {
-                setActiveChatId(selectedChat.id);
+            if (selectedChat?.id && onSelectChat) {
+                onSelectChat(selectedChat.id);
             }
             showToast(`Conversación reasignada a tu nombre. Ya podés responder al paciente.`, 'success');
 
@@ -1038,8 +1063,8 @@ export default function ContactCenterChatConsole({
             await onAssignChat(chatId, agentId, options);
         } finally {
             setFilterTab('asignadas_mi');
-            if (chatId) {
-                setActiveChatId(chatId);
+            if (chatId && onSelectChat) {
+                onSelectChat(chatId);
             }
         }
     };
@@ -1086,32 +1111,60 @@ export default function ContactCenterChatConsole({
         return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()));
     };
 
+    const isSearchActive = Boolean(searchTerm && searchTerm.trim());
+
+    // Helper para determinar a qué pestaña pertenece una conversación
+    const getChatFilterTab = (c) => {
+        if (!c) return 'sin_asignar';
+        if (isClosedOrArchived(c)) return 'finalizados';
+        if (c.assignedTo) {
+            const a = (c.assignedTo || '').toLowerCase();
+            if (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())) {
+                return 'asignadas_mi';
+            }
+            return 'asignadas_otros';
+        }
+        if (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) {
+            return 'bot';
+        }
+        return 'sin_asignar';
+    };
+
     const isFinalizadosCurrentTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
     const activeChatFromPool = chats.find(c => matchChat(c, activeChatId)) || archivedChats.find(c => matchChat(c, activeChatId));
     const activeChatIsClosed = activeChatFromPool ? isClosedOrArchived(activeChatFromPool) : false;
 
-    const selectedChat = (isFinalizadosCurrentTab && !activeChatIsClosed)
-        ? (chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || {})
-        : (filterTab === 'asignadas_mi'
-            ? ((activeChatId && chats.find(c => matchChat(c, activeChatId) && isMineChat(c)))
-                || chats.find(c => isMineChat(c))
-                || {})
-            : (filterTab === 'sin_asignar'
-                ? ((activeChatId && chats.find(c => matchChat(c, activeChatId) && (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)))
-                    || chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c))
-                    || {})
-                : (filterTab === 'bot'
-                    ? ((activeChatId && chats.find(c => matchChat(c, activeChatId) && (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)))
-                        || chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c))
-                        || {})
-                    : (isFinalizadosCurrentTab
-                        ? (chats.find(c => matchChat(c, activeChatId) && isClosedOrArchived(c)) || archivedChats.find(c => matchChat(c, activeChatId)) || chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || {})
-                        : (chats.find(c => matchChat(c, activeChatId)) 
-                            || archivedChats.find(c => matchChat(c, activeChatId)) 
-                            || chats.find(c => !isClosedOrArchived(c)) 
-                            || chats[0] 
-                            || archivedChats[0] 
-                            || {})))));
+    // Chat fallback según la pestaña activa cuando no hay un chat activo seleccionado en memoria
+    const tabFallbackChat = useMemo(() => {
+        if (filterTab === 'asignadas_mi') {
+            return chats.find(c => isMineChat(c)) || null;
+        }
+        if (filterTab === 'sin_asignar') {
+            return chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) || null;
+        }
+        if (filterTab === 'bot') {
+            return chats.find(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)) || null;
+        }
+        if (filterTab === 'asignadas_otros') {
+            return chats.find(c => {
+                const a = (c.assignedTo || '').toLowerCase();
+                return a && !myAliases.includes(a) && !(c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()) && !isClosedOrArchived(c);
+            }) || null;
+        }
+        if (isFinalizadosCurrentTab) {
+            return chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || null;
+        }
+        return chats.find(c => !isClosedOrArchived(c)) || chats[0] || archivedChats[0] || null;
+    }, [chats, archivedChats, filterTab, myAliases, activeAgent.name, isFinalizadosCurrentTab]);
+
+    // PRIORIDAD Y ESTABILIDAD ABSOLUTA:
+    // Si el operador tiene un chat seleccionado (activeChatFromPool), ESE ES EL CHAT QUE DEBE VERSE.
+    // NUNCA descartarlo o cambiarlo arbitrariamente porque pertenezca a otra pestaña (ej: al buscarlo o asignarlo).
+    // Solo si el operador navega intencionalmente a la pestaña "Finalizados" (sin estar buscando), pero su chat activo
+    // era un chat abierto, se prioriza mostrar un historial finalizado de esa pestaña.
+    const selectedChat = (isFinalizadosCurrentTab && !activeChatIsClosed && !isSearchActive)
+        ? (tabFallbackChat || activeChatFromPool || {})
+        : (activeChatFromPool || tabFallbackChat || chats[0] || archivedChats[0] || {});
 
     // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
     const lastIncomingMsg = useMemo(() => {
@@ -3885,7 +3938,11 @@ export default function ContactCenterChatConsole({
                                     onClick={() => {
                                         const currentIncoming = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
                                         readChatMsgCountRef.current.set(chat.id, currentIncoming);
-                                        onSelectChat(chat.id);
+                                        const targetTab = getChatFilterTab(chat);
+                                        if (targetTab && targetTab !== filterTab) {
+                                            setFilterTab(targetTab);
+                                        }
+                                        if (onSelectChat) onSelectChat(chat.id);
                                     }}
                                     style={{
                                         padding: '7px 10px',
@@ -7871,6 +7928,29 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     </div>
                                                 </div>
                                             ))}
+                                        </div>
+                                    )}
+
+                                    {/* TRIAGE COMPLETO / SALUS READY BADGE */}
+                                    {(selectedChat.tags?.some(t => (typeof t === 'string' ? t : t?.name || '').toLowerCase().includes('triage')) || selectedChat.aiSummary?.triage_status === 'completo') && (
+                                        <div style={{
+                                            background: ccTheme.isDark ? 'rgba(5, 150, 105, 0.18)' : '#ECFDF5',
+                                            border: `1px solid ${ccTheme.isDark ? '#059669' : '#A7F3D0'}`,
+                                            borderRadius: '8px',
+                                            padding: '8px 10px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}>
+                                            <CheckCircle2 size={16} color={ccTheme.isDark ? '#34D399' : '#059669'} style={{ flexShrink: 0 }} />
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#34D399' : '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                                    Triage Completo • Salus Ready
+                                                </div>
+                                                <div style={{ fontSize: '0.66rem', color: ccTheme.isDark ? '#A7F3D0' : '#047857', marginTop: '1px' }}>
+                                                    Datos validados por el asistente. Listo para cargar en Salus.
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 

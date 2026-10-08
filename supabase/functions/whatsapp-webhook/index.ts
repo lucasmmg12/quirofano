@@ -1995,6 +1995,17 @@ function getWelcomeMenuMessage(pacienteNombre?: string): string {
 }
 
 /**
+ * Pie institucional interactivo para consultas informativas resueltas por el bot (Fase 1).
+ * Permite al paciente cerrar su consulta con "1" o pedir derivación con "2".
+ */
+function getInfoResolutionFooter(): string {
+    return `\n\n¿Pudimos ayudarte con tu consulta?\n` +
+        `1️⃣ *Sí, todo claro* (Finalizar consulta) ✅\n` +
+        `2️⃣ *Necesito hablar con un agente* 👤\n\n` +
+        `💡 _Podés responder con *1*, *2* o escribir *\"Menú\"* para volver al inicio._`;
+}
+
+/**
  * Formatea los turnos activos encontrados para mostrárselos al paciente en WhatsApp.
  */
 function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOtherPatient: boolean = false, pacienteDni?: string): string {
@@ -2007,13 +2018,20 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
     if (!turnos || turnos.length === 0) {
         if (isOtherPatient) {
             return `No registramos turnos o visitas próximas agendadas para el paciente *${pacienteNombre || 'solicitado'}*${pacienteDni ? ` (DNI: *${pacienteDni}*)` : ''} en nuestro sistema.\n\n` +
-                `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís hablar con un agente?\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                `¿Cómo deseás continuar?\n` +
+                `1️⃣ *Solicitar un nuevo turno médico* 🩺\n` +
+                `2️⃣ *Todo claro / Finalizar consulta* ✅\n` +
+                `3️⃣ *Hablar con un agente* 👤\n\n` +
+                `🔙 _Escribí *\"Menú\"* o *\"Atrás\"*._`;
         }
         return `¡Hola *${firstName}*! 🏥\n\n` +
             `No registramos turnos o visitas próximas pendientes a tu nombre en nuestro sistema.\n\n` +
-            `¿Deseás que te ayudemos a *solicitar un nuevo turno médico* o preferís hablar con un agente?\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            `¿Cómo deseás continuar?\n` +
+            `1️⃣ *Solicitar un nuevo turno médico* 🩺\n` +
+            `2️⃣ *Todo claro / Finalizar consulta* ✅\n` +
+            `3️⃣ *Hablar con un agente* 👤\n\n` +
+            `💡 _Si consultás por el turno de otro familiar, podés escribir su número de *DNI*._\n` +
+            `🔙 _Escribí *\"Menú\"* o *\"Atrás\"*._`;
     }
 
     const formatFechaAmigable = (fStr: string) => {
@@ -2047,12 +2065,15 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
         reply += `\n`;
     }
 
-    reply += `ℹ️ *Recomendación:* Recordar presentarse 15 minutos antes con el DNI físico y credencial de la obra social o cobertura médica.\n\n`;
-    reply += `¿Deseás *confirmar la asistencia*, *reprogramar* o *cancelar* algún turno?\n\n`;
-    reply += isOtherPatient
-        ? `💡 *¿Deseás averiguar sobre el turno de otro paciente?* Podés escribir directamente su número de DNI.`
-        : `💡 *¿Consultás por el turno de otro paciente o familiar?* Indícanos su número de *DNI*.`;
-    reply += `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+    reply += `ℹ️ *Recomendación:* Recordar presentarse 15 minutos antes con el DNI físico y credencial de la cobertura médica.\n\n`;
+    reply += `¿Cómo deseás continuar?\n` +
+        `1️⃣ *Asistencia confirmada / Todo claro* (Finalizar consulta) ✅\n` +
+        `2️⃣ *Reprogramar o cancelar turno* 🔄\n` +
+        `3️⃣ *Solicitar un nuevo turno médico* 🩺\n\n` +
+        (isOtherPatient
+            ? `💡 _¿Deseás averiguar sobre el turno de otro familiar? Podés escribir directamente su número de DNI._`
+            : `💡 _¿Consultás por el turno de otro paciente o familiar? Indícanos su número de *DNI*._`) +
+        `\n\n🔙 _Escribí *\"Menú\"* para volver al inicio o *\"Agente\"* para hablar con un operador._`;
 
     return reply;
 }
@@ -2831,16 +2852,19 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     const isGestionFamiliar = /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|mi\s+marido|mi\s+se[nñ]ora|para\s+alguien\s+mas|tercero|tercera\s+persona)\b/i.test(clean);
     const isForOtherPatient = isGestionFamiliar;
     const isGestionPropia = /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(clean);
-    const isConfirmingOrCanceling = context?.botStage === 'esperando_confirmacion_turno' || context?.botStage === 'turno_consultado' || (context?.lastBotMessage?.content?.includes('confirmar, reprogramar o cancelar') || context?.lastBotMessage?.content?.includes('confirmar la asistencia') || context?.lastBotMessage?.content?.includes('confirmar tu asistencia'));
+    const isConfirmingOrCanceling = context?.botStage === 'esperando_confirmacion_turno' || context?.botStage === 'turno_consultado' || (context?.lastBotMessage?.content?.includes('confirmar, reprogramar o cancelar') || context?.lastBotMessage?.content?.includes('confirmar la asistencia') || context?.lastBotMessage?.content?.includes('confirmar tu asistencia') || context?.lastBotMessage?.content?.includes('Asistencia confirmada'));
     if (isConfirmingOrCanceling) {
-        if (/\b(confirmar|confirmo|confirmado|asisto|voy\s+a\s+ir|voy|si\s+confirmo|dale\s+confirmo)\b/i.test(clean)) {
-            return { intent: 'confirmar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+        if (clean === '1' || /^(1|s[ií]+|confirmar?|confirmado|asistir[eé]?|voy\s+a\s+ir|voy|gracias|muchas\s+gracias|ok|listo|perfecto|joya|de\s+diez|todo\s+claro)[!.\s]*$/i.test(clean) || /\b(confirmar|confirmo|confirmado|asisto|voy\s+a\s+ir|si\s+confirmo|dale\s+confirmo|asistencia\s+confirmada)\b/i.test(clean)) {
+            return { intent: 'confirmar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
         if (/\b(cancelar|cancelo|cancelar\s+turno|no\s+voy\s+a\s+ir|dar\s+de\s+baja|baja|anular)\b/i.test(clean)) {
             return { intent: 'cancelar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
         }
-        if (/\b(reprogramar|reprogramo|cambiar\s+fecha|cambiar\s+dia|otro\s+dia|cambiar\s+turno|mover\s+turno|cambiar\s+horario)\b/i.test(clean)) {
-            return { intent: 'reprogramar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+        if (clean === '2' || /\b(reprogramar|reprogramo|cambiar\s+fecha|cambiar\s+dia|otro\s+dia|cambiar\s+turno|mover\s+turno|cambiar\s+horario)\b/i.test(clean)) {
+            return { intent: 'reprogramar_turno_online', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        }
+        if (clean === '3' || /\b(nuevo\s+turno|turno\s+nuevo|otro\s+turno|sacar\s+turno|pedir\s+turno)\b/i.test(clean)) {
+            return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
         }
     }
 
@@ -3340,6 +3364,9 @@ function resolveBotTags(
         botStage?: string | null;
         motivoConsulta?: string | null;
         gestionTurno?: any;
+        dni?: string | null;
+        obraSocial?: string | null;
+        medicoOEspecialidad?: string | null;
     }
 ): string[] {
     const tagsSet = new Set<string>();
@@ -3351,6 +3378,7 @@ function resolveBotTags(
             if (norm === 'autorizacion') tagsSet.add('Autorización');
             else if (norm === 'cancelacion') tagsSet.add('Cancelación');
             else if (norm === 'reprogramacion') tagsSet.add('Reprogramación');
+            else if (norm === 'triage completo') tagsSet.add('Triage Completo');
             else tagsSet.add(t);
         }
     }
@@ -3374,6 +3402,7 @@ function resolveBotTags(
     if (isExplicitCancel) {
         tagsSet.add('Cancelación');
         tagsSet.delete('Reprogramación');
+        tagsSet.delete('Triage Completo');
     }
 
     // 2. REPROGRAMACIÓN: cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno
@@ -3408,6 +3437,17 @@ function resolveBotTags(
 
     if (isExplicitAutoriz) {
         tagsSet.add('Autorización');
+    }
+
+    // 4. TRIAGE COMPLETO: Paciente con DNI, Obra Social y Profesional/Especialidad identificados
+    const rawDni = String(context?.dni || '').trim();
+    const hasDni = rawDni.length >= 7;
+    const osVal = (context?.obraSocial || '').toLowerCase().trim();
+    const hasOs = osVal && !osVal.includes('a consultar') && !osVal.includes('a confirmar') && !osVal.includes('particular / a confirmar');
+    const hasDocOrSpec = Boolean(context?.medicoOEspecialidad || (context?.motivoConsulta && (context.motivoConsulta.includes('Dr.') || context.motivoConsulta.includes('Dra.'))));
+
+    if (hasDni && hasOs && hasDocOrSpec && !isExplicitCancel) {
+        tagsSet.add('Triage Completo');
     }
 
     return Array.from(tagsSet);
@@ -3692,7 +3732,16 @@ async function handleChatbotTriage(
         let finalStage = stage || nextStage || currentStage;
 
         if (!conv?.assigned_agent_id) {
-            if (merged.bot_active === false || finalStage === 'esperando_agente' || merged.status === 'sin_asignar') {
+            if (merged.status === 'resuelto' || merged.status === 'archivado' || finalStage === 'resuelto_bot') {
+                merged.status = merged.status || 'resuelto';
+                merged.bot_active = false;
+                if (!merged.closed_at) {
+                    merged.closed_at = new Date().toISOString();
+                }
+                if (!merged.resolution_reason) {
+                    merged.resolution_reason = 'Consulta resuelta automáticamente por Bot';
+                }
+            } else if (merged.bot_active === false || finalStage === 'esperando_agente' || merged.status === 'sin_asignar') {
                 merged.status = 'sin_asignar';
                 merged.bot_active = false;
                 if (!finalStage || finalStage === currentStage || finalStage === 'inicio') {
@@ -3705,7 +3754,7 @@ async function handleChatbotTriage(
         }
         merged.bot_stage = finalStage;
 
-        // Asignación de etiquetas inteligentes institucionales (Autorización, Cancelación, Reprogramación)
+        // Asignación de etiquetas inteligentes institucionales (Autorización, Cancelación, Reprogramación, Triage Completo)
         const computedTags = resolveBotTags(
             cleanText,
             merged.tags || conv?.tags || [],
@@ -3713,7 +3762,10 @@ async function handleChatbotTriage(
                 intent: currentIntent || merged.intent || extraUpdates.intent,
                 botStage: finalStage,
                 motivoConsulta: merged.motivo_consulta || conv?.motivo_consulta,
-                gestionTurno: extraUpdates.gestion_turno || merged.gestion_turno
+                gestionTurno: extraUpdates.gestion_turno || merged.gestion_turno,
+                dni: merged.dni || conv?.dni || (conv?.ai_summary as any)?.ficha_dual?.paciente?.dni || (conv?.ai_summary as any)?.datos_paciente?.dni,
+                obraSocial: merged.obra_social || conv?.obra_social || (conv?.ai_summary as any)?.ficha_dual?.paciente?.obra_social || (conv?.ai_summary as any)?.datos_paciente?.obra_social,
+                medicoOEspecialidad: merged.medico_o_especialidad || conv?.medico_o_especialidad
             }
         );
 
@@ -3816,7 +3868,7 @@ async function handleChatbotTriage(
         }
     }
 
-    // Mapeo del grupo familiar asociado a la línea telefónica
+    // Mapeo del grupo familiar asociado a la línea telefónica (prioridad titular)
     const cleanLocalPhone = phone.replace(/\D/g, '').replace(/^(?:549|54)/, '');
     let pacientesGrupoFamiliar: any[] = [];
     if (cleanLocalPhone.length >= 8) {
@@ -3837,14 +3889,53 @@ async function handleChatbotTriage(
         }
     }
 
-    // Inteligencia institucional: Si no se identificó por DNI en el mensaje ni por DNI previo en conversación,
-    // pero la línea telefónica pertenece a un paciente del Sanatorio, resolver automáticamente al paciente titular
-    if (!paciente && pacientesGrupoFamiliar.length > 0) {
-        const titular = pacientesGrupoFamiliar.find(p => Number(p.edad || 0) >= 18) || pacientesGrupoFamiliar[0];
-        if (titular && titular.dni) {
-            paciente = titular;
-            console.log(`[triage-bot] 🔍 Paciente titular resuelto por línea telefónica (${cleanLocalPhone}): ${paciente.nombre} (DNI: ${paciente.dni}, Coseguro: ${paciente.coseguro})`);
+    const titularDeLaLinea = pacientesGrupoFamiliar.length > 0
+        ? (pacientesGrupoFamiliar.find(p => Number(p.edad || 0) >= 18) || pacientesGrupoFamiliar[0])
+        : null;
+
+    const isThirdPartyQuery = /\b(este\s+paciente|para\s+(?:mi\s+)?(?:hijo|hija|mam[aá]|pap[aá]|padre|madre|abuel[oa]|espos[oa]|marido|mujer|pareja|familiar|herman[oa]|amig[oa]|otra\s+persona|tercero)|dni\s+de\s+(?:mi|otro))\b/i.test(cleanText);
+
+    // Persistencia y memoria: DNI en el mensaje actual O DNI previamente validado y registrado en la conversación
+    const establishedConvDni = (conv?.dni && isValidArgentineDni(conv.dni)) ? conv.dni : null;
+    const effectiveDni = dniInMessage || (titularDeLaLinea ? titularDeLaLinea.dni : establishedConvDni) || null;
+
+    let paciente: any = null;
+    let terceroPaciente: any = null;
+
+    if (effectiveDni) {
+        try {
+            const { data: pByDni, error: pacError } = await supabase
+                .from('hospital_pacientes')
+                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                .eq('dni', effectiveDni)
+                .limit(1)
+                .maybeSingle();
+
+            if (pByDni) {
+                // Si la línea tiene un titular diferente al DNI del mensaje o es consulta explícita por tercero
+                if (titularDeLaLinea && (isThirdPartyQuery || String(effectiveDni) !== String(titularDeLaLinea.dni))) {
+                    paciente = titularDeLaLinea;
+                    terceroPaciente = pByDni;
+                    console.log(`[triage-bot] 👥 Gestión para tercero detectada. Titular de línea: ${titularDeLaLinea.nombre} (${titularDeLaLinea.dni}) | Paciente consultado: ${pByDni.nombre} (${pByDni.dni})`);
+                } else if (!titularDeLaLinea && isThirdPartyQuery) {
+                    terceroPaciente = pByDni;
+                    console.log(`[triage-bot] 👥 Consulta para tercero de usuario nuevo: ${pByDni.nombre} (${pByDni.dni})`);
+                } else {
+                    paciente = pByDni;
+                    console.log(`[triage-bot] Paciente identificado por DNI ${effectiveDni}: ${paciente.nombre} (HC: ${paciente.nhc})`);
+                }
+            } else {
+                if (titularDeLaLinea) {
+                    paciente = titularDeLaLinea;
+                }
+                console.log(`[triage-bot] DNI ${effectiveDni} no figura en padrón institucional (usuario nuevo)`);
+            }
+        } catch (e) {
+            console.warn('[triage-bot] Error consultando paciente por DNI:', e);
         }
+    } else if (titularDeLaLinea) {
+        paciente = titularDeLaLinea;
+        console.log(`[triage-bot] 🔍 Paciente titular resuelto por línea telefónica (${cleanLocalPhone}): ${paciente.nombre} (DNI: ${paciente.dni}, Coseguro: ${paciente.coseguro})`);
     }
 
     // REGLA INSTITUCIONAL OBLIGATORIA:
@@ -3860,11 +3951,11 @@ async function handleChatbotTriage(
     // whatsappName es el nombre con el que saludamos y conversamos con el usuario
     const whatsappName = whatsappFirstName;
 
-    // patientLegalName es el nombre formal para registrar en la historia clínica / ficha técnica del turno
-    const patientLegalName = paciente?.nombre || conv?.nombre_completo || rawSender;
+    // patientLegalName es el nombre formal para registrar en la historia clínica / titular
+    const patientLegalName = paciente?.nombre || (terceroPaciente ? rawSender : (conv?.nombre_completo || rawSender));
     const fullName = whatsappName; // Mantener compatibilidad interna llamando al usuario por su {name}
     const os = (paciente?.coseguro || 'Particular / A confirmar').trim();
-    const dniTitular = paciente?.dni || dniInMessage || null;
+    const dniTitular = paciente?.dni || (!terceroPaciente ? dniInMessage : null) || null;
 
     const isExistingPatient = Boolean(paciente);
 
@@ -3881,7 +3972,7 @@ async function handleChatbotTriage(
             departamento: paciente?.centro || 'San Juan',
             es_paciente_existente: true
         };
-    } else if (dniInMessage) {
+    } else if (dniInMessage && !terceroPaciente) {
         updates = {
             ...updates,
             dni: dniInMessage,
@@ -4183,6 +4274,133 @@ async function handleChatbotTriage(
         return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
+    // FLUJO 0A-3: RESPUESTA TRAS CONSULTA DE TURNO AGENDADO (AUTO-RESOLUCIÓN)
+    // =============================================
+    else if (currentStage === 'turno_consultado') {
+        const lastBotText = (lastBotContent || '').toLowerCase();
+        const noTeniaTurnos = lastBotText.includes('no registramos turnos');
+
+        const isConfirmingOrClosing = 
+            cleanText.trim() === '1' && !noTeniaTurnos ||
+            cleanText.trim() === '2' && noTeniaTurnos ||
+            /^(1|s[ií]+|confirmar?|confirmado|asistir[eé]?|voy\s+a\s+ir|voy|asistencia|gracias|muchas\s+gracias|much[ií]simas\s+gracias|ok(ey|ay)?|listo|perfecto|joya|de\s+diez|genial|chau|adios|buen[ií]simo|todo\s+claro|ninguno|nada\s+m[aá]s)[!.\s]*$/i.test(cleanText) ||
+            /\b(muchas\s+gracias|gracias|ok\s+gracias|perfecto\s+gracias|listo\s+gracias|asistir[eé]|voy\s+a\s+ir|asistencia\s+confirmada|confirmar\s+asistencia|todo\s+claro)\b/i.test(cleanText);
+
+        const isAskingGestion = 
+            cleanText.trim() === '2' && !noTeniaTurnos ||
+            /\b(reprogramar|cancelar|cambiar|modificar|anular|dar\s+de\s+baja|no\s+voy\s+a\s+poder|no\s+puedo\s+ir|no\s+asisto)\b/i.test(cleanText);
+
+        const isAskingNewTurno = 
+            cleanText.trim() === '3' && !noTeniaTurnos ||
+            cleanText.trim() === '1' && noTeniaTurnos ||
+            /\b(nuevo\s+turno|turno\s+nuevo|otro\s+turno|sacar\s+turno|pedir\s+turno|agendar\s+turno|solicitar\s+turno|cita\s+nueva|otra\s+cita)\b/i.test(cleanText);
+
+        const dniInMsg = extractDniFromText(cleanText);
+        const isAskingAgent = 
+            cleanText.trim() === '3' && noTeniaTurnos ||
+            /\b(agente|asesor|asesora|humano|persona|operador|operadora|hablar\s+con\s+alguien)\b/i.test(cleanText);
+
+        if (isConfirmingOrClosing && !isAskingGestion && !isAskingNewTurno && !isAskingAgent) {
+            replyText = `¡Excelente${fullName ? ` *${fullName}*` : ''}! 🏥 Tu asistencia queda confirmada en nuestro sistema.\n\n` +
+                `ℹ️ *Recordá:* Presentarte 15 minutos antes con tu DNI físico y credencial de tu obra social o cobertura médica.\n\n` +
+                `¡Te esperamos en Sanatorio Argentino! Que tengas un excelente día. ✨`;
+            updates.status = 'resuelto';
+            updates.bot_active = false;
+            updates.bot_stage = 'resuelto_bot';
+            updates.closed_at = new Date().toISOString();
+            updates.resolution_reason = 'Consulta de Turno Agendado - Asistencia confirmada por Paciente';
+            nextStage = 'resuelto_bot';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else if (isAskingGestion) {
+            const gestionAccion = /\b(cancelar|dar\s+de\s+baja|anular)\b/i.test(cleanText) ? 'cancelar' : 'reprogramar';
+            const res = await handleGestionTurnoFlow({
+                supabase,
+                cleanText,
+                intent: gestionAccion === 'cancelar' ? 'cancelar_turno_online' : 'reprogramar_turno_online',
+                currentStage: 'esperando_seleccion_turno_gestion',
+                conv,
+                knownDni: resolvedDni || conv?.dni || null,
+                dniInMessage: dniInMsg,
+                turnosDni: resolvedDni,
+                turnosConocidos: turnosActivosProximos,
+                whatsappName
+            });
+            nextStage = res.stage;
+            replyText = res.reply;
+            return await finalizeAndSend(replyText, nextStage, { ...updates, ...res.updates });
+        } else if (isAskingNewTurno) {
+            replyText = `¡Con gusto te ayudamos a coordinar un nuevo turno médico! 🏥\n\n` +
+                `Por favor indícanos:\n` +
+                `• ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?\n` +
+                `• Preferencia de *días y horarios* (mañana o tarde)\n` +
+                `• *Obra Social / Prepaga y Plan* (o si la consulta será Particular)\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_datos_turno';
+            nextStage = 'esperando_datos_turno';
+            updates.motivo_consulta = 'Solicitud de Nuevo Turno';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else if (dniInMsg && isValidArgentineDni(dniInMsg)) {
+            // Consulta de turno de otro DNI
+            const { data: turnosDni } = await supabase.rpc('buscar_turnos_proximos', { p_dni: dniInMsg });
+            const { data: pFound } = await supabase.from('hospital_pacientes').select('nombre').eq('dni', dniInMsg).maybeSingle();
+            const nomFinal = turnosDni?.[0]?.paciente_nombre || pFound?.nombre || `DNI ${dniInMsg}`;
+            replyText = formatTurnosActivosReply(turnosDni || [], nomFinal, true, dniInMsg);
+            updates.bot_active = true;
+            nextStage = 'turno_consultado';
+            updates.motivo_consulta = `Consulta Turno DNI ${dniInMsg}`;
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else if (isAskingAgent) {
+            replyText = `¡Comprendido${fullName ? ` *${fullName}*` : ''}! 👤 Te comunicamos con un asesor de nuestro equipo de atención para que te asista de forma personalizada.\n\n` +
+                `${getAgentHandoffNotice()}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            updates.motivo_consulta = `[TURNO CONSULTADO] Solicitud de atención con asesor`;
+            nextStage = 'esperando_agente';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+    }
+    // =============================================
+    // FLUJO 0A-4: RESPUESTA TRAS INFORMACIÓN BRINDADA POR EL BOT (FASE 1)
+    // =============================================
+    else if (currentStage === 'informacion_respondida') {
+        const isConfirmingResolution = 
+            cleanText.trim() === '1' ||
+            /^(1|s[ií]+|si|gracias|muchas\s+gracias|much[ií]simas\s+gracias|ok(ey|ay)?|listo|perfecto|joya|de\s+diez|genial|chau|adios|buen[ií]simo|todo\s+claro|ninguna\s+duda|nada\s+m[aá]s)[!.\s]*$/i.test(cleanText) ||
+            /\b(todo\s+claro|muchas\s+gracias|gracias|ok\s+gracias|perfecto\s+gracias|listo\s+gracias|resuelto)\b/i.test(cleanText);
+
+        const isAskingAgent = 
+            cleanText.trim() === '2' ||
+            /\b(no|agente|asesor|asesora|humano|persona|operador|operadora|hablar\s+con\s+alguien|representante)\b/i.test(cleanText);
+
+        const isNewAction = 
+            analysis.intent && analysis.intent !== 'info' && analysis.intent !== 'agradecimiento_cierre' && analysis.intent !== 'volver_atras';
+
+        if (isConfirmingResolution && !isAskingAgent && !isNewAction) {
+            replyText = `¡Nos alegra haberte ayudado! 🏥 Gracias por comunicarte con *Sanatorio Argentino*.\n\n` +
+                `Si en el futuro necesitás realizar otra consulta o agendar un turno, solo escribinos. ¡Que tengas un excelente día! ✨`;
+            updates.status = 'resuelto';
+            updates.bot_active = false;
+            updates.bot_stage = 'resuelto_bot';
+            updates.closed_at = new Date().toISOString();
+            updates.resolution_reason = `Información brindada por Bot - Resuelto: ${conv?.motivo_consulta || 'Consulta Informativa'}`;
+            nextStage = 'resuelto_bot';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        } else if (isAskingAgent && !isNewAction) {
+            replyText = `¡Entendido! Te comunicamos con un asesor de nuestro equipo para asistirte de forma personalizada. 👤\n\n` +
+                `Por favor detallanos qué consulta o gestión necesitás para que podamos darte una respuesta rápida.\n\n` +
+                `${getAgentHandoffNotice()}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            updates.motivo_consulta = `[CONSULTA] Derivación tras información: ${conv?.motivo_consulta || 'Información General'}`;
+            nextStage = 'esperando_agente';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+    }
+    // =============================================
     // FLUJO 0A-2B: SELECCIÓN DE MÉDICO HOMÓNIMO
     // =============================================
     else if (currentStage === 'esperando_seleccion_medico') {
@@ -4306,6 +4524,7 @@ async function handleChatbotTriage(
                         `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                    updates.motivo_consulta = `[TURNO] ${info.displayName} (${info.specialty}) | DNI: ${effectiveDni} | OS: ${effectiveOs}`;
                     updates.status = 'sin_asignar';
                     updates.bot_active = false;
                     nextStage = 'esperando_agente';
@@ -5167,6 +5386,7 @@ async function handleChatbotTriage(
                     replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*) y tu solicitud para *${effectiveDocOrSpec}*.\n\n` +
                         `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
                         `${getAgentHandoffNotice()}`;
+                    updates.motivo_consulta = `[TURNO] ${effectiveDocOrSpec} | DNI: ${paciente?.dni || updates.dni} | OS: ${osPlanText}`;
                     updates.status = 'sin_asignar';
                     updates.bot_active = false;
                     nextStage = 'esperando_agente';
@@ -5282,8 +5502,8 @@ async function handleChatbotTriage(
             `• *Traumatología* (Guardia pasiva especializada)\n` +
             `• *Cirugía General* (Guardia pasiva especializada)\n` +
             `• *Urología* (Guardia pasiva especializada)\n\n` +
-            `🌐 Para más información institucional podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            `🌐 Para más información institucional podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5311,7 +5531,8 @@ async function handleChatbotTriage(
                 `• Consulta médica clínica integral de apertura y cierre\n\n` +
                 `🌐 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
                 `💬 *¿Deseas coordinar un turno para realizarte el circuito?*\n` +
-                `Escribinos *'Quiero coordinar turno'* indicando tu sede de preferencia (*Santa Fe* o *San Luis*).`;
+                `Escribinos *'Quiero coordinar turno'* indicando tu sede de preferencia (*Santa Fe* o *San Luis*).` +
+                getInfoResolutionFooter();
 
             updates.bot_active = true;
             nextStage = 'informacion_respondida';
@@ -5367,7 +5588,8 @@ async function handleChatbotTriage(
                 `• Se realiza de manera integrada en *Sede Santa Fe* (Santa Fe 263 Este).\n\n` +
                 `👉 Más información: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
                 `💬 *¿Deseas solicitar turno para el Programa Prevenir?*\n` +
-                `Escribinos *'Quiero turno para Prevenir'* para que un agente te coordine la fecha.`;
+                `Escribinos *'Quiero turno para Prevenir'* para que un agente te coordine la fecha.` +
+                getInfoResolutionFooter();
 
             updates.bot_active = true;
             nextStage = 'informacion_respondida';
@@ -5415,7 +5637,8 @@ async function handleChatbotTriage(
             `👉 *Ingresá a consultar tus resultados aquí:*\n` +
             `http://6430052dd12b.sn.myname.net:8082/glymsweb?tipo_u=4\n\n` +
             `⚠️ *Prácticas confidenciales:* Aquellos estudios que requieran estricta confidencialidad médica no se publican por web y deben ser retirados personalmente en el laboratorio.\n\n` +
-            `🌐 Para más información sobre el Sanatorio visitá:\n👉 https://www.sanatorioargentino.com.ar/`;
+            `🌐 Para más información sobre el Sanatorio visitá:\n👉 https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5428,7 +5651,8 @@ async function handleChatbotTriage(
             `👉 *Portal de Pacientes ITS - Diagnóstico por Imágenes:*\n` +
             `https://imagenes.itsanarg.com.ar/patientportal/index.php\n\n` +
             `Podés acceder con tu número de DNI y la contraseña provista al momento de realizar la práctica médica.\n\n` +
-            `🌐 Para conocer sedes y servicios podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/`;
+            `🌐 Para conocer sedes y servicios podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5444,7 +5668,8 @@ async function handleChatbotTriage(
             `• *Biopsias:* Se retiran personalmente en Administración (Sede 02: San Luis 433 Oeste, 1° Piso).\n` +
             `• *Citología (PAP):* Podés solicitar tu informe por WhatsApp en el siguiente link:\n` +
             `👉 https://wa.me/5492644552540?text=Hola%20quiero%20solicitar%20un%20informe\n\n` +
-            `🌐 Para más información institucional visitá:\n👉 https://www.sanatorioargentino.com.ar/`;
+            `🌐 Para más información institucional visitá:\n👉 https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5461,7 +5686,8 @@ async function handleChatbotTriage(
             `3️⃣ *Citología (PAP) o Biopsias:*\n` +
             `• Médico interno: Se visualiza en tu Historia Clínica Digital en consulta.\n` +
             `• Médico externo: Biopsias en San Luis 433 Oeste (1° Piso) o Citología por WhatsApp al: https://wa.me/5492644552540\n\n` +
-            `🌐 Más detalles en: https://www.sanatorioargentino.com.ar/`;
+            `🌐 Más detalles en: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5479,7 +5705,8 @@ async function handleChatbotTriage(
             `📲 *Líneas de WhatsApp para consultas de preparación / ayuno:*\n` +
             `• Sede 01: https://wa.me/5492644867408\n` +
             `• Sede Santa Fe: https://wa.me/5492644609384\n\n` +
-            `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/`;
+            `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5496,7 +5723,8 @@ async function handleChatbotTriage(
             `• Cuenta con todas las vacunas oficiales del Calendario Nacional (gratuitas) y vacunas extraoficiales.\n` +
             `• Adhesión a campañas nacionales de vacunación.\n` +
             `• Para la compra de vacunas extraoficiales se reciben obras sociales, tarjetas de débito y crédito.\n\n` +
-            `🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/`;
+            `🌐 Para conocer más ingresá a: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5513,7 +5741,8 @@ async function handleChatbotTriage(
             `• Más información e inscripción por WhatsApp:\n` +
             `👉 https://wa.me/5492644117778\n` +
             `• Web: https://www.sanatorioargentino.com.ar/novedades/actualidad/clases-de-yoga-para-embarazadas.html\n\n` +
-            `🌐 Portal oficial: https://www.sanatorioargentino.com.ar/`;
+            `🌐 Portal oficial: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5529,7 +5758,8 @@ async function handleChatbotTriage(
             `• *Mamá soltera:* Fotocopia del DNI de la madre.\n` +
             `• *Padres no casados:* Ambos padres presentes sin excepción + Fotocopia DNI de ambos.\n` +
             `• *Padres casados:* Fotocopia DNI de ambos + Libreta o Acta de Matrimonio (puede concurrir cualquiera de los cónyuges).\n\n` +
-            `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/`;
+            `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5552,7 +5782,8 @@ async function handleChatbotTriage(
                 `📧 *Email:* administracion@sanatorioargentino.com.ar\n` +
                 `📞 *Teléfono:* 2644303040\n` +
                 `📲 *WhatsApp:* https://wa.me/5492644809396?text=Hola%20necesito\n\n` +
-                `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/`;
+                `🌐 Para más información institucional visitá: https://www.sanatorioargentino.com.ar/` +
+                getInfoResolutionFooter();
             nextStage = 'informacion_respondida';
         }
     }
@@ -5572,7 +5803,8 @@ async function handleChatbotTriage(
             `🏢 *SEDE SANTA FE (Santa Fe 263 Este - Capital):*\n` +
             `• Lunes a viernes de 7:30 a 21:00 hs | Sábados de 8:00 a 12:00 hs.\n\n` +
             `🚨 *Guardia Médica:* Sede 01 activa las 24 horas.\n\n` +
-            `🌐 Más información en: https://www.sanatorioargentino.com.ar/`;
+            `🌐 Más información en: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5581,19 +5813,19 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'telefonos_sedes') {
         updates.motivo_consulta = 'Información: Directorio Telefónico y WhatsApps';
         if (analysis.sectorKey === 'fertilidad') {
-            replyText = `📲 *Contacto de Medicina Reproductiva / Fertilidad:*\nPodés comunicarte por WhatsApp directamente con el sector al siguiente enlace:\n👉 https://wa.link/kfqzc2\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Contacto de Medicina Reproductiva / Fertilidad:*\nPodés comunicarte por WhatsApp directamente con el sector al siguiente enlace:\n👉 https://wa.link/kfqzc2\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else if (analysis.sectorKey === 'administracion') {
-            replyText = `📲 *Contacto de Administración:* https://wa.link/4po00r\nTeléfono: 2644303040\nMail: administracion@sanatorioargentino.com.ar\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Contacto de Administración:* https://wa.link/4po00r\nTeléfono: 2644303040\nMail: administracion@sanatorioargentino.com.ar\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else if (analysis.sectorKey === 'internacion') {
-            replyText = `📲 *Recepción de Internación (Sede 01):* https://wa.link/xpsjx4\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Recepción de Internación (Sede 01):* https://wa.link/xpsjx4\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else if (analysis.sectorKey === 'citologia') {
-            replyText = `📲 *Citología (Sede Santa Fe):* https://wa.link/nxmj56\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Citología (Sede Santa Fe):* https://wa.link/nxmj56\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else if (analysis.sectorKey === 'imagenes') {
-            replyText = `📲 *Diagnóstico por Imágenes:*\n• Sede 01 (1° Piso): https://wa.link/ori86c\n• Sede Santa Fe: https://wa.link/dcx4bz\n• Portal Web: https://imagenes.itsanarg.com.ar/patientportal/index.php\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Diagnóstico por Imágenes:*\n• Sede 01 (1° Piso): https://wa.link/ori86c\n• Sede Santa Fe: https://wa.link/dcx4bz\n• Portal Web: https://imagenes.itsanarg.com.ar/patientportal/index.php\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else if (analysis.sectorKey === 'laboratorio') {
-            replyText = `📲 *Laboratorio de Análisis Clínicos:*\n• Sede 01: https://wa.link/17bfdt (o https://wa.me/5492644867408)\n• Sede Santa Fe: https://wa.link/9l2ix4 (o https://wa.me/5492644609384)\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Laboratorio de Análisis Clínicos:*\n• Sede 01: https://wa.link/17bfdt (o https://wa.me/5492644867408)\n• Sede Santa Fe: https://wa.link/9l2ix4 (o https://wa.me/5492644609384)\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else if (analysis.sectorKey === 'fundacion') {
-            replyText = `📲 *Fundación Sanatorio Argentino:* https://wa.link/iazmw0 (o https://wa.me/5492644867318)\nWeb: https://fundacion.sanatorioargentino.com.ar\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/`;
+            replyText = `📲 *Fundación Sanatorio Argentino:* https://wa.link/iazmw0 (o https://wa.me/5492644867318)\nWeb: https://fundacion.sanatorioargentino.com.ar\n\n🌐 Más información: https://www.sanatorioargentino.com.ar/` + getInfoResolutionFooter();
         } else {
             replyText = `📞 *Directorio de WhatsApps por Sede y Sector — Sanatorio Argentino:*\n\n` +
                 `🏢 *SEDE 01 (San Luis 432 Oeste):*\n` +
@@ -5615,8 +5847,8 @@ async function handleChatbotTriage(
                 `• Laboratorio: https://wa.link/9l2ix4\n` +
                 `• Diagnóstico por Imágenes: https://wa.link/dcx4bz\n` +
                 `• Chequeo Preventivo: https://wa.link/mvuq3g\n\n` +
-                `🌐 Web oficial: https://www.sanatorioargentino.com.ar/\n\n` +
-                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                `🌐 Web oficial: https://www.sanatorioargentino.com.ar/` +
+                getInfoResolutionFooter();
         }
         nextStage = 'informacion_respondida';
     }
@@ -5636,8 +5868,8 @@ async function handleChatbotTriage(
             `• Medicina Reproductiva: https://forms.gle/VffF2zcgyujXckPi7\n` +
             `• Curso para Embarazadas: https://forms.gle/1h55LBQxvjUA442X9\n\n` +
             `📧 *Canal formal para comentarios o reclamos:* calidad@sanatorioargentino.com.ar\n\n` +
-            `🌐 Para más información ingresá a: https://www.sanatorioargentino.com.ar/\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            `🌐 Para más información ingresá a: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5651,8 +5883,8 @@ async function handleChatbotTriage(
             `✅ *Actividades y Eventos:* Eventos y encuentros solidarios para promover la salud.\n\n` +
             `🗓️ *Conocer actividades:* https://fundacion.sanatorioargentino.com.ar\n` +
             `📲 *WhatsApp directo con un asistente de la Fundación:* https://wa.me/5492644867318\n\n` +
-            `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/\n\n` +
-            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/` +
+            getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
     }
     // =============================================
@@ -5662,11 +5894,17 @@ async function handleChatbotTriage(
         const doc = turnoOnlineProximo?.profesional || turnosActivosProximos?.[0]?.medico || 'tu profesional';
         const f = turnoOnlineProximo?.fecha || turnosActivosProximos?.[0]?.fecha || '';
         const h = turnoOnlineProximo?.hora ? ` a las ${turnoOnlineProximo.hora} hs` : (turnosActivosProximos?.[0]?.hora ? ` a las ${turnosActivosProximos[0].hora} hs` : '');
-        replyText = `¡Muchas gracias *${fullName}*! ✅ Registramos tu confirmación del turno con ${doc}${f ? ` para el ${f}${h}` : ''}.\n\n${getAgentHandoffNotice()}`;
-        updates.motivo_consulta = `Confirmación Turno: ${doc}`;
-        updates.status = 'sin_asignar';
+        replyText = `¡Muchas gracias${fullName ? ` *${fullName}*` : ''}! ✅ Tu turno con *${doc}*${f ? ` para el ${f}${h}` : ''} ya está confirmado en nuestro sistema.\n\n` +
+            `ℹ️ *Recordá:* Presentarte 15 minutos antes con tu DNI físico y credencial de tu cobertura médica.\n\n` +
+            `¡Te esperamos en Sanatorio Argentino! Que tengas un excelente día. 🏥✨`;
+        updates.motivo_consulta = `Turno Confirmado por Paciente: ${doc}`;
+        updates.status = 'resuelto';
         updates.bot_active = false;
-        nextStage = 'esperando_agente';
+        updates.bot_stage = 'resuelto_bot';
+        updates.closed_at = new Date().toISOString();
+        updates.resolution_reason = 'Confirmación de Turno Agendado - Asistencia confirmada por Paciente';
+        nextStage = 'resuelto_bot';
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
     // (Cancelación / reprogramación: gestionadas por handleGestionTurnoFlow antes de este bloque)
     // =============================================
@@ -5683,8 +5921,14 @@ async function handleChatbotTriage(
     // FLUJO: AGRADECIMIENTO O CIERRE CORDIAL (CONTEXTUAL)
     // =============================================
     else if (analysis.intent === 'agradecimiento_cierre') {
-        replyText = `¡De nada *${fullName}*! Que tengas un excelente día. Estamos a tu entera disposición ante cualquier otra consulta. 🏥`;
-        nextStage = 'informacion_respondida';
+        replyText = `¡De nada${fullName ? ` *${fullName}*` : ''}! Que tengas un excelente día. Estamos a tu entera disposición ante cualquier otra consulta. 🏥✨`;
+        updates.status = 'resuelto';
+        updates.bot_active = false;
+        updates.bot_stage = 'resuelto_bot';
+        updates.closed_at = new Date().toISOString();
+        updates.resolution_reason = 'Cierre cordial / Agradecimiento del paciente';
+        nextStage = 'resuelto_bot';
+        return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
     // FLUJO: TURNOS / REPROGRAMACIÓN
@@ -5716,7 +5960,6 @@ async function handleChatbotTriage(
         const isAskingNewTurno = 
             analysis.isExplicitNumberOption === '1' ||
             analysis.isExplicitNumberOption === '2' ||
-            currentStage === 'turno_consultado' ||
             currentStage === 'esperando_confirmacion_turno' ||
             currentStage === 'esperando_datos_turno' ||
             Boolean(doctorDisplay) ||
@@ -5809,6 +6052,10 @@ async function handleChatbotTriage(
                     `${getAgentHandoffNotice()}\n\n` +
                     `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
 
+                const effDoc = updates.medico_o_especialidad || validDisplay || doctorDisplay || effectiveSpecialty || 'Consulta Médica';
+                const effDni = paciente?.dni || updates.dni || conv?.dni || 'DNI no informado';
+                const effOs = paciente?.coseguro || updates.obra_social || conv?.obra_social || 'Particular';
+                updates.motivo_consulta = `[TURNO] ${effDoc} | DNI: ${effDni} | OS: ${effOs}`;
                 updates.status = 'sin_asignar';
                 updates.bot_active = false;
                 nextStage = 'esperando_agente';
@@ -5868,8 +6115,9 @@ async function handleChatbotTriage(
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
-            nextStage = 'esperando_agente';
-            updates.motivo_consulta = 'Foto de Orden Médica Recibida (para Autorización)';
+            const effDni = paciente?.dni || updates.dni || conv?.dni || 'DNI en orden';
+            const effOs = paciente?.coseguro || updates.obra_social || conv?.obra_social || 'Particular';
+            updates.motivo_consulta = `[AUTORIZACIÓN] Foto de Orden Médica Recibida | DNI: ${effDni} | OS: ${effOs}`;
             updates.ai_summary = buildTriageSummary(updates, 'autorizacion', analysis.doctorRecord, isExistingPatient, paciente?.edad);
             return await finalizeAndSend(replyText, nextStage, updates);
         }
@@ -6001,7 +6249,7 @@ async function handleChatbotTriage(
     // FLUJO: INFORMACIÓN GENERAL / WEB
     // =============================================
     else if (analysis.intent === 'info') {
-        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, podés ingresar a nuestro sitio web oficial:\n\n🌐 *https://www.sanatorioargentino.com.ar/*\n\nSi necesitás realizar un trámite en particular, indícanos si buscás turnos, autorizaciones, guardias o resultados de estudios.`;
+        replyText = `Para consultar información institucional, cartilla de profesionales, sedes y servicios de Sanatorio Argentino, podés ingresar a nuestro sitio web oficial:\n\n🌐 *https://www.sanatorioargentino.com.ar/*\n\nSi necesitás realizar un trámite en particular, indícanos si buscás turnos, autorizaciones, guardias o resultados de estudios.` + getInfoResolutionFooter();
         updates.motivo_consulta = 'Información General / Web';
         nextStage = 'informacion_respondida';
     }
@@ -6184,8 +6432,14 @@ function buildTriageSummary(
     if (docName && docName.includes('(')) docName = docName.split('(')[0].trim();
 
     const isThirdParty = Boolean(data.es_gestion_tercero || data.parentesco || intent === 'gestion_familiar');
+    const effDni = data.paciente_dni || data.dni || null;
+    const effOs = data.paciente_obra_social || data.obra_social || null;
+    const hasOsValid = Boolean(effOs && !effOs.toLowerCase().includes('a consultar') && !effOs.toLowerCase().includes('a confirmar') && !effOs.toLowerCase().includes('particular / a confirmar'));
+    const isTriageComplete = Boolean(effDni && String(effDni).trim().length >= 7 && hasOsValid && (docName || intent === 'autorizacion'));
 
     return {
+        triage_status: isTriageComplete ? 'completo' : 'pendiente',
+        triage_badge: isTriageComplete ? '✓ Triage Completo' : 'Faltan datos',
         resumen_solicitud: data.motivo_consulta || `Gestión de ${tramite.toLowerCase()} para ${data.nombre_completo || 'el paciente'}.`,
         tipo_tramite: tramite,
         ficha_dual: {
@@ -6345,6 +6599,7 @@ async function handleNewPatientIntake(
             nextStage = 'esperando_orden_foto';
             updates.motivo_consulta = `Alta de Paciente + Turno: ${resolvedName} - ${estudioRequiereOrden} [Aguardando pedido médico]`;
         } else {
+            updates.motivo_consulta = `[NUEVO PACIENTE - TURNO] ${targetDocOrStudy || 'Consulta'} | DNI: ${updates.dni} | OS: ${updates.obra_social}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
             updates.bot_stage = 'esperando_agente';
