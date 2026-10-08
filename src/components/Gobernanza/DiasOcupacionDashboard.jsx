@@ -23,9 +23,12 @@ import {
     INDICADORES_CATALOGO, 
     DEFAULT_ACTIVE_INDICATOR_IDS,
     INDICADORES_GUARDIA_CATALOGO,
-    DEFAULT_ACTIVE_GUARDIA_IDS
+    DEFAULT_ACTIVE_GUARDIA_IDS,
+    INDICADORES_QUIROFANO_CATALOGO,
+    DEFAULT_ACTIVE_QUIROFANO_IDS
 } from './telarConfig';
 import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
+import QuirofanoDashboard from './QuirofanoDashboard';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -271,6 +274,43 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         setActiveGuardiaIds(DEFAULT_ACTIVE_GUARDIA_IDS);
         try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(DEFAULT_ACTIVE_GUARDIA_IDS)); } catch {}
         addToast?.('Todos los indicadores de Guardia activados', 'success');
+    };
+
+    // === ESTADOS DE QUIRÓFANO Y HOSPITAL DE DÍA ===
+    const [isQuirofanoOpen, setIsQuirofanoOpen] = useState(() => {
+        return localStorage.getItem('telar_quirofano_expanded') === 'true';
+    });
+
+    const handleToggleQuirofano = () => {
+        if (isUciOnly) return;
+        setIsQuirofanoOpen(prev => {
+            const next = !prev;
+            try { localStorage.setItem('telar_quirofano_expanded', String(next)); } catch {}
+            return next;
+        });
+    };
+
+    const [activeQuirofanoIds, setActiveQuirofanoIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_active_quirofano_indicators');
+            return saved ? JSON.parse(saved) : DEFAULT_ACTIVE_QUIROFANO_IDS;
+        } catch {
+            return DEFAULT_ACTIVE_QUIROFANO_IDS;
+        }
+    });
+
+    const handleToggleQuirofanoIndicator = (id) => {
+        setActiveQuirofanoIds(prev => {
+            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+            try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleSelectAllQuirofanoIndicators = () => {
+        setActiveQuirofanoIds(DEFAULT_ACTIVE_QUIROFANO_IDS);
+        try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(DEFAULT_ACTIVE_QUIROFANO_IDS)); } catch {}
+        addToast?.('Todos los indicadores de Quirófano activados', 'success');
     };
     const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
@@ -635,7 +675,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
-        if (sectorId === 'GUARDIA') {
+        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO') {
             setLoading(false);
             setLoadingPeticiones(false);
             return;
@@ -2473,7 +2513,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     fontWeight: 700,
                                     border: '1px solid #BFDBFE'
                                 }}>
-                                    {sectorId === 'GUARDIA' ? `${activeGuardiaIds.length} Indicadores` : `${activeIndicatorIds.length} Indicadores`}
+                                    {sectorId === 'GUARDIA' 
+                                        ? `${activeGuardiaIds.length} Indicadores` 
+                                        : sectorId === 'QUIROFANO'
+                                            ? `${activeQuirofanoIds.length} Indicadores`
+                                            : `${activeIndicatorIds.length} Indicadores`}
                                 </span>
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
@@ -3545,6 +3589,156 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     )}
                                 </div>
                             )}
+
+                            {/* 🔪 SERVICIO: CENTRO QUIRÚRGICO (QUIRÓFANO & HOSPITAL DE DÍA) */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '8px',
+                                    border: `1.5px solid ${isQuirofanoOpen || sectorId === 'QUIROFANO' ? '#93C5FD' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    boxShadow: isQuirofanoOpen || sectorId === 'QUIROFANO' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    overflow: 'hidden',
+                                    transition: 'all 0.2s ease'
+                                }}>
+                                    {/* Botón Cabecera Quirófano */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleToggleQuirofano();
+                                            if (sectorId !== 'QUIROFANO') handleSelectSector('QUIROFANO');
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '11px 12px',
+                                            background: sectorId === 'QUIROFANO' ? '#EFF6FF' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'QUIROFANO') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'QUIROFANO') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.25rem' }}>🔪</span>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                    Quirófano & HdD
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>
+                                                    Cirugía Central & Ambulatoria
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{
+                                                fontSize: '0.68rem',
+                                                background: sectorId === 'QUIROFANO' ? '#2563EB' : '#DBEAFE',
+                                                color: sectorId === 'QUIROFANO' ? '#FFFFFF' : '#1E40AF',
+                                                padding: '2px 8px',
+                                                borderRadius: '10px',
+                                                fontWeight: 800
+                                            }}>
+                                                {activeQuirofanoIds.length} activos
+                                            </span>
+                                            <span style={{ color: sectorId === 'QUIROFANO' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
+                                                {isQuirofanoOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            </span>
+                                        </div>
+                                    </button>
+
+                                    {/* CONTENIDO DESPLEGABLE DE QUIRÓFANO */}
+                                    {isQuirofanoOpen && (
+                                        <div style={{
+                                            borderTop: '1px solid #DBEAFE',
+                                            background: '#FFFFFF',
+                                            animation: 'fadeIn 0.2s ease-out'
+                                        }}>
+                                            <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                                                    Indicadores Quirófano ({activeQuirofanoIds.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSelectAllQuirofanoIndicators}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#2563EB',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '1px 4px'
+                                                    }}
+                                                >
+                                                    Todos
+                                                </button>
+                                            </div>
+
+                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
+                                                {INDICADORES_QUIROFANO_CATALOGO.map(ind => {
+                                                    const isChecked = activeQuirofanoIds.includes(ind.id);
+                                                    return (
+                                                        <div
+                                                            key={ind.id}
+                                                            onClick={() => {
+                                                                if (sectorId !== 'QUIROFANO') handleSelectSector('QUIROFANO');
+                                                                handleToggleQuirofanoIndicator(ind.id);
+                                                            }}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                background: isChecked && sectorId === 'QUIROFANO' ? '#EFF6FF' : 'transparent',
+                                                                border: isChecked && sectorId === 'QUIROFANO' ? '1px solid #BFDBFE' : '1px solid transparent',
+                                                                transition: 'all 0.12s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                                {isChecked ? (
+                                                                    <CheckSquare size={15} color="#1E40AF" />
+                                                                ) : (
+                                                                    <Square size={15} color="#94A3B8" />
+                                                                )}
+                                                                <span style={{
+                                                                    fontSize: '0.74rem',
+                                                                    fontWeight: isChecked ? 700 : 500,
+                                                                    color: isChecked ? '#1E293B' : '#475569',
+                                                                    whiteSpace: 'nowrap',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis'
+                                                                }}
+                                                                title={ind.descripcion}
+                                                                >
+                                                                    {ind.label}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 700,
+                                                                padding: '1px 4px',
+                                                                borderRadius: '4px',
+                                                                background: ind.tipo === 'kpi' ? '#DBEAFE' : ind.tipo === 'table' ? '#D1FAE5' : '#F1F5F9',
+                                                                color: ind.tipo === 'kpi' ? '#1E40AF' : ind.tipo === 'table' ? '#065F46' : '#475569',
+                                                                flexShrink: 0
+                                                            }}>
+                                                                {ind.tipo === 'kpi' ? 'KPI' : ind.tipo === 'table' ? 'Tabla' : 'Gráfico'}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -3553,7 +3747,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                     {sectorId === 'GUARDIA' ? (
                         <GuardiaClinicaDashboard 
-                            onOpenDocModal={() => setShowDocModal(true)}
+                            onOpenDocModal={() => {
+                                setDocModalTab('GUARDIA');
+                                setShowDocModal(true);
+                            }}
                             activeIndicatorIds={activeGuardiaIds}
                             onToggleIndicator={handleToggleGuardiaIndicator}
                             addToast={addToast}
@@ -3566,6 +3763,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 setFechaHasta(h);
                                 setDatePresetMode('personalizado');
                             }}
+                        />
+                    ) : sectorId === 'QUIROFANO' ? (
+                        <QuirofanoDashboard 
+                            onOpenDocModal={() => {
+                                setDocModalTab('QUIROFANO');
+                                setShowDocModal(true);
+                            }}
+                            activeIndicatorIds={activeQuirofanoIds}
+                            onToggleIndicator={handleToggleQuirofanoIndicator}
+                            addToast={addToast}
                         />
                     ) : loading ? (
                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>

@@ -371,3 +371,130 @@ export const INDICADORES_GUARDIA_CATALOGO = [
 
 export const DEFAULT_ACTIVE_GUARDIA_IDS = INDICADORES_GUARDIA_CATALOGO.map(i => i.id);
 
+// ─── CATÁLOGO DE INDICADORES DE CENTRO QUIRÚRGICO (QUIRÓFANO CENTRAL & HOSPITAL DE DÍA) ───
+export const INDICADORES_QUIROFANO_CATALOGO = [
+    {
+        id: 'quirofano_ocupacion_salas',
+        label: 'Ocupación por Sala & HdD (Qx 1 a 7)',
+        grupo: 'Capacidad y Ocupación',
+        tipo: 'grafico',
+        icon: 'Scissors',
+        descripcion: 'Distribución de horas efectivas y porcentaje de ocupación en Quirófanos 1 a 6 + Quirófano 7 (HdD) y Sala de Partos.',
+        benchmark: '> 75% Quirófanos Centrales | > 60% HdD',
+        origen: 'TABLEAU_Cirugias y SalasQuirurgicas'
+    },
+    {
+        id: 'quirofano_tasa_suspension',
+        label: 'Tasa de Suspensión Global & Oportunidad',
+        grupo: 'Calidad y Oportunidad',
+        tipo: 'kpi',
+        icon: 'AlertTriangle',
+        descripcion: 'Porcentaje global de turnos quirúrgicos suspendidos y tasa de cancelaciones anticipadas (>24 hs) vs en el día (<24 hs).',
+        benchmark: '< 5.0% global',
+        origen: 'TurnosQuirurgicos y ProtocolosQuirurgicos'
+    },
+    {
+        id: 'quirofano_ranking_cirujanos',
+        label: 'Rendimiento y Producción de Cirujanos',
+        grupo: 'Gestión Médica',
+        tipo: 'table',
+        icon: 'Users',
+        descripcion: 'Trazabilidad nominal de cirugías programadas, realizadas, suspendidas y tasa individual de suspensión por profesional.',
+        benchmark: 'Tasa suspensión individual < 5.0%',
+        origen: 'TABLEAU_Cirugias y ProtocolosQuirurgicos agrupados por IdMedicoCirujano'
+    },
+    {
+        id: 'quirofano_especialidades',
+        label: 'Distribución por Especialidad Quirúrgica',
+        grupo: 'Demanda Asistencial',
+        tipo: 'grafico',
+        icon: 'Activity',
+        descripcion: 'Peso relativo de cada especialidad quirúrgica (Cirugía General, Ginecología, Obstetricia, Gastroenterología, etc.).',
+        benchmark: 'Equilibrio de cajas e instrumental',
+        origen: 'ProtocolosQuirurgicos cruzada con Especialidades'
+    },
+    {
+        id: 'quirofano_obras_sociales',
+        label: 'Distribución por Financiador / Mutua',
+        grupo: 'Gestión Administrativa',
+        tipo: 'grafico',
+        icon: 'Building2',
+        descripcion: 'Concentración de la actividad quirúrgica según obra social o prepaga (OSP ~41.6%, OSDE ~12.8%, Particulares, etc.).',
+        benchmark: '100% fojas conciliadas',
+        origen: 'TABLEAU_Cirugias y VIS_Pacientes'
+    },
+    {
+        id: 'quirofano_demografia_piramide',
+        label: 'Pirámide Demográfica y Grupos Etarios',
+        grupo: 'Demografía Quirúrgica',
+        tipo: 'grafico',
+        icon: 'Users',
+        descripcion: 'Estructura por decenios de edad. Identifica la concentración en edad fértil (20-40 años ~50.3%) y gerontológica.',
+        benchmark: 'Planificación de anestesia y neonatología',
+        origen: 'Pacientes cruzada con ProtocolosQuirurgicos'
+    },
+    {
+        id: 'quirofano_urgencias_electivas',
+        label: 'Urgencias vs Electivas (Articulación Guardia)',
+        grupo: 'Articulación Quirúrgica',
+        tipo: 'kpi',
+        icon: 'AlertCircle',
+        descripcion: 'Proporción de cirugías no programadas derivadas de Guardia en ≤ 48 hs versus cirugías programadas en agenda.',
+        benchmark: '8% - 12% Urgencias',
+        origen: 'ProtocolosQuirurgicos (EsUrgencia=1) y VLISE_Visitas'
+    },
+    {
+        id: 'quirofano_causales_suspension',
+        label: 'Matriz Oficial de Suspensiones (1..13)',
+        grupo: 'Calidad y Oportunidad',
+        tipo: 'grafico',
+        icon: 'AlertTriangle',
+        descripcion: 'Auditoría de las 13 causales tipificadas: falta de autorización por obra social, causa médica, reprogramación, etc.',
+        benchmark: 'Obra Social < 10% de suspensiones',
+        origen: 'TurnosQuirurgicos y MotivosSuspension'
+    },
+    {
+        id: 'quirofano_bloques_medicos',
+        label: 'Eficiencia de Bloques (Regla a 7 Días)',
+        grupo: 'Gestión de Quirófanos',
+        tipo: 'kpi',
+        icon: 'Clock',
+        descripcion: 'Ocupación de horas asignadas por médico/servicio, horas ociosas y control de apertura a demanda 7 días antes.',
+        benchmark: 'Eficiencia de Bloque > 80%',
+        origen: 'BloquesQuirurgicos y TurnosQuirurgicos'
+    },
+    {
+        id: 'quirofano_equipos_apoyo',
+        label: 'Productividad de Equipos de Apoyo',
+        grupo: 'Equipos Quirúrgicos',
+        tipo: 'table',
+        icon: 'UserCheck',
+        descripcion: 'Participación y horas en quirófano de Circulantes, Técnicos de Anestesia, Anestesiólogos e Instrumentadores.',
+        benchmark: 'Seguridad y rotación equitativa',
+        origen: 'PartesQuirurgicos y ProtocolosQuirurgicos'
+    },
+    {
+        id: 'quirofano_interanual_crecimiento',
+        label: 'Evolución Interanual (2022 - 2026)',
+        grupo: 'Tendencias Históricas',
+        tipo: 'grafico',
+        icon: 'TrendingUp',
+        descripcion: 'Serie histórica de cirugías realizadas mes a mes y tasa de absorción ambulatoria en Hospital de Día.',
+        benchmark: 'Crecimiento > 5% anual',
+        origen: 'ProtocolosQuirurgicos históricos (2022-2026)'
+    },
+    {
+        id: 'quirofano_hemoterapia_soporte',
+        label: 'Hemoterapia y Soporte Transfusional',
+        grupo: 'Seguridad Quirúrgica',
+        tipo: 'kpi',
+        icon: 'Droplets',
+        descripcion: 'Unidades de glóbulos rojos, plasma y plaquetas requeridas en cirugías complejas y shockroom.',
+        benchmark: 'Disponibilidad 100% sin diferimiento',
+        origen: 'TransfusionesQuirurgicas y ProtocolosQuirurgicos'
+    }
+];
+
+export const DEFAULT_ACTIVE_QUIROFANO_IDS = INDICADORES_QUIROFANO_CATALOGO.map(i => i.id);
+
+

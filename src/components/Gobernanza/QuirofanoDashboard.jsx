@@ -440,7 +440,7 @@ const CHART_HELP_CATALOGO = {
     }
 };
 
-export default function QuirofanoDashboard({ isModal = false, onClose }) {
+export default function QuirofanoDashboard({ isModal = false, onClose, onOpenDocModal }) {
     const [activeTab, setActiveTab] = useState('resumen');
     const [searchCirujano, setSearchCirujano] = useState('');
     const [selectedChartHelp, setSelectedChartHelp] = useState(null);
@@ -487,7 +487,7 @@ export default function QuirofanoDashboard({ isModal = false, onClose }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <button
                             type="button"
-                            onClick={() => setShowSqlModal(true)}
+                            onClick={onOpenDocModal || (() => setShowSqlModal(true))}
                             style={{
                                 background: 'rgba(255,255,255,0.18)',
                                 border: '1px solid rgba(255,255,255,0.35)',
