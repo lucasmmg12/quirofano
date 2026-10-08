@@ -1623,7 +1623,7 @@ function isMedicalSpecialty(text: string): boolean {
     for (const [_, name] of SPECIALTY_MAP) {
         if (name.toLowerCase() === clean.toLowerCase()) return true;
     }
-    return /\b(especialidad|servicio|departamento|traumatolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|cardiolog[ií]a|dermatolog[ií]a|neurolog[ií]a|urolog[ií]a|oftalmolog[ií]a|otorrino|otorrinolaringolog[ií]a|gastroenterolog[ií]a|endocrinolog[ií]a|reumatolog[ií]a|neumonolog[ií]a|nefrolog[ií]a|hematolog[ií]a|infectolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|psicolog[ií]a|psiquiatr[ií]a|cirug[ií]a|flebolog[ií]a|alergia|mastolog[ií]a|fertilidad|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|densitometr[ií]a|mamograf[ií]a|resonancia|cl[ií]nica\s+m[eé]dica|salud\s+mental|medicina\s+interna)\b/i.test(clean);
+    return /\b(especialidad|servicio|departamento|traumatolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|cardiolog[ií]a|dermatolog[ií]a|neurolog[ií]a|urolog[ií]a|oftalmolog[ií]a|otorrino|otorrinolaringolog[ií]a|gastroenterolog[ií]a|endocrinolog[ií]a|reumatolog[ií]a|neumonolog[ií]a|neumolog[ií]a|nefrolog[ií]a|hematolog[ií]a|oncolog[ií]a|infectolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|fisioterapia|fisiatr[ií]a|psicolog[ií]a|psiquiatr[ií]a|cirug[ií]a|flebolog[ií]a|alergia|alergolog[ií]a|mastolog[ií]a|fertilidad|odontolog[ií]a|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|densitometr[ií]a|mamograf[ií]a|resonancia|rayos|laboratorio|guardia|urgencia|urgencias|cl[ií]nica\s+m[eé]dica|salud\s+mental|medicina\s+interna|medicina\s+general|consultorio|consultorios)\b/i.test(clean);
 }
 
 /**
@@ -3942,17 +3942,19 @@ async function handleChatbotTriage(
     // A la persona en WhatsApp SIEMPRE se le habla por su {name} de WhatsApp (senderName),
     // NUNCA por el nombre legal de SALUS ni en mayúsculas de padrón médico.
     let rawSender = (senderName || '').trim();
-    if (!rawSender || rawSender === 'WhatsApp User' || rawSender === 'User' || /^\+?\d+$/.test(rawSender)) {
+    if (!rawSender || rawSender === 'WhatsApp User' || rawSender === 'User' || /^\+?\d+$/.test(rawSender) || isMedicalSpecialty(rawSender)) {
         rawSender = 'Paciente';
     }
-    let whatsappFirstName = rawSender.includes(',') ? rawSender.split(',')[1].trim().split(' ')[0] : rawSender.split(' ')[0];
-    if (!whatsappFirstName || whatsappFirstName.length < 2) whatsappFirstName = rawSender;
+    const cleanSender = rawSender.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, '').trim();
+    let whatsappFirstName = cleanSender.includes(',') ? cleanSender.split(',')[1].trim().split(' ')[0] : cleanSender.split(' ')[0];
+    if (!whatsappFirstName || whatsappFirstName.length < 2) whatsappFirstName = cleanSender || rawSender;
     
     // whatsappName es el nombre con el que saludamos y conversamos con el usuario
     const whatsappName = whatsappFirstName;
 
     // patientLegalName es el nombre formal para registrar en la historia clínica / titular
-    const patientLegalName = paciente?.nombre || (terceroPaciente ? rawSender : (conv?.nombre_completo || rawSender));
+    const convNameClean = (conv?.nombre_completo && !isMedicalSpecialty(conv.nombre_completo) && !conv.nombre_completo.startsWith('Paciente')) ? conv.nombre_completo : null;
+    const patientLegalName = paciente?.nombre || (terceroPaciente ? (cleanSender || rawSender) : (convNameClean || cleanSender || rawSender));
     const fullName = whatsappName; // Mantener compatibilidad interna llamando al usuario por su {name}
     const os = (paciente?.coseguro || 'Particular / A confirmar').trim();
     const dniTitular = paciente?.dni || (!terceroPaciente ? dniInMessage : null) || null;
@@ -4795,7 +4797,8 @@ async function handleChatbotTriage(
             : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) ? String(paciente.dni) : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
 
         if (effectiveDni) {
-            let resolvedName = updates.nombre_completo || paciente?.nombre || conv?.nombre_completo || null;
+            const safeConvName = (conv?.nombre_completo && !isMedicalSpecialty(conv.nombre_completo) && !conv.nombre_completo.startsWith('Paciente')) ? conv.nombre_completo : null;
+            let resolvedName = (updates.nombre_completo && !isMedicalSpecialty(updates.nombre_completo)) ? updates.nombre_completo : (paciente?.nombre || safeConvName || null);
             let salusFound = Boolean(paciente?.id_paciente);
 
             if (!salusFound) {
@@ -4824,8 +4827,8 @@ async function handleChatbotTriage(
                 updates.es_paciente_existente = true;
             }
 
-            if (!resolvedName) {
-                resolvedName = analysis.patientNameCandidate || whatsappName || 'Paciente';
+            if (!resolvedName || isMedicalSpecialty(resolvedName)) {
+                resolvedName = (analysis.patientNameCandidate && !isMedicalSpecialty(analysis.patientNameCandidate)) ? analysis.patientNameCandidate : (whatsappName || 'Paciente');
                 updates.nombre_completo = resolvedName;
             }
 
@@ -4889,7 +4892,8 @@ async function handleChatbotTriage(
         // Si ya cuenta con DNI válido Y el mensaje contiene el motivo detallado (no es un simple "5" o "agente"):
         if (effectiveDni && !isSimpleAgentTrigger && cleanText.length >= 15) {
             updates.dni = effectiveDni;
-            const patientName = paciente?.nombre || conv?.nombre_completo || whatsappName || 'Paciente';
+            const safeConv = (conv?.nombre_completo && !isMedicalSpecialty(conv.nombre_completo) && !conv.nombre_completo.startsWith('Paciente')) ? conv.nombre_completo : null;
+            const patientName = paciente?.nombre || safeConv || whatsappName || 'Paciente';
             updates.nombre_completo = patientName;
             updates.motivo_consulta = `Consulta con Agente: ${patientName} (DNI ${effectiveDni}) - ${cleanText.slice(0, 90)}`;
             updates.status = 'sin_asignar';
@@ -4897,7 +4901,8 @@ async function handleChatbotTriage(
             nextStage = 'esperando_agente';
             updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
 
-            replyText = `¡Muchas gracias *${patientName}*! 🏥 Registramos tus datos y tu solicitud.\n\n` +
+            const saludo = (!paciente && whatsappName) ? whatsappName : patientName;
+            replyText = `¡Muchas gracias *${saludo}*! 🏥 Registramos tus datos y tu solicitud.\n\n` +
                 `Ya mismo te comunicamos con un agente de nuestro equipo de atención para asistirte.\n\n` +
                 `${getAgentHandoffNotice()}\n\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
@@ -4976,7 +4981,9 @@ async function handleChatbotTriage(
                 updates,
                 'turno',
                 analysis.doctorRecord,
-                doctorDisplay
+                doctorDisplay,
+                undefined,
+                whatsappName
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
@@ -5415,7 +5422,9 @@ async function handleChatbotTriage(
                 updates,
                 analysis.intent,
                 analysis.doctorRecord,
-                doctorDisplay
+                doctorDisplay,
+                undefined,
+                whatsappName
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
@@ -5465,7 +5474,9 @@ async function handleChatbotTriage(
                     updates,
                     analysis.intent,
                     analysis.doctorRecord,
-                    doctorDisplay
+                    doctorDisplay,
+                    undefined,
+                    whatsappName
                 );
                 nextStage = res.nextStage;
                 replyText = res.replyText;
@@ -5480,7 +5491,9 @@ async function handleChatbotTriage(
                 updates,
                 analysis.intent,
                 analysis.doctorRecord,
-                doctorDisplay
+                doctorDisplay,
+                undefined,
+                whatsappName
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
@@ -5563,7 +5576,8 @@ async function handleChatbotTriage(
                     'chequeo',
                     analysis.doctorRecord,
                     doctorDisplay,
-                    infoChequeoTurno
+                    infoChequeoTurno,
+                    whatsappName
                 );
                 nextStage = res.nextStage;
                 replyText = res.replyText;
@@ -5618,7 +5632,8 @@ async function handleChatbotTriage(
                     'prevenir',
                     analysis.doctorRecord,
                     doctorDisplay,
-                    infoPrevenirTurno
+                    infoPrevenirTurno,
+                    whatsappName
                 );
                 nextStage = res.nextStage;
                 replyText = res.replyText;
@@ -6161,7 +6176,8 @@ async function handleChatbotTriage(
                 'autorizacion',
                 analysis.doctorRecord,
                 doctorDisplay,
-                intro
+                intro,
+                whatsappName
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
@@ -6239,7 +6255,8 @@ async function handleChatbotTriage(
                 'derivacion_agente',
                 analysis.doctorRecord,
                 doctorDisplay,
-                intro
+                intro,
+                whatsappName
             );
             nextStage = res.nextStage;
             replyText = res.replyText;
@@ -6372,7 +6389,34 @@ function getMissingPatientFields(data: Record<string, any>): string[] {
 /**
  * Genera el mensaje amigable de repregunta solicitando ÚNICAMENTE los campos que faltan para el alta en SALUS
  */
-function buildMissingFieldsPrompt(patientName: string | null, missing: string[], currentData: Record<string, any>): string {
+function isGenericName(name: string | null | undefined): boolean {
+    if (!name) return true;
+    const norm = String(name).trim().toLowerCase();
+    if (
+        norm === 'unknown' ||
+        norm === 'bot sanatorio' ||
+        norm === 'bot' ||
+        norm === 'sanatorio' ||
+        norm === 'sanatorio argentino' ||
+        norm === 'paciente' ||
+        norm === 'user' ||
+        norm === 'whatsapp user' ||
+        norm.startsWith('paciente (') ||
+        norm === 'recepciones' ||
+        /^\+?\d+$/.test(norm)
+    ) return true;
+    return isMedicalSpecialty(name);
+}
+
+/**
+ * Genera el mensaje amigable de repregunta solicitando ÚNICAMENTE los campos que faltan para el alta en SALUS
+ */
+function buildMissingFieldsPrompt(
+    patientName: string | null, 
+    missing: string[], 
+    currentData: Record<string, any>,
+    whatsappName?: string | null
+): string {
     const labelsMap: Record<string, string> = {
         nombre_completo: '1️⃣ *Nombre y Apellido* (tal como figuran en tu DNI)',
         dni: '2️⃣ *Número de DNI* (solo números, sin puntos ni espacios)',
@@ -6382,10 +6426,16 @@ function buildMissingFieldsPrompt(patientName: string | null, missing: string[],
     };
 
     let intro = '';
-    const cleanName = (patientName && !patientName.toLowerCase().startsWith('paciente')) ? patientName : null;
+    // REGLA CRÍTICA INSTITUCIONAL (OBLIGATORIA):
+    // Cuando el paciente NO esté registrado en SALUS, SIEMPRE nos dirigimos a él
+    // por su nombre de WhatsApp (whatsappName) para que se sienta reconocido y NUNCA
+    // confundir su nombre con especialidades médicas, profesionales o respuestas del menú.
+    const cleanWpName = (whatsappName && !isGenericName(whatsappName) && !isMedicalSpecialty(whatsappName)) ? whatsappName.trim() : null;
+    const cleanPatientName = (patientName && !isGenericName(patientName) && !isMedicalSpecialty(patientName) && !patientName.toLowerCase().startsWith('paciente')) ? patientName.trim() : null;
+    const displayName = cleanWpName || cleanPatientName;
 
-    if (cleanName) {
-        intro = `¡Muchas gracias *${cleanName}*! 🏥\n\n` +
+    if (displayName) {
+        intro = `¡Muchas gracias *${displayName}*! 🏥\n\n` +
             `Constatamos que *no registrás una ficha previa de paciente en Sanatorio Argentino*.\n\n` +
             `Para poder abrir tu ficha de paciente en nuestro sistema institucional y coordinar tu atención, necesitamos los siguientes datos obligatorios de admisión:\n\n`;
     } else if (currentData.dni) {
@@ -6496,7 +6546,8 @@ async function handleNewPatientIntake(
     intent: string,
     doctorRecord: any,
     doctorDisplay: string | null,
-    intentPromptPrefix?: string
+    intentPromptPrefix?: string,
+    whatsappName?: string | null
 ): Promise<{ nextStage: string; replyText: string }> {
     const supabaseClient = (globalThis as any)._lastSupabaseClient || (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null);
     const extracted = await extractPatientVariables(cleanText, candidateDni, supabaseClient, phone);
@@ -6508,9 +6559,12 @@ async function handleNewPatientIntake(
     const validExtractedDni = (extracted.dni && isValidArgentineDni(extracted.dni)) ? extracted.dni : null;
     const finalDni = establishedConvDni || validCandidateDni || validExtractedDni || null;
 
+    const cleanExtractedName = (extracted.nombre_completo && !isMedicalSpecialty(extracted.nombre_completo) && !isGenericName(extracted.nombre_completo)) ? extracted.nombre_completo : null;
+    const cleanConvName = (conv?.nombre_completo && !conv?.nombre_completo.startsWith('Paciente') && !isMedicalSpecialty(conv.nombre_completo) && !isGenericName(conv.nombre_completo)) ? conv.nombre_completo : null;
+
     const mergedPatientData: Record<string, any> = {
         dni: finalDni,
-        nombre_completo: extracted.nombre_completo || (conv?.nombre_completo && !conv?.nombre_completo.startsWith('Paciente') ? conv.nombre_completo : null),
+        nombre_completo: cleanExtractedName || cleanConvName || null,
         obra_social: extracted.obra_social || (conv?.obra_social && conv?.obra_social !== 'Particular / A confirmar' && conv?.obra_social !== 'A consultar' ? conv.obra_social : null),
         fecha_nacimiento: extracted.fecha_nacimiento || conv?.fecha_nacimiento || null,
         edad: extracted.edad || (conv?.fecha_nacimiento ? calculateAgeFromBirthDate(conv.fecha_nacimiento) : null),
@@ -6522,15 +6576,25 @@ async function handleNewPatientIntake(
 
     // REGLA CRÍTICA DE SEGURIDAD: Verificar que el nombre extraído NO sea un profesional médico o especialidad
     if (mergedPatientData.nombre_completo) {
-        const docCheck = await detectIfCandidateIsDoctor(mergedPatientData.nombre_completo, cleanText, supabaseClient);
-        if (docCheck.isDoctor) {
-            console.log(`[triage-bot] ⚠️ mergedPatientData corregido: "${mergedPatientData.nombre_completo}" es profesional médico (${docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty}).`);
-            if (!mergedPatientData.medico_o_especialidad) {
-                mergedPatientData.medico_o_especialidad = docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty || mergedPatientData.nombre_completo;
-                updates.medico_o_especialidad = mergedPatientData.medico_o_especialidad;
+        if (isMedicalSpecialty(mergedPatientData.nombre_completo) || isGenericName(mergedPatientData.nombre_completo)) {
+            console.log(`[triage-bot] ⚠️ mergedPatientData corregido: "${mergedPatientData.nombre_completo}" es una especialidad o genérico.`);
+            if (!mergedPatientData.medico_o_especialidad && isMedicalSpecialty(mergedPatientData.nombre_completo)) {
+                mergedPatientData.medico_o_especialidad = mergedPatientData.nombre_completo;
+                updates.medico_o_especialidad = mergedPatientData.nombre_completo;
             }
             mergedPatientData.nombre_completo = null;
             delete updates.nombre_completo;
+        } else {
+            const docCheck = await detectIfCandidateIsDoctor(mergedPatientData.nombre_completo, cleanText, supabaseClient);
+            if (docCheck.isDoctor) {
+                console.log(`[triage-bot] ⚠️ mergedPatientData corregido: "${mergedPatientData.nombre_completo}" es profesional médico (${docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty}).`);
+                if (!mergedPatientData.medico_o_especialidad) {
+                    mergedPatientData.medico_o_especialidad = docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty || mergedPatientData.nombre_completo;
+                    updates.medico_o_especialidad = mergedPatientData.medico_o_especialidad;
+                }
+                mergedPatientData.nombre_completo = null;
+                delete updates.nombre_completo;
+            }
         }
     }
 
@@ -6559,7 +6623,7 @@ async function handleNewPatientIntake(
     }
 
     if (mergedPatientData.dni) updates.dni = mergedPatientData.dni;
-    if (mergedPatientData.nombre_completo) updates.nombre_completo = mergedPatientData.nombre_completo;
+    if (mergedPatientData.nombre_completo && !isMedicalSpecialty(mergedPatientData.nombre_completo)) updates.nombre_completo = mergedPatientData.nombre_completo;
     if (mergedPatientData.obra_social) updates.obra_social = mergedPatientData.obra_social;
     if (mergedPatientData.fecha_nacimiento) updates.fecha_nacimiento = mergedPatientData.fecha_nacimiento;
     if (mergedPatientData.departamento) updates.departamento = mergedPatientData.departamento;
@@ -6573,13 +6637,15 @@ async function handleNewPatientIntake(
         updates.bot_stage = 'esperando_datos_nuevo';
         updates.bot_active = true;
         const nextStage = 'esperando_datos_nuevo';
-        let reply = buildMissingFieldsPrompt(mergedPatientData.nombre_completo, missing, mergedPatientData);
+        let reply = buildMissingFieldsPrompt(mergedPatientData.nombre_completo, missing, mergedPatientData, whatsappName);
         if (intentPromptPrefix) {
             reply = intentPromptPrefix + '\n\n' + reply;
         }
         return { nextStage, replyText: reply };
     } else {
-        const resolvedName = mergedPatientData.nombre_completo || 'Paciente';
+        const resolvedName = (mergedPatientData.nombre_completo && !isMedicalSpecialty(mergedPatientData.nombre_completo) && !isGenericName(mergedPatientData.nombre_completo))
+            ? mergedPatientData.nombre_completo 
+            : (whatsappName || 'Paciente');
         updates.dni = mergedPatientData.dni;
         updates.nombre_completo = resolvedName;
         updates.obra_social = mergedPatientData.obra_social || 'Particular';
@@ -6607,7 +6673,7 @@ async function handleNewPatientIntake(
         }
 
         // Pre-registrar en hospital_pacientes para que quede dado de alta en el padrón de SALUS
-        if (updates.dni && updates.nombre_completo) {
+        if (updates.dni && updates.nombre_completo && !isMedicalSpecialty(updates.nombre_completo) && !isGenericName(updates.nombre_completo) && updates.nombre_completo !== 'Paciente') {
             try {
                 const supabaseClient = (globalThis as any)._lastSupabaseClient;
                 if (supabaseClient) {
@@ -6679,7 +6745,7 @@ async function handleNewPatientIntake(
  * Regex y funciones de seguridad clínica para evitar que el nombre de un médico o especialista
  * sea confundido y cargado como el nombre de un paciente.
  */
-const DOCTOR_SPECIALTY_PREFIX_REGEX = /^(?:dr\.?|dra\.?|doctora?|medico|médica|especialista|neumon[oó]log[ao]|neum[oó]log[ao]|pediatra|ginec[oó]log[ao]|obstetra|traumat[oó]log[ao]|cardi[oó]log[ao]|dermat[oó]log[ao]|oftalm[oó]log[ao]|ur[oó]log[ao]|otorrino(?:laring[oó]log[ao])?|neur[oó]log[ao]|nutricionista|cirujan[ao]|kinesi[oó]log[ao]|endocrin[oó]log[ao]|gastroenter[oó]log[ao]|psiquiatra|psic[oó]log[ao]|reumat[oó]log[ao]|hemat[oó]log[ao]|onc[oó]log[ao]|infect[oó]log[ao]|fisiatra|alergista)\b/i;
+const DOCTOR_SPECIALTY_PREFIX_REGEX = /^(?:dr\.?|dra\.?|doctora?|medico|médica|especialista|neumon[oó]log[ao]|neum[oó]log[ao]|pediatra|ginec[oó]log[ao]|obstetra|traumat[oó]log[ao]|cardi[oó]log[ao]|dermat[oó]log[ao]|oftalm[oó]log[ao]|ur[oó]log[ao]|otorrino(?:laring[oó]log[ao])?|neur[oó]log[ao]|nutricionista|cirujan[ao]|kinesi[oó]log[ao]|endocrin[oó]log[ao]|gastroenter[oó]log[ao]|psiquiatra|psic[oó]log[ao]|reumat[oó]log[ao]|hemat[oó]log[ao]|onc[oó]log[ao]|infect[oó]log[ao]|fisiatra|alergista|dermatolog[ií]a|cardiolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|traumatolog[ií]a|oftalmolog[ií]a|urolog[ií]a|neurolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|cirug[ií]a|endocrinolog[ií]a|gastroenterolog[ií]a|reumatolog[ií]a|hematolog[ií]a|oncolog[ií]a|infectolog[ií]a|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|resonancia|guardia|laboratorio)\b/i;
 
 function normalizeDoctorSearchStr(str: string): string {
     return (str || '')
@@ -6697,6 +6763,11 @@ async function detectIfCandidateIsDoctor(
 ): Promise<{ isDoctor: boolean; matchedDoctor?: any; specialty?: string }> {
     if (!candidateName) return { isDoctor: false };
     const cleanCand = candidateName.trim();
+
+    // 0. Si el nombre coincide con una especialidad médica o servicio
+    if (isMedicalSpecialty(cleanCand)) {
+        return { isDoctor: true, specialty: cleanCand };
+    }
 
     // 1. Si el nombre comienza directamente con título o especialidad médica
     if (DOCTOR_SPECIALTY_PREFIX_REGEX.test(cleanCand)) {
@@ -6857,10 +6928,10 @@ async function extractPatientVariables(
                             content: `Eres el extractor clínico y administrativo del Contact Center de Sanatorio Argentino en San Juan, Argentina.
 Extrae del mensaje del paciente un JSON con los siguientes campos:
 - nombre_completo: Nombre y apellido del paciente a atender (string o null).
-  ¡REGLA ABSOLUTA DE SEGURIDAD CLÍNICA - NO CONFUNDIR CON MÉDICO/A!:
-  Si el paciente menciona el nombre de un profesional, doctor/a, médico/a o especialista (ej: "Neumologa Gómez Yamila Clarisa", "Dra. Gomez", "Dr Marquez", "con traumatologo Perez", "pediatra Maria Lopez"), ese nombre corresponde al PROFESIONAL MÉDICO SOLICITADO y DEBE ir obligatoriamente en "medico_o_especialidad".
-  BAJO NINGUNA CIRCUNSTANCIA pongas el nombre del médico/a en "nombre_completo".
-  Si el mensaje no contiene el nombre propio del paciente que se atenderá, "nombre_completo" DEBE SER null.
+  ¡REGLA ABSOLUTA DE SEGURIDAD CLÍNICA - NO CONFUNDIR CON MÉDICO/A NI ESPECIALIDAD!:
+  Si el paciente menciona una especialidad médica (ej: "Dermatología", "Cardiología", "Pediatría", "Ginecología", "Traumatología", "Guardia", "Ecografía", etc.) o el nombre de un profesional, doctor/a o médico/a, ese valor NUNCA es el nombre del paciente.
+  BAJO NINGUNA CIRCUNSTANCIA pongas una especialidad médica o médico/a en "nombre_completo".
+  Si el mensaje no contiene el nombre y apellido real de la persona que se atenderá, "nombre_completo" DEBE SER null.
 - dni: Número de Documento Nacional de Identidad del paciente (solo 7 u 8 dígitos numéricos válidos en Argentina, que comiencen del 1 al 9) o null.
   ¡REGLA ABSOLUTA DE SEGURIDAD CLÍNICA!: NUNCA extraigas una fecha de nacimiento (ej: "04/07/2002", "04-07-2002", "04072002") como DNI. Un DNI argentino NUNCA comienza con 0.
   Si el paciente envía únicamente su nombre, fecha de nacimiento y localidad (ej: "Ramiro Javier Gutiérrez\\n04/07/2002\\nDepartamento rawson"), el campo "dni" DEBE SER OBLIGATORIAMENTE null.
@@ -6931,13 +7002,21 @@ Si un dato no fue aportado en el texto, indícalo como null.`
 
     // FILTRO DETERMINÍSTICO DE SEGURIDAD: Verificar que vars.nombre_completo NO sea un profesional médico o especialidad
     if (vars.nombre_completo) {
-        const docCheck = await detectIfCandidateIsDoctor(vars.nombre_completo, text, sb);
-        if (docCheck.isDoctor) {
-            console.log(`[triage-bot] ⚠️ Corrección de seguridad: "${vars.nombre_completo}" es un profesional médico (${docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty}), no un paciente.`);
+        if (isMedicalSpecialty(vars.nombre_completo)) {
+            console.log(`[triage-bot] ⚠️ Corrección de seguridad: "${vars.nombre_completo}" es una especialidad médica, no un paciente.`);
             if (!vars.medico_o_especialidad) {
-                vars.medico_o_especialidad = docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty || vars.nombre_completo;
+                vars.medico_o_especialidad = vars.nombre_completo;
             }
             vars.nombre_completo = null;
+        } else {
+            const docCheck = await detectIfCandidateIsDoctor(vars.nombre_completo, text, sb);
+            if (docCheck.isDoctor) {
+                console.log(`[triage-bot] ⚠️ Corrección de seguridad: "${vars.nombre_completo}" es un profesional médico (${docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty}), no un paciente.`);
+                if (!vars.medico_o_especialidad) {
+                    vars.medico_o_especialidad = docCheck.matchedDoctor?.profesional_nombre || docCheck.specialty || vars.nombre_completo;
+                }
+                vars.nombre_completo = null;
+            }
         }
     }
 
@@ -6945,14 +7024,20 @@ Si un dato no fue aportado en el texto, indícalo como null.`
     if (!vars.nombre_completo) {
         const lines = text.split(/[\r\n,]+/).map(l => l.trim()).filter(Boolean);
         for (const line of lines) {
-            if (line.length < 40 && !/\d/.test(line) && !/^(hola|buenas|buen dia|turno|consulta)/i.test(line) && !DOCTOR_SPECIALTY_PREFIX_REGEX.test(line)) {
+            if (line.length < 40 && !/\d/.test(line) && !/^(hola|buenas|buen dia|turno|consulta)/i.test(line) && !DOCTOR_SPECIALTY_PREFIX_REGEX.test(line) && !isMedicalSpecialty(line) && !isGenericName(line)) {
                 const check = await detectIfCandidateIsDoctor(line, text, sb);
-                if (!check.isDoctor) {
-                    vars.nombre_completo = line;
-                    break;
+                if (!check.isDoctor && !isMedicalSpecialty(line)) {
+                    // Exigir mínimo 2 palabras (Nombre y Apellido) para evitar capturar especialidades u opciones sueltas
+                    const words = line.replace(/[,.]/g, ' ').split(/\s+/).filter(w => /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ'-]{2,}$/.test(w));
+                    if (words.length >= 2) {
+                        vars.nombre_completo = line;
+                        break;
+                    }
                 } else if (!vars.medico_o_especialidad) {
                     vars.medico_o_especialidad = check.matchedDoctor?.profesional_nombre || check.specialty || line;
                 }
+            } else if (isMedicalSpecialty(line) && !vars.medico_o_especialidad) {
+                vars.medico_o_especialidad = line;
             }
         }
     }

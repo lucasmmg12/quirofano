@@ -943,7 +943,7 @@ export async function fetchLiveAndDemoChats() {
             const isGenericName = (name) => {
                 if (!name) return true;
                 const norm = String(name).trim().toLowerCase();
-                return (
+                if (
                     norm === 'unknown' ||
                     norm === 'bot sanatorio' ||
                     norm === 'bot' ||
@@ -951,8 +951,12 @@ export async function fetchLiveAndDemoChats() {
                     norm === 'sanatorio argentino' ||
                     norm === 'paciente' ||
                     norm.startsWith('paciente (') ||
-                    norm === 'recepciones'
-                );
+                    norm === 'recepciones' ||
+                    /^\+?\d+$/.test(norm)
+                ) return true;
+
+                // Nombres que coinciden con especialidades o servicios médicos NUNCA son pacientes
+                return /\b(dermatolog[ií]a|cardiolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|traumatolog[ií]a|oftalmolog[ií]a|urolog[ií]a|otorrino|otorrinolaringolog[ií]a|neurolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|cirug[ií]a|endocrinolog[ií]a|gastroenterolog[ií]a|psiquiatr[ií]a|psicolog[ií]a|reumatolog[ií]a|hematolog[ií]a|oncolog[ií]a|infectolog[ií]a|fisiatr[ií]a|alergia|guardia|laboratorio|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|resonancia|mamograf[ií]a|densitometr[ií]a|consultorios?)\b/i.test(norm);
             };
 
             // A. Remitente de mensajes entrantes de WhatsApp (pushName de la persona)
