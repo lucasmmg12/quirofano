@@ -4,7 +4,8 @@ import {
     Calendar, RefreshCw, TrendingUp, Users,
     BarChart3, Eye, ShieldCheck, ChevronRight,
     Scissors, Stethoscope, Droplets, Building2, Flame, Check,
-    AlertCircle, FileText, ArrowUpRight, ArrowDownRight, Layers, UserCheck
+    AlertCircle, FileText, ArrowUpRight, ArrowDownRight, Layers, UserCheck,
+    BookOpen, HelpCircle, X, Search, Info
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -24,6 +25,7 @@ import {
     Tooltip as RechartsTooltip,
     Legend
 } from 'recharts';
+import SqlDocumentationModal from './SqlDocumentationModal';
 import './Gobernanza.css';
 
 // ─── DATOS REALES EXTRAÍDOS DE TABLEAU INSTITUCIONAL (SANATORIO ARGENTINO) ───
@@ -302,9 +304,147 @@ const BLOQUES_DATA = [
     { cirujano: 'Dra. Daniela Saldivar Ozán', quirofano: 'Qx 4', dia: 'Lunes', horario: '14:00 - 20:00 (6h)', horasMes: 26.0, horasUso: 16.0, horasOciosas: 10.0, ocupacionPct: 61.5, estado7dias: 'LIBERADO_24H', alerta: true }
 ];
 
-export default function QuirofanoDashboard() {
+// ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS (QUIRÓFANO) ───
+const CHART_HELP_CATALOGO = {
+    ocupacion_salas: {
+        id: 'ocupacion_salas',
+        titulo: 'Ocupación Quirúrgica por Sala y Horas de Uso',
+        subtitulo: 'Quirófano Central (Qx 1-4) vs Hospital de Día (Qx 5-6) vs Sala de Partos',
+        icon: '🔪',
+        queMuestra: 'Compara el porcentaje de ocupación efectiva y las horas reales de utilización quirúrgica para cada uno de los quirófanos habilitados sobre la ventana horaria estándar (07:00 a 21:00 hs, 14 horas diarias en 26 días hábiles = 364 hs/mes).',
+        comoSeCalcula: 'Horas Efectivas = Sumatoria de (HoraSalidaSala - HoraEntradaSala) en horas por sala. Ocupación % = (Horas Efectivas / 364 horas teóricas disponibles) × 100.',
+        fuenteSalus: 'dbo.SalasQuirurgicas cruzada con dbo.ProtocolosQuirurgicos por IdSala y campos de tiempo efectivos.',
+        meta: 'Meta Benchmark: 75% a 85% de ocupación en Quirófano Central | > 65% en Hospital de Día.',
+        impactoGestion: 'Permite evitar cuellos de botella en quirófanos centrales desviando cirugías menores y endoscopías al Hospital de Día (Qx 5 y 6), optimizando el rendimiento económico por metro cuadrado.',
+        sqlTitulo: '1. Tasa de Ocupación por Sala y Horas Quirúrgicas (SALUS)'
+    },
+    ranking_cirujanos: {
+        id: 'ranking_cirujanos',
+        titulo: 'Rendimiento, Volumen y Tasa de Suspensión por Cirujano',
+        subtitulo: 'Trazabilidad Nominal de Producción y Cancelaciones',
+        icon: '👨‍⚕️',
+        queMuestra: 'Mapea la producción de los cirujanos con mayor actividad institucional, desglosando turnos programados, cirugías efectivamente realizadas, suspensiones y la tasa porcentual de suspensión individual.',
+        comoSeCalcula: 'Tasa de Suspensión (%) = (Cirugías Suspendidas / Cirugías Programadas) × 100. Participación (%) = (Cirugías Realizadas por el Médico / Total de Cirugías del Sanatorio) × 100.',
+        fuenteSalus: 'dbo.TurnosQuirurgicos y dbo.ProtocolosQuirurgicos agrupados por IdMedicoCirujano / Doctor.',
+        meta: 'Meta de Calidad: Tasa de suspensión individual < 5.0%.',
+        impactoGestion: 'Identifica profesionales con desvíos en cancelaciones para auditar precozmente autorizaciones con financiadores o reprogramaciones tardías que perjudican la agenda quirúrgica.',
+        sqlTitulo: '5. Ranking y Rendimiento de Cirujanos (Volumen y Suspensiones)'
+    },
+    especialidades: {
+        id: 'especialidades',
+        titulo: 'Distribución de Producción Quirúrgica por Especialidad',
+        subtitulo: 'Concentración de la Demanda Quirúrgica Asistencial',
+        icon: '🩺',
+        queMuestra: 'Representa el peso relativo de cada especialidad médica dentro del quirófano, reflejando el liderazgo histórico de Cirugía General, Ginecología y Obstetricia frente a especialidades ambulatorias.',
+        comoSeCalcula: 'Porcentaje (%) = (Cirugías de la Especialidad / Total Cirugías Realizadas) × 100.',
+        fuenteSalus: 'dbo.ProtocolosQuirurgicos JOIN dbo.Especialidades por IdEspecialidad.',
+        meta: 'Equilibrio de capacidad instalada y disponibilidad de cajas de instrumental quirúrgico.',
+        impactoGestion: 'Dimensiona la inversión en instrumental laparoscópico, torres de videoendoscopía y mantenimiento preventivo según el volumen real de cada servicio.',
+        sqlTitulo: '7. Cirugías por Especialidad Acumulada'
+    },
+    obras_sociales: {
+        id: 'obras_sociales',
+        titulo: 'Distribución de Actividad Quirúrgica por Financiador',
+        subtitulo: 'Obras Sociales Provinciales, Prepagas y Particulares',
+        icon: '💳',
+        queMuestra: 'Exhibe la concentración de cirugías según el financiador o mutua del paciente, destacando la gravitación de Obra Social Provincia (OSP ~41.6%) y OSDE Binario (~12.8%).',
+        comoSeCalcula: 'Participación (%) = (Cirugías del Financiador / Total Cirugías) × 100.',
+        fuenteSalus: 'dbo.TABLEAU_Cirugias (campo Cliente / Mutua / Obra Social) y dbo.VIS_Pacientes.',
+        meta: '100% de conciliación entre partes quirúrgicos y fojas administrativas facturadas.',
+        impactoGestion: 'Monitorea el riesgo de concentración de cartera y orienta la auditoría de convenios para acelerar el cobro y evitar débitos por falta de autorización previa.',
+        sqlTitulo: '12. Foja Quirúrgica, Códigos Nomenclador y Presupuestos'
+    },
+    demografia_piramide: {
+        id: 'demografia_piramide',
+        titulo: 'Pirámide Demográfica y Grupos Etarios de Pacientes Quirúrgicos',
+        subtitulo: 'Distribución por Decenios (0-9 hasta 80+ años)',
+        icon: '👶',
+        queMuestra: 'Analiza la edad de los pacientes operados. Muestra que la franja fértil de 20 a 40 años absorbe el 50.3% del volumen total quirúrgico debido a la alta demanda gineco-obstétrica del Sanatorio.',
+        comoSeCalcula: 'Grupo Etario = DATEDIFF(YEAR, FechaNacimiento, FechaCirugia) agrupado en decenios de edad.',
+        fuenteSalus: 'dbo.Pacientes (FechaNacimiento, Sexo) JOIN dbo.ProtocolosQuirurgicos (FechaCirugia).',
+        meta: 'Adecuación de dotación médica y de enfermería según riesgo demográfico.',
+        impactoGestion: 'Garantiza guardia activa de anestesiología y neonatología para el pico de 20 a 40 años, y previsión de camas críticas para adultos mayores de 70 años.',
+        sqlTitulo: '2. Volumen de Cirugías y Demografía Quirúrgica'
+    },
+    urgencias_electivas: {
+        id: 'urgencias_electivas',
+        titulo: 'Carácter de la Intervención: Urgencias vs Cirugías Programadas',
+        subtitulo: 'Articulación Directa con Guardia Clínica (Demanda < 48 hs)',
+        icon: '🚨',
+        queMuestra: 'Monitorea mensualmente cuántas cirugías corresponden a turnos programados (presentes) versus urgencias no programadas derivadas de la Guardia o piso de internación.',
+        comoSeCalcula: 'Tasa de Urgencia (%) = (Cirugías Urgentes / Total de Cirugías Realizadas) × 100. Cruce con Guardia = Visitas de Guardia que ingresan a quirófano en ≤ 48 hs.',
+        fuenteSalus: 'dbo.ProtocolosQuirurgicos (campo EsUrgencia = 1) cruzada con dbo.VLISE_Visitas (Guardia).',
+        meta: 'Rango esperado de Urgencias: 8% a 12% del volumen total quirúrgico.',
+        impactoGestion: 'Evita que las urgencias desplacen a cirugías electivas programadas. Protege quirófanos de demanda espontánea y activa el Hospital de Día para cirugías diferidas.',
+        sqlTitulo: '3. Articulación Guardia - Quirófano: Urgencias vs Cirugías Programadas'
+    },
+    causales_suspension: {
+        id: 'causales_suspension',
+        titulo: 'Matriz Oficial de Causales de Suspensión Quirúrgica (1..13)',
+        subtitulo: 'Catálogo Oficial de Tableau y Auditoría de Cancelaciones',
+        icon: '🚫',
+        queMuestra: 'Mapea las 13 causas tipificadas de suspensión quirúrgica institucional: No autorizada por obra social (21.6%), causas médicas/descompensación, cirugías reprogramadas, falta de ayuno, etc.',
+        comoSeCalcula: 'Porcentaje (%) = (Suspensiones por Causal / Total de Suspensiones) × 100. Distingue suspensiones en el día (<24hs) de cancelaciones anticipadas (>24hs).',
+        fuenteSalus: 'dbo.TurnosQuirurgicos (campo MotivoSuspension) cruzada con dbo.MotivosSuspension (1..13).',
+        meta: 'Tasa Global de Suspensión < 5.0% | Suspensión por Obra Social < 10% de las cancelaciones.',
+        impactoGestion: 'Permite intervenir 48 horas antes del turno validando autorizaciones y estudios prequirúrgicos con el equipo de admisiones y call center para rescatar el turno.',
+        sqlTitulo: '4. Matriz Oficial de Motivos de Suspensión (Catálogo 1..13)'
+    },
+    bloques_medicos: {
+        id: 'bloques_medicos',
+        titulo: 'Eficiencia de Bloques Quirúrgicos y Regla de Liberación a 7 Días',
+        subtitulo: 'Control de Horas Asignadas, Horas Efectivas y Horas Ociosas',
+        icon: '⏱️',
+        queMuestra: 'Evalúa la productividad de los bloques horarios reservados por cada cirujano o servicio, detectando horas ociosas y alertando sobre bloques con baja ocupación (<70%) o liberados a agenda abierta.',
+        comoSeCalcula: 'Eficiencia Bloque (%) = (Horas Efectivas de Cirugía / Horas Asignadas al Bloque) × 100. Horas Ociosas = Horas Asignadas - Horas Efectivas.',
+        fuenteSalus: 'dbo.BloquesQuirurgicos cruzada con dbo.TurnosQuirurgicos y dbo.ProtocolosQuirurgicos.',
+        meta: 'Eficiencia de Bloque > 80%. Si a 7 días antes de la fecha el bloque tiene <50% de ocupación, se libera automáticamente.',
+        impactoGestion: 'Maximiza el ingreso por hora de quirófano disponible y sanciona el acaparamiento de quirófanos sin pacientes confirmados.',
+        sqlTitulo: '6. Matriz de Bloques Quirúrgicos y Cumplimiento de Regla a 7 Días'
+    },
+    equipos_apoyo: {
+        id: 'equipos_apoyo',
+        titulo: 'Productividad y Dotación de Equipos Quirúrgicos de Apoyo',
+        subtitulo: 'Circulantes, Técnicos de Anestesia, Anestesiólogos e Instrumentadores',
+        icon: '👥',
+        queMuestra: 'Mide la participación individual y carga de trabajo de cada colaborador del equipo quirúrgico en los partes quirúrgicos cerrados.',
+        comoSeCalcula: 'Conteo de cirugías cerradas donde el colaborador figura registrado formalmente en la foja quirúrgica.',
+        fuenteSalus: 'dbo.PartesQuirurgicos y dbo.ProtocolosQuirurgicos (campos NombreCirculante, NombreTecnicoAnestesia, NombreAnestesista, NombreInstrumentador).',
+        meta: 'Distribución equilibrada de horas en quirófano y cumplimiento del ratio de seguridad intraoperatorio.',
+        impactoGestion: 'Previene la sobrecarga laboral y fatiga en cirugías de larga duración, optimizando francos compensatorios y reemplazos de guardia.',
+        sqlTitulo: '8. Productividad de Equipos Quirúrgicos de Apoyo'
+    },
+    interanual_crecimiento: {
+        id: 'interanual_crecimiento',
+        titulo: 'Evolución Interanual de Actividad Quirúrgica (2022 - 2026)',
+        subtitulo: 'Serie Temporal Histórica y Desdoblamiento a Hospital de Día',
+        icon: '📈',
+        queMuestra: 'Evolución mes a mes de cirugías realizadas entre 2022 y 2026, evidenciando el crecimiento sostenido institucional y la absorción de más de 160 cirugías mensuales por el Hospital de Día.',
+        comoSeCalcula: 'Suma de protocolos quirúrgicos con estado "Realizada" agrupados por Mes y Año calendario.',
+        fuenteSalus: 'dbo.ProtocolosQuirurgicos y dbo.SalasQuirurgicas agrupadas históricamente por CódigoSala.',
+        meta: 'Crecimiento sostenido > 5% anual con absorción > 25% en Hospital de Día.',
+        impactoGestion: 'Justifica ampliaciones de infraestructura hospitalaria, inversiones en tecnología médica y renegociación de contratos con aseguradoras.',
+        sqlTitulo: '2. Volumen de Cirugías y Evolución Interanual'
+    },
+    hemoterapia_soporte: {
+        id: 'hemoterapia_soporte',
+        titulo: 'Hemoterapia Intraquirúrgica y Requerimiento Transfusional',
+        subtitulo: 'Glóbulos Rojos, Plasma Fresco y Plaquetas en Cirugías Críticas',
+        icon: '🩸',
+        queMuestra: 'Mide la demanda de soporte transfusional en quirófano para cirugías cardiovasculares, traumatológicas complejas y emergencias obstétricas.',
+        comoSeCalcula: 'Tasa de Transfusión (%) = (Cirugías con Transfusión / Total Cirugías Realizadas) × 100. Conteo de unidades transfundidas por hemocomponente.',
+        fuenteSalus: 'dbo.TransfusionesQuirurgicas vinculadas a dbo.ProtocolosQuirurgicos por IdProtocolo.',
+        meta: 'Cero eventos adversos transfusionales y disponibilidad 100% en urgencias quirúrgicas.',
+        impactoGestion: 'Garantiza reserva adecuada de hemocomponentes en el Banco de Sangre, previendo stocks críticos para fines de semana y guardias.',
+        sqlTitulo: '9. Soporte de Hemoterapia y Demanda Transfusional Intraoperatoria'
+    }
+};
+
+export default function QuirofanoDashboard({ isModal = false, onClose }) {
     const [activeTab, setActiveTab] = useState('resumen');
     const [searchCirujano, setSearchCirujano] = useState('');
+    const [selectedChartHelp, setSelectedChartHelp] = useState(null);
+    const [showSqlModal, setShowSqlModal] = useState(false);
 
     const filteredCirujanos = useMemo(() => {
         if (!searchCirujano.trim()) return CIRUJANOS_DATA;
@@ -345,9 +485,54 @@ export default function QuirofanoDashboard() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setShowSqlModal(true)}
+                            style={{
+                                background: 'rgba(255,255,255,0.18)',
+                                border: '1px solid rgba(255,255,255,0.35)',
+                                color: '#FFFFFF',
+                                padding: '7px 14px',
+                                borderRadius: '10px',
+                                fontSize: '0.80rem',
+                                fontWeight: 800,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                backdropFilter: 'blur(6px)',
+                                transition: 'all 0.15s ease'
+                            }}
+                            title="Ver repositorio maestro de queries SQL SALUS para Quirófano"
+                        >
+                            <BookOpen size={16} /> Fórmulas & SQL (12)
+                        </button>
+
                         <span style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10B981', color: '#6EE7B7', padding: '6px 14px', borderRadius: '10px', fontSize: '0.80rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <CheckCircle2 size={16} /> 7 Salas Operativas Activas
                         </span>
+
+                        {isModal && onClose && (
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                style={{
+                                    background: 'rgba(239, 68, 68, 0.25)',
+                                    border: '1px solid #EF4444',
+                                    color: '#FECACA',
+                                    padding: '6px 12px',
+                                    borderRadius: '10px',
+                                    fontSize: '0.80rem',
+                                    fontWeight: 800,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <X size={16} /> Cerrar
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -454,7 +639,7 @@ export default function QuirofanoDashboard() {
                     
                     {/* Gráfico 1: Ocupación por Sala */}
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
                                     Ocupación Quirúrgica por Sala (Mayo 2026)
@@ -463,9 +648,31 @@ export default function QuirofanoDashboard() {
                                     Capacidad instalada, volumen de partes quirúrgicos y porcentaje de ocupación sobre ventana horaria 07:00 a 21:00 hs.
                                 </p>
                             </div>
-                            <span style={{ fontSize: '0.78rem', background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: '6px', fontWeight: 700 }}>
-                                7 Quirófanos en Paralelo
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.ocupacion_salas)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '5px 10px',
+                                        borderRadius: '8px',
+                                        background: '#EFF6FF',
+                                        border: '1px solid #BFDBFE',
+                                        color: '#1E40AF',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Explicación clínica, fórmulas y SQL"
+                                >
+                                    <HelpCircle size={14} /> ¿Qué vemos aquí?
+                                </button>
+                                <span style={{ fontSize: '0.78rem', background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: '6px', fontWeight: 700 }}>
+                                    7 Quirófanos en Paralelo
+                                </span>
+                            </div>
                         </div>
 
                         <div style={{ height: '300px', width: '100%' }}>
@@ -495,10 +702,32 @@ export default function QuirofanoDashboard() {
                         
                         {/* Ranking Cirujanos con Tasa de Suspensión */}
                         <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Ranking Cirujanos (Top 18)
-                                </h3>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Ranking Cirujanos (Top 18)
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.ranking_cirujanos)}
+                                        style={{
+                                            border: 'none',
+                                            background: '#EFF6FF',
+                                            color: '#1E40AF',
+                                            borderRadius: '6px',
+                                            padding: '3px 7px',
+                                            fontSize: '0.70rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px'
+                                        }}
+                                        title="Explicación clínica de este ranking"
+                                    >
+                                        <HelpCircle size={12} /> Explicación
+                                    </button>
+                                </div>
                                 <input
                                     type="text"
                                     placeholder="Buscar cirujano..."
@@ -555,9 +784,31 @@ export default function QuirofanoDashboard() {
 
                         {/* Ranking Especialidades */}
                         <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                Cirugías por Especialidad
-                            </h3>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Cirugías por Especialidad
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.especialidades)}
+                                    style={{
+                                        border: 'none',
+                                        background: '#EFF6FF',
+                                        color: '#1E40AF',
+                                        borderRadius: '6px',
+                                        padding: '3px 7px',
+                                        fontSize: '0.70rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                    }}
+                                    title="Explicación clínica de especialidades"
+                                >
+                                    <HelpCircle size={12} /> Explicación
+                                </button>
+                            </div>
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                     <thead>
@@ -582,9 +833,31 @@ export default function QuirofanoDashboard() {
 
                         {/* Ranking Financiador (Obra Social) */}
                         <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                Demanda por Obra Social
-                            </h3>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Demanda por Obra Social
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.obras_sociales)}
+                                    style={{
+                                        border: 'none',
+                                        background: '#EFF6FF',
+                                        color: '#1E40AF',
+                                        borderRadius: '6px',
+                                        padding: '3px 7px',
+                                        fontSize: '0.70rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                    }}
+                                    title="Explicación clínica de financiadores"
+                                >
+                                    <HelpCircle size={12} /> Explicación
+                                </button>
+                            </div>
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                     <thead>
@@ -1154,18 +1427,40 @@ export default function QuirofanoDashboard() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
                     
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '22px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Droplets size={20} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Droplets size={20} />
+                                </div>
+                                <div>
+                                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Protocolo Hemoterapia: Paciente Agrupado
+                                    </h4>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                        Relevamiento Dr. Sota / UTI / Quirófano Central
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Protocolo Hemoterapia: Paciente Agrupado
-                                </h4>
-                                <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                    Relevamiento Dr. Sota / UTI / Quirófano Central
-                                </p>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.hemoterapia_soporte)}
+                                style={{
+                                    border: 'none',
+                                    background: '#EFF6FF',
+                                    color: '#1E40AF',
+                                    borderRadius: '6px',
+                                    padding: '3px 8px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                                title="Explicación clínica de hemoterapia y transfusiones"
+                            >
+                                <HelpCircle size={13} /> Explicación
+                            </button>
                         </div>
 
                         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '14px' }}>
@@ -1237,6 +1532,191 @@ export default function QuirofanoDashboard() {
 
                 </div>
             )}
+
+            {/* ─── MODAL DE EXPLICACIÓN DETALLADA DE GRÁFICOS (GOBERNANZA QUIRÓFANO) ─── */}
+            {selectedChartHelp && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 99999, backdropFilter: 'blur(3px)', padding: '16px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '700px',
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+                        animation: 'fadeIn 0.2s ease-out'
+                    }}>
+                        {/* Header del Modal */}
+                        <div style={{
+                            padding: '18px 24px',
+                            borderBottom: '1px solid #E2E8F0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            background: 'linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: '42px', height: '42px', borderRadius: '10px',
+                                    background: '#FFFFFF', border: '1px solid #BFDBFE',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '1.35rem', boxShadow: '0 2px 4px rgba(37, 99, 235, 0.08)',
+                                    flexShrink: 0
+                                }}>
+                                    {selectedChartHelp.icon}
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', background: '#DBEAFE', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            Guía Analítica de Quirófano
+                                        </span>
+                                    </div>
+                                    <h3 style={{ margin: '4px 0 0 0', fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.3 }}>
+                                        {selectedChartHelp.titulo}
+                                    </h3>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                        {selectedChartHelp.subtitulo}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedChartHelp(null)}
+                                style={{
+                                    background: '#FFFFFF', border: '1px solid #CBD5E1',
+                                    borderRadius: '8px', color: '#64748B', fontSize: '1rem',
+                                    fontWeight: 700, cursor: 'pointer', width: '32px', height: '32px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Contenido Didáctico del Gráfico */}
+                        <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* 1. ¿Qué estamos viendo? */}
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.9rem' }}>💡</span>
+                                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        ¿Qué estamos viendo en este gráfico?
+                                    </label>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.86rem', color: '#334155', lineHeight: 1.55 }}>
+                                    {selectedChartHelp.queMuestra}
+                                </p>
+                            </div>
+
+                            {/* 2. Cómo se calcula y Meta */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                                <div style={{ background: '#EFF6FF', borderRadius: '10px', border: '1px solid #BFDBFE', padding: '12px 14px' }}>
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                        📐 Fórmula & Metodología
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#1E3A8A', lineHeight: 1.45 }}>
+                                        {selectedChartHelp.comoSeCalcula}
+                                    </p>
+                                </div>
+
+                                <div style={{ background: '#F0FDF4', borderRadius: '10px', border: '1px solid #BBF7D0', padding: '12px 14px' }}>
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                        🎯 Meta / Benchmark Normado
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#14532D', lineHeight: 1.45, fontWeight: 700 }}>
+                                        {selectedChartHelp.meta}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* 3. Fuente de Datos en SALUS */}
+                            <div style={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', padding: '10px 14px' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '3px' }}>
+                                    📡 Origen y Trazabilidad en Base de Datos SALUS
+                                </div>
+                                <code style={{ fontSize: '0.76rem', color: '#0F172A', background: '#F1F5F9', padding: '3px 8px', borderRadius: '4px', display: 'inline-block' }}>
+                                    {selectedChartHelp.fuenteSalus}
+                                </code>
+                            </div>
+
+                            {/* 4. Impacto en la Toma de Decisiones y Operación */}
+                            <div style={{ background: '#FFFBEB', borderRadius: '10px', border: '1px solid #FDE68A', padding: '12px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                    <span style={{ fontSize: '0.85rem' }}>🎯</span>
+                                    <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase' }}>
+                                        Impacto en Gestión Quirúrgica y Decisión Clínica
+                                    </label>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.82rem', color: '#78350F', lineHeight: 1.5 }}>
+                                    {selectedChartHelp.impactoGestion}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Footer con enlace directo a SQL */}
+                        <div style={{
+                            padding: '12px 20px',
+                            borderTop: '1px solid #E2E8F0',
+                            background: '#F8FAFC',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <button
+                                onClick={() => {
+                                    setSelectedChartHelp(null);
+                                    setShowSqlModal(true);
+                                }}
+                                style={{
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    background: '#F1F5F9',
+                                    color: '#1E40AF',
+                                    border: '1px solid #BFDBFE',
+                                    fontWeight: 700,
+                                    fontSize: '0.80rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                <BookOpen size={14} /> Ver Script SQL en Repositorio
+                            </button>
+                            <button
+                                onClick={() => setSelectedChartHelp(null)}
+                                style={{
+                                    padding: '8px 22px',
+                                    borderRadius: '8px',
+                                    background: '#2563EB',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '0.84rem',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                }}
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── MODAL REPOSITORIO MAESTRO SQL ─── */}
+            <SqlDocumentationModal
+                isOpen={showSqlModal}
+                onClose={() => setShowSqlModal(false)}
+                initialTab="QUIROFANO"
+            />
 
         </div>
     );

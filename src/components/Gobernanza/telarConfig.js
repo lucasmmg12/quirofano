@@ -16,14 +16,14 @@ export const SECTORES_CONFIG = [
     },
     { 
         id: 'QUIROFANO', 
-        label: 'Quirófano Central', 
+        label: 'Quirófano Central & Hospital de Día', 
         shortLabel: 'Quirófano',
         icon: '🔪', 
         camasDefault: 0,
-        serviciosSalus: ['QUIROFANO'],
-        descripcion: 'Cirugía Mayor y Ambulatoria',
-        activo: false,
-        badge: 'Próximamente'
+        serviciosSalus: ['QUIROFANO', 'HOSPITAL DE DIA'],
+        descripcion: 'Cirugía Mayor, Ambulatoria y Quirófano 7',
+        activo: true,
+        badge: 'Activo'
     },
     { 
         id: 'INTERNACION_GENERAL', 
@@ -356,6 +356,16 @@ export const INDICADORES_GUARDIA_CATALOGO = [
         descripcion: 'Porcentaje de pacientes egresados con Protocolo 382 (Epicrisis Médica) completado en SALUS.',
         benchmark: '100% obligatorio',
         origen: 'TABLEAU_Admisiones y PR RespuestasProtocolo (Protocolo 382)'
+    },
+    {
+        id: 'guardia_articulacion_quirofano',
+        label: 'Centro Quirúrgico: Quirófano & HdD',
+        grupo: 'Articulación Quirúrgica',
+        tipo: 'kpi',
+        icon: 'Scissors',
+        descripcion: 'Articulación directa Guardia - Quirófano: conversión a cirugía, cirugías de urgencia, ocupación de salas (Quirófanos 1 a 6 + Quirófano 7 / HdD) y trazabilidad.',
+        benchmark: 'Resolutividad Integral',
+        origen: 'SALUS: VLISE_Visitas, TABLEAU_Cirugias, ProtocolosQuirurgicos y SalasQuirurgicas'
     }
 ];
 

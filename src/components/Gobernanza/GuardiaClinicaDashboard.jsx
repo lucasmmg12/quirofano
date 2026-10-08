@@ -29,6 +29,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
 import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
+import QuirofanoDashboard from './QuirofanoDashboard';
 import './Gobernanza.css';
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS ───
@@ -165,6 +166,7 @@ export default function GuardiaClinicaDashboard({
     const [selectedOutlierModal, setSelectedOutlierModal] = useState(null);
     const [copiedSql, setCopiedSql] = useState(false);
     const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
+    const [showQuirofanoModal, setShowQuirofanoModal] = useState(false);
 
     // Cargar datos consolidados desde Supabase
     useEffect(() => {
@@ -766,6 +768,19 @@ export default function GuardiaClinicaDashboard({
                     detalle="Porcentaje de altas clínicas con Protocolo 382 (Epicrisis Médica) registrado formalmente en SALUS. Clic para auditar nominalmente cada caso."
                     origen="TABLEAU_Admisiones y PR RespuestasProtocolo"
                     onClick={() => setSelectedOutlierModal('adherencia_epicrisis')}
+                />
+
+                {/* 10. Centro Quirúrgico: Articulación, Capacidad y Ocupación */}
+                <KpiCard
+                    icon={<Scissors size={18} color="#0284C7" />}
+                    title="Centro Quirúrgico: Quirófano & HdD"
+                    value={`${currentData.conversion_cirugia_pct}% conv.`}
+                    subtitle="7 Salas Activas · 5.618 Cx Realizadas · 8.8% Urgencias"
+                    meta="Meta: < 48h Guardia a Qx"
+                    metaStatus="ok"
+                    detalle="Monitoreo de articulación directa entre Guardia de Urgencias y Centro Quirúrgico: conversión quirúrgica (<48hs), disponibilidad de salas (Qx 1-4 Central + HdD Qx 5-6), tiempo de pase a quirófano y control de inventario quirúrgico. Clic para ver el Tablero Completo de Quirófano."
+                    origen="VLISE_Visitas cruzada con TABLEAU_Cirugias y SalasQuirurgicas"
+                    onClick={() => setShowQuirofanoModal(true)}
                 />
 
             </div>
@@ -2243,6 +2258,74 @@ export default function GuardiaClinicaDashboard({
                 periodo={selectedPeriodo}
                 periodoNombre={formatPeriodoLabel(selectedPeriodo)}
             />
+
+            {/* Modal de Tablero Completo de Quirófano (Articulación Guardia - Quirófano) */}
+            {showQuirofanoModal && (
+                <div style={{
+                    position: 'fixed', inset: 0,
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    backdropFilter: 'blur(5px)',
+                    zIndex: 99999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '1350px',
+                        height: '92vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+                        border: '1px solid #CBD5E1'
+                    }}>
+                        <div style={{
+                            padding: '12px 20px',
+                            background: '#0F172A',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottom: '1px solid #334155'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Scissors size={18} color="#38BDF8" />
+                                <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                                    Centro Quirúrgico · Tablero Integral (Quirófano Central & Hospital de Día)
+                                </span>
+                                <span style={{ background: '#0284C7', color: '#FFFFFF', fontSize: '0.70rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                                    Articulación con Guardia Clínica
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setShowQuirofanoModal(false)}
+                                style={{
+                                    background: 'rgba(255,255,255,0.15)',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    color: '#FFFFFF',
+                                    fontWeight: 700,
+                                    padding: '6px 14px',
+                                    fontSize: '0.8rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                ✕ Volver a Guardia
+                            </button>
+                        </div>
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', background: '#F8FAFC' }}>
+                            <QuirofanoDashboard isModal={true} onClose={() => setShowQuirofanoModal(false)} />
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );

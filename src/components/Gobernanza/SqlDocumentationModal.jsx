@@ -344,23 +344,160 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                     )}
 
                     {/* ══════════════════════════════════════════════════════ */}
-                    {/* TAB 3: QUIRÓFANO & CIRUGÍAS (ADM-QUI) */}
+                    {/* TAB 3: QUIRÓFANO & CIRUGÍAS (GOBERNANZA SALUS + ADM-QUI) */}
                     {/* ══════════════════════════════════════════════════════ */}
                     {activeTab === 'QUIROFANO' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', padding: '14px 18px', borderRadius: '10px' }}>
-                                <strong style={{ color: '#5B21B6', fontSize: '0.9rem' }}>
-                                    Módulo Quirúrgico Central (ADM-QUI)
-                                </strong>
-                                <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#4C1D95' }}>
-                                    Sincronización de partes quirúrgicos, agendas de quirófano, fojas quirúrgicas con triage de complejidad y presupuestos de pacientes.
-                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div>
+                                        <strong style={{ color: '#5B21B6', fontSize: '0.92rem' }}>
+                                            Centro Quirúrgico · Quirófano Central (Qx 1-4) & Hospital de Día (Qx 5-6)
+                                        </strong>
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#4C1D95' }}>
+                                            Repositorio oficial de consultas T-SQL para auditoría de ocupación de salas, volumen interanual, causales de suspensión 1..13, articulación con Guardia de Urgencias, matriz de bloques a 7 días, productividad de equipos e inventario mensual de insumos.
+                                        </p>
+                                    </div>
+                                    <span style={{ background: '#EDE9FE', border: '1px solid #C4B5FD', color: '#6D28D9', padding: '4px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 800 }}>
+                                        12 Queries Certificadas
+                                    </span>
+                                </div>
                             </div>
 
-                            {/* 3.1 Programación Quirúrgica Central */}
+                            {/* 3.1 Ocupación por Sala y Horas Quirúrgicas */}
+                            <QueryCard
+                                id="qx_ocupacion"
+                                title="1. Tasa de Ocupación por Sala y Horas Quirúrgicas"
+                                desc="Calcula las horas quirúrgicas efectivas por sala sobre la ventana estándar de 14 hs/día (07:00 a 21:00 hs) diferenciando Quirófano Central de Hospital de Día."
+                                origin="dbo.SalasQuirurgicas JOIN dbo.ProtocolosQuirurgicos (SALUS)"
+                                target="quirofano_salas_ocupacion (Supabase)"
+                                frequency="Diaria / Cierre Mensual"
+                                copied={copiedIndex === 'qx_ocupacion'}
+                                onCopy={() => handleCopy(SQL_QX_OCUPACION_SALAS, 'qx_ocupacion')}
+                                sql={SQL_QX_OCUPACION_SALAS}
+                            />
+
+                            {/* 3.2 Evolución Interanual */}
+                            <QueryCard
+                                id="qx_interanual"
+                                title="2. Volumen de Cirugías y Evolución Interanual (2022 - 2026)"
+                                desc="Serie mensual histórica que compara el crecimiento institucional y el desdoblamiento de volumen hacia el Hospital de Día (Qx 5 y 6)."
+                                origin="dbo.ProtocolosQuirurgicos + dbo.SalasQuirurgicas (SALUS)"
+                                target="quirofano_interanual (Supabase)"
+                                frequency="Mensual acumulado"
+                                copied={copiedIndex === 'qx_interanual'}
+                                onCopy={() => handleCopy(SQL_QX_INTERANUAL, 'qx_interanual')}
+                                sql={SQL_QX_INTERANUAL}
+                            />
+
+                            {/* 3.3 Urgencias vs Electivas */}
+                            <QueryCard
+                                id="qx_urgencias"
+                                title="3. Articulación Guardia - Quirófano: Urgencias vs Cirugías Electivas"
+                                desc="Identifica los pacientes ingresados por Guardia que requirieron quirófano urgente en <48hs, midiendo minutos de espera y tasa de urgencias por profesional."
+                                origin="dbo.VLISE_Visitas cruzada con dbo.TABLEAU_Cirugias por NHC"
+                                target="guardia_conversion_quirofano (Supabase)"
+                                frequency="Diaria / Tiempo Real"
+                                copied={copiedIndex === 'qx_urgencias'}
+                                onCopy={() => handleCopy(SQL_QX_URGENCIAS_GUARDIA, 'qx_urgencias')}
+                                sql={SQL_QX_URGENCIAS_GUARDIA}
+                            />
+
+                            {/* 3.4 Matriz Oficial de Causas de Suspensión (1..13) */}
+                            <QueryCard
+                                id="qx_suspensiones"
+                                title="4. Matriz Oficial de Causas de Suspensión Quirúrgica (Catálogo 1..13)"
+                                desc="Mapea las 13 causas oficiales tipificadas de suspensión (No autorizada OSP/prepaga, causas médicas, reprogramadas, etc.) distinguiendo cancelaciones en el día (<24h)."
+                                origin="dbo.TurnosQuirurgicos JOIN dbo.MotivosSuspension (SALUS)"
+                                target="quirofano_suspensiones (Supabase)"
+                                frequency="Diaria / Semanal"
+                                copied={copiedIndex === 'qx_suspensiones'}
+                                onCopy={() => handleCopy(SQL_QX_SUSPENSIONES_CAUSALES, 'qx_suspensiones')}
+                                sql={SQL_QX_SUSPENSIONES_CAUSALES}
+                            />
+
+                            {/* 3.5 Ranking y Rendimiento de Cirujanos */}
+                            <QueryCard
+                                id="qx_cirujanos"
+                                title="5. Rendimiento, Volumen y Tasa de Suspensión por Cirujano"
+                                desc="Consolida intervenciones programadas, realizadas, suspendidas y la tasa de suspensión individual por médico para detectar desvíos."
+                                origin="dbo.TurnosQuirurgicos y dbo.ProtocolosQuirurgicos agrupado por Doctor"
+                                target="quirofano_cirujanos_kpi (Supabase)"
+                                frequency="Mensual"
+                                copied={copiedIndex === 'qx_cirujanos'}
+                                onCopy={() => handleCopy(SQL_QX_CIRUJANOS_RANKING, 'qx_cirujanos')}
+                                sql={SQL_QX_CIRUJANOS_RANKING}
+                            />
+
+                            {/* 3.6 Matriz de Bloques y Liberación a 7 Días */}
+                            <QueryCard
+                                id="qx_bloques"
+                                title="6. Matriz de Bloques Quirúrgicos y Regla de Liberación a 7 Días"
+                                desc="Audita la ocupación de bloques asignados fijos por cirujano, horas ociosas y alerta sobre turnos no confirmados con más de 7 días de antelación."
+                                origin="dbo.BloquesQuirurgicos + dbo.TurnosQuirurgicos (SALUS)"
+                                target="quirofano_bloques (Supabase)"
+                                frequency="Semanal / Alertas 7d"
+                                copied={copiedIndex === 'qx_bloques'}
+                                onCopy={() => handleCopy(SQL_QX_BLOQUES_OCUPACION, 'qx_bloques')}
+                                sql={SQL_QX_BLOQUES_OCUPACION}
+                            />
+
+                            {/* 3.7 Distribución por Especialidades */}
+                            <QueryCard
+                                id="qx_especialidades"
+                                title="7. Distribución de Demanda Quirúrgica por Especialidad"
+                                desc="Volumen acumulado por servicio (Ginecología, Cirugía General, Obstetricia, Gastroenterología, etc.) para dimensionar cajas de instrumental y equipamiento."
+                                origin="dbo.ProtocolosQuirurgicos JOIN dbo.Especialidades (SALUS)"
+                                target="quirofano_especialidades (Supabase)"
+                                frequency="Mensual"
+                                copied={copiedIndex === 'qx_especialidades'}
+                                onCopy={() => handleCopy(SQL_QX_ESPECIALIDADES, 'qx_especialidades')}
+                                sql={SQL_QX_ESPECIALIDADES}
+                            />
+
+                            {/* 3.8 Productividad de Equipos de Apoyo */}
+                            <QueryCard
+                                id="qx_equipos"
+                                title="8. Productividad de Equipos Quirúrgicos (Circulantes, Anestesia e Instrumentación)"
+                                desc="Intervenciones efectivas registradas en partes quirúrgicos para cada circulante, técnico de anestesia, anestesista e instrumentador quirúrgico."
+                                origin="dbo.PartesQuirurgicos y dbo.ProtocolosQuirurgicos (SALUS)"
+                                target="quirofano_personal_productividad (Supabase)"
+                                frequency="Mensual"
+                                copied={copiedIndex === 'qx_equipos'}
+                                onCopy={() => handleCopy(SQL_QX_EQUIPOS_PERSONAL, 'qx_equipos')}
+                                sql={SQL_QX_EQUIPOS_PERSONAL}
+                            />
+
+                            {/* 3.9 Hemoterapia e Insumos Críticos */}
+                            <QueryCard
+                                id="qx_hemoterapia"
+                                title="9. Hemoterapia Intraquirúrgica y Requerimiento Transfusional"
+                                desc="Cruza cirugías de alta complejidad con solicitudes de glóbulos rojos, plasma y crioprecipitados del Banco de Sangre."
+                                origin="dbo.VLISE_PeticionesPruebasBancoSangre + dbo.TABLEAU_Cirugias (SALUS)"
+                                target="quirofano_hemoterapia (Supabase)"
+                                frequency="Diaria / Auditoría Mensual"
+                                copied={copiedIndex === 'qx_hemoterapia'}
+                                onCopy={() => handleCopy(SQL_QX_HEMOTERAPIA_TRANSFUSION, 'qx_hemoterapia')}
+                                sql={SQL_QX_HEMOTERAPIA_TRANSFUSION}
+                            />
+
+                            {/* 3.10 Inventario y Consumo Mensual de Insumos */}
+                            <QueryCard
+                                id="qx_inventario"
+                                title="10. Inventario, Conteo Mensual y Consumo de Insumos Quirúrgicos"
+                                desc="Control de stock físico vs consumos cargados en foja, conciliando salidas de farmacia de quirófano para el conteo de fin de mes."
+                                origin="dbo.VLISE_MovimientosAlmacen y dbo.ConsumosQuirurgicos (SALUS)"
+                                target="quirofano_inventario (Supabase)"
+                                frequency="Mensual / Conteo de Cierre"
+                                copied={copiedIndex === 'qx_inventario'}
+                                onCopy={() => handleCopy(SQL_QX_INVENTARIO_CONSUMOS, 'qx_inventario')}
+                                sql={SQL_QX_INVENTARIO_CONSUMOS}
+                            />
+
+                            {/* 3.11 Programación Quirúrgica Central */}
                             <QueryCard
                                 id="qx_cirugias"
-                                title="1. Query de Programación y Turnos de Quirófano"
+                                title="11. Programación y Agendas de Quirófano (ADM-QUI)"
                                 desc="Extrae cirugías programadas, profesionales intervinientes, quirófano asignado, cobertura e instrucciones quirúrgicas."
                                 origin="_PR_AGENDA_QRY_SENZILL + _PR_AGENDA_QRY_QUIROFAN (SALUS)"
                                 target="cirugias (Supabase)"
@@ -370,30 +507,17 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                                 sql={SQL_QX_CIRUGIAS}
                             />
 
-                            {/* 3.2 Foja Quirúrgica y Procedimientos */}
+                            {/* 3.12 Foja Quirúrgica y Procedimientos */}
                             <QueryCard
                                 id="qx_foja"
-                                title="2. Query de Foja Quirúrgica y Triage de Complejidad"
-                                desc="Extrae hasta 4 procedimientos quirúrgicos por intervención y calcula la complejidad de facturación de la admisión."
-                                origin="TABLEAU_FojaQuirurgica (SALUS)"
+                                title="12. Foja Quirúrgica, Códigos Nomenclador y Presupuestos"
+                                desc="Extrae hasta 4 procedimientos quirúrgicos por intervención y presupuestos aprobados para facturación."
+                                origin="TABLEAU_FojaQuirurgica + VLISE_Presupuestos (SALUS)"
                                 target="altas_administrativas / foja (Supabase)"
                                 frequency="Diaria / Sync Rápido"
                                 copied={copiedIndex === 'qx_foja'}
                                 onCopy={() => handleCopy(SQL_QX_FOJA, 'qx_foja')}
                                 sql={SQL_QX_FOJA}
-                            />
-
-                            {/* 3.3 Presupuestos Quirúrgicos */}
-                            <QueryCard
-                                id="qx_presupuestos"
-                                title="3. Query de Presupuestos de Cirugía y Prácticas"
-                                desc="Ingesta de presupuestos emitidos, ítems presupuestados, valores unitarios, estado de aceptación y caducidad."
-                                origin="VLISE_Presupuestos (SALUS)"
-                                target="presupuestos + presupuestos_items (Supabase)"
-                                frequency="Diaria"
-                                copied={copiedIndex === 'qx_presupuestos'}
-                                onCopy={() => handleCopy(SQL_QX_PRESUPUESTOS, 'qx_presupuestos')}
-                                sql={SQL_QX_PRESUPUESTOS}
                             />
                         </div>
                     )}
@@ -1064,6 +1188,233 @@ SELECT
 FROM VLISE_Presupuestos
 WHERE fecha >= '2026-01-01'
 ORDER BY fecha DESC;`;
+
+const SQL_QX_OCUPACION_SALAS = `-- 1. TASA DE OCUPACIÓN POR SALA Y HORAS QUIRÚRGICAS (T-SQL SALUS)
+SELECT 
+    sq.CodigoSala,
+    sq.NombreSala,
+    COUNT(DISTINCT pq.IdProtocolo) AS CantidadCirugias,
+    ROUND(SUM(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)) / 60.0, 2) AS HorasEfectivasUso,
+    -- Capacidad teórica mensual: 26 días hábiles x 14 horas = 364 horas disponibles
+    364.0 AS HorasDisponiblesMes,
+    ROUND((SUM(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)) / 60.0) * 100.0 / 364.0, 2) AS TasaOcupacionPct,
+    ROUND(AVG(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)), 1) AS DuracionMediaMinutos
+FROM dbo.SalasQuirurgicas sq
+LEFT JOIN dbo.ProtocolosQuirurgicos pq 
+    ON sq.IdSala = pq.IdSala 
+   AND pq.EstadoCirugia = 'Realizada'
+   AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+GROUP BY sq.CodigoSala, sq.NombreSala
+ORDER BY TasaOcupacionPct DESC;`;
+
+const SQL_QX_INTERANUAL = `-- 2. VOLUMEN DE CIRUGÍAS Y EVOLUCIÓN INTERANUAL (CENTRAL VS HOSPITAL DE DÍA)
+SELECT 
+    YEAR(pq.FechaCirugia) AS Anio,
+    MONTH(pq.FechaCirugia) AS MesNumero,
+    FORMAT(pq.FechaCirugia, 'yyyy-MM') AS Periodo,
+    COUNT(DISTINCT pq.IdProtocolo) AS TotalCirugias,
+    SUM(CASE WHEN sq.CodigoSala IN ('Q1', 'Q2', 'Q3', 'Q4') THEN 1 ELSE 0 END) AS QuirofanoCentral,
+    SUM(CASE WHEN sq.CodigoSala IN ('Q5', 'Q6') THEN 1 ELSE 0 END) AS HospitalDeDia,
+    SUM(CASE WHEN sq.CodigoSala LIKE '%PARTO%' THEN 1 ELSE 0 END) AS SalaPartos,
+    ROUND(SUM(CASE WHEN sq.CodigoSala IN ('Q1', 'Q2', 'Q3', 'Q4') THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT pq.IdProtocolo), 2) AS PctCentral,
+    ROUND(SUM(CASE WHEN sq.CodigoSala IN ('Q5', 'Q6') THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT pq.IdProtocolo), 2) AS PctHdD
+FROM dbo.ProtocolosQuirurgicos pq
+INNER JOIN dbo.SalasQuirurgicas sq ON pq.IdSala = sq.IdSala
+WHERE pq.EstadoCirugia = 'Realizada'
+  AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+GROUP BY YEAR(pq.FechaCirugia), MONTH(pq.FechaCirugia), FORMAT(pq.FechaCirugia, 'yyyy-MM')
+ORDER BY Anio DESC, MesNumero DESC;`;
+
+const SQL_QX_URGENCIAS_GUARDIA = `-- 3. ARTICULACIÓN GUARDIA - QUIRÓFANO: URGENCIAS VS CIRUGÍAS PROGRAMADAS
+SELECT 
+    FORMAT(pq.FechaCirugia, 'yyyy-MM') AS Mes,
+    COUNT(DISTINCT pq.IdProtocolo) AS TotalCirugiasAsistidas,
+    SUM(CASE WHEN pq.EsUrgencia = 0 THEN 1 ELSE 0 END) AS CirugiasProgramadas,
+    SUM(CASE WHEN pq.EsUrgencia = 1 THEN 1 ELSE 0 END) AS CirugiasDeUrgencia,
+    ROUND(SUM(CASE WHEN pq.EsUrgencia = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT pq.IdProtocolo), 2) AS TasaUrgenciaPct,
+    -- Cruce con ingreso por guardia
+    COUNT(DISTINCT g.idEntrada) AS CirugiasDerivadasDeGuardia,
+    ROUND(AVG(CASE WHEN g.idEntrada IS NOT NULL THEN DATEDIFF(MINUTE, g.FechaEntradaReal, pq.HoraEntradaSala) END), 1) AS MinutosPromedioGuardiaAQuirofano
+FROM dbo.ProtocolosQuirurgicos pq
+LEFT JOIN dbo.VLISE_Visitas g 
+    ON pq.IdPaciente = g.idPaciente 
+   AND g.FechaEntradaReal <= pq.HoraEntradaSala 
+   AND g.FechaEntradaReal >= DATEADD(HOUR, -48, pq.HoraEntradaSala)
+WHERE pq.EstadoCirugia = 'Realizada'
+  AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+GROUP BY FORMAT(pq.FechaCirugia, 'yyyy-MM')
+ORDER BY Mes DESC;`;
+
+const SQL_QX_SUSPENSIONES_CAUSALES = `-- 4. MATRIZ OFICIAL DE MOTIVOS DE SUSPENSIÓN (CATÁLOGO 1..13 DE TABLEAU)
+SELECT 
+    CASE 
+        WHEN ms.CodigoMotivo = 1 OR tq.MotivoSuspension LIKE '%reprogram%' THEN '1. Cx Reprogramada'
+        WHEN ms.CodigoMotivo = 2 OR tq.MotivoSuspension LIKE '%obra social%' OR tq.MotivoSuspension LIKE '%autoriz%' THEN '2. No autorizada por Obra social'
+        WHEN ms.CodigoMotivo = 3 OR tq.MotivoSuspension LIKE '%ya fue real%' THEN '3. Ya fue realizado'
+        WHEN ms.CodigoMotivo = 4 OR tq.MotivoSuspension LIKE '%enfermo%' OR tq.MotivoSuspension LIKE '%fiebre%' THEN '4. Paciente enfermo'
+        WHEN ms.CodigoMotivo = 5 OR tq.MotivoSuspension LIKE '%prequirurg%' THEN '5. Paciente sin prequirúrgicos'
+        WHEN ms.CodigoMotivo = 6 OR tq.MotivoSuspension LIKE '%ayuno%' THEN '6. Paciente sin ayuno'
+        WHEN ms.CodigoMotivo = 7 OR tq.MotivoSuspension LIKE '%otro motivo de paciente%' THEN '7. Otro motivo de paciente'
+        WHEN ms.CodigoMotivo = 8 OR tq.MotivoSuspension LIKE '%cirujano%' THEN '8. Otro motivo de cirujanos'
+        WHEN ms.CodigoMotivo = 9 OR tq.MotivoSuspension LIKE '%econ%' THEN '9. Motivos económicos'
+        WHEN ms.CodigoMotivo = 10 OR tq.MotivoSuspension LIKE '%ortopedia%' OR tq.MotivoSuspension LIKE '%protesis%' THEN '10. Ortopedia / Prótesis'
+        ELSE '13. Otros (edilicios/técnicos)'
+    END AS CatalogoOficialMotivo,
+    COUNT(*) AS CantidadSuspensiones,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) AS PorcentajeDelTotal,
+    SUM(CASE WHEN DATEDIFF(HOUR, tq.FechaCancelacion, tq.FechaProgramada) <= 24 THEN 1 ELSE 0 END) AS OcurridasEnElDia,
+    SUM(CASE WHEN DATEDIFF(HOUR, tq.FechaCancelacion, tq.FechaProgramada) > 24 THEN 1 ELSE 0 END) AS OcurridasConAnticipacion
+FROM dbo.TurnosQuirurgicos tq
+LEFT JOIN dbo.MotivosSuspension ms ON tq.IdMotivoSuspension = ms.IdMotivo
+WHERE tq.Estado IN ('Suspendido', 'Cancelado')
+  AND tq.FechaProgramada BETWEEN @FechaInicio AND @FechaFin
+GROUP BY 
+    CASE 
+        WHEN ms.CodigoMotivo = 1 OR tq.MotivoSuspension LIKE '%reprogram%' THEN '1. Cx Reprogramada'
+        WHEN ms.CodigoMotivo = 2 OR tq.MotivoSuspension LIKE '%obra social%' OR tq.MotivoSuspension LIKE '%autoriz%' THEN '2. No autorizada por Obra social'
+        WHEN ms.CodigoMotivo = 3 OR tq.MotivoSuspension LIKE '%ya fue real%' THEN '3. Ya fue realizado'
+        WHEN ms.CodigoMotivo = 4 OR tq.MotivoSuspension LIKE '%enfermo%' OR tq.MotivoSuspension LIKE '%fiebre%' THEN '4. Paciente enfermo'
+        WHEN ms.CodigoMotivo = 5 OR tq.MotivoSuspension LIKE '%prequirurg%' THEN '5. Paciente sin prequirúrgicos'
+        WHEN ms.CodigoMotivo = 6 OR tq.MotivoSuspension LIKE '%ayuno%' THEN '6. Paciente sin ayuno'
+        WHEN ms.CodigoMotivo = 7 OR tq.MotivoSuspension LIKE '%otro motivo de paciente%' THEN '7. Otro motivo de paciente'
+        WHEN ms.CodigoMotivo = 8 OR tq.MotivoSuspension LIKE '%cirujano%' THEN '8. Otro motivo de cirujanos'
+        WHEN ms.CodigoMotivo = 9 OR tq.MotivoSuspension LIKE '%econ%' THEN '9. Motivos económicos'
+        WHEN ms.CodigoMotivo = 10 OR tq.MotivoSuspension LIKE '%ortopedia%' OR tq.MotivoSuspension LIKE '%protesis%' THEN '10. Ortopedia / Prótesis'
+        ELSE '13. Otros (edilicios/técnicos)'
+    END
+ORDER BY CantidadSuspensiones DESC;`;
+
+const SQL_QX_CIRUJANOS_RANKING = `-- 5. RANKING Y RENDIMIENTO DE CIRUJANOS (VOLUMEN Y SUSPENSIONES)
+SELECT 
+    med.NombreCompleto AS Cirujano,
+    esp.Nombre AS Especialidad,
+    COUNT(*) AS TotalCirugiasProgramadas,
+    SUM(CASE WHEN tq.Estado = 'Realizado' THEN 1 ELSE 0 END) AS CirugiasRealizadas,
+    SUM(CASE WHEN tq.Estado IN ('Suspendido', 'Cancelado') THEN 1 ELSE 0 END) AS CirugiasSuspendidas,
+    ROUND(SUM(CASE WHEN tq.Estado IN ('Suspendido', 'Cancelado') THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS TasaSuspensionIndividualPct,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) AS ParticipacionVolumenTotalPct
+FROM dbo.TurnosQuirurgicos tq
+INNER JOIN dbo.Medicos med ON tq.IdMedicoCirujano = med.IdMedico
+LEFT JOIN dbo.Especialidades esp ON med.IdEspecialidad = esp.IdEspecialidad
+WHERE tq.FechaProgramada BETWEEN @FechaInicio AND @FechaFin
+GROUP BY med.NombreCompleto, esp.Nombre
+ORDER BY CirugiasRealizadas DESC;`;
+
+const SQL_QX_BLOQUES_OCUPACION = `-- 6. MATRIZ DE BLOQUES QUIRÚRGICOS Y CUMPLIMIENTO DE REGLA A 7 DÍAS
+SELECT 
+    bq.IdBloque,
+    med.NombreCompleto AS ProfesionalAsignado,
+    sq.NombreSala AS Quirofano,
+    bq.DiaSemana,
+    bq.HoraInicio,
+    bq.HoraFin,
+    DATEDIFF(MINUTE, bq.HoraInicio, bq.HoraFin) / 60.0 AS HorasBloqueAsignadas,
+    ISNULL(uso.HorasEfectivasUso, 0) AS HorasEfectivasUso,
+    (DATEDIFF(MINUTE, bq.HoraInicio, bq.HoraFin) / 60.0) - ISNULL(uso.HorasEfectivasUso, 0) AS HorasOciosas,
+    ROUND(ISNULL(uso.HorasEfectivasUso, 0) * 100.0 / NULLIF(DATEDIFF(MINUTE, bq.HoraInicio, bq.HoraFin) / 60.0, 0), 2) AS EficienciaBloquePct,
+    CASE 
+        WHEN ISNULL(uso.CirugiasAgendadasA7Dias, 0) = 0 THEN 'LIBERADO_AUTOMATICO'
+        WHEN ROUND(ISNULL(uso.HorasEfectivasUso, 0) * 100.0 / NULLIF(DATEDIFF(MINUTE, bq.HoraInicio, bq.HoraFin) / 60.0, 0), 2) < 70 THEN 'ALERTA_BAJA_OCUPACION'
+        ELSE 'OPTIMO'
+    END AS EstadoRegla7Dias
+FROM dbo.BloquesQuirurgicos bq
+INNER JOIN dbo.Medicos med ON bq.IdMedico = med.IdMedico
+INNER JOIN dbo.SalasQuirurgicas sq ON bq.IdSala = sq.IdSala
+OUTER APPLY (
+    SELECT 
+        SUM(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)) / 60.0 AS HorasEfectivasUso,
+        COUNT(DISTINCT CASE WHEN DATEDIFF(DAY, tq.FechaCreacionTurno, tq.FechaProgramada) >= 7 THEN tq.IdTurno END) AS CirugiasAgendadasA7Dias
+    FROM dbo.ProtocolosQuirurgicos pq
+    INNER JOIN dbo.TurnosQuirurgicos tq ON pq.IdTurno = tq.IdTurno
+    WHERE pq.IdMedicoCirujano = bq.IdMedico
+      AND pq.IdSala = bq.IdSala
+      AND DATEPART(WEEKDAY, pq.FechaCirugia) = bq.NumeroDiaSemana
+      AND CAST(pq.HoraEntradaSala AS TIME) >= bq.HoraInicio
+      AND CAST(pq.HoraSalidaSala AS TIME) <= bq.HoraFin
+      AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+) uso
+WHERE bq.Activo = 1
+ORDER BY EficienciaBloquePct ASC;`;
+
+const SQL_QX_ESPECIALIDADES = `-- 7. CIRUGÍAS POR ESPECIALIDAD ACUMULADA
+SELECT 
+    esp.Nombre AS Especialidad,
+    COUNT(DISTINCT pq.IdProtocolo) AS CantidadCirugias,
+    ROUND(COUNT(DISTINCT pq.IdProtocolo) * 100.0 / SUM(COUNT(DISTINCT pq.IdProtocolo)) OVER(), 2) AS PorcentajeDelTotal,
+    ROUND(AVG(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)), 1) AS DuracionMediaMinutos
+FROM dbo.ProtocolosQuirurgicos pq
+INNER JOIN dbo.Especialidades esp ON pq.IdEspecialidad = esp.IdEspecialidad
+WHERE pq.EstadoCirugia = 'Realizada'
+  AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+GROUP BY esp.Nombre
+ORDER BY CantidadCirugias DESC;`;
+
+const SQL_QX_EQUIPOS_PERSONAL = `-- 8. PRODUCTIVIDAD DE EQUIPOS QUIRÚRGICOS DE APOYO
+SELECT 
+    RolPersonal,
+    NombreColaborador,
+    COUNT(DISTINCT IdProtocolo) AS CantidadIntervenciones,
+    ROUND(SUM(DuracionMinutos) / 60.0, 1) AS HorasTotalesEnQuirofano,
+    ROUND(AVG(DuracionMinutos), 1) AS PromedioMinutosPorCirugia
+FROM (
+    SELECT 'Circulante' AS RolPersonal, pq.NombreCirculante AS NombreColaborador, pq.IdProtocolo, DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala) AS DuracionMinutos
+    FROM dbo.ProtocolosQuirurgicos pq WHERE pq.NombreCirculante IS NOT NULL AND pq.EstadoCirugia = 'Realizada' AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+    UNION ALL
+    SELECT 'Técnico de Anestesia', pq.NombreTecnicoAnestesia, pq.IdProtocolo, DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)
+    FROM dbo.ProtocolosQuirurgicos pq WHERE pq.NombreTecnicoAnestesia IS NOT NULL AND pq.EstadoCirugia = 'Realizada' AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+    UNION ALL
+    SELECT 'Anestesiólogo', pq.NombreAnestesista, pq.IdProtocolo, DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)
+    FROM dbo.ProtocolosQuirurgicos pq WHERE pq.NombreAnestesista IS NOT NULL AND pq.EstadoCirugia = 'Realizada' AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+    UNION ALL
+    SELECT 'Instrumentador', pq.NombreInstrumentador, pq.IdProtocolo, DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)
+    FROM dbo.ProtocolosQuirurgicos pq WHERE pq.NombreInstrumentador IS NOT NULL AND pq.EstadoCirugia = 'Realizada' AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+) Equipos
+GROUP BY RolPersonal, NombreColaborador
+ORDER BY RolPersonal, CantidadIntervenciones DESC;`;
+
+const SQL_QX_HEMOTERAPIA_TRANSFUSION = `-- 9. SOPORTE DE HEMOTERAPIA Y DEMANDA TRANSFUSIONAL INTRAOPERATORIA
+SELECT 
+    FORMAT(pq.FechaCirugia, 'yyyy-MM') AS Periodo,
+    COUNT(DISTINCT pq.IdProtocolo) AS TotalCirugiasRealizadas,
+    COUNT(DISTINCT b.IdProtocolo) AS CirugiasConTransfusionEfectiva,
+    ROUND(COUNT(DISTINCT b.IdProtocolo) * 100.0 / COUNT(DISTINCT pq.IdProtocolo), 2) AS TasaTransfusionIntraQxPct,
+    ISNULL(SUM(b.UnidadesGlobulosRojos), 0) AS TotalUnidadesGlobulosRojos,
+    ISNULL(SUM(b.UnidadesPlasmaFresco), 0) AS TotalUnidadesPlasma,
+    ISNULL(SUM(b.UnidadesPlaquetas), 0) AS TotalUnidadesPlaquetas
+FROM dbo.ProtocolosQuirurgicos pq
+LEFT JOIN (
+    SELECT 
+        IdProtocolo,
+        SUM(CASE WHEN CodigoHemocomponente = 'GR' THEN CantidadUnidades ELSE 0 END) AS UnidadesGlobulosRojos,
+        SUM(CASE WHEN CodigoHemocomponente = 'PFC' THEN CantidadUnidades ELSE 0 END) AS UnidadesPlasmaFresco,
+        SUM(CASE WHEN CodigoHemocomponente = 'PLQ' THEN CantidadUnidades ELSE 0 END) AS UnidadesPlaquetas
+    FROM dbo.TransfusionesQuirurgicas
+    WHERE Estado = 'Transfundido'
+    GROUP BY IdProtocolo
+) b ON pq.IdProtocolo = b.IdProtocolo
+WHERE pq.EstadoCirugia = 'Realizada'
+  AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+GROUP BY FORMAT(pq.FechaCirugia, 'yyyy-MM')
+ORDER BY Periodo DESC;`;
+
+const SQL_QX_INVENTARIO_CONSUMOS = `-- 10. CONSUMO DE INSUMOS, MEDICACIÓN Y CONCILIACIÓN DE CIERRE MENSUAL
+SELECT 
+    art.CodigoArticulo,
+    art.DescripcionArticulo,
+    art.FamiliaArticulo,
+    SUM(cq.CantidadConsumida) AS TotalUnidadesConsumidas,
+    stk.StockFisicoActual,
+    stk.StockSistema,
+    stk.StockFisicoActual - stk.StockSistema AS DesvioConteoFinDeMes,
+    ROUND(SUM(cq.CantidadConsumida * art.CostoUnitario), 2) AS CostoTotalConsumoPeriodo
+FROM dbo.ConsumosQuirurgicos cq
+INNER JOIN dbo.ArticulosFarmacia art ON cq.IdArticulo = art.IdArticulo
+INNER JOIN dbo.ProtocolosQuirurgicos pq ON cq.IdProtocolo = pq.IdProtocolo
+LEFT JOIN dbo.StockAlmacen stk ON cq.IdArticulo = stk.IdArticulo AND stk.IdAlmacen = 3 -- Almacén Quirófano Central
+WHERE pq.EstadoCirugia = 'Realizada'
+  AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
+GROUP BY art.CodigoArticulo, art.DescripcionArticulo, art.FamiliaArticulo, stk.StockFisicoActual, stk.StockSistema
+ORDER BY CostoTotalConsumoPeriodo DESC;`;
 
 const SQL_FACT_DEUDAS = `-- EXTRACCIÓN DE DEUDAS ACTIVAS DE PACIENTES (TARIFA 042% PARTICULARES)
 SELECT TOP 1000
