@@ -300,30 +300,6 @@ export default function ContactCenterCancelacionesTab({
                             </p>
                         </div>
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <button
-                            onClick={() => loadData()}
-                            disabled={loading}
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '9px 16px',
-                                borderRadius: '10px',
-                                border: '1px solid #CBD5E1',
-                                background: '#FFFFFF',
-                                color: '#334155',
-                                fontSize: '13px',
-                                fontWeight: '600',
-                                cursor: loading ? 'not-allowed' : 'pointer',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-                            {loading ? 'Actualizando...' : 'Actualizar'}
-                        </button>
-                    </div>
                 </div>
 
                 {/* KPI Cards */}
