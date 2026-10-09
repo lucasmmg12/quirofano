@@ -139,8 +139,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             subChildren: [
                 { id: 'contact_center_chats', label: 'Chats', icon: MessageSquare },
                 { id: 'contact_center_nueva', label: '+ Nueva Conv.', icon: PlusCircle },
-                { id: 'contact_center_cancelaciones', label: 'Cancelaciones', icon: CalendarX, badge: 'Bolsa', badgeColor: '#DC2626' },
-                { id: 'turnos_online', label: 'Turnos', icon: AlertTriangle, badge: 'Alertas' },
+                { id: 'contact_center_cancelaciones', label: 'Cancelaciones', icon: CalendarX },
+                { id: 'turnos_online', label: 'Turnos', icon: CalendarCheck },
                 { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
                 { id: 'contact_center_config', label: 'Configuración', icon: Settings },
             ]
@@ -152,7 +152,6 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             badge: '10 Esc.', 
             badgeColor: '#059669' 
         },
-        { id: 'turnos_online_duplicados', originalId: 'turnos_online', label: 'Turnos Online Duplicados', icon: AlertTriangle },
     ].filter(i => isModuleVisible(i.originalId || i.id));
 
     const isPedidosActive = pedidosSubItems.some(i => activeView === i.id);
@@ -551,20 +550,6 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     setOpen: setContactCenterOpen,
                     isGroupActive: isContactCenterActive,
                     subItems: contactCenterSubItems,
-                    badge: (
-                        <span style={{
-                            background: '#EF4444',
-                            color: '#FFFFFF',
-                            fontSize: '0.62rem',
-                            padding: '1px 6px',
-                            borderRadius: '10px',
-                            fontWeight: 800,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                        }}>
-                            Alertas
-                        </span>
-                    )
                 })}
 
                 {/* ─── Items finales ─── */}
