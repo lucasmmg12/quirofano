@@ -23,6 +23,7 @@ export default function SweepInactiveChatsModal({
     isOpen,
     onClose,
     activeAgent,
+    currentUser,
     chats = [],
     onSweepSuccess
 }) {
@@ -82,14 +83,21 @@ export default function SweepInactiveChatsModal({
     if (!isOpen) return null;
 
     const handleExecuteSweep = async () => {
+        const u = String(currentUser?.usuario || currentUser?.email || activeAgent?.username || activeAgent?.id || '').toLowerCase().trim().split('@')[0];
+        const isAllowed = u === 'lmarinero' || u === 'lucas' || u.includes('marinero');
+        if (!isAllowed) {
+            setErrorMsg('Acceso restringido: Esta acción de nivel supervisor solo puede ser ejecutada por el perfil de @lmarinero.');
+            return;
+        }
+
         setIsSweeping(true);
         setErrorMsg(null);
         try {
             const result = await sweepInactiveConversations({
                 hoursThreshold,
                 assignedAgentId: scope === 'mine' ? activeAgent?.id : null,
-                closedByAgentId: activeAgent?.id || 'contact_center_agent',
-                closedByAgentName: activeAgent?.name || 'Operadora',
+                closedByAgentId: 'lmarinero',
+                closedByAgentName: 'Lucas Marinero (Supervisor)',
                 resolutionReason: resolutionReason.trim()
             });
 
@@ -157,9 +165,22 @@ export default function SweepInactiveChatsModal({
                             <Brush size={20} color="#FFFFFF" />
                         </div>
                         <div>
-                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.01em' }}>
-                                Barrido Rápido de Inactivos
-                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.01em' }}>
+                                    Barrido Rápido de Inactivos
+                                </h3>
+                                <span style={{
+                                    fontSize: '0.62rem',
+                                    fontWeight: 800,
+                                    background: 'rgba(2, 132, 199, 0.25)',
+                                    border: '1px solid rgba(56, 189, 248, 0.5)',
+                                    color: '#38BDF8',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px'
+                                }}>
+                                    Exclusivo @lmarinero
+                                </span>
+                            </div>
                             <p style={{ margin: 0, fontSize: '0.74rem', color: '#94A3B8' }}>
                                 Archivado masivo de conversaciones con ventana Meta expirada
                             </p>

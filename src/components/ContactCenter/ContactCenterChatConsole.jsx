@@ -3868,40 +3868,43 @@ export default function ContactCenterChatConsole({
                     gap: '4px'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                            type="button"
-                            onClick={() => setSweepModalOpen(true)}
-                            title="Barrer inactivos (+24h): archiva en lote conversaciones sin actividad con ventana Meta WhatsApp expirada"
-                            style={{
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                background: inactive24hCount > 0 ? '#F0FDF4' : '#FFFFFF',
-                                color: inactive24hCount > 0 ? '#047857' : '#0F766E',
-                                fontSize: '0.66rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                            }}
-                        >
-                            <Brush size={11} color={inactive24hCount > 0 ? '#059669' : '#0F766E'} />
-                            <span>Barrer +24h</span>
-                            {inactive24hCount > 0 && (
-                                <span style={{
-                                    fontSize: '0.60rem',
-                                    background: '#059669',
-                                    color: '#FFFFFF',
-                                    padding: '0 5px',
-                                    borderRadius: '8px',
-                                    fontWeight: 800
-                                }}>
-                                    {inactive24hCount}
-                                </span>
-                            )}
-                        </button>
+                        {/* Botón Barrido Inactivos +24h: Exclusivo para perfil lmarinero */}
+                        {isStrictLMarinero && (
+                            <button
+                                type="button"
+                                onClick={() => setSweepModalOpen(true)}
+                                title="Barrer inactivos (+24h): archiva en lote conversaciones sin actividad con ventana Meta WhatsApp expirada (Exclusivo lmarinero)"
+                                style={{
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #CBD5E1',
+                                    background: inactive24hCount > 0 ? '#F0FDF4' : '#FFFFFF',
+                                    color: inactive24hCount > 0 ? '#047857' : '#0F766E',
+                                    fontSize: '0.66rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                }}
+                            >
+                                <Brush size={11} color={inactive24hCount > 0 ? '#059669' : '#0F766E'} />
+                                <span>Barrer +24h</span>
+                                {inactive24hCount > 0 && (
+                                    <span style={{
+                                        fontSize: '0.60rem',
+                                        background: '#059669',
+                                        color: '#FFFFFF',
+                                        padding: '0 5px',
+                                        borderRadius: '8px',
+                                        fontWeight: 800
+                                    }}>
+                                        {inactive24hCount}
+                                    </span>
+                                )}
+                            </button>
+                        )}
 
                         <button
                             type="button"
@@ -11419,18 +11422,21 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                 }}
             />
 
-            {/* Modal de Barrido Rápido de Inactivos (+24h) */}
-            <SweepInactiveChatsModal
-                isOpen={sweepModalOpen}
-                onClose={() => setSweepModalOpen(false)}
-                activeAgent={activeAgent}
-                chats={chats}
-                onSweepSuccess={(result) => {
-                    if (onReloadChats) {
-                        onReloadChats();
-                    }
-                }}
-            />
+            {/* Modal de Barrido Rápido de Inactivos (+24h) - Exclusivo lmarinero */}
+            {isStrictLMarinero && (
+                <SweepInactiveChatsModal
+                    isOpen={sweepModalOpen}
+                    onClose={() => setSweepModalOpen(false)}
+                    activeAgent={activeAgent}
+                    currentUser={currentUser}
+                    chats={chats}
+                    onSweepSuccess={(result) => {
+                        if (onReloadChats) {
+                            onReloadChats();
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }
