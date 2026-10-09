@@ -388,6 +388,7 @@ export async function getAgentDailyShiftMetrics({
             chatsPendientes: chatsActivosSinCerrar.length,
             archivedOver24h: agentArchivedOver24h
         },
+        turnosSalusDetalle: agSalus?.turnosDetalle || [],
         resolutionHistogram: agentResolutionHistogram,
         hourlyDistribution,
         categorias,
@@ -400,6 +401,140 @@ export async function getAgentDailyShiftMetrics({
         },
         insights
     };
+}
+
+/**
+ * Mapea los turnos creados en SALUS con los mensajes y conversaciones de WhatsApp
+ * utilizando el DNI del paciente como clave primordial (vital para turnos pedidos por familiares/madres/padres),
+ * y secundariamente el teléfono si el DNI no arroja coincidencia directa.
+ */
+export async function mapTurnosWithWhatsApp(turnosList = [], targetDate = null) {
+    if (!turnosList || turnosList.length === 0) return [];
+
+    const familyKeywords = [
+        'hijo', 'hija', 'hije', 'nene', 'nena', 'bebe', 'bebé', 'bebes',
+        'mama', 'mamá', 'madre', 'papa', 'papá', 'padre', 'esposo', 'esposa',
+        'marido', 'pareja', 'suegro', 'suegra', 'hermano', 'hermana',
+        'sobrino', 'sobrina', 'nieto', 'nieta', 'para mi', 'para mí'
+    ];
+
+    const batchSize = 6;
+    const mappedResults = [];
+
+    for (let i = 0; i < turnosList.length; i += batchSize) {
+        const batch = turnosList.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (turno) => {
+            const rawDni = String(turno.dni || '').trim();
+            const cleanDni = rawDni.replace(/\D/g, '');
+
+            let matchFound = null;
+
+            // 1. Búsqueda primordial por DNI en el contenido de los mensajes de WhatsApp
+            if (cleanDni && cleanDni.length >= 6) {
+                try {
+                    const { data: msgs } = await supabase
+                        .from('whatsapp_messages')
+                        .select('phone, sender_name, content, created_at')
+                        .ilike('content', `%${cleanDni}%`)
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    if (msgs && msgs.length > 0) {
+                        const m = msgs[0];
+                        matchFound = {
+                            matchType: 'dni_message',
+                            matchedPhone: m.phone,
+                            matchedSender: m.sender_name || 'Paciente / Familiar',
+                            matchedSnippet: m.content || '',
+                            matchedAt: m.created_at
+                        };
+                    }
+                } catch (e) {
+                    console.warn(`[mapTurnosWithWhatsApp] Error buscando DNI ${cleanDni} en mensajes:`, e);
+                }
+
+                // 2. Si no encontró en whatsapp_messages, buscar en contact_center_conversations
+                if (!matchFound) {
+                    try {
+                        const { data: convs } = await supabase
+                            .from('contact_center_conversations')
+                            .select('phone, contact_name, ai_summary, motivo_consulta, created_at')
+                            .or(`dni.eq.${cleanDni},contact_name.ilike.%${cleanDni}%`)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+
+                        if (convs && convs.length > 0) {
+                            const c = convs[0];
+                            matchFound = {
+                                matchType: 'dni_conv',
+                                matchedPhone: c.phone,
+                                matchedSender: c.contact_name || 'Contacto WhatsApp',
+                                matchedSnippet: c.motivo_consulta || c.ai_summary?.tipo_tramite || 'Turno solicitado',
+                                matchedAt: c.created_at
+                            };
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            // 3. Fallback: Búsqueda por Teléfono si no hubo coincidencia por DNI
+            if (!matchFound) {
+                const p1 = (turno.telefono1 || turno.telefono2 || '').replace(/\D/g, '').slice(-8);
+                if (p1 && p1.length >= 7) {
+                    try {
+                        const { data: msgsPhone } = await supabase
+                            .from('whatsapp_messages')
+                            .select('phone, sender_name, content, created_at')
+                            .ilike('phone', `%${p1}%`)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+
+                        if (msgsPhone && msgsPhone.length > 0) {
+                            const m = msgsPhone[0];
+                            matchFound = {
+                                matchType: 'phone',
+                                matchedPhone: m.phone,
+                                matchedSender: m.sender_name || 'Paciente',
+                                matchedSnippet: m.content || '',
+                                matchedAt: m.created_at
+                            };
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            // 4. Determinar si es gestión de un familiar o tercero
+            let isFamily = false;
+            if (matchFound) {
+                const snippetLower = (matchFound.matchedSnippet || '').toLowerCase();
+                const hasFamilyKeyword = familyKeywords.some(kw => snippetLower.includes(kw));
+
+                // Comparar nombre del paciente en SALUS vs nombre del remitente en WhatsApp
+                const pacienteParts = (turno.paciente || '').toLowerCase().split(/[\s,]+/).filter(p => p.length > 2);
+                const senderLower = (matchFound.matchedSender || '').toLowerCase();
+                const senderHasPatientName = pacienteParts.some(part => senderLower.includes(part));
+
+                if (hasFamilyKeyword || (!senderHasPatientName && senderLower !== 'paciente / familiar' && senderLower !== 'paciente' && senderLower !== 'desconocido')) {
+                    isFamily = true;
+                }
+            }
+
+            return {
+                ...turno,
+                matchType: matchFound ? matchFound.matchType : 'none',
+                isFamilyBooking: isFamily,
+                matchedPhone: matchFound ? matchFound.matchedPhone : null,
+                matchedSender: matchFound ? matchFound.matchedSender : null,
+                matchedSnippet: matchFound ? matchFound.matchedSnippet : null,
+                matchedAt: matchFound ? matchFound.matchedAt : null
+            };
+        });
+
+        const batchResolved = await Promise.all(batchPromises);
+        mappedResults.push(...batchResolved);
+    }
+
+    return mappedResults;
 }
 
 /**

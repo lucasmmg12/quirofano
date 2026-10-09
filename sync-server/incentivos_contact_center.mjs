@@ -235,29 +235,57 @@ export async function getTurnosDiariosContactCenter(pool, { fecha = null } = {})
     const agentNamesSql = Object.keys(SALUS_AGENTS_MAP).map(a => `'${a}'`).join(',');
     const query = `
         SELECT 
+            [idVisita],
+            [IdPaciente],
+            [Paciente],
+            [NIF] AS DNI,
+            [telefono1],
+            [telefono2],
+            [Visita_Especialidad] AS Especialidad,
+            [Responsable] AS Medico,
+            [Fecha Visita] AS FechaVisita,
+            [Hora Inicio Visita Formato Texto] AS HoraVisita,
+            [Tipo Visita] AS TipoVisita,
+            [Cliente] AS ObraSocial,
             [Usuario Creacion Nombre] AS Agente,
-            COUNT(DISTINCT [idVisita]) AS TurnosCreados
+            [Fecha Hora Creacion] AS CreadoEl
         FROM [SALUS].[dbo].[VLISE_Visitas]
         WHERE [Fecha Hora Creacion] >= '${dateFormatted}'
           AND [Fecha Hora Creacion] <  '${nextDayFormatted}'
           AND [Usuario Creacion Nombre] IN (${agentNamesSql})
           AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
-        GROUP BY [Usuario Creacion Nombre]
+        ORDER BY [Fecha Hora Creacion] DESC
     `;
 
     const res = await pool.request().query(query);
     const agentesMap = {
-        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0 },
-        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0 },
-        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0 },
-        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0 },
-        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0 }
+        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0, turnosDetalle: [] },
+        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0, turnosDetalle: [] },
+        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0, turnosDetalle: [] },
+        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0, turnosDetalle: [] },
+        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0, turnosDetalle: [] }
     };
 
     for (const row of (res.recordset || [])) {
         const meta = SALUS_AGENTS_MAP[row.Agente];
         if (meta && agentesMap[meta.id]) {
-            agentesMap[meta.id].turnos += row.TurnosCreados;
+            agentesMap[meta.id].turnos += 1;
+            agentesMap[meta.id].turnosDetalle.push({
+                idVisita: row.idVisita,
+                idPaciente: row.IdPaciente,
+                paciente: row.Paciente,
+                dni: String(row.DNI || '').trim(),
+                telefono1: row.telefono1 || '',
+                telefono2: row.telefono2 || '',
+                especialidad: row.Especialidad || '',
+                medico: row.Medico || '',
+                fechaVisita: row.FechaVisita ? new Date(row.FechaVisita).toISOString().substring(0, 10) : '',
+                horaVisita: row.HoraVisita || '',
+                tipoVisita: row.TipoVisita || '',
+                obraSocial: row.ObraSocial || '',
+                horaCreacion: row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+                creadoEl: row.CreadoEl ? row.CreadoEl.toISOString() : ''
+            });
         }
     }
 

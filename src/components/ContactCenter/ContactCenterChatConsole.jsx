@@ -11403,6 +11403,20 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                 activeAgent={activeAgent}
                 onOpenHandoverModal={() => setHandoverModalOpen(true)}
                 myAssignedChatsCount={myAssignedChats.length}
+                onOpenChatWithPhone={(phone) => {
+                    if (!phone) return;
+                    const cleanP = String(phone).replace(/\D/g, '').slice(-8);
+                    const targetChat = (chats || []).find(c => {
+                        const cPhone = String(c.phone || c.client_phone || '').replace(/\D/g, '').slice(-8);
+                        return cPhone === cleanP;
+                    });
+                    if (targetChat && onSelectChat) {
+                        onSelectChat(targetChat.id);
+                    } else if (onSelectChat) {
+                        const partialChat = (chats || []).find(c => String(c.phone || '').includes(cleanP));
+                        if (partialChat) onSelectChat(partialChat.id);
+                    }
+                }}
             />
 
             {/* Modal de Barrido Rápido de Inactivos (+24h) */}

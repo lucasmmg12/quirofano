@@ -7,13 +7,15 @@ import {
 } from 'lucide-react';
 import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText } from '../../services/agentShiftService';
 import { CONTACT_CENTER_AGENTS } from '../../services/contactCenterService';
+import AgentTurnosMappingModal from './AgentTurnosMappingModal';
 
 export default function AgentShiftSummaryModal({
     isOpen,
     onClose,
     activeAgent = CONTACT_CENTER_AGENTS[0],
     onOpenHandoverModal,
-    myAssignedChatsCount = 0
+    myAssignedChatsCount = 0,
+    onOpenChatWithPhone
 }) {
     const [selectedAgent, setSelectedAgent] = useState(activeAgent);
     const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().substring(0, 10));
@@ -21,6 +23,7 @@ export default function AgentShiftSummaryModal({
     const [metrics, setMetrics] = useState(null);
     const [copied, setCopied] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
+    const [showTurnosModal, setShowTurnosModal] = useState(false);
 
     // Actualizar agente seleccionado si cambia la prop
     useEffect(() => {
@@ -432,21 +435,49 @@ export default function AgentShiftSummaryModal({
                                     </div>
                                 </div>
 
-                                {/* 3. Turnos Agendados SALUS */}
-                                <div style={{
-                                    background: '#FFFFFF',
-                                    borderRadius: '12px',
-                                    padding: '14px 16px',
-                                    border: '1px solid #E2E8F0',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'space-between'
-                                }}>
+                                {/* 3. Turnos Agendados SALUS (Clickeable para ver detalle y mapeo por DNI) */}
+                                <div 
+                                    onClick={() => setShowTurnosModal(true)}
+                                    title="Haz clic para ver el detalle de los turnos y su mapeo con WhatsApp por DNI"
+                                    style={{
+                                        background: '#FFFFFF',
+                                        borderRadius: '12px',
+                                        padding: '14px 16px',
+                                        border: '1.5px solid #DDD6FE',
+                                        boxShadow: '0 2px 5px rgba(139, 92, 246, 0.08)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.borderColor = '#8B5CF6';
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 6px 14px rgba(139, 92, 246, 0.16)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.borderColor = '#DDD6FE';
+                                        e.currentTarget.style.transform = 'translateY(0px)';
+                                        e.currentTarget.style.boxShadow = '0 2px 5px rgba(139, 92, 246, 0.08)';
+                                    }}
+                                >
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                                            Turnos en SALUS
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#5B21B6' }}>
+                                                Turnos en SALUS
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.62rem',
+                                                fontWeight: 800,
+                                                background: '#EDE9FE',
+                                                color: '#6D28D9',
+                                                padding: '1px 6px',
+                                                borderRadius: '6px'
+                                            }}>
+                                                Auditar
+                                            </span>
+                                        </div>
                                         <div style={{
                                             width: '28px',
                                             height: '28px',
@@ -454,7 +485,8 @@ export default function AgentShiftSummaryModal({
                                             background: '#FAF5FF',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center'
+                                            justifyContent: 'center',
+                                            border: '1px solid #E9D5FF'
                                         }}>
                                             <Stethoscope size={15} color="#8B5CF6" />
                                         </div>
@@ -463,9 +495,22 @@ export default function AgentShiftSummaryModal({
                                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
                                             {kpis.turnosSalus}
                                         </div>
-                                        <span style={{ fontSize: '0.7rem', color: '#8B5CF6', fontWeight: 600 }}>
-                                            Citas creadas hoy
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                                            <span style={{ fontSize: '0.7rem', color: '#8B5CF6', fontWeight: 600 }}>
+                                                Citas creadas hoy
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.66rem',
+                                                fontWeight: 800,
+                                                color: '#6D28D9',
+                                                background: '#F5F3FF',
+                                                padding: '2px 6px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #DDD6FE'
+                                            }}>
+                                                Ver turnos y DNI ↗
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -884,6 +929,24 @@ export default function AgentShiftSummaryModal({
                     </div>
                 </div>
             </div>
+
+            {/* Modal de Auditoría de Turnos y Mapeo por DNI */}
+            {showTurnosModal && (
+                <AgentTurnosMappingModal
+                    isOpen={showTurnosModal}
+                    onClose={() => setShowTurnosModal(false)}
+                    agent={selectedAgent}
+                    selectedDate={selectedDate}
+                    turnosRawList={metrics?.turnosSalusDetalle || []}
+                    onOpenChatWithPhone={(phone) => {
+                        setShowTurnosModal(false);
+                        onClose();
+                        if (onOpenChatWithPhone) {
+                            onOpenChatWithPhone(phone);
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }
