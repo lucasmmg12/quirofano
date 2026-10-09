@@ -292,9 +292,6 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 Modelo Oficial v13
                             </span>
                         </div>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                            Contact Center Sanatorio Argentino • Piso garantizado $139.470,59 + Bolsas independientes 50 / 25 / 25
-                        </p>
                     </div>
                 </div>
 
@@ -368,38 +365,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         </button>
                     </div>
 
-                    {/* Badge de Estado / Sincronización */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        background: '#F0FDF4',
-                        border: '1px solid #BBF7D0',
-                        color: '#15803D',
-                        padding: '6px 10px',
-                        borderRadius: '10px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700
-                    }}>
-                        <Cloud size={13} color="#16A34A" />
-                        <span>Cloud SALUS</span>
-                    </div>
 
-                    <button
-                        onClick={() => cargarPeriodo(periodo, true)}
-                        disabled={loading}
-                        title="Forzar actualización directa desde SALUS SQL Server"
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            background: '#FFFFFF', border: '1px solid #CBD5E1',
-                            padding: '8px 12px', borderRadius: '10px',
-                            fontSize: '0.76rem', fontWeight: 700, color: '#0284C7',
-                            cursor: loading ? 'wait' : 'pointer'
-                        }}
-                    >
-                        <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-                        Actualizar SALUS
-                    </button>
 
                     <button
                         onClick={() => setShowEscalonesModal(true)}
@@ -620,28 +586,11 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     {/* ═════════════════════════════════════════════════════════════════ */}
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '14px',
-                marginBottom: '16px'
-            }}>
-                {/* KPI 1: Piso Garantizado Histórico */}
-                <div style={{
-                    background: '#FFFFFF', padding: '18px 20px', borderRadius: '14px',
-                    border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                            Piso Garantizado (Histórico)
-                        </span>
-                        <Shield size={16} color="#059669" />
-                    </div>
-                    <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#0F2942' }}>
-                        {formatCurrency(BASE_GARANTIZADA_HISTORICA)}
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: '#059669', fontWeight: 700, marginTop: '4px' }}>
-                        100% Inamovible • Se cobra siempre
-                    </div>
-                </div>
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '14px',
+                        marginBottom: '16px'
+                    }}>
+
 
                 {/* KPI 2: Bolsa 1 Conversaciones Únicas Grupales */}
                 <div style={{
@@ -701,7 +650,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         }
                     </div>
                     <div style={{ fontSize: '0.70rem', color: '#BAE6FD', fontWeight: 600, marginTop: '4px' }}>
-                        Piso + Variable (+{formatCurrency(metricasAgentes.totalVariablePleno)}) • Equipo: {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
+                        Variable: +{formatCurrency(metricasAgentes.totalVariablePleno)} • Total Equipo: {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
                     </div>
                 </div>
             </div>
@@ -725,7 +674,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         </span>
                     </div>
                     <span style={{ fontSize: '0.70rem', color: '#64748B', fontWeight: 600 }}>
-                        Piso base $139.471 + Variable según cumplimiento de bolsas y presentismo
+                        Liquidación según cumplimiento de bolsas y presentismo
                     </span>
                 </div>
 
@@ -794,7 +743,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             Desglose de Liquidación Individual por Colaboradora
                         </h3>
                         <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                            Cálculo transparente de haberes: Piso histórico garantizado + 3 bolsas independientes prorrateadas por FTE.
+                            Cálculo transparente de haberes según 3 bolsas independientes prorrateadas por FTE.
                         </p>
                     </div>
                     <span style={{ fontSize: '0.72rem', background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontWeight: 700, color: '#475569' }}>
