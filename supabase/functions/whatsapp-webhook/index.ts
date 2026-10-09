@@ -4180,7 +4180,7 @@ async function handleChatbotTriage(
             currentStage,
             conv,
             knownDni: resolvedDni || conv?.dni || null,
-            dniInMessage: dniMatch ? dniMatch[0] : null,
+            dniInMessage: dniInMessage || candidateDni || null,
             turnosDni: resolvedDni,
             turnosConocidos: turnosActivosProximos,
             whatsappName
@@ -4992,8 +4992,9 @@ async function handleChatbotTriage(
         }
 
         // Si se detectó que es un paciente NO registrado en SALUS y aportó DNI:
-        // Se activa inmediatamente la recolección de los datos obligatorios para el alta en SALUS
-        if (candidateDni && isValidArgentineDni(candidateDni) && !paciente) {
+        // Si el paciente ya está respondiendo en esperando_datos_turno, no lo sometemos a un segundo formulario;
+        // registramos los datos aportados y derivamos directamente a sin_asignar para atención del operador.
+        if (candidateDni && isValidArgentineDni(candidateDni) && !paciente && currentStage !== 'esperando_datos_turno') {
             const res = await handleNewPatientIntake(
                 cleanText,
                 candidateDni,
@@ -5202,7 +5203,7 @@ async function handleChatbotTriage(
             }
             // CASO C: TENEMOS DNI, PERO FALTA EL MÉDICO/ESPECIALIDAD
             else if (hasDni && !hasDoctor) {
-                if (conv?.bot_stage === 'esperando_datos_turno') {
+                if (currentStage === 'esperando_datos_turno' || conv?.bot_stage === 'esperando_datos_turno') {
                     // Ya se le preguntó antes -> derivar para que el operador lo ayude
                     replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Ya registramos tus datos (DNI: *${targetDni}*).\n\n` +
                         `Un asesor de nuestro equipo tomará tu conversación para orientarte con la especialidad adecuada y agendar tu cita.\n\n` +
@@ -5228,7 +5229,7 @@ async function handleChatbotTriage(
             }
             // CASO D: TENEMOS MÉDICO/ESTUDIO PERO FALTA DNI
             else if (!hasDni && hasDoctor) {
-                if (conv?.bot_stage === 'esperando_datos_turno') {
+                if (currentStage === 'esperando_datos_turno' || conv?.bot_stage === 'esperando_datos_turno') {
                     // Ya se le preguntó antes -> derivar para que el operador tome el caso
                     replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tu solicitud con *${effectiveDocOrSpec}*.\n\n` +
                         `Un asesor de nuestro equipo tomará tu conversación a la brevedad para coordinar la cita.\n\n` +
@@ -6185,6 +6186,10 @@ async function handleChatbotTriage(
                 `${osTurnoBullet}\n` +
                 `${estudioBullet}\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            if (doctorDisplay || effectiveSpecialty) {
+                updates.medico_o_especialidad = doctorDisplay || effectiveSpecialty;
+                updates.motivo_consulta = `Solicitud de Turno: ${doctorDisplay || effectiveSpecialty}`;
+            }
             updates.status = 'bot';
             updates.bot_active = true;
             nextStage = 'esperando_datos_turno';
