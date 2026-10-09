@@ -564,6 +564,11 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
         systemAction: 'Envía aviso empático de demoras y detalla el horario oficial de atención.',
         nodeType: 'bot_response',
         botResponse: `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.
+
+📲 *Gestión de Turnos Online:*
+Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo desde la página web del Sanatorio:
+👉 https://www.sanatorioargentino.com.ar/turnos-online.html
+
 ⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
 
 💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`,
@@ -591,6 +596,10 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
 _(Domingos y Feriados cerrado)_
 
 Tu mensaje quedó registrado y un asesor te responderá en nuestro horario habitual.
+
+📲 *Gestión de Turnos Online 24 hs:*
+Recordá que desde la página web de Sanatorio Argentino también podés autogestionar tu turno médico en cualquier momento ingresando en:
+👉 https://www.sanatorioargentino.com.ar/turnos-online.html
 
 🚨 *Guardia Médica 24 hs:* Si presentás una urgencia, recordá que nuestra Guardia en Sede Central (San Luis 432 Oeste) atiende las *24 horas*.`,
         availableTags: ['{bot_name}'],

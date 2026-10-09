@@ -89,6 +89,18 @@ export function getPhoneVariants(phone) {
     return Array.from(variants).filter(Boolean);
 }
 
+export function formatRelativeTime(dateStr) {
+    if (!dateStr) return 'Reciente';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Reciente';
+    const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 1) return 'hace instantes';
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffHours = Math.round(diffMin / 60);
+    if (diffHours < 24) return `hace ${diffHours} h`;
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
 /**
  * SELECT liviano para whatsapp_messages.
  * En lugar de traer el raw_payload completo (JSON de BuilderBot de varios KB por fila),
@@ -812,18 +824,6 @@ export async function fetchLiveAndDemoChats() {
             } catch (errMissing) {
                 console.warn('[contact-center] Error resolviendo conversaciones complementarias:', errMissing);
             }
-        }
-
-        function formatRelativeTime(dateStr) {
-            if (!dateStr) return 'Reciente';
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return 'Reciente';
-            const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
-            if (diffMin < 1) return 'hace instantes';
-            if (diffMin < 60) return `hace ${diffMin} min`;
-            const diffHours = Math.round(diffMin / 60);
-            if (diffHours < 24) return `hace ${diffHours} h`;
-            return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
         }
 
         function isHumanAgentMessage(m) {
@@ -3239,5 +3239,80 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
     } catch (err) {
         console.error('[contactCenterService] Error en fetchArchivedChats:', err);
         return { chats: [], hasMore: false };
+    }
+}
+
+/**
+ * Barrido rápido / Cierre masivo de conversaciones inactivas (+24h, +12h, etc.)
+ *
+ * @param {Object} options
+ * @param {number} options.hoursThreshold - Umbral de inactividad en horas (default: 24)
+ * @param {string|null} options.assignedAgentId - Filtrar solo chats de este agente o null para todos
+ * @param {string} options.closedByAgentId - ID del agente que ejecuta el barrido
+ * @param {string} options.closedByAgentName - Nombre del agente que ejecuta el barrido
+ * @param {string} options.resolutionReason - Motivo de cierre
+ * @returns {Promise<{ success: boolean, count: number, phones: string[], error?: any }>}
+ */
+export async function sweepInactiveConversations({
+    hoursThreshold = 24,
+    assignedAgentId = null,
+    closedByAgentId = 'system',
+    closedByAgentName = 'Barrido Inactividad',
+    resolutionReason = null
+} = {}) {
+    try {
+        const cutoff = new Date(Date.now() - hoursThreshold * 3600 * 1000).toISOString();
+        const reason = resolutionReason || `Cierre automático por inactividad (+${hoursThreshold}h)`;
+
+        let query = supabase
+            .from('contact_center_conversations')
+            .select('phone, updated_at, assigned_agent_id')
+            .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","archived","closed")')
+            .lt('updated_at', cutoff);
+
+        if (assignedAgentId) {
+            query = query.eq('assigned_agent_id', assignedAgentId);
+        }
+
+        const { data: convsToClose, error: fetchErr } = await query;
+        if (fetchErr) throw fetchErr;
+
+        if (!convsToClose || convsToClose.length === 0) {
+            return { success: true, count: 0, phones: [] };
+        }
+
+        const phones = convsToClose.map(c => c.phone).filter(Boolean);
+        const nowIso = new Date().toISOString();
+
+        let updatedCount = 0;
+        for (let i = 0; i < phones.length; i += 50) {
+            const batch = phones.slice(i, i + 50);
+            const { error: updateErr } = await supabase
+                .from('contact_center_conversations')
+                .update({
+                    status: 'finalizado',
+                    closed_at: nowIso,
+                    closed_by_agent_id: closedByAgentId,
+                    closed_by_agent_name: closedByAgentName,
+                    resolution_reason: reason,
+                    bot_active: false
+                })
+                .in('phone', batch);
+
+            if (updateErr) {
+                console.error('[contact-center] Error actualizando lote de barrido:', updateErr);
+            } else {
+                updatedCount += batch.length;
+            }
+        }
+
+        return {
+            success: true,
+            count: updatedCount,
+            phones
+        };
+    } catch (err) {
+        console.error('[contact-center] Error en sweepInactiveConversations:', err);
+        return { success: false, count: 0, phones: [], error: err.message || err };
     }
 }

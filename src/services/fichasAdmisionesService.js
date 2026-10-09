@@ -28,7 +28,9 @@ export async function fetchAdmisionesFichas({
     search = '',
     filtroEstado = 'pendientes', // 'pendientes', 'en_carrito', 'devueltas', 'entregadas', 'todas'
     page = 0,
-    pageSize = 50
+    pageSize = 50,
+    orderBy = 'paciente',
+    orderAsc = true
 } = {}) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
@@ -77,7 +79,7 @@ export async function fetchAdmisionesFichas({
         query = query.or(`paciente.ilike.%${s}%,id_paciente.ilike.%${s}%,nhc.ilike.%${s}%,numero_admision.ilike.%${s}%,cliente.ilike.%${s}%`);
     }
 
-    query = query.order('fecha_ingreso', { ascending: false }).range(from, to);
+    query = query.order(orderBy, { ascending: orderAsc }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) {
@@ -194,7 +196,7 @@ export async function fetchCarritoFichas() {
             ficha_devolucion_motivo
         `)
         .eq('ficha_en_carrito', true)
-        .order('fecha_ingreso', { ascending: false });
+        .order('paciente', { ascending: true });
 
     if (error) throw error;
 
@@ -264,8 +266,12 @@ export async function emitirEntregaFichas({
         throw entregaError;
     }
 
-    // 2. Insertar detalle por cada ficha
-    const detalles = items.map(item => ({
+    // 2. Insertar detalle por cada ficha (ordenadas alfabéticamente por paciente)
+    const sortedItems = [...items].sort((a, b) => 
+        (a.paciente || '').localeCompare(b.paciente || '', 'es', { sensitivity: 'base' })
+    );
+
+    const detalles = sortedItems.map(item => ({
         entrega_id: entrega.id,
         admision_id: item.id,
         numero_admision: item.numero_admision || '—',
@@ -369,7 +375,7 @@ export async function fetchEntregaConDetalle(entregaId) {
         .from('entregas_fichas_detalle')
         .select('*')
         .eq('entrega_id', entregaId)
-        .order('created_at', { ascending: true });
+        .order('paciente', { ascending: true });
 
     if (detalleError) throw detalleError;
 

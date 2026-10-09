@@ -4,7 +4,7 @@ import {
     AlertCircle, Info, RefreshCw, Eye, EyeOff, Terminal, CheckCircle2,
     Cpu, Activity, Zap, Users, MessageSquare, Clock, AlertTriangle,
     Send, Trash2, Search, UserCheck, UserX, CornerDownLeft, Play, ArrowRight,
-    GitBranch, Layers
+    GitBranch, Layers, User, Globe, Plus, Edit3, RotateCw, Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -17,6 +17,13 @@ import {
 import ContactCenterBotTree from './ContactCenterBotTree';
 import ContactCenterTestSandbox from './ContactCenterTestSandbox';
 import { DEFAULT_BOT_TREE_NODES, generatePromptDirectivesFromTree } from './botTreeData';
+import { 
+    getContactCenterQuickReplies, 
+    filterQuickReplies, 
+    saveQuickReply, 
+    deleteOrResetQuickReply, 
+    syncQuickRepliesFromDb 
+} from '../../data/contactCenterQuickReplies';
 
 const VARIABLE_TAGS = [
     { tag: '{nombre}', label: 'Nombre Paciente', desc: 'Nombre completo o de pila detectado' },
@@ -26,14 +33,133 @@ const VARIABLE_TAGS = [
     { tag: '{bot_name}', label: 'Nombre del Asistente', desc: 'Nombre asignado al bot (ej: Dora / Betina)' }
 ];
 
-export default function ContactCenterConfigTab({ currentUser, addToast }) {
+export default function ContactCenterConfigTab({ currentUser, activeAgent, addToast }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [activeSubTab, setActiveSubTab] = useState('tree'); // 'tree' | 'editor' | 'simulator'
+    const [activeSubTab, setActiveSubTab] = useState('tree'); // 'tree' | 'quick_replies' | 'editor' | 'simulator'
     const [botTreeNodes, setBotTreeNodes] = useState(DEFAULT_BOT_TREE_NODES);
     const [sandboxInitialMessage, setSandboxInitialMessage] = useState('');
     const [sandboxInitialPatientType, setSandboxInitialPatientType] = useState('registrado');
+
+    // Estados Respuestas Rápidas (Mapeo por Usuario / Institucional)
+    const currentAgentId = activeAgent?.id || currentUser?.usuario || 'daguilera';
+    const [quickRepliesList, setQuickRepliesList] = useState(() => getContactCenterQuickReplies(currentAgentId));
+    const [qrFilter, setQrFilter] = useState('');
+    const [qrScopeFilter, setQrScopeFilter] = useState('all'); // 'all' | 'me' | 'institutional'
+    const [qrCategoryFilter, setQrCategoryFilter] = useState('all');
+    const [editingQuickReply, setEditingQuickReply] = useState(null);
+    const [isSavingQuickReply, setIsSavingQuickReply] = useState(false);
+
+    useEffect(() => {
+        syncQuickRepliesFromDb(currentAgentId).then(list => {
+            if (list && list.length > 0) setQuickRepliesList(list);
+        }).catch(() => {});
+    }, [currentAgentId]);
+
+    const handleOpenEditQuickReply = (qr) => {
+        setEditingQuickReply({
+            id: qr.id || null,
+            dbId: qr.dbId || null,
+            shortcut: qr.shortcut || '',
+            originalShortcut: qr.shortcut || '',
+            title: qr.title || '',
+            content: qr.content || '',
+            category: qr.category || 'general',
+            isPersonal: Boolean(qr.isPersonal),
+            isNew: false
+        });
+    };
+
+    const handleOpenNewQuickReply = () => {
+        setEditingQuickReply({
+            id: null,
+            dbId: null,
+            shortcut: '',
+            originalShortcut: '',
+            title: '',
+            content: '',
+            category: 'general',
+            isPersonal: true,
+            isNew: true
+        });
+    };
+
+    const handleSaveQuickReplyAction = async (scope) => {
+        if (!editingQuickReply) return;
+        const cleanShortcut = editingQuickReply.shortcut.replace(/^\//, '').trim();
+        if (!cleanShortcut) {
+            addToast?.('Indica un comando o atajo (ej: rx o saludo)', 'error');
+            return;
+        }
+        if (!editingQuickReply.content.trim()) {
+            addToast?.('El contenido del mensaje no puede estar vacío', 'error');
+            return;
+        }
+
+        setIsSavingQuickReply(true);
+        try {
+            const updatedList = await saveQuickReply({
+                id: editingQuickReply.dbId || editingQuickReply.id,
+                shortcut: cleanShortcut,
+                originalShortcut: editingQuickReply.originalShortcut,
+                title: editingQuickReply.title.trim() || cleanShortcut,
+                content: editingQuickReply.content.trim(),
+                category: editingQuickReply.category || 'general',
+                scope,
+                agentId: currentAgentId
+            });
+
+            setQuickRepliesList(updatedList);
+            setEditingQuickReply(null);
+            if (scope === 'me') {
+                addToast?.(`Atajo "/${cleanShortcut}" guardado solo para tu usuario (${activeAgent?.name || currentAgentId})`, 'success');
+            } else {
+                addToast?.(`Atajo "/${cleanShortcut}" guardado como plantilla oficial para todo el equipo`, 'success');
+            }
+        } catch (err) {
+            console.error('Error guardando atajo:', err);
+            addToast?.(`Error al guardar: ${err.message || 'Intente nuevamente'}`, 'error');
+        } finally {
+            setIsSavingQuickReply(false);
+        }
+    };
+
+    const handleResetQuickReplyAction = async (qr) => {
+        if (!window.confirm(`¿Deseas restablecer el atajo "/${qr.shortcut}" a la versión institucional oficial? Perderás tu personalización.`)) {
+            return;
+        }
+
+        setIsSavingQuickReply(true);
+        try {
+            const updatedList = await deleteOrResetQuickReply(qr, currentAgentId);
+            setQuickRepliesList(updatedList);
+            addToast?.(`Atajo "/${qr.shortcut}" restablecido a la versión oficial`, 'info');
+        } catch (err) {
+            console.error('Error restableciendo respuesta rápida:', err);
+            addToast?.('Error al restablecer la respuesta rápida', 'error');
+        } finally {
+            setIsSavingQuickReply(false);
+        }
+    };
+
+    const handleDeleteQuickReplyAction = async (qr) => {
+        if (!window.confirm(`¿Seguro que deseas eliminar el atajo "/${qr.shortcut}"?`)) {
+            return;
+        }
+
+        setIsSavingQuickReply(true);
+        try {
+            const updatedList = await deleteOrResetQuickReply(qr, currentAgentId);
+            setQuickRepliesList(updatedList);
+            addToast?.(`Atajo "/${qr.shortcut}" eliminado`, 'info');
+        } catch (err) {
+            console.error('Error eliminando respuesta rápida:', err);
+            addToast?.('Error al eliminar la respuesta rápida', 'error');
+        } finally {
+            setIsSavingQuickReply(false);
+        }
+    };
 
     // Form state - AI Bot
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_CHATBOT_SYSTEM_PROMPT);
@@ -329,9 +455,10 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                 </div>
             </div>
 
-            {/* Selector de Sub-Pestañas: Árbol Conversacional vs Parámetros & Prompt vs Simulador Sandbox */}
+            {/* Selector de Sub-Pestañas: Árbol Conversacional vs Respuestas Rápidas vs Parámetros & Prompt vs Simulador Sandbox */}
             <div style={{
-                display: 'flex',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
                 gap: '8px',
                 background: '#FFFFFF',
                 padding: '6px',
@@ -343,75 +470,96 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                     type="button"
                     onClick={() => setActiveSubTab('tree')}
                     style={{
-                        flex: 1,
-                        padding: '10px 16px',
+                        padding: '10px 14px',
                         borderRadius: '10px',
                         border: 'none',
                         background: activeSubTab === 'tree' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : 'transparent',
                         color: activeSubTab === 'tree' ? '#FFFFFF' : '#475569',
                         fontWeight: 800,
-                        fontSize: '0.84rem',
+                        fontSize: '0.82rem',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '8px',
+                        gap: '6px',
                         boxShadow: activeSubTab === 'tree' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
                         transition: 'all 0.15s ease'
                     }}
                 >
-                    <GitBranch size={16} />
-                    🌳 Flujograma Conversacional (Árbol del Bot)
+                    <GitBranch size={15} />
+                    🌳 Flujograma del Bot
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveSubTab('quick_replies')}
+                    style={{
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: activeSubTab === 'quick_replies' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : 'transparent',
+                        color: activeSubTab === 'quick_replies' ? '#FFFFFF' : '#475569',
+                        fontWeight: 800,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: activeSubTab === 'quick_replies' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <Zap size={15} />
+                    ⚡ Respuestas Rápidas (Atajos)
                 </button>
 
                 <button
                     type="button"
                     onClick={() => setActiveSubTab('editor')}
                     style={{
-                        flex: 1,
-                        padding: '10px 16px',
+                        padding: '10px 14px',
                         borderRadius: '10px',
                         border: 'none',
                         background: activeSubTab === 'editor' ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)' : 'transparent',
                         color: activeSubTab === 'editor' ? '#FFFFFF' : '#475569',
                         fontWeight: 800,
-                        fontSize: '0.84rem',
+                        fontSize: '0.82rem',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '8px',
+                        gap: '6px',
                         boxShadow: activeSubTab === 'editor' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
                         transition: 'all 0.15s ease'
                     }}
                 >
-                    <Sliders size={16} />
-                    ⚙️ Parámetros & System Prompt ({model})
+                    <Sliders size={15} />
+                    ⚙️ Prompt & Parámetros
                 </button>
 
                 <button
                     type="button"
                     onClick={() => setActiveSubTab('simulator')}
                     style={{
-                        flex: 1,
-                        padding: '10px 16px',
+                        padding: '10px 14px',
                         borderRadius: '10px',
                         border: 'none',
                         background: activeSubTab === 'simulator' ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' : 'transparent',
                         color: activeSubTab === 'simulator' ? '#FFFFFF' : '#475569',
                         fontWeight: 800,
-                        fontSize: '0.84rem',
+                        fontSize: '0.82rem',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '8px',
+                        gap: '6px',
                         boxShadow: activeSubTab === 'simulator' ? '0 2px 6px rgba(16, 185, 129, 0.25)' : 'none',
                         transition: 'all 0.15s ease'
                     }}
                 >
-                    <Play size={16} />
-                    🧪 Simulador Sandbox de Paciente (IA en Vivo)
+                    <Play size={15} />
+                    🧪 Simulador Sandbox
                 </button>
             </div>
 
@@ -1078,6 +1226,572 @@ export default function ContactCenterConfigTab({ currentUser, addToast }) {
                 </div>
             </div>
             </>
+            )}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* VISTA 4: GESTIÓN DE RESPUESTAS RÁPIDAS Y ATAJOS (CONFIGURACIÓN)   */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {activeSubTab === 'quick_replies' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Tarjeta Informativa Superior */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        border: '1px solid #E2E8F0',
+                        padding: '20px 24px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '16px'
+                    }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '36px', height: '36px', borderRadius: '10px',
+                                    background: '#E0F2FE', color: '#0284C7',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <Zap size={20} />
+                                </div>
+                                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Catálogo de Respuestas Rápidas y Atajos
+                                </h3>
+                            </div>
+                            <p style={{ margin: '6px 0 0 0', fontSize: '0.8rem', color: '#64748B', maxWidth: '780px', lineHeight: 1.45 }}>
+                                Las operadoras invocan estos atajos escribiendo <strong style={{ color: '#0284C7' }}>/atajo</strong> en el chat o desde el botón contextual. Podés personalizar atajos <strong style={{ color: '#7C3AED' }}>solo para tu usuario</strong> sin alterar a tus compañeras, o publicar plantillas institucionales <strong style={{ color: '#0369A1' }}>para todo el equipo</strong>.
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#475569', fontWeight: 600 }}>👤 Sesión activa:</span>
+                                <span style={{
+                                    background: '#F1F5F9', color: '#0284C7', fontWeight: 700, padding: '2px 8px', borderRadius: '6px'
+                                }}>
+                                    {activeAgent?.name || currentAgentId} (@{currentAgentId})
+                                </span>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleOpenNewQuickReply}
+                            style={{
+                                padding: '10px 18px',
+                                borderRadius: '10px',
+                                border: 'none',
+                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                color: '#FFFFFF',
+                                fontSize: '0.82rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                            }}
+                        >
+                            <Plus size={16} />
+                            Nueva Respuesta Rápida
+                        </button>
+                    </div>
+
+                    {/* Barra de Filtros, Ámbito y Búsqueda */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '14px',
+                        border: '1px solid #E2E8F0',
+                        padding: '16px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                        }}>
+                            {/* Tabs de Ámbito */}
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setQrScopeFilter('all')}
+                                    style={{
+                                        padding: '7px 14px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                                        border: qrScopeFilter === 'all' ? '1px solid #0284C7' : '1px solid #E2E8F0',
+                                        background: qrScopeFilter === 'all' ? '#F0F9FF' : '#FFFFFF',
+                                        color: qrScopeFilter === 'all' ? '#0284C7' : '#64748B',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Todas ({filterQuickReplies('', currentAgentId, 'all').length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setQrScopeFilter('me')}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                        padding: '7px 14px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                                        border: qrScopeFilter === 'me' ? '1px solid #7C3AED' : '1px solid #E2E8F0',
+                                        background: qrScopeFilter === 'me' ? '#FAF5FF' : '#FFFFFF',
+                                        color: qrScopeFilter === 'me' ? '#7C3AED' : '#64748B',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <User size={13} /> Solo para mí ({filterQuickReplies('', currentAgentId, 'me').length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setQrScopeFilter('institutional')}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                        padding: '7px 14px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 700,
+                                        border: qrScopeFilter === 'institutional' ? '1px solid #0D9488' : '1px solid #E2E8F0',
+                                        background: qrScopeFilter === 'institutional' ? '#F0FDFA' : '#FFFFFF',
+                                        color: qrScopeFilter === 'institutional' ? '#0D9488' : '#64748B',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <Globe size={13} /> Para todos / Institucionales ({filterQuickReplies('', currentAgentId, 'institutional').length})
+                                </button>
+                            </div>
+
+                            {/* Dropdown de Categoría */}
+                            <select
+                                value={qrCategoryFilter}
+                                onChange={(e) => setQrCategoryFilter(e.target.value)}
+                                style={{
+                                    padding: '7px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    fontSize: '0.76rem', fontWeight: 600, color: '#334155', background: '#FFFFFF', outline: 'none'
+                                }}
+                            >
+                                <option value="all">Todas las categorías</option>
+                                <option value="general">General</option>
+                                <option value="saludo">Saludos de Agente</option>
+                                <option value="medicos">Médicos / Especialistas</option>
+                                <option value="estudios">Estudios y Radiología</option>
+                                <option value="laboratorio">Laboratorio / Extracciones</option>
+                                <option value="chequeo">Chequeo Preventivo</option>
+                                <option value="cierre">Cierre y Despedida</option>
+                            </select>
+                        </div>
+
+                        {/* Buscador de texto */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            border: '1.5px solid #CBD5E1', borderRadius: '8px',
+                            padding: '8px 12px', background: '#FFFFFF'
+                        }}>
+                            <Search size={16} color="#64748B" />
+                            <input 
+                                type="text"
+                                placeholder="Buscar por comando (/rx, /dan, /bosi), título descriptivo o texto del mensaje..."
+                                value={qrFilter}
+                                onChange={(e) => setQrFilter(e.target.value)}
+                                style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.84rem', color: '#1E293B' }}
+                            />
+                            {qrFilter && (
+                                <button
+                                    type="button"
+                                    onClick={() => setQrFilter('')}
+                                    style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '2px' }}
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Grilla de Atajos y Respuestas */}
+                    {(() => {
+                        let displayed = filterQuickReplies(qrFilter, currentAgentId, qrScopeFilter);
+                        if (qrCategoryFilter !== 'all') {
+                            displayed = displayed.filter(r => r.category === qrCategoryFilter);
+                        }
+
+                        if (displayed.length === 0) {
+                            return (
+                                <div style={{
+                                    background: '#FFFFFF', borderRadius: '16px', border: '1px solid #E2E8F0',
+                                    padding: '40px', textAlign: 'center', color: '#94A3B8', fontSize: '0.86rem'
+                                }}>
+                                    No se encontraron respuestas rápidas con los filtros seleccionados.
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+                                gap: '14px'
+                            }}>
+                                {displayed.map(qr => (
+                                    <div
+                                        key={qr.id || qr.shortcut}
+                                        style={{
+                                            background: qr.isPersonal ? '#FAF5FF' : '#FFFFFF',
+                                            borderRadius: '14px',
+                                            border: qr.isPersonal ? '1.5px solid #DDD6FE' : '1px solid #E2E8F0',
+                                            padding: '16px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'space-between',
+                                            gap: '12px',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                            transition: 'transform 0.1s ease, box-shadow 0.1s ease'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                                    <span style={{
+                                                        background: '#E0F2FE', color: '#0284C7', fontWeight: 800,
+                                                        fontSize: '0.82rem', padding: '3px 8px', borderRadius: '6px'
+                                                    }}>
+                                                        /{qr.shortcut}
+                                                    </span>
+                                                    <strong style={{ fontSize: '0.86rem', color: '#1E293B' }}>
+                                                        {qr.title}
+                                                    </strong>
+                                                </div>
+
+                                                {/* Scope Badge */}
+                                                {qr.isPersonal ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                        fontSize: '0.64rem', fontWeight: 700, padding: '2px 7px',
+                                                        borderRadius: '6px', background: '#EDE9FE', color: '#6D28D9'
+                                                    }}>
+                                                        <User size={10} /> Solo para mí
+                                                    </span>
+                                                ) : (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                        fontSize: '0.64rem', fontWeight: 700, padding: '2px 7px',
+                                                        borderRadius: '6px', background: '#F1F5F9', color: '#475569'
+                                                    }}>
+                                                        <Globe size={10} /> Para todos
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {qr.isPersonal && qr.hasGlobalFallback && (
+                                                <div style={{ fontSize: '0.66rem', color: '#7C3AED', fontWeight: 600, marginTop: '4px' }}>
+                                                    (Sobrescribe versión institucional para tu sesión)
+                                                </div>
+                                            )}
+
+                                            <div style={{
+                                                margin: '10px 0 0 0',
+                                                fontSize: '0.78rem',
+                                                color: '#475569',
+                                                lineHeight: 1.45,
+                                                whiteSpace: 'pre-line',
+                                                maxHeight: '120px',
+                                                overflowY: 'auto',
+                                                paddingRight: '4px'
+                                            }}>
+                                                {qr.content}
+                                            </div>
+                                        </div>
+
+                                        {/* Card Footer Actions */}
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            paddingTop: '10px',
+                                            borderTop: '1px solid #F1F5F9'
+                                        }}>
+                                            <span style={{
+                                                fontSize: '0.66rem', fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase'
+                                            }}>
+                                                {qr.category || 'general'}
+                                            </span>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEditQuickReply(qr)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                                        padding: '4px 10px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                        background: '#FFFFFF', color: '#334155', fontSize: '0.72rem', fontWeight: 600,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <Edit3 size={12} /> Editar
+                                                </button>
+
+                                                {qr.isPersonal && qr.hasGlobalFallback && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleResetQuickReplyAction(qr)}
+                                                        title="Volver a la versión institucional oficial"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                                            padding: '4px 10px', borderRadius: '6px', border: '1px solid #DDD6FE',
+                                                            background: '#FFFFFF', color: '#7C3AED', fontSize: '0.72rem', fontWeight: 600,
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <RotateCw size={12} /> Restablecer
+                                                    </button>
+                                                )}
+
+                                                {qr.isPersonal && !qr.hasGlobalFallback && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteQuickReplyAction(qr)}
+                                                        title="Eliminar este atajo personal"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                                            padding: '4px 10px', borderRadius: '6px', border: '1px solid #FCA5A5',
+                                                            background: '#FEF2F2', color: '#DC2626', fontSize: '0.72rem', fontWeight: 600,
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <Trash2 size={12} /> Eliminar
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })()}
+                </div>
+            )}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* SUBMODAL EDITOR: CAMBIAR SOLO PARA MÍ vs CAMBIAR PARA TODOS       */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {editingQuickReply && (
+                <div 
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 10050,
+                        background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+                    }} 
+                    onClick={() => !isSavingQuickReply && setEditingQuickReply(null)}
+                >
+                    <div 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF', width: '100%', maxWidth: '580px',
+                            borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                            display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0'
+                        }}
+                    >
+                        {/* Cabecera del Editor */}
+                        <div style={{
+                            padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: '#F8FAFC'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '34px', height: '34px', borderRadius: '8px',
+                                    background: '#E0F2FE', color: '#0284C7',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <Zap size={18} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
+                                        {editingQuickReply.isNew ? 'Nueva Respuesta Rápida' : `Editar Atajo /${editingQuickReply.shortcut}`}
+                                    </h3>
+                                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
+                                        Operadora activa: <strong style={{ color: '#0284C7' }}>{activeAgent?.name || currentAgentId}</strong>
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !isSavingQuickReply && setEditingQuickReply(null)}
+                                style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Formulario */}
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '68vh', overflowY: 'auto' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                                        Comando / Atajo (sin espacios) *
+                                    </label>
+                                    <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #CBD5E1', borderRadius: '8px', overflow: 'hidden', background: '#F8FAFC' }}>
+                                        <span style={{ padding: '0 8px', color: '#0284C7', fontWeight: 800, fontSize: '0.86rem' }}>/</span>
+                                        <input 
+                                            type="text"
+                                            placeholder="ej: rx, saludo, lab"
+                                            value={editingQuickReply.shortcut}
+                                            onChange={(e) => setEditingQuickReply(prev => ({ ...prev, shortcut: e.target.value.replace(/^\//, '').toLowerCase().replace(/\s+/g, '') }))}
+                                            style={{ flex: 1, border: 'none', background: '#FFFFFF', padding: '8px 10px', fontSize: '0.84rem', outline: 'none' }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                                        Título identificador *
+                                    </label>
+                                    <input 
+                                        type="text"
+                                        placeholder="ej: Rayos X / Guardia Pasiva"
+                                        value={editingQuickReply.title}
+                                        onChange={(e) => setEditingQuickReply(prev => ({ ...prev, title: e.target.value }))}
+                                        style={{ width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px 10px', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                                    Categoría
+                                </label>
+                                <select
+                                    value={editingQuickReply.category || 'general'}
+                                    onChange={(e) => setEditingQuickReply(prev => ({ ...prev, category: e.target.value }))}
+                                    style={{ width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px 10px', fontSize: '0.84rem', outline: 'none', background: '#FFFFFF' }}
+                                >
+                                    <option value="general">General</option>
+                                    <option value="saludo">Saludos de Agente</option>
+                                    <option value="medicos">Médicos / Especialistas</option>
+                                    <option value="estudios">Estudios y Radiología</option>
+                                    <option value="laboratorio">Laboratorio / Extracciones</option>
+                                    <option value="chequeo">Chequeo Preventivo</option>
+                                    <option value="cierre">Cierre y Despedida</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155' }}>
+                                        Texto del mensaje *
+                                    </label>
+                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                        Variables automáticas (clic para insertar):
+                                    </span>
+                                </div>
+
+                                {/* Chips de variables dinámicas */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                    {[
+                                        { code: '{{name}}', label: '👤 Paciente' },
+                                        { code: '{{agent_name}}', label: '👩‍💼 Mi Nombre' },
+                                        { code: '{{tipo_consulta}}', label: '📋 Consulta' },
+                                        { code: '{{medico}}', label: '🩺 Médico' },
+                                        { code: '{{sede}}', label: '🏥 Sede 1' }
+                                    ].map(variable => (
+                                        <button
+                                            key={variable.code}
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingQuickReply(prev => ({
+                                                    ...prev,
+                                                    content: (prev.content ? prev.content + ' ' : '') + variable.code
+                                                }));
+                                            }}
+                                            style={{
+                                                border: '1px dashed #93C5FD', background: '#EFF6FF', color: '#1E40AF',
+                                                borderRadius: '6px', padding: '3px 8px', fontSize: '0.7rem', fontWeight: 600,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
+                                            }}
+                                        >
+                                            <Plus size={10} /> {variable.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <textarea
+                                    rows={5}
+                                    placeholder="Escribe el texto de la respuesta rápida..."
+                                    value={editingQuickReply.content}
+                                    onChange={(e) => setEditingQuickReply(prev => ({ ...prev, content: e.target.value }))}
+                                    style={{
+                                        width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px',
+                                        padding: '10px', fontSize: '0.84rem', lineHeight: 1.45, outline: 'none',
+                                        fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Banner explicativo del mapeo por usuario */}
+                            <div style={{
+                                padding: '10px 14px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                fontSize: '0.73rem', color: '#475569', lineHeight: 1.4
+                            }}>
+                                <strong style={{ color: '#0F172A' }}>💡 ¿Cómo deseas guardar este atajo?</strong>
+                                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px' }}>
+                                    <li><strong>"Cambiar solo para mí":</strong> Quedará registrado únicamente en tu sesión ({activeAgent?.name || currentAgentId}). Las otras operadoras conservarán la versión institucional.</li>
+                                    <li><strong>"Cambiar para todos":</strong> Se actualizará como respuesta oficial compartida para todo el equipo del Contact Center.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* Botones de acción principales solicitados por el usuario */}
+                        <div style={{
+                            padding: '14px 20px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC',
+                            display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px'
+                        }}>
+                            <button
+                                type="button"
+                                disabled={isSavingQuickReply}
+                                onClick={() => setEditingQuickReply(null)}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#475569', fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {/* Botón: Cambiar solo para mí */}
+                                <button
+                                    type="button"
+                                    disabled={isSavingQuickReply}
+                                    onClick={() => handleSaveQuickReplyAction('me')}
+                                    title="Guarda esta versión únicamente para tu usuario. No altera a las demás operadoras."
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: '#7C3AED', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)'
+                                    }}
+                                >
+                                    {isSavingQuickReply ? <Loader2 size={14} className="animate-spin" /> : <User size={14} />}
+                                    Cambiar solo para mí
+                                </button>
+
+                                {/* Botón: Cambiar para todos */}
+                                <button
+                                    type="button"
+                                    disabled={isSavingQuickReply}
+                                    onClick={() => handleSaveQuickReplyAction('all')}
+                                    title="Actualiza la plantilla oficial para todas las operadoras del Contact Center."
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                                    }}
+                                >
+                                    {isSavingQuickReply ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+                                    Cambiar para todos
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
         </div>

@@ -525,6 +525,13 @@ export async function fetchPacienteDetalle(paciente) {
                 turnosProximosData = uniqueTurnos;
             }
 
+            // Ordenar consultas médicas cronológicamente descendente (más recientes arriba)
+            consultasData.sort((a, b) => {
+                const dateA = new Date(a.fecha_visita || a.fecha || 0).getTime();
+                const dateB = new Date(b.fecha_visita || b.fecha || 0).getTime();
+                return dateB - dateA;
+            });
+
             return [
                 { key: 'consultas', data: consultasData },
                 { key: 'turnosProximos', data: turnosProximosData }

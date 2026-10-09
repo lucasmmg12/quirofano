@@ -108,48 +108,70 @@ export async function generarPdfConstanciaFichas(data, options = {}) {
         hour: '2-digit', minute: '2-digit'
     });
 
-    const completasCount = items.filter(i => {
+    // Ordenar alfabéticamente por paciente (A-Z) para coincidir con el archivador físico
+    const sortedItems = [...items].sort((a, b) =>
+        (a.paciente || '').localeCompare(b.paciente || '', 'es', { sensitivity: 'base' })
+    );
+
+    const completasCount = sortedItems.filter(i => {
         const est = (i.estado_documentacion || i.docEstado || i.ficha_doc_estado || '').toLowerCase();
         return est !== 'incompleta';
     }).length;
-    const incompletasCount = items.length - completasCount;
+    const incompletasCount = sortedItems.length - completasCount;
 
     doc.setFillColor(248, 250, 252); // #F8FAFC
     doc.roundedRect(margin, y, colW, 18, 2.5, 2.5, 'F');
     doc.setDrawColor(226, 232, 240); // #E2E8F0
     doc.roundedRect(margin, y, colW, 18, 2.5, 2.5, 'S');
 
-    const metaColumns = [
-        { label: 'CÓDIGO REMITO', value: codigo },
+    // 5 columnas con anchos equilibrados (Suma = 182 mm)
+    const colWidths = [40, 36, 35, 35, 36];
+    const metaCols = [
+        { label: 'CÓDIGO REMITO', value: codigo, isCode: true },
         { label: 'FECHA Y HORA', value: fechaHora },
-        { label: 'ENTREGA (RECEPCIÓN)', value: (responsableEntrega || 'Recepción').substring(0, 20) },
-        { label: 'RECIBE (ADMINISTRACIÓN)', value: (responsableRecibe || 'Administración').substring(0, 20) },
+        { label: 'ENTREGA (RECEPCIÓN)', value: (responsableEntrega || 'Recepción').substring(0, 18) },
+        { label: 'RECIBE (ADMINISTRACIÓN)', value: (responsableRecibe || 'Administración').substring(0, 18) },
         { 
             label: 'TOTAL ADMISIONES', 
-            value: `${items.length} fichas ${incompletasCount > 0 ? `(${incompletasCount} inc.)` : '(100% comp.)'}` 
+            count: `${sortedItems.length} fichas`,
+            badge: incompletasCount > 0 ? `${incompletasCount} incompletas` : '100% completas',
+            isComplete: incompletasCount === 0
         }
     ];
 
-    const colStep = colW / metaColumns.length;
-    metaColumns.forEach((col, idx) => {
-        const cX = margin + colStep * idx + 3;
+    let curX = margin;
+    metaCols.forEach((col, idx) => {
+        const cW = colWidths[idx];
+        const padX = 3.5;
+
         doc.setFontSize(5.8);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(100, 116, 139); // Slate 500
-        doc.text(col.label, cX, y + 5.5);
+        doc.text(col.label, curX + padX, y + 5.5);
 
-        doc.setFontSize(idx === 0 ? 8.5 : (idx === 4 ? 8 : 7.8));
-        doc.setFont('helvetica', 'bold');
-        if (idx === 0) {
-            doc.setTextColor(13, 59, 102);
-            doc.setFont('courier', 'bold');
-        } else if (idx === 4 && incompletasCount > 0) {
-            doc.setTextColor(180, 83, 9); // Amber 700
+        if (idx === 4) {
+            // Columna Total Admisiones: cantidad en línea 1, badge en línea 2 para que JAMÁS se desborde del recuadro
+            doc.setFontSize(8.5);
             doc.setFont('helvetica', 'bold');
-        } else {
             doc.setTextColor(15, 23, 42);
+            doc.text(col.count, curX + padX, y + 11);
+
+            doc.setFontSize(6.2);
+            doc.setFont('helvetica', 'bold');
+            if (col.isComplete) {
+                doc.setTextColor(22, 101, 52); // Verde institucional
+            } else {
+                doc.setTextColor(180, 83, 9); // Ámbar
+            }
+            doc.text(`(${col.badge})`, curX + padX, y + 15);
+        } else {
+            doc.setFontSize(idx === 0 ? 8.5 : 7.8);
+            doc.setFont(col.isCode ? 'courier' : 'helvetica', 'bold');
+            doc.setTextColor(idx === 0 ? 13 : 15, idx === 0 ? 59 : 23, idx === 0 ? 102 : 42);
+            doc.text(col.value, curX + padX, y + 12);
         }
-        doc.text(col.value, cX, y + 12);
+
+        curX += cW;
     });
 
     y += 24;
@@ -166,12 +188,12 @@ export async function generarPdfConstanciaFichas(data, options = {}) {
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
-    doc.text(`Total registros: ${items.length} admisiones físicas`, pageW - margin, y + 4.8, { align: 'right' });
+    doc.text(`Total registros: ${sortedItems.length} admisiones físicas`, pageW - margin, y + 4.8, { align: 'right' });
 
     y += 9;
 
     // ─── 5. Tabla de Fichas (autoTable) ───
-    const tableBody = items.map((item, idx) => {
+    const tableBody = sortedItems.map((item, idx) => {
         const fIngreso = item.fecha_ingreso
             ? new Date(item.fecha_ingreso + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
             : '—';
@@ -181,8 +203,8 @@ export async function generarPdfConstanciaFichas(data, options = {}) {
         const motivo = item.motivo_incompleta || item.motivoIncompleta || item.ficha_doc_incompleta_motivo || '';
 
         const estadoTxt = isIncompleta
-            ? `⚠️ INCOMPLETA${motivo ? `\n(${motivo})` : ''}`
-            : '✓ COMPLETA';
+            ? `INCOMPLETA${motivo ? `\n(${motivo})` : ''}`
+            : 'COMPLETA';
 
         const dniNhc = [
             item.dni || item.id_paciente || '—',
@@ -228,12 +250,12 @@ export async function generarPdfConstanciaFichas(data, options = {}) {
             0: { cellWidth: 7, halign: 'center', fontStyle: 'bold', textColor: [100, 116, 139] },
             1: { cellWidth: 14, halign: 'center' },
             2: { cellWidth: 17, fontStyle: 'bold', font: 'courier' },
-            3: { cellWidth: 36, fontStyle: 'bold' },
+            3: { cellWidth: 35, fontStyle: 'bold' },
             4: { cellWidth: 20, font: 'courier', fontSize: 6.2 },
-            5: { cellWidth: 26 },
-            6: { cellWidth: 24 },
-            7: { cellWidth: 20, textColor: [71, 85, 105] },
-            8: { cellWidth: 18, halign: 'center', fontStyle: 'bold', fontSize: 6 }
+            5: { cellWidth: 25 },
+            6: { cellWidth: 23 },
+            7: { cellWidth: 19, textColor: [71, 85, 105] },
+            8: { cellWidth: 22, halign: 'center', fontStyle: 'bold', fontSize: 6.2 }
         },
         margin: { left: margin, right: margin, bottom: 25 },
         didParseCell: (data) => {

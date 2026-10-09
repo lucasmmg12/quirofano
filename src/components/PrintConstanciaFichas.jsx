@@ -35,11 +35,16 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
         hour: '2-digit', minute: '2-digit',
     });
 
-    const completasCount = items.filter(i => {
+    // Ordenar alfabéticamente por paciente (A-Z) para coincidir con el archivador físico
+    const sortedItems = [...items].sort((a, b) =>
+        (a.paciente || '').localeCompare(b.paciente || '', 'es', { sensitivity: 'base' })
+    );
+
+    const completasCount = sortedItems.filter(i => {
         const est = (i.docEstado || i.estado_documentacion || i.ficha_doc_estado || '').toLowerCase();
         return est !== 'incompleta';
     }).length;
-    const incompletasCount = items.length - completasCount;
+    const incompletasCount = sortedItems.length - completasCount;
 
     return (
         <div ref={ref} className="print-constancia-fichas">
@@ -206,12 +211,14 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
                 </div>
                 <div>
                     <span style={{ fontSize: '7pt', color: '#64748b', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>Total Fichas</span>
-                    <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0f172a' }}>
-                        {items.length} {incompletasCount > 0 ? (
-                            <span style={{ fontSize: '7.5pt', color: '#b45309', fontWeight: 800 }}>({incompletasCount} inc.)</span>
-                        ) : (
-                            <span style={{ fontSize: '7.5pt', color: '#16a34a', fontWeight: 800 }}>(100% comp.)</span>
-                        )}
+                    <div style={{ fontSize: '9pt', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                        {sortedItems.length} fichas
+                        <span style={{
+                            display: 'block', fontSize: '6.8pt', marginTop: '1px',
+                            color: incompletasCount > 0 ? '#b45309' : '#16a34a', fontWeight: 800
+                        }}>
+                            {incompletasCount > 0 ? `(${incompletasCount} incompletas)` : '(100% completas)'}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -238,7 +245,7 @@ const PrintConstanciaFichas = forwardRef(function PrintConstanciaFichas({ data }
                     </tr>
                 </thead>
                 <tbody>
-                    {items.map((item, idx) => {
+                    {sortedItems.map((item, idx) => {
                         const isIncompleta = (item.docEstado || item.estado_documentacion || item.ficha_doc_estado) === 'incompleta';
                         const motivo = item.motivoIncompleta || item.motivo_incompleta || item.ficha_doc_incompleta_motivo || '';
                         

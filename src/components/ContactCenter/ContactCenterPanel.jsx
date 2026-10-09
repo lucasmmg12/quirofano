@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
-    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio, Settings, Award
+    User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio, Settings, Award, CalendarX
 } from 'lucide-react';
 import ContactCenterChatConsole from './ContactCenterChatConsole';
 import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
 import ContactCenterPermisosTab from './ContactCenterPermisosTab';
+import ContactCenterCancelacionesTab from './ContactCenterCancelacionesTab';
 import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
 import ContactCenterMetricsTab from './ContactCenterMetricsTab';
 import ContactCenterConfigTab from './ContactCenterConfigTab';
@@ -23,6 +24,7 @@ import {
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
+import { getPendingCancelacionesCount, subscribeToCancelaciones } from '../../services/cancelacionesService';
 
 export default function ContactCenterPanel({ currentUser, addToast, initialTab = 'conversaciones', onTabChange }) {
     const sanitizedInitialTab = initialTab === 'mi_semana' ? 'conversaciones' : initialTab;
@@ -72,6 +74,19 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const [allowedUsers, setAllowedUsers] = useState(['lmarinero', 'daniela', 'sofia', 'virginia', 'erica']);
     const [savingPermisos, setSavingPermisos] = useState(false);
     const [loadingLive, setLoadingLive] = useState(false);
+
+    // Conteo de Cancelaciones Pendientes en SALUS para badges en vivo
+    const [pendingCancelacionesCount, setPendingCancelacionesCount] = useState(0);
+
+    useEffect(() => {
+        getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c));
+        const unsubCancel = subscribeToCancelaciones(() => {
+            getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c));
+        });
+        return () => {
+            if (unsubCancel) unsubCancel();
+        };
+    }, []);
 
     // Estado OnLive: Sonido y último ping recibido
     const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -1027,30 +1042,29 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     return (
         <div className="content no-print" style={{ padding: activeSubTab === 'conversaciones' ? '6px 10px 0 10px' : '16px 20px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
-            {/* Si NO estamos en conversaciones (ej: mi_semana, turnos_online, metricas), mostramos una barra compacta con las pestañas de navegación del módulo (sin el banner superior de Image 3) */}
-            {activeSubTab !== 'conversaciones' && (
+            {/* Barra permanente de navegación del módulo Contact Center */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px',
+                marginBottom: activeSubTab === 'conversaciones' ? '6px' : '12px',
+                padding: '6px 12px',
+                background: '#FFFFFF',
+                borderRadius: '12px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+            }}>
+                {/* Pestañas de Navegación del Módulo */}
                 <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '10px',
-                    marginBottom: '12px',
-                    padding: '8px 12px',
-                    background: '#FFFFFF',
-                    borderRadius: '12px',
-                    border: '1px solid #E2E8F0',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                    background: '#F1F5F9',
+                    borderRadius: '8px',
+                    padding: '3px',
+                    gap: '2px',
+                    overflowX: 'auto'
                 }}>
-                    {/* Pestañas de Navegación del Módulo */}
-                    <div style={{
-                        display: 'flex',
-                        background: '#F1F5F9',
-                        borderRadius: '8px',
-                        padding: '3px',
-                        gap: '2px',
-                        overflowX: 'auto'
-                    }}>
                         <button
                             onClick={() => handleNavigateTab('conversaciones')}
                             style={{
@@ -1086,6 +1100,30 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         >
                             <PlusCircle size={14} />
                             Crear Conversación
+                        </button>
+
+                        <button
+                            onClick={() => handleNavigateTab('cancelaciones')}
+                            style={{
+                                padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                background: activeSubTab === 'cancelaciones' ? '#0F2942' : 'transparent',
+                                color: activeSubTab === 'cancelaciones' ? '#FFFFFF' : '#DC2626',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <CalendarX size={14} />
+                            Cancelaciones
+                            {pendingCancelacionesCount > 0 && (
+                                <span style={{
+                                    background: activeSubTab === 'cancelaciones' ? '#DC2626' : '#FEE2E2',
+                                    color: activeSubTab === 'cancelaciones' ? '#FFFFFF' : '#DC2626',
+                                    fontSize: '0.65rem', padding: '1px 6px', borderRadius: '8px', fontWeight: 800
+                                }}>
+                                    {pendingCancelacionesCount}
+                                </span>
+                            )}
                         </button>
 
                         <button
@@ -1237,9 +1275,18 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </div>
                     </div>
                 </div>
-            )}
 
             {/* Vistas del Módulo */}
+            {activeSubTab === 'cancelaciones' && (
+                <ContactCenterCancelacionesTab 
+                    activeAgent={activeAgent}
+                    currentUser={currentUser}
+                    addToast={addToast}
+                    onOpenChatWithPhone={handleOpenChatWithPhone}
+                    onBackToConsole={() => handleNavigateTab('conversaciones')}
+                />
+            )}
+
             {activeSubTab === 'turnos_online' && (
                 <ContactCenterTurnosOnlineTab 
                     activeAgent={activeAgent}
@@ -1275,7 +1322,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onBulkTransferChats={handleBulkTransferChats}
                     onBulkAssignChats={handleBulkAssignChats}
                     activeSubTab={activeSubTab}
-
+                    pendingCancelacionesCount={pendingCancelacionesCount}
                     onNavigateTab={handleNavigateTab}
                     onSwitchAgent={setActiveAgent}
                     soundEnabled={soundEnabled}
@@ -1298,6 +1345,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             {activeSubTab === 'configuracion' && (
                 <ContactCenterConfigTab 
                     currentUser={currentUser}
+                    activeAgent={activeAgent}
                     addToast={addToast}
                 />
             )}

@@ -4,7 +4,7 @@ import {
     Stethoscope, ChevronDown, FileText, Home, MessageSquareText, MessageCircle,
     ClipboardPlus, BarChart3, Ticket, DollarSign, ClipboardCheck, Brain, Users, PackageCheck, Microscope,
     Activity, FileSpreadsheet, BookMarked, FolderOpen, Receipt, FileCheck, Shield, Wrench, ShieldCheck,
-    Headphones, AlertTriangle, MessageSquare, CalendarCheck, PlusCircle, Award
+    Headphones, AlertTriangle, MessageSquare, CalendarCheck, PlusCircle, Award, CalendarX
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from '../services/contactCenterService';
@@ -25,7 +25,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         if (isContactCenterOnly) {
             // Estricto: Únicamente Contact Center y el módulo Simon IA ENTERO (Chat, Documentos, Reglas, Analytics)
             return [
-                'contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config',
+                'contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config',
                 'beto', 'simon', 'beto_rules', 'beto_analytics'
             ].includes(id);
         }
@@ -39,7 +39,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         if (MASTER_ADMINS.includes(username)) return true;
 
         // Contact Center items are visible for any authorized user (lmarinero, supervisor, CC agents)
-        const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
+        const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
         if (CC_VIEWS.includes(id)) {
             return canUserAccessContactCenter(currentUser);
         }
@@ -80,7 +80,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [simonOpen, setSimonOpen] = useState(false);
     const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
     const [contactCenterOpen, setContactCenterOpen] = useState(() => 
-        ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView) || isContactCenterOnly
+        ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView) || isContactCenterOnly
     );
 
     // Sub-items dentro de "Gobernanza"
@@ -139,6 +139,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             subChildren: [
                 { id: 'contact_center_chats', label: 'Chats', icon: MessageSquare },
                 { id: 'contact_center_nueva', label: '+ Nueva Conv.', icon: PlusCircle },
+                { id: 'contact_center_cancelaciones', label: 'Cancelaciones', icon: CalendarX, badge: 'Bolsa', badgeColor: '#DC2626' },
                 { id: 'turnos_online', label: 'Turnos', icon: AlertTriangle, badge: 'Alertas' },
                 { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
                 { id: 'contact_center_incentivos', label: 'Incentivos', icon: Award, badge: '10 Esc.', badgeColor: '#059669' },
@@ -153,7 +154,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
     const isSimonActive = simonSubItems.some(i => activeView === i.id);
-    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView);
+    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView);
 
     useEffect(() => {
         if (isContactCenterActive) {

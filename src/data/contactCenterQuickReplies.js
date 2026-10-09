@@ -217,6 +217,20 @@ export const DEFAULT_QUICK_REPLIES = Object.freeze([
         category: 'cierre'
     },
     {
+        id: 'turnosonline',
+        shortcut: 'turnosonline',
+        title: 'Turnos Online Web',
+        content: 'Recordá que también podés autogestionar tus turnos médicos las 24 horas ingresando en la página web oficial de Sanatorio Argentino: https://www.sanatorioargentino.com.ar/turnos-online.html 📲🩺',
+        category: 'general'
+    },
+    {
+        id: 'web',
+        shortcut: 'web',
+        title: 'Turnos Web Online',
+        content: 'Recordá que también podés autogestionar tus turnos médicos las 24 horas ingresando en la página web oficial de Sanatorio Argentino: https://www.sanatorioargentino.com.ar/turnos-online.html 📲🩺',
+        category: 'general'
+    },
+    {
         id: 'campanachequeo',
         shortcut: 'campanachequeo',
         title: 'Campana chequeo',
@@ -524,6 +538,27 @@ export const DEFAULT_QUICK_REPLIES = Object.freeze([
         category: 'estudios'
     },
     {
+        id: 'radiografia',
+        shortcut: 'radiografia',
+        title: 'Radiografía / Rayos X (Guardia Pasiva Sede 1)',
+        content: '¡Hola {{name}}! 🩻 Para realizarte una *Radiografía (Rayos X / RX)* no necesitás solicitar turno previo ni autorizar con anticipación por chat:\n\n📍 *Lugar:* Sede 1 — Calle San Luis 432 Oeste (Primer Piso).\n⏰ *Horarios de Guardia Pasiva (por orden de llegada):*\n• Lunes a viernes de 8:00 a 20:00 hs.\n• Sábados de 8:00 a 12:00 hs.\n\n📋 *Requisitos:*\n• Concurrir con el *pedido médico* prescripto.\n• *La autorización se gestiona directamente en el momento* al ingresar.\n\n¡Te esperamos directamente en los días y horarios indicados! 🏥',
+        category: 'estudios'
+    },
+    {
+        id: 'rx',
+        shortcut: 'rx',
+        title: 'RX / Rayos X (Guardia Pasiva Sede 1)',
+        content: '¡Hola {{name}}! 🩻 Para realizarte una *Radiografía (Rayos X / RX)* no necesitás solicitar turno previo ni autorizar con anticipación por chat:\n\n📍 *Lugar:* Sede 1 — Calle San Luis 432 Oeste (Primer Piso).\n⏰ *Horarios de Guardia Pasiva (por orden de llegada):*\n• Lunes a viernes de 8:00 a 20:00 hs.\n• Sábados de 8:00 a 12:00 hs.\n\n📋 *Requisitos:*\n• Concurrir con el *pedido médico* prescripto.\n• *La autorización se gestiona directamente en el momento* al ingresar.\n\n¡Te esperamos directamente en los días y horarios indicados! 🏥',
+        category: 'estudios'
+    },
+    {
+        id: 'rayos',
+        shortcut: 'rayos',
+        title: 'Rayos X / Radiografía (Guardia Pasiva Sede 1)',
+        content: '¡Hola {{name}}! 🩻 Para realizarte una *Radiografía (Rayos X / RX)* no necesitás solicitar turno previo ni autorizar con anticipación por chat:\n\n📍 *Lugar:* Sede 1 — Calle San Luis 432 Oeste (Primer Piso).\n⏰ *Horarios de Guardia Pasiva (por orden de llegada):*\n• Lunes a viernes de 8:00 a 20:00 hs.\n• Sábados de 8:00 a 12:00 hs.\n\n📋 *Requisitos:*\n• Concurrir con el *pedido médico* prescripto.\n• *La autorización se gestiona directamente en el momento* al ingresar.\n\n¡Te esperamos directamente en los días y horarios indicados! 🏥',
+        category: 'estudios'
+    },
+    {
         id: 'despedidag',
         shortcut: 'despedidag',
         title: 'despedidag (con enlace encuesta)',
@@ -716,49 +751,114 @@ export function interpolateQuickReplyVariables(text, context = {}) {
 
 // Mapa O(1) en memoria para coincidencia ultra veloz por comando
 const SHORTCUT_MAP = new Map();
-DEFAULT_QUICK_REPLIES.forEach(item => {
-    SHORTCUT_MAP.set(item.shortcut.toLowerCase(), item);
-});
+/**
+ * Normaliza el ID del agente para comparar de forma uniforme (minúsculas, sin espacios ni dominios)
+ */
+export function normalizeAgentId(agentId) {
+    if (!agentId) return '';
+    return String(agentId).toLowerCase().trim().split('@')[0];
+}
 
-// Cache reactivo en memoria
-let cachedQuickReplies = [...DEFAULT_QUICK_REPLIES];
+// Almacén reactivo de todas las respuestas rápidas (globales + personalizadas cargadas de Supabase o predeterminadas)
+let rawQuickReplies = [...DEFAULT_QUICK_REPLIES];
 
 /**
- * Busca coincidencia exacta O(1) de atajo (ej: "dan" -> objeto Daniela)
+ * Obtiene la lista resuelta de respuestas rápidas para un operador/agente específico.
+ * Lógica de resolución:
+ * 1. Incluye las respuestas institucionales globales (agentId es null o vacío).
+ * 2. Si el operador tiene una versión personalizada (agentId coincide con el suyo),
+ *    ésta toma PRECEDENCIA y sobrescribe la versión global para dicho operador.
+ * 3. Las personalizaciones de OTRAS operadoras quedan excluidas.
+ *
+ * @param {string|null} [agentId] ID o username del operador activo (ej: 'daguilera', 'vjacques')
+ * @returns {Array<Object>} Lista de respuestas rápidas resueltas para este operador
  */
-export function findQuickReplyByShortcut(cmd) {
+export function getContactCenterQuickReplies(agentId = null) {
+    const norm = normalizeAgentId(agentId);
+
+    // Separar globales de institucionales y personalizadas
+    const globals = rawQuickReplies.filter(r => !r.agentId);
+    const personals = norm ? rawQuickReplies.filter(r => normalizeAgentId(r.agentId) === norm) : [];
+
+    const resultMap = new Map();
+
+    // 1. Cargar institucionales globales
+    globals.forEach(g => {
+        const key = g.shortcut.toLowerCase();
+        resultMap.set(key, {
+            ...g,
+            isPersonal: false,
+            scope: 'all'
+        });
+    });
+
+    // 2. Sobrescribir o añadir con las personalizadas del operador actual
+    personals.forEach(p => {
+        const key = p.shortcut.toLowerCase();
+        const existingGlobal = resultMap.get(key);
+        resultMap.set(key, {
+            ...p,
+            isPersonal: true,
+            scope: 'me',
+            hasGlobalFallback: Boolean(existingGlobal),
+            originalGlobalContent: existingGlobal ? existingGlobal.content : null
+        });
+    });
+
+    return Array.from(resultMap.values()).sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * Busca coincidencia exacta O(1) de atajo (ej: "dan" o "rx") para el operador activo.
+ * @param {string} cmd Comando ingresado (con o sin barra, ej: "/rx" o "rx")
+ * @param {string|null} [agentId] ID del operador activo
+ */
+export function findQuickReplyByShortcut(cmd, agentId = null) {
     if (!cmd) return null;
     const cleanCmd = cmd.replace(/^\//, '').toLowerCase().trim();
-    return SHORTCUT_MAP.get(cleanCmd) || null;
+    if (!cleanCmd) return null;
+
+    const list = getContactCenterQuickReplies(agentId);
+    return list.find(r => r.shortcut.toLowerCase() === cleanCmd) || null;
 }
 
 /**
- * Obtiene la lista actual de respuestas rápidas
+ * Filtra respuestas rápidas en memoria para el operador activo según término de búsqueda o categoría
+ * @param {string} query Término de búsqueda
+ * @param {string|null} [agentId] ID del operador activo
+ * @param {string} [categoryFilter] 'all' | 'me' | 'institutional' | categoría específica
  */
-export function getContactCenterQuickReplies() {
-    return cachedQuickReplies;
-}
+export function filterQuickReplies(query, agentId = null, categoryFilter = 'all') {
+    let list = getContactCenterQuickReplies(agentId);
 
-/**
- * Filtra respuestas rápidas en memoria con cero asignación pesada
- */
-export function filterQuickReplies(query) {
-    if (!query) return cachedQuickReplies;
+    // Filtro por categoría o ámbito
+    if (categoryFilter === 'me') {
+        list = list.filter(r => r.isPersonal);
+    } else if (categoryFilter === 'institutional') {
+        list = list.filter(r => !r.isPersonal);
+    } else if (categoryFilter && categoryFilter !== 'all') {
+        list = list.filter(r => r.category === categoryFilter);
+    }
+
+    if (!query) return list;
     const clean = query.replace(/^\//, '').toLowerCase().trim();
-    if (!clean) return cachedQuickReplies;
+    if (!clean) return list;
 
-    return cachedQuickReplies.filter(r => 
+    return list.filter(r => 
         r.shortcut.toLowerCase().startsWith(clean) ||
         r.shortcut.toLowerCase().includes(clean) ||
         r.title.toLowerCase().includes(clean) ||
-        r.content.toLowerCase().includes(clean)
+        r.content.toLowerCase().includes(clean) ||
+        (r.category && r.category.toLowerCase().includes(clean))
     );
 }
 
 /**
- * Sincroniza en background con la tabla contact_center_quick_replies si existe
+ * Sincroniza en background con la tabla contact_center_quick_replies en Supabase.
+ * Integra todas las filas institucionales y personalizadas existentes.
+ * @param {string|null} [agentId] ID del operador activo
  */
-export async function syncQuickRepliesFromDb() {
+export async function syncQuickRepliesFromDb(agentId = null) {
     try {
         const { data, error } = await supabase
             .from('contact_center_quick_replies')
@@ -766,25 +866,190 @@ export async function syncQuickRepliesFromDb() {
             .order('title', { ascending: true });
 
         if (!error && data && data.length > 0) {
-            const mapped = data.map(d => ({
+            const mappedDb = data.map(d => ({
                 id: String(d.id || d.shortcut),
+                dbId: d.id,
                 shortcut: d.shortcut,
                 title: d.title,
                 content: d.content,
                 category: d.category || 'general',
-                agentId: d.agent_id || null
+                agentId: d.agent_id ? normalizeAgentId(d.agent_id) : null
             }));
 
-            // Actualizar mapa O(1)
-            mapped.forEach(item => {
-                SHORTCUT_MAP.set(item.shortcut.toLowerCase(), item);
+            // Combinar DEFAULT_QUICK_REPLIES con la base de datos
+            // Si la DB tiene un registro para ese shortcut y ese agentId, la DB tiene prioridad
+            const mergedMap = new Map();
+            DEFAULT_QUICK_REPLIES.forEach(item => {
+                const k = `${normalizeAgentId(item.agentId)}_${item.shortcut.toLowerCase()}`;
+                mergedMap.set(k, { ...item, agentId: item.agentId ? normalizeAgentId(item.agentId) : null });
+            });
+            mappedDb.forEach(item => {
+                const k = `${normalizeAgentId(item.agentId)}_${item.shortcut.toLowerCase()}`;
+                mergedMap.set(k, item);
             });
 
-            cachedQuickReplies = mapped;
-            return mapped;
+            rawQuickReplies = Array.from(mergedMap.values());
+            return getContactCenterQuickReplies(agentId);
         }
     } catch (e) {
         console.warn('[QuickReplies] Fallback a respuestas en memoria estática:', e);
     }
-    return cachedQuickReplies;
+    return getContactCenterQuickReplies(agentId);
+}
+
+/**
+ * Guarda o actualiza una respuesta rápida con mapeo por usuario ('me') o institucional ('all').
+ * @param {Object} params
+ * @param {string|number} [params.id] ID existente
+ * @param {string} params.shortcut Atajo de teclado (ej: "saludo", "rx")
+ * @param {string} params.title Título identificador
+ * @param {string} params.content Contenido del mensaje
+ * @param {string} [params.category] Categoría
+ * @param {'me'|'all'} params.scope 'me' = Solo para mí (no afecta a los demás) | 'all' = Cambiar para todos
+ * @param {string} params.agentId ID del operador actual (ej: "daguilera", "vjacques")
+ * @param {string} [params.originalShortcut] Atajo original si fue renombrado
+ */
+export async function saveQuickReply({
+    id,
+    shortcut,
+    title,
+    content,
+    category = 'general',
+    scope = 'me',
+    agentId,
+    originalShortcut = null
+}) {
+    const cleanShortcut = (shortcut || '').replace(/^\//, '').toLowerCase().trim();
+    if (!cleanShortcut) throw new Error('El atajo es obligatorio (ej: rx o saludo)');
+    if (!content?.trim()) throw new Error('El contenido del mensaje no puede estar vacío');
+
+    const normAgentId = normalizeAgentId(agentId);
+    const targetAgentId = scope === 'me' ? normAgentId : null;
+
+    if (scope === 'me' && !targetAgentId) {
+        throw new Error('No se pudo determinar el usuario actual para guardar de forma personal.');
+    }
+
+    try {
+        // 1. Verificar si ya existe en Supabase un registro para este shortcut y este scope
+        let query = supabase
+            .from('contact_center_quick_replies')
+            .select('id, shortcut, agent_id')
+            .eq('shortcut', cleanShortcut);
+
+        if (targetAgentId) {
+            query = query.eq('agent_id', targetAgentId);
+        } else {
+            query = query.is('agent_id', null);
+        }
+
+        const { data: existingRows } = await query;
+        const existingRow = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+
+        if (existingRow?.id) {
+            // Actualizar registro existente
+            const { error: updErr } = await supabase
+                .from('contact_center_quick_replies')
+                .update({
+                    title: title || cleanShortcut,
+                    content,
+                    category,
+                    shortcut: cleanShortcut
+                })
+                .eq('id', existingRow.id);
+
+            if (updErr) throw updErr;
+        } else {
+            // Insertar nuevo registro
+            const { error: insErr } = await supabase
+                .from('contact_center_quick_replies')
+                .insert({
+                    shortcut: cleanShortcut,
+                    title: title || cleanShortcut,
+                    content,
+                    category,
+                    agent_id: targetAgentId
+                });
+
+            if (insErr) throw insErr;
+        }
+
+        // Si se renombró el shortcut y existía un registro personal con el atajo viejo, limpiarlo
+        if (originalShortcut && originalShortcut.toLowerCase() !== cleanShortcut && targetAgentId) {
+            await supabase
+                .from('contact_center_quick_replies')
+                .delete()
+                .eq('shortcut', originalShortcut.toLowerCase())
+                .eq('agent_id', targetAgentId);
+        }
+
+        // 2. Refrescar datos desde DB
+        await syncQuickRepliesFromDb(normAgentId);
+        return getContactCenterQuickReplies(normAgentId);
+    } catch (err) {
+        console.error('[QuickReplies] Error persistiendo en base de datos:', err);
+        // Fallback en memoria local reactivo para no interrumpir el trabajo de la operadora
+        const localKey = `${targetAgentId || 'global'}_${cleanShortcut}`;
+        const localItem = {
+            id: id || `local_${Date.now()}`,
+            shortcut: cleanShortcut,
+            title: title || cleanShortcut,
+            content,
+            category,
+            agentId: targetAgentId
+        };
+        rawQuickReplies = rawQuickReplies.filter(r => !(r.shortcut.toLowerCase() === cleanShortcut && normalizeAgentId(r.agentId) === targetAgentId));
+        rawQuickReplies.push(localItem);
+        return getContactCenterQuickReplies(normAgentId);
+    }
+}
+
+/**
+ * Restablece o elimina una respuesta rápida.
+ * Si es una personalización del operador ('me'), la elimina para volver a la versión institucional original.
+ * @param {Object} qr Objeto de la respuesta rápida a eliminar o restablecer
+ * @param {string} agentId ID del operador actual
+ */
+export async function deleteOrResetQuickReply(qr, agentId) {
+    const normAgentId = normalizeAgentId(agentId);
+    const cleanShortcut = (qr.shortcut || '').replace(/^\//, '').toLowerCase().trim();
+
+    try {
+        if (qr.isPersonal || (qr.agentId && normalizeAgentId(qr.agentId) === normAgentId)) {
+            // Eliminar personalización del usuario en Supabase
+            if (qr.dbId && !isNaN(Number(qr.dbId))) {
+                await supabase
+                    .from('contact_center_quick_replies')
+                    .delete()
+                    .eq('id', qr.dbId);
+            } else {
+                await supabase
+                    .from('contact_center_quick_replies')
+                    .delete()
+                    .eq('shortcut', cleanShortcut)
+                    .eq('agent_id', normAgentId);
+            }
+        } else {
+            // Eliminar versión institucional
+            if (qr.dbId && !isNaN(Number(qr.dbId))) {
+                await supabase
+                    .from('contact_center_quick_replies')
+                    .delete()
+                    .eq('id', qr.dbId);
+            } else {
+                await supabase
+                    .from('contact_center_quick_replies')
+                    .delete()
+                    .eq('shortcut', cleanShortcut)
+                    .is('agent_id', null);
+            }
+        }
+
+        await syncQuickRepliesFromDb(normAgentId);
+        return getContactCenterQuickReplies(normAgentId);
+    } catch (err) {
+        console.error('[QuickReplies] Error eliminando o restableciendo respuesta rápida:', err);
+        rawQuickReplies = rawQuickReplies.filter(r => !(r.shortcut.toLowerCase() === cleanShortcut && normalizeAgentId(r.agentId) === normAgentId));
+        return getContactCenterQuickReplies(normAgentId);
+    }
 }

@@ -42,6 +42,7 @@ const MOTIVOS_FINALIZACION_CATALOGO = [
     { key: 'Información Brindada / Consulta Respondida', label: 'Información Brindada / Consulta Respondida', icon: HelpCircle, color: '#D97706', bg: '#FFFBEB' },
     { key: 'Derivado a Guardia / Sector', label: 'Derivado a Guardia / Sector Específico', icon: ShieldAlert, color: '#DC2626', bg: '#FEF2F2' },
     { key: 'Paciente No Responde', label: 'Paciente No Responde (Time-out)', icon: Clock, color: '#64748B', bg: '#F8FAFC' },
+    { key: 'Inactividad (+24h sin respuesta)', label: 'Archivado Inactivo (+24h sin respuesta)', icon: Clock, color: '#64748B', bg: '#F1F5F9' },
     { key: 'Otro / Aclaración en Nota', label: 'Otro / Resuelto Interno', icon: FileText, color: '#475569', bg: '#F1F5F9' }
 ];
 
@@ -201,7 +202,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             // 5. Curva horaria de minutos de espera promedio por hora
             hourlyWaitCurve: [],
             peakWaitHour: null,
-            peakWaitValMin: 0
+            peakWaitValMin: 0,
+
+            // 6. Histograma de Resolución (Buckets SLA: < 5m, 5-30m, 30-60m, 1-4h, 4-12h, 12-24h, +24h)
+            resolutionHistogram: [],
+            // 7. Histograma de 1er Mensaje de Asesoras (FRT)
+            frtHistogram: [],
+            // 8. Métricas de Inactividad (+24h sin respuesta)
+            archivedOver24hCount: 0,
+            archivedOver24hPct: 0
         }
     });
 
@@ -671,6 +680,29 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             let abandonedCount = 0;
             const resolvedPhonesWithCloseDate = [];
 
+            // ── Histograma de Resolución (SLA Buckets solicitados) ──
+            const resHistogramCounts = {
+                under5m: 0,
+                de5a30m: 0,
+                de30a60m: 0,
+                de1a4h: 0,
+                de4a12h: 0,
+                de12a24h: 0,
+                mas24h: 0
+            };
+
+            // ── Histograma de 1er Mensaje de Asesora (FRT) ──
+            const frtHistogramCounts = {
+                under3m: 0,
+                de3a5m: 0,
+                de5a15m: 0,
+                de15a30m: 0,
+                de30a60m: 0,
+                mas1h: 0
+            };
+
+            let archivedOver24hCount = 0;
+
             // Helper estadístico para mediana (P50)
             const calcMedian = (arr) => {
                 if (!arr || arr.length === 0) return 0;
@@ -733,6 +765,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         if (frtMin < 1440) { // menos de 24 hs
                             const valFRT = Number(frtMin.toFixed(1));
                             allAgentFRTTimes.push(valFRT);
+                            if (valFRT < 3) frtHistogramCounts.under3m++;
+                            else if (valFRT < 5) frtHistogramCounts.de3a5m++;
+                            else if (valFRT < 15) frtHistogramCounts.de5a15m++;
+                            else if (valFRT < 30) frtHistogramCounts.de15a30m++;
+                            else if (valFRT < 60) frtHistogramCounts.de30a60m++;
+                            else frtHistogramCounts.mas1h++;
+
                             if (matchedAssignedAgentId) {
                                 agentDataMap[matchedAssignedAgentId].firstResponseTimesMin.push(valFRT);
                             }
@@ -769,6 +808,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     for (const cat of MOTIVOS_FINALIZACION_CATALOGO) {
                         const catKeyLow = cat.key.toLowerCase();
                         if (r.includes(catKeyLow) || catKeyLow.includes(r) ||
+                            (cat.key === 'Inactividad (+24h sin respuesta)' && (r.includes('24h') || r.includes('inactividad') || r.includes('barrido') || r.includes('expir'))) ||
                             (cat.key === 'Turno Coordinado' && (r.includes('turno') || r.includes('coordinado') || r.includes('otorgado'))) ||
                             (cat.key === 'Consulta Informativa Resuelta' && (r.includes('informativa') || r.includes('información') || r.includes('resuelta'))) ||
                             (cat.key === 'Auto-gestión Bot Completa (Inactividad)' && (r.includes('auto-gestión') || r.includes('inactividad') || r.includes('bot'))) ||
@@ -804,11 +844,37 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     }
 
                     // Tiempos de resolución total histórica (desde created_at hasta closed_at)
+                    let totalResMin = null;
                     if (c.created_at && c.closed_at) {
-                        const totalResMin = Math.round((new Date(c.closed_at) - new Date(c.created_at)) / 60000);
+                        totalResMin = Math.round((new Date(c.closed_at) - new Date(c.created_at)) / 60000);
                         if (totalResMin > 0 && totalResMin < 10080) { // menos de 7 días
                             allResolutionTimes.push(totalResMin);
                         }
+                    }
+
+                    // Clasificación para Histograma SLA & Inactividad +24h
+                    const isInactive24h = r.includes('24h') || 
+                                          r.includes('inactividad') || 
+                                          r.includes('barrido') || 
+                                          r.includes('expir') ||
+                                          (totalResMin !== null && totalResMin >= 1440);
+
+                    if (isInactive24h) {
+                        archivedOver24hCount++;
+                        resHistogramCounts.mas24h++;
+                    } else if (totalResMin !== null && totalResMin >= 0) {
+                        if (totalResMin < 5) resHistogramCounts.under5m++;
+                        else if (totalResMin < 30) resHistogramCounts.de5a30m++;
+                        else if (totalResMin < 60) resHistogramCounts.de30a60m++;
+                        else if (totalResMin < 240) resHistogramCounts.de1a4h++;
+                        else if (totalResMin < 720) resHistogramCounts.de4a12h++;
+                        else if (totalResMin < 1440) resHistogramCounts.de12a24h++;
+                        else {
+                            archivedOver24hCount++;
+                            resHistogramCounts.mas24h++;
+                        }
+                    } else {
+                        resHistogramCounts.de5a30m++;
                     }
 
                     // Contabilizar resoluciones por agente
@@ -873,6 +939,30 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     casos: times.length
                 };
             });
+
+            // ── Histograma de Resolución (Buckets SLA) ──
+            const totalResolvedCases = Object.values(resHistogramCounts).reduce((a, b) => a + b, 0);
+            const resolutionHistogramData = [
+                { range: '< 5 min', label: 'Menos de 5 min', casos: resHistogramCounts.under5m, pct: totalResolvedCases ? Math.round((resHistogramCounts.under5m / totalResolvedCases) * 100) : 0, color: '#10B981', sla: 'Inmediata' },
+                { range: '5-30 min', label: '5 a 30 min', casos: resHistogramCounts.de5a30m, pct: totalResolvedCases ? Math.round((resHistogramCounts.de5a30m / totalResolvedCases) * 100) : 0, color: '#059669', sla: 'Rápida' },
+                { range: '30-60 min', label: '30 min a 1 hora', casos: resHistogramCounts.de30a60m, pct: totalResolvedCases ? Math.round((resHistogramCounts.de30a60m / totalResolvedCases) * 100) : 0, color: '#0284C7', sla: 'Estándar' },
+                { range: '1-4 hs', label: '1 a 4 horas', casos: resHistogramCounts.de1a4h, pct: totalResolvedCases ? Math.round((resHistogramCounts.de1a4h / totalResolvedCases) * 100) : 0, color: '#F59E0B', sla: 'Mismo Turno' },
+                { range: '4-12 hs', label: '4 a 12 horas', casos: resHistogramCounts.de4a12h, pct: totalResolvedCases ? Math.round((resHistogramCounts.de4a12h / totalResolvedCases) * 100) : 0, color: '#F97316', sla: 'Turno Siguiente' },
+                { range: '12-24 hs', label: '12 a 24 horas', casos: resHistogramCounts.de12a24h, pct: totalResolvedCases ? Math.round((resHistogramCounts.de12a24h / totalResolvedCases) * 100) : 0, color: '#EF4444', sla: 'Demorada' },
+                { range: '+24 hs', label: '+24 hs (Inactivos)', casos: resHistogramCounts.mas24h, pct: totalResolvedCases ? Math.round((resHistogramCounts.mas24h / totalResolvedCases) * 100) : 0, color: '#64748B', sla: 'Inactividad / Barrido' }
+            ];
+
+            const totalFRTCases = Object.values(frtHistogramCounts).reduce((a, b) => a + b, 0);
+            const frtHistogramData = [
+                { range: '< 3m', label: '< 3 min', casos: frtHistogramCounts.under3m, pct: totalFRTCases ? Math.round((frtHistogramCounts.under3m / totalFRTCases) * 100) : 0, color: '#10B981' },
+                { range: '3-5m', label: '3 a 5 min', casos: frtHistogramCounts.de3a5m, pct: totalFRTCases ? Math.round((frtHistogramCounts.de3a5m / totalFRTCases) * 100) : 0, color: '#059669' },
+                { range: '5-15m', label: '5 a 15 min', casos: frtHistogramCounts.de5a15m, pct: totalFRTCases ? Math.round((frtHistogramCounts.de5a15m / totalFRTCases) * 100) : 0, color: '#0284C7' },
+                { range: '15-30m', label: '15 a 30 min', casos: frtHistogramCounts.de15a30m, pct: totalFRTCases ? Math.round((frtHistogramCounts.de15a30m / totalFRTCases) * 100) : 0, color: '#F59E0B' },
+                { range: '30-60m', label: '30 a 60 min', casos: frtHistogramCounts.de30a60m, pct: totalFRTCases ? Math.round((frtHistogramCounts.de30a60m / totalFRTCases) * 100) : 0, color: '#F97316' },
+                { range: '> 1h', label: '> 1 hora', casos: frtHistogramCounts.mas1h, pct: totalFRTCases ? Math.round((frtHistogramCounts.mas1h / totalFRTCases) * 100) : 0, color: '#EF4444' }
+            ];
+
+            const archivedOver24hPct = closedCount > 0 ? Math.round((archivedOver24hCount / closedCount) * 100) : 0;
 
             // ── F. Gráfico de Demanda por Horarios ──
             let peakHourIndex = 0;
@@ -1148,7 +1238,11 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     totalAbandoned: abandonedCount,
                     hourlyWaitCurve: hourlyWaitCurveData,
                     peakWaitHour,
-                    peakWaitValMin
+                    peakWaitValMin,
+                    resolutionHistogram: resolutionHistogramData,
+                    frtHistogram: frtHistogramData,
+                    archivedOver24hCount,
+                    archivedOver24hPct
                 }
             });
 
@@ -2588,6 +2682,36 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         </div>
                     </div>
 
+                    {/* 5. ARCHIVADOS POR INACTIVIDAD (+24H SIN RESPUESTA) */}
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '12px', padding: '16px 18px',
+                        border: '1.5px solid #CBD5E1', display: 'flex', flexDirection: 'column', gap: '8px',
+                        boxShadow: '0 2px 6px rgba(100, 116, 139, 0.05)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                Archivados +24h (Inactivos)
+                            </span>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#F1F5F9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Clock size={16} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942' }}>
+                                {loading ? '...' : (metrics.patientQuality?.archivedOver24hCount || 0)}
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                                Casos (+24h)
+                            </span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#475569', background: '#F8FAFC', padding: '4px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                            Representa el <strong>{metrics.patientQuality?.archivedOver24hPct || 0}%</strong> de todas las finalizaciones
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                            Conversaciones archivadas porque el paciente no volvió a responder y Meta expiró la ventana
+                        </div>
+                    </div>
+
                 </div>
 
                 {/* ── GRÁFICO: CURVA HORARIA DE DEMORA DE ESPERA (¿A QUÉ HORA ESPERAN MÁS?) ── */}
@@ -2700,6 +2824,103 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             <div style={{ fontSize: '0.66rem', fontWeight: 800, color: metrics.queueAging?.mas4h > 0 ? '#DC2626' : '#64748B' }}>&gt; 4 horas</div>
                             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: metrics.queueAging?.mas4h > 0 ? '#991B1B' : '#64748B' }}>{metrics.queueAging?.mas4h || 0}</div>
                             <div style={{ fontSize: '0.62rem', color: metrics.queueAging?.mas4h > 0 ? '#DC2626' : '#64748B' }}>Demorado</div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── HISTOGRAMA DE TIEMPOS DE RESOLUCIÓN & 1ER MENSAJE (SLA) ── */}
+                <div style={{
+                    background: '#FFFFFF', borderRadius: '14px', border: '1.5px solid #E2E8F0',
+                    padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '18px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(2, 132, 199, 0.3)' }}>
+                                <BarChart3 size={18} />
+                            </div>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Histograma de Resolución de Casos (SLA en Minutos y Horas)
+                                </h4>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                    Distribución de casos resueltos en &lt; 5m, 5-30m, 1h, 4h, 12h y archivados por inactividad (+24hs sin respuesta)
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0369A1', background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '4px 10px', borderRadius: '8px' }}>
+                                ⚡ Resolución Inmediata (&lt; 30m): {(metrics.patientQuality?.resolutionHistogram?.[0]?.pct || 0) + (metrics.patientQuality?.resolutionHistogram?.[1]?.pct || 0)}%
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Gráfico de Barras Histograma */}
+                    <div style={{ width: '100%', height: '230px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={metrics.patientQuality?.resolutionHistogram || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                <XAxis dataKey="range" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} />
+                                <YAxis tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
+                                <Tooltip
+                                    contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.76rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    formatter={(val, name, item) => [
+                                        `${val} conversaciones (${item.payload.pct}% del total) • Nivel: ${item.payload.sla}`,
+                                        'Volumen de Casos'
+                                    ]}
+                                />
+                                <Bar dataKey="casos" radius={[6, 6, 0, 0]}>
+                                    {(metrics.patientQuality?.resolutionHistogram || []).map((entry, index) => (
+                                        <Cell key={`res-cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    {/* Tarjetas Pills del Histograma */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px' }}>
+                        {(metrics.patientQuality?.resolutionHistogram || []).map((b, i) => (
+                            <div key={i} style={{
+                                padding: '8px 10px',
+                                borderRadius: '10px',
+                                border: `1.5px solid ${b.color}33`,
+                                background: `${b.color}0D`,
+                                textAlign: 'center'
+                            }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: b.color }}>{b.range}</div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0F2942', margin: '2px 0' }}>{b.casos}</div>
+                                <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600 }}>{b.pct}% de casos</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* ── SECCIÓN COMPLEMENTARIA: VELOCIDAD AL 1ER MENSAJE DE ASESORAS (FRT) ── */}
+                    <div style={{ borderTop: '1px dashed #CBD5E1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Clock size={16} color="#059669" />
+                                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F2942' }}>
+                                    Velocidad al 1er Mensaje Enviado por las Asesoras (¿Cada cuánto le respondemos al paciente?)
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.72rem', color: '#475569' }}>
+                                Mediana global: <strong>{metrics.patientQuality?.agentFRTMedianMin || 0} min</strong> (Promedio: {metrics.patientQuality?.agentFRTAvgMin || 0} min)
+                            </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
+                            {(metrics.patientQuality?.frtHistogram || []).map((frt, idx) => (
+                                <div key={idx} style={{
+                                    background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px',
+                                    padding: '8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px'
+                                }}>
+                                    <span style={{ fontSize: '0.66rem', fontWeight: 800, color: frt.color }}>{frt.label}</span>
+                                    <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0F2942' }}>{frt.casos}</span>
+                                    <span style={{ fontSize: '0.62rem', color: '#64748B' }}>{frt.pct}% de respuestas</span>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

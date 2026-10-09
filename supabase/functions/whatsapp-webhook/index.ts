@@ -1569,17 +1569,15 @@ const SPECIALTY_MAP: [RegExp, string][] = [
     [/\b(fertilidad|reproducci[oó]n\s+asistida)\b/i, 'Medicina Reproductiva / Fertilidad'],
     [/\b(ecograf[ií]a|ecograf[ií]as|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma|eco\b)\b/i, 'Ecografía'],
     [/\b(tomograf[ií]a|tomograf[ií]as|tac\b|tc\b|tomograf[ií]a\s+computada)\b/i, 'Tomografía'],
-    [/\b(radiograf[ií]a|radiograf[ií]as|rayos\s*x|espinograf[ií]a|placa[s]?\b|rx\b)\b/i, 'Radiografía'],
     [/\b(densitometr[ií]a|densitometr[ií]as|densitometr[ií]a\s+[oó]sea)\b/i, 'Densitometría Ósea'],
     [/\b(mamograf[ií]a|mamograf[ií]as|mamograf[ií]a\s+digital|mamograf[ií]a\s+bilateral|mamo\b)\b/i, 'Mamografía'],
     [/\b(resonancia|resonancias|resonancia\s+magn[eé]tica|rmn\b|mri\b)\b/i, 'Resonancia Magnética']
 ];
 
-// Estudios de Diagnóstico por Imágenes que exigen obligatoriamente la presentación de Orden / Pedido Médico
+// Estudios de Diagnóstico por Imágenes que exigen obligatoriamente la presentación de Orden / Pedido Médico para coordinar turno
 export const ESTUDIOS_CON_ORDEN_MAPPING: [RegExp, string][] = [
     [/\b(ecograf[ií]a[s]?|ecografistas?|transvaginal|doppler|ecodoppler|ecocardiograma|ecogr[aá]fic[ao]s?|eco\b)\b/i, 'Ecografía'],
     [/\b(tomograf[ií]a[s]?|tac\b|tc\b|tomogr[aá]fic[ao]s?)\b/i, 'Tomografía'],
-    [/\b(radiograf[ií]a[s]?|rayos\s*x|espinograf[ií]a[s]?|placa[s]?\b|rx\b)\b/i, 'Radiografía'],
     [/\b(densitometr[ií]a[s]?|densitometr[ií]a\s+[oó]sea)\b/i, 'Densitometría Ósea'],
     [/\b(mamograf[ií]a[s]?|mamogr[aá]fic[ao]s?|mamo\b)\b/i, 'Mamografía'],
     [/\b(resonancia[s]?|resonancia\s+magn[eé]tica|rmn\b|mri\b)\b/i, 'Resonancia Magnética']
@@ -1601,6 +1599,36 @@ export function detectEstudiosConOrden(text: string | null | undefined): string[
 export function detectEstudioConOrden(text: string | null | undefined): string | null {
     const list = detectEstudiosConOrden(text);
     return list.length > 0 ? list.join(' y ') : null;
+}
+
+// Regex para detección de consultas sobre Radiografías, Rayos X, RX, placas y espinografías
+// REGLA INSTITUCIONAL ESTRICTA: NO llevan turno ni autorización previa por chat.
+// Guardia Pasiva en Sede 1 (San Luis 432 Oeste), 1° Piso.
+// Lunes a viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs por orden de llegada con pedido médico. Se autoriza en el momento.
+export const RADIOGRAFIA_REGEX = /\b(radiograf[ií]a[s]?|rayos(?:\s*x)?|rx\b|espinograf[ií]a[s]?|placas?\s*(?:radiogr[aá]ficas?|m[eé]dicas?|de\s+t[oó]rax|de\s+columna|de\s+mano|de\s+pie|de\s+rodilla|de\s+hueso|de\s+cadera|de\s+cr[aá]neo|de\s+pulm[oó]n|osea|ósea)?|hacerme\s+(?:una\s+)?placa|sacarme\s+(?:una\s+)?placa)\b/i;
+
+export function isRadiografiaQuery(text: string | null | undefined): boolean {
+    if (!text) return false;
+    const clean = text.trim();
+    if (!clean) return false;
+    // Si el paciente consulta resultados o informes en el portal web, no es para realizarse la práctica
+    const isInf = /\b(resultados?|informes?|portal|descargar|ver\s+(?:mi\s+|mis\s+)?(?:estudio|radiografia|placa))\b/i.test(clean);
+    if (isInf) return false;
+    return RADIOGRAFIA_REGEX.test(clean);
+}
+
+export function getRadiografiaInfoMessage(patientName?: string | null): string {
+    const greeting = patientName ? `¡Hola *${patientName}*! ` : '¡Hola! ';
+    return `${greeting}🩻 Para realizarte una *Radiografía (Rayos X / RX)* no necesitás solicitar turno previo ni autorizar con anticipación por chat:\n\n` +
+        `📍 *Lugar:* Sede 1 — Calle San Luis 432 Oeste (Primer Piso).\n` +
+        `⏰ *Horarios de Guardia Pasiva (por orden de llegada):*\n` +
+        `• Lunes a viernes de 8:00 a 20:00 hs.\n` +
+        `• Sábados de 8:00 a 12:00 hs.\n\n` +
+        `📋 *Requisitos:*\n` +
+        `• Concurrir con el *pedido médico* prescripto.\n` +
+        `• *La autorización se gestiona directamente en el momento* al ingresar.\n\n` +
+        `¡Te esperamos directamente en los días y horarios indicados! 🏥` +
+        getInfoResolutionFooter();
 }
 
 function detectSpecialty(text: string): string | null {
@@ -1830,12 +1858,18 @@ function getAfterHoursMessage(nextOpeningText: string): string {
         `• *Sábados:* 8:00 a 12:00 hs\n` +
         `_(Domingos y Feriados cerrado)_\n\n` +
         `Tu mensaje quedó registrado y un asesor te responderá *${nextOpeningText}* en nuestro horario habitual.\n\n` +
+        `📲 *Gestión de Turnos Online 24 hs:*\n` +
+        `Recordá que desde la página web de Sanatorio Argentino también podés autogestionar tu turno médico en cualquier momento ingresando en:\n` +
+        `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
         `🚨 *Guardia Médica 24 hs:* Si presentás una urgencia, recordá que nuestra Guardia en Sede Central (San Luis 432 Oeste) atiende las *24 horas*.`;
 }
 
 function getDelayWaitNoticeMessage(): string {
     return `¡Hola! 🏥 Estamos con algunas demoras en la atención debido a la alta demanda. Te pedimos disculpas por la espera.\n\n` +
         `En breve un agente estará respondiendo tu consulta por orden de llegada.\n\n` +
+        `📲 *Gestión de Turnos Online:*\n` +
+        `Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo desde la página web del Sanatorio:\n` +
+        `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
         `⏰ *Horarios de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
         `💡 _Si deseás volver a consultar opciones con el menú virtual, podés escribir *"Menú"* en cualquier momento._`;
 }
@@ -1919,7 +1953,7 @@ async function refreshQueueAndHandoffConfig(supabaseClient: any): Promise<number
 function getAgentHandoffNotice(queueCountOverride?: number): string {
     const open = isContactCenterOpen();
     if (!open) {
-        return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un agente te responderá al inicio del próximo día hábil.\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
+        return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un agente te responderá al inicio del próximo día hábil.\n\n📲 *Gestión de Turnos Online 24 hs:*\nRecordá que también podés autogestionar tu turno médico desde la página web del Sanatorio:\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
     }
 
     const count = typeof queueCountOverride === 'number' ? queueCountOverride : currentQueueCount;
@@ -1930,7 +1964,7 @@ function getAgentHandoffNotice(queueCountOverride?: number): string {
         if (cachedHandoffSettings?.delayMessage && cachedHandoffSettings.delayMessage.trim().length > 10) {
             return cachedHandoffSettings.delayMessage.replace(/\{cola\}/g, String(count));
         }
-        return `⚠️ *Aviso de Demora:* En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada. \n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
+        return `⚠️ *Aviso de Demora:* En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.\n\n📲 *Gestión de Turnos Online:*\nRecordá que desde la página del Sanatorio también podés autogestionar tu turno de forma inmediata:\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
     }
 
     // Flujo normal sin demoras críticas
@@ -2234,8 +2268,8 @@ DIRECTIVAS PRINCIPALES:
    - Para agendar un nuevo turno, consulta qué especialidad o profesional busca, su cobertura/obra social y su preferencia horaria.
    - Si es para un hijo o familiar, solicita el Nombre y DNI del paciente a atender.
 6. INFORMACIÓN INSTITUCIONAL VERÍDICA:
-   - Sede San Luis (San Luis 432 Oeste, Capital): Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas (Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología). Por orden de llegada con triage de urgencia.
-   - Sede Santa Fe (Santa Fe 263 Este, Capital): Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir (OSP), Diagnóstico por Imágenes (Ecografía, Rayos, Tomografía, Resonancia, Mamografía), Kinesiología.
+   - Sede San Luis (San Luis 432 Oeste, Capital): Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas (Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología). Por orden de llegada con triage de urgencia. Diagnóstico por Imágenes: RADIOGRAFÍAS / RAYOS X / RX se realizan en el Primer Piso por orden de llegada a la Guardia Pasiva (Lunes a Viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs) con pedido médico y se autoriza directamente en el momento (NO requieren turno previo).
+   - Sede Santa Fe (Santa Fe 263 Este, Capital): Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir (OSP), Diagnóstico por Imágenes (Ecografía, Tomografía, Resonancia, Mamografía), Kinesiología.
    - Laboratorio: Resultados online en la web oficial con usuario y contraseña entregados en la extracción.
    - Obras Sociales: Atendemos OSP, OSDE, Swiss Medical, Galeno, Medifé, Jerárquicos y la gran mayoría de prepagas y obras sociales, y atención Particular.
 7. VOLVER ATRÁS O MENÚ PRINCIPAL:
@@ -2261,6 +2295,16 @@ DIRECTIVAS PRINCIPALES:
    - NUNCA confundas una fecha de nacimiento (DD/MM/AAAA, ej: 04/07/2002 o 04072002) con un número de DNI.
    - Los DNI argentinos tienen 7 u 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 99.999.999, incluyendo serie 90M+ de residentes extranjeros).
    - Si el paciente en un mensaje posterior envía sus datos personales de admisión (ej: "Ramiro Javier Gutiérrez\n04/07/2002\nDepartamento rawson"), la fecha 04/07/2002 es su fecha de nacimiento y NUNCA debe sobreescribir ni sustituir el DNI ya informado en el mensaje anterior.
+13. RADIOGRAFÍAS, RAYOS X O RX (REGLA INSTITUCIONAL ESTRICTA):
+   - Las radiografías / rayos X / RX / placas / espinografías NO LLEVAN TURNO PREVIO ni requieren autorización previa por chat.
+   - El paciente debe concurrir directamente a Sede 1 (San Luis 432 Oeste), Primer Piso, por orden de llegada a la Guardia Pasiva.
+   - Horarios: Lunes a viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs.
+   - Requisitos indispensables: Concurrir con el pedido médico prescripto. La autorización se gestiona directamente en el momento al ingresar.
+   - NUNCA intentes coordinar turno ni solicites fotos de la orden médica para agendar radiografías.
+14. GESTIÓN DE TURNOS ONLINE (FUERA DE HORARIO Y ALTA DEMANDA):
+   - Cuando nos encontremos fuera del horario de atención, o si se presentan demoras por alta demanda, o si el paciente desea gestionar turnos de forma inmediata sin esperar la respuesta de un agente, recomiéndale e indícale que desde la página oficial de Sanatorio Argentino también puede gestionar su turno médico online las 24 horas:
+     👉 https://www.sanatorioargentino.com.ar/turnos-online.html
+   - Indícalo siempre con cordialidad y claridad como una alternativa ágil y disponible en todo momento.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -2635,6 +2679,12 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'informes_general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
 
+    // 4.1 RADIOGRAFÍA / RAYOS X / RX / ESPINOGRAFÍA (SIN TURNO - GUARDIA PASIVA SEDE 1)
+    const isRadiografia = !isInfImg && !isInfGen && RADIOGRAFIA_REGEX.test(clean);
+    if (isRadiografia) {
+        return { intent: 'radiografia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
     // 5. ATENCIÓN Y EXTRACCIÓN DE LABORATORIO (IR A HACERSE LOS ANÁLISIS)
     const isServicioLab = /\b(hacerme\s+(?:un\s+|el\s+)?(?:analisis|laboratorio|estudio\s+de\s+sangre)|sacar\s+sangre|extraccion(?:es)?|ayuno\s+(?:para\s+)?analisis|horario\s+(?:de\s+)?laboratorio|guardia\s+de\s+laboratorio)\b/i.test(clean);
     if (isServicioLab) {
@@ -2922,6 +2972,7 @@ Intenciones posibles:
 - "chequeo": circuito de chequeo preventivo
 - "informes_laboratorio": ver o consultar análisis clínicos
 - "informes_imagenes": estudios de imágenes
+- "radiografia": radiografía, rayos x, rx, espinografía o placas (NO llevan turno previo)
 - "seguimiento_asesor": responde a lo acordado con el asesor humano
 - "derivacion_agente": el paciente solicita ser atendido por una persona, asesor humano, operador, o se queja del bot
 - "general": si no encaja en ninguna
@@ -3273,12 +3324,44 @@ async function handleGestionTurnoFlow(params: {
             const esNo = !noAsistire && /^(no+|nop|nah|mejor\s+no|dej[aá]\w*|mantener|lo\s+mantengo|la\s+mantengo|me\s+arrepent\w*)\b/i.test(clean);
             if (esSi && !esNo) {
                 const sel = seleccionados();
-                return handoff(
-                    `✅ Listo${saludo}, registramos tu solicitud de *cancelación*:\n\n${detalleSeleccion()}\n\n` +
-                    `Un agente ${sel.length > 1 ? 'dará de baja los turnos' : 'dará de baja el turno'} en el sistema y te confirmará por este medio. ` +
-                    `Si además necesitás un *nuevo turno*, podés indicárselo en este mismo chat.\n\n` +
-                    `¡Gracias por avisarnos! Liberar el turno permite que otro paciente pueda atenderse. 🏥`
-                );
+                // Registrar cada turno seleccionado en la bolsa de cancelaciones
+                try {
+                    for (const t of sel) {
+                        await supabase.from('contact_center_cancelaciones').insert({
+                            phone: conv?.phone,
+                            dni: String(g?.dni || conv?.dni || '').trim(),
+                            paciente_nombre: g?.paciente_nombre || conv?.nombre_completo || whatsappName || 'Paciente',
+                            turno_id: t?.id ? String(t.id) : null,
+                            fecha_turno: t?.fecha || null,
+                            hora_turno: t?.hora || null,
+                            medico: t?.medico || null,
+                            especialidad: t?.especialidad || null,
+                            sede: t?.sede || null,
+                            motivo_paciente: cleanText || 'Cancelación confirmada por paciente vía WhatsApp',
+                            origen: 'bot_whatsapp',
+                            estado: 'pendiente'
+                        });
+                    }
+                } catch (insErr) {
+                    console.error('[gestion-turno] Error guardando en contact_center_cancelaciones:', insErr);
+                }
+
+                g.estado = 'cancelado_por_paciente';
+                return {
+                    reply: `✅ ¡Listo${saludo}! Registramos con éxito la *cancelación* de tu turno:\n\n${detalleSeleccion()}\n\n` +
+                           `🏥 Nuestro equipo administrativo dará de baja el turno en el sistema de agendas médicas.\n\n` +
+                           `¡Muchas gracias por avisarnos con tiempo! Liberar el turno permite que otro paciente pueda atenderse. ` +
+                           `Si en el futuro necesitás agendar una nueva cita, podés escribirnos cuando quieras. 👍`,
+                    stage: 'cancelacion_completada',
+                    updates: {
+                        status: 'bot', // No va a sin_asignar: se autogestiona y pasa a la bolsa de cancelaciones
+                        bot_active: true,
+                        motivo_consulta: buildGestionMotivo(g),
+                        tags: ['Cancelación'],
+                        medico_o_especialidad: sel[0]?.medico || sel[0]?.especialidad || null,
+                        ai_summary: { ...prevSummary, gestion_turno: { ...g, estado: 'cancelado_por_paciente', updated_at: Date.now() } }
+                    }
+                };
             }
             if (esNo) {
                 g.estado = 'sin_cambios';
@@ -3500,7 +3583,7 @@ async function handleChatbotTriage(
         isNavigationBackOrMenu(cleanText) ||
         /^[1-5]$/.test(cleanText.trim()) ||
         /\b(hola+|buenas+|buen\s+d[ií]a+|buenas?\s+tardes?|buenas?\s+noches?)\b/i.test(cleanText) ||
-        /\b(turno|cita|consulta|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|mamograf[ií]a|resonancia|densitometr[ií]a|m[eé]dico|doctor|dra?|especialidad|guardia|urgencia|autorizaci[oó]n|estudio|agente|operador|humano|cancel\w*|reprogram\w*)\b/i.test(cleanText);
+        /\b(turno|cita|consulta|ecograf[ií]a|radiograf[ií]a|rayos|rx|tomograf[ií]a|mamograf[ií]a|resonancia|densitometr[ií]a|m[eé]dico|doctor|dra?|especialidad|guardia|urgencia|autorizaci[oó]n|estudio|agente|operador|humano|cancel\w*|reprogram\w*)\b/i.test(cleanText);
 
     // Detección de cortesía, agradecimiento o calificación en chat ya finalizado
     // Evita desarchivar el chat si el paciente responde "muchas gracias", "👍", "5 estrellas", etc.
@@ -3841,32 +3924,6 @@ async function handleChatbotTriage(
     // Se utiliza extractDniFromText para evitar falsos positivos con fechas de nacimiento (DD/MM/AAAA) o teléfonos
     const candidateDni: string | null = extractDniFromText(cleanText);
     const dniInMessage = candidateDni;
-
-    // Persistencia y memoria: DNI en el mensaje actual O DNI previamente validado y registrado en la conversación
-    const establishedConvDni = (conv?.dni && isValidArgentineDni(conv.dni)) ? conv.dni : null;
-    const effectiveDni = dniInMessage || establishedConvDni || null;
-
-    let paciente: any = null;
-
-    if (effectiveDni) {
-        try {
-            const { data: pByDni, error: pacError } = await supabase
-                .from('hospital_pacientes')
-                .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
-                .eq('dni', effectiveDni)
-                .limit(1)
-                .maybeSingle();
-
-            if (pByDni) {
-                paciente = pByDni;
-                console.log(`[triage-bot] Paciente identificado por DNI ${effectiveDni}: ${paciente.nombre} (HC: ${paciente.nhc})`);
-            } else {
-                console.log(`[triage-bot] DNI ${effectiveDni} no figura en padrón institucional (usuario nuevo)`);
-            }
-        } catch (e) {
-            console.warn('[triage-bot] Error consultando paciente por DNI:', e);
-        }
-    }
 
     // Mapeo del grupo familiar asociado a la línea telefónica (prioridad titular)
     const cleanLocalPhone = phone.replace(/\D/g, '').replace(/^(?:549|54)/, '');
@@ -4286,7 +4343,7 @@ async function handleChatbotTriage(
             cleanText.trim() === '1' && !noTeniaTurnos ||
             cleanText.trim() === '2' && noTeniaTurnos ||
             /^(1|s[ií]+|confirmar?|confirmado|asistir[eé]?|voy\s+a\s+ir|voy|asistencia|gracias|muchas\s+gracias|much[ií]simas\s+gracias|ok(ey|ay)?|listo|perfecto|joya|de\s+diez|genial|chau|adios|buen[ií]simo|todo\s+claro|ninguno|nada\s+m[aá]s)[!.\s]*$/i.test(cleanText) ||
-            /\b(muchas\s+gracias|gracias|ok\s+gracias|perfecto\s+gracias|listo\s+gracias|asistir[eé]|voy\s+a\s+ir|asistencia\s+confirmada|confirmar\s+asistencia|todo\s+claro)\b/i.test(cleanText);
+            /\b(muchas\s+gracias|gracias|ok\s+gracias|perfecto\s+gracias|listo\s+gracias|asistir[eé]|voy\s+a\s+ir|asistencia\s+confirmada|confirmar\s+asistencia|todo\s+claro|deseo\s+confirmar|quiero\s+confirmar|confirmo|confirmar|confirmado)\b/i.test(cleanText);
 
         const isAskingGestion = 
             cleanText.trim() === '2' && !noTeniaTurnos ||
@@ -4734,7 +4791,9 @@ async function handleChatbotTriage(
     else if (
         currentStage === 'esperando_orden_foto' &&
         analysis.intent !== 'derivacion_agente' &&
-        analysis.intent !== 'volver_atras'
+        analysis.intent !== 'volver_atras' &&
+        analysis.intent !== 'radiografia' &&
+        !isRadiografiaQuery(cleanText)
     ) {
         const targetStudy = conv?.medico_o_especialidad || updates.medico_o_especialidad || 'Diagnóstico por Imágenes';
         const isReferencingPreviousPhoto = /\b(es\s+la\s+(?:foto\s+)?que\s+mand[eé]|ya\s+la\s+mand[eé]|la\s+foto\s+anterior|la\s+que\s+mand[eé]\s+antes|la\s+de\s+arriba|te\s+la\s+mand[eé]\s+reci[eé]n)\b/i.test(cleanText);
@@ -5669,6 +5728,24 @@ async function handleChatbotTriage(
             `🌐 Para conocer sedes y servicios podés ingresar a:\n👉 https://www.sanatorioargentino.com.ar/` +
             getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
+    }
+    // =============================================
+    // FLUJO: RADIOGRAFÍA / RAYOS X / RX / ESPINOGRAFÍA
+    // DIRECTIVA INSTITUCIONAL: NO llevan turno previo ni se autoriza con anticipación por chat.
+    // Guardia Pasiva en Sede 1 (San Luis 432 Oeste), 1° Piso.
+    // Lunes a viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs por orden de llegada con pedido médico.
+    // La autorización se realiza directamente en el momento al ingresar.
+    // =============================================
+    else if (analysis.intent === 'radiografia' || (!isInfImg && !isInfGen && isRadiografiaQuery(cleanText) && currentStage !== 'informacion_respondida')) {
+        updates.motivo_consulta = 'Información: Radiografía / Rayos X (Guardia Pasiva Sede 1)';
+        replyText = getRadiografiaInfoMessage(fullName || whatsappName);
+        updates.bot_active = true;
+        nextStage = 'informacion_respondida';
+        updates.ai_summary = {
+            ...(conv?.ai_summary || {}),
+            estudio_consultado: 'Radiografía / Rayos X',
+            modalidad: 'Guardia Pasiva por orden de llegada (Sede 1, 1° Piso)'
+        };
     }
     // =============================================
     // FLUJO: CITOLOGÍA (PAP) Y BIOPSIAS

@@ -12,7 +12,7 @@ import {
     GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy,
     FileText, FileSpreadsheet, File, Maximize2, Palette, LayoutTemplate,
     Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users,
-    CheckCheck, Reply, Smile, ArrowLeft
+    CheckCheck, Reply, Smile, ArrowLeft, Globe, Plus, Brush, CalendarX
 } from 'lucide-react';
 
 /**
@@ -120,6 +120,28 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
         filename
     };
 }
+
+/**
+ * Formatea la etiqueta de fecha para los separadores diarios de la conversación (estilo WhatsApp).
+ */
+function formatChatDateDivider(dateVal) {
+    if (!dateVal) return null;
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return null;
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const isToday = d.toDateString() === today.toDateString();
+    if (isToday) return 'Hoy';
+
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    if (isYesterday) {
+        return `Ayer - ${d.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })}`;
+    }
+
+    return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
 import { 
     CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
@@ -143,10 +165,14 @@ import {
     findQuickReplyByShortcut, 
     filterQuickReplies, 
     syncQuickRepliesFromDb,
-    interpolateQuickReplyVariables
+    interpolateQuickReplyVariables,
+    saveQuickReply,
+    deleteOrResetQuickReply
 } from '../../data/contactCenterQuickReplies';
 import { getStoredTheme } from '../../services/contactCenterThemeService';
 import ContactCenterThemeModal from './ContactCenterThemeModal';
+import AgentShiftSummaryModal from './AgentShiftSummaryModal';
+import SweepInactiveChatsModal from './SweepInactiveChatsModal';
 
 // =========================================================================
 // 🧪 [MODO PRUEBA TEMPORAL] INDICADOR DE AUTO-REINICIO CADA 3 MINUTOS
@@ -302,7 +328,11 @@ function formatWhatsAppText(text) {
                     margin: '3px 0',
                     color: '#64748B',
                     fontStyle: 'italic',
-                    fontSize: '0.82rem'
+                    fontSize: '0.82rem',
+                    maxWidth: '100%',
+                    minWidth: 0,
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere'
                 }}>
                     {quoteContent}
                 </div>
@@ -461,6 +491,7 @@ export default function ContactCenterChatConsole({
     onBulkTransferChats,
     onBulkAssignChats,
     activeSubTab = 'conversaciones',
+    pendingCancelacionesCount = 0,
     onNavigateTab,
     onSwitchAgent,
     soundEnabled = true,
@@ -493,6 +524,10 @@ export default function ContactCenterChatConsole({
 
     // Pase de Guardia Masivo / Traspaso de Fin de Turno
     const [handoverModalOpen, setHandoverModalOpen] = useState(false);
+    // Modal de Final de Turno e Insights Diarios
+    const [shiftSummaryModalOpen, setShiftSummaryModalOpen] = useState(false);
+    // Modal de Barrido Rápido de Conversaciones Inactivas (+24h)
+    const [sweepModalOpen, setSweepModalOpen] = useState(false);
     const [handoverTargetAgent, setHandoverTargetAgent] = useState(() => {
         const other = CONTACT_CENTER_AGENTS.find(a => a.id !== activeAgent.id);
         return other ? other.id : 'unassign';
@@ -887,20 +922,129 @@ export default function ContactCenterChatConsole({
         return clean.substring(0, 2).toUpperCase();
     };
 
-    // Estados Atajos y Respuestas Rápidas (Exclusivo Contact Center)
+    // Estados Atajos y Respuestas Rápidas (Exclusivo Contact Center con Mapeo por Usuario)
+    const currentAgentId = activeAgent?.id || currentUser?.usuario || 'daguilera';
     const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
     const [quickRepliesModalOpen, setQuickRepliesModalOpen] = useState(false);
     const [quickReplyFilter, setQuickReplyFilter] = useState('');
+    const [quickReplyScopeFilter, setQuickReplyScopeFilter] = useState('all'); // 'all' | 'me' | 'institutional'
     const [selectedQuickReplyIndex, setSelectedQuickReplyIndex] = useState(0);
-    const [quickRepliesList, setQuickRepliesList] = useState(() => getContactCenterQuickReplies());
+    const [quickRepliesList, setQuickRepliesList] = useState(() => getContactCenterQuickReplies(currentAgentId));
+    const [editingQuickReply, setEditingQuickReply] = useState(null);
+    const [isSavingQuickReply, setIsSavingQuickReply] = useState(false);
 
     // Resuelve variables como {{name}}, {{agent_name}}, {{tipo_consulta}}
     const resolveQuickReplyText = (content) => {
         return interpolateQuickReplyVariables(content, {
             patientName: selectedChat?.contactName && !selectedChat.contactName.startsWith('+') ? selectedChat.contactName : (crmForm?.pacienteNombre || 'Paciente'),
             agentName: activeAgent?.name || currentUser?.nombre || 'Sanatorio Argentino',
-            queryType: selectedChat?.customFields?.motivoConsulta || 'por tu consulta'
+            queryType: selectedChat?.customFields?.motivoConsulta || 'por tu consulta',
+            medico: selectedChat?.customFields?.medicoOEspecialidad || 'el profesional',
+            sede: 'Sede 1 (San Luis 432 Oeste)'
         });
+    };
+
+    const handleOpenEditQuickReply = (qr) => {
+        setEditingQuickReply({
+            id: qr.id || null,
+            dbId: qr.dbId || null,
+            shortcut: qr.shortcut || '',
+            originalShortcut: qr.shortcut || '',
+            title: qr.title || '',
+            content: qr.content || '',
+            category: qr.category || 'general',
+            isPersonal: Boolean(qr.isPersonal),
+            isNew: false
+        });
+    };
+
+    const handleOpenNewQuickReply = () => {
+        setEditingQuickReply({
+            id: null,
+            dbId: null,
+            shortcut: '',
+            originalShortcut: '',
+            title: '',
+            content: '',
+            category: 'general',
+            isPersonal: true,
+            isNew: true
+        });
+    };
+
+    const handleSaveQuickReplyAction = async (scope) => {
+        if (!editingQuickReply) return;
+        const cleanShortcut = editingQuickReply.shortcut.replace(/^\//, '').trim();
+        if (!cleanShortcut) {
+            alert('Por favor indica un atajo de comando (ej: rx o saludo).');
+            return;
+        }
+        if (!editingQuickReply.content.trim()) {
+            alert('Por favor escribe el contenido de la respuesta rápida.');
+            return;
+        }
+
+        setIsSavingQuickReply(true);
+        try {
+            const updatedList = await saveQuickReply({
+                id: editingQuickReply.dbId || editingQuickReply.id,
+                shortcut: cleanShortcut,
+                originalShortcut: editingQuickReply.originalShortcut,
+                title: editingQuickReply.title.trim() || cleanShortcut,
+                content: editingQuickReply.content.trim(),
+                category: editingQuickReply.category || 'general',
+                scope,
+                agentId: currentAgentId
+            });
+
+            setQuickRepliesList(updatedList);
+            setEditingQuickReply(null);
+            if (scope === 'me') {
+                alert(`¡Atajo guardado solo para tu usuario (${activeAgent?.name || currentAgentId})! Las demás operadoras no verán esta modificación.`);
+            } else {
+                alert('¡Atajo guardado como plantilla institucional para todos los operadores!');
+            }
+        } catch (err) {
+            console.error('Error guardando respuesta rápida:', err);
+            alert(`Error al guardar: ${err.message || 'Intente nuevamente'}`);
+        } finally {
+            setIsSavingQuickReply(false);
+        }
+    };
+
+    const handleResetQuickReplyAction = async (qr) => {
+        if (!window.confirm(`¿Deseas restablecer el atajo "/${qr.shortcut}" a la versión institucional oficial? Perderás tu personalización.`)) {
+            return;
+        }
+
+        setIsSavingQuickReply(true);
+        try {
+            const updatedList = await deleteOrResetQuickReply(qr, currentAgentId);
+            setQuickRepliesList(updatedList);
+            alert(`Atajo "/${qr.shortcut}" restablecido a la versión oficial.`);
+        } catch (err) {
+            console.error('Error restableciendo respuesta rápida:', err);
+            alert('Error al restablecer la respuesta rápida.');
+        } finally {
+            setIsSavingQuickReply(false);
+        }
+    };
+
+    const handleDeleteQuickReplyAction = async (qr) => {
+        if (!window.confirm(`¿Seguro que deseas eliminar el atajo "/${qr.shortcut}"?`)) {
+            return;
+        }
+
+        setIsSavingQuickReply(true);
+        try {
+            const updatedList = await deleteOrResetQuickReply(qr, currentAgentId);
+            setQuickRepliesList(updatedList);
+        } catch (err) {
+            console.error('Error eliminando respuesta rápida:', err);
+            alert('Error al eliminar la respuesta rápida.');
+        } finally {
+            setIsSavingQuickReply(false);
+        }
     };
 
     // Estados CRM: Edición de Ficha y Búsqueda en Padrón SALUS
@@ -1044,7 +1188,7 @@ export default function ContactCenterChatConsole({
 
             setReassignModalOpen(false);
             setReassignNote('');
-            setFilterTab('asignadas_mi');
+            // Mantener al operador en la pestaña actual (sin forzar salto a mis chats)
             if (selectedChat?.id && onSelectChat) {
                 onSelectChat(selectedChat.id);
             }
@@ -1061,13 +1205,12 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Asignar conversación y conmutar automáticamente a la pestaña 'Mis Chats' para que nunca desaparezca del operador
+    // Asignar conversación manteniendo la pestaña activa del operador (ej: 'sin_asignar') para agilizar la gestión continua
     const handleAssignChatAndSwitchTab = async (chatId, agentId, options) => {
         if (!onAssignChat) return;
         try {
             await onAssignChat(chatId, agentId, options);
         } finally {
-            setFilterTab('asignadas_mi');
             if (chatId && onSelectChat) {
                 onSelectChat(chatId);
             }
@@ -1425,12 +1568,12 @@ export default function ContactCenterChatConsole({
         }
     }, [selectedChat?.id, selectedChat?.phone]);
 
-    // Sincronizar catálogo institucional de respuestas rápidas de Contact Center
+    // Sincronizar catálogo de respuestas rápidas de Contact Center para el operador activo
     useEffect(() => {
-        syncQuickRepliesFromDb().then(list => {
+        syncQuickRepliesFromDb(currentAgentId).then(list => {
             if (list && list.length > 0) setQuickRepliesList(list);
         }).catch(() => {});
-    }, []);
+    }, [currentAgentId]);
 
     const failedSummaryPhonesRef = useRef(new Set());
 
@@ -1734,6 +1877,47 @@ export default function ContactCenterChatConsole({
         historyRequestedForChat.current = null;
         setPatientHistory(null);
     }, [selectedChat?.id]);
+
+    // Recargar historial clínico 360° desde SALUS / Supabase bajo demanda
+    const handleRefreshPatientHistory = (force = true) => {
+        const targetNhc = selectedChat?.nhc || crmForm.nhc;
+        const targetDni = (crmForm.dni || selectedChat?.dni || '').replace(/\D/g, '');
+        const targetNombre = crmForm.nombreCompleto || selectedChat?.contactName || '';
+        if (!targetNhc && !targetDni) {
+            showToast('No hay DNI o NHC para consultar en SALUS.', 'warning');
+            return;
+        }
+
+        const cacheKey = targetNhc ? `nhc_${targetNhc}` : `dni_${targetDni}`;
+        if (force) {
+            delete patientHistoryCache.current[cacheKey];
+            if (targetDni) delete patientHistoryCache.current[`dni_${targetDni}`];
+            if (targetNhc) delete patientHistoryCache.current[`nhc_${targetNhc}`];
+            historyRequestedForChat.current = null;
+        }
+
+        setLoadingHistory(true);
+        fetchPacienteDetalle({
+            dni: targetDni || null,
+            nhc: targetNhc || null,
+            telefono: null,
+            nombre: targetNombre
+        })
+            .then(det => {
+                if (det) {
+                    patientHistoryCache.current[cacheKey] = det;
+                    if (det.dni) patientHistoryCache.current[`dni_${det.dni}`] = det;
+                    if (det.nhc) patientHistoryCache.current[`nhc_${det.nhc}`] = det;
+                }
+                setPatientHistory(det);
+                showToast('Historial clínico actualizado desde SALUS.', 'success');
+            })
+            .catch(err => {
+                console.warn('[historial-lazy] Error al actualizar historial:', err);
+                showToast('Error al actualizar historial.', 'error');
+            })
+            .finally(() => setLoadingHistory(false));
+    };
 
     // Búsqueda en Padrón SALUS (EXCLUSIVA por DNI o NHC)
     const handleLookupSalus = async () => {
@@ -2386,9 +2570,16 @@ export default function ContactCenterChatConsole({
                     const closed = isClosedOrArchived(chat);
                     const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                     const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
+                    // Visibilidad fluida: el chat que la agente acaba de tomar se mantiene visible en "Sin Asignar" mientras lo atiende
+                    const isCurrentlyActiveMine = Boolean(
+                        chat.id &&
+                        (String(chat.id) === String(activeChatId) || String(chat.id) === String(selectedChat?.id)) &&
+                        isMine &&
+                        !closed
+                    );
 
                     if (filterTab === 'bot') return isChatBot;
-                    if (filterTab === 'sin_asignar') return isChatUnassigned;
+                    if (filterTab === 'sin_asignar') return isChatUnassigned || isCurrentlyActiveMine;
                     if (filterTab === 'asignadas_mi') return isMine && !closed;
                     if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
                     if (filterTab === 'todos') return true;
@@ -2405,9 +2596,16 @@ export default function ContactCenterChatConsole({
                 const closed = isClosedOrArchived(chat);
                 const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                 const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
+                // Visibilidad fluida: el chat que la agente acaba de tomar se mantiene visible en "Sin Asignar" mientras lo atiende
+                const isCurrentlyActiveMine = Boolean(
+                    chat.id &&
+                    (String(chat.id) === String(activeChatId) || String(chat.id) === String(selectedChat?.id)) &&
+                    isMine &&
+                    !closed
+                );
 
                 if (filterTab === 'bot') return isChatBot;
-                if (filterTab === 'sin_asignar') return isChatUnassigned;
+                if (filterTab === 'sin_asignar') return isChatUnassigned || isCurrentlyActiveMine;
                 if (filterTab === 'asignadas_mi') return isMine && !closed;
                 if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
                 if (filterTab === 'todos') return true;
@@ -2512,6 +2710,17 @@ export default function ContactCenterChatConsole({
             return isMine && !isClosedOrArchived(chat);
         });
     }, [chats, myAliases, activeAgent.name]);
+
+    // Cantidad de conversaciones inactivas (+24h) abiertas en el sistema
+    const inactive24hCount = useMemo(() => {
+        const now = Date.now();
+        const cutoffMs = 24 * 3600 * 1000;
+        return (chats || []).filter(c => {
+            if (isClosedOrArchived(c)) return false;
+            const time = c.lastMessageTimestamp || (c.updated_at ? new Date(c.updated_at).getTime() : 0);
+            return (now - time) >= cutoffMs;
+        }).length;
+    }, [chats]);
 
 
     const toggleSelectChat = (chatId) => {
@@ -3084,9 +3293,9 @@ export default function ContactCenterChatConsole({
         if (!messageInput.trim() && !selectedFile) return;
 
         let textToSend = messageInput.trim();
-        // Si el usuario escribió un atajo (ej: /dan o /bosi), resolverlo de inmediato
+        // Si el usuario escribió un atajo (ej: /dan o /bosi), resolverlo de inmediato para el operador activo
         if (textToSend.startsWith('/')) {
-            const found = findQuickReplyByShortcut(textToSend);
+            const found = findQuickReplyByShortcut(textToSend, currentAgentId);
             if (found) {
                 textToSend = found.content;
             }
@@ -3139,7 +3348,7 @@ export default function ContactCenterChatConsole({
             return;
         }
 
-        const currentMatches = filterQuickReplies(quickReplyFilter);
+        const currentMatches = filterQuickReplies(quickReplyFilter, currentAgentId);
 
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -3152,7 +3361,7 @@ export default function ContactCenterChatConsole({
         } else if (e.key === 'Tab' || e.key === 'Enter') {
             // Tab o Enter autocompleta el atajo en el input para poder revisarlo/editarlo antes de enviar con el botón o Ctrl+Enter
             e.preventDefault();
-            const matchedByDirectCmd = findQuickReplyByShortcut(messageInput);
+            const matchedByDirectCmd = findQuickReplyByShortcut(messageInput, currentAgentId);
             const targetItem = matchedByDirectCmd || currentMatches[selectedQuickReplyIndex] || currentMatches[0];
             if (targetItem) {
                 setMessageInput(resolveQuickReplyText(targetItem.content));
@@ -3167,8 +3376,8 @@ export default function ContactCenterChatConsole({
             style={{
                 display: 'grid',
                 gridTemplateColumns: `330px 1fr 6px ${rightPanelWidth}px`,
-                height: 'calc(100vh - 78px)',
-                maxHeight: 'calc(100vh - 78px)',
+                height: 'calc(100vh - 134px)',
+                maxHeight: 'calc(100vh - 134px)',
                 minHeight: '480px',
                 background: ccTheme.leftSidebarBg || '#FFFFFF',
                 borderRadius: '14px',
@@ -3231,8 +3440,25 @@ export default function ContactCenterChatConsole({
                             </span>
                         </div>
 
-                        {/* Sonido, Tema y Sync */}
+                        {/* Sonido, Tema, Final de Turno y Sync */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <button
+                                type="button"
+                                onClick={() => setShiftSummaryModalOpen(true)}
+                                title="Final de Turno: revisa mensajes enviados, casos finalizados, tipos de consultas y turnos agendados en SALUS"
+                                style={{
+                                    padding: '3px 8px', borderRadius: '5px',
+                                    border: '1px solid #BAE6FD',
+                                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                    color: '#FFFFFF',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                    fontSize: '0.66rem', fontWeight: 800,
+                                    boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)'
+                                }}
+                            >
+                                <BarChart3 size={12} />
+                                <span>Final de Turno</span>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => setThemeModalOpen(true)}
@@ -3631,22 +3857,118 @@ export default function ContactCenterChatConsole({
                 </div>
 
 
-                {/* PASE DE GUARDIA - solo cuando hay chats asignados */}
-                {myAssignedChats.length > 0 && (
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-end',
-                        padding: '4px 8px',
-                        background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
-                        borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`
-                    }}>
+                {/* PASE DE GUARDIA / FINAL DE TURNO / BARRIDO +24H */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '4px 8px',
+                    background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
+                    borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                    gap: '4px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                            type="button"
+                            onClick={() => setSweepModalOpen(true)}
+                            title="Barrer inactivos (+24h): archiva en lote conversaciones sin actividad con ventana Meta WhatsApp expirada"
+                            style={{
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #CBD5E1',
+                                background: inactive24hCount > 0 ? '#F0FDF4' : '#FFFFFF',
+                                color: inactive24hCount > 0 ? '#047857' : '#0F766E',
+                                fontSize: '0.66rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                            }}
+                        >
+                            <Brush size={11} color={inactive24hCount > 0 ? '#059669' : '#0F766E'} />
+                            <span>Barrer +24h</span>
+                            {inactive24hCount > 0 && (
+                                <span style={{
+                                    fontSize: '0.60rem',
+                                    background: '#059669',
+                                    color: '#FFFFFF',
+                                    padding: '0 5px',
+                                    borderRadius: '8px',
+                                    fontWeight: 800
+                                }}>
+                                    {inactive24hCount}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab && onNavigateTab('cancelaciones')}
+                            title="Bolsa de Turnos a Cancelar en SALUS"
+                            style={{
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: pendingCancelacionesCount > 0 ? '1px solid #FCA5A5' : '1px solid #CBD5E1',
+                                background: pendingCancelacionesCount > 0 ? '#FEF2F2' : '#FFFFFF',
+                                color: pendingCancelacionesCount > 0 ? '#DC2626' : '#64748B',
+                                fontSize: '0.66rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                            }}
+                        >
+                            <CalendarX size={11} color={pendingCancelacionesCount > 0 ? '#DC2626' : '#64748B'} />
+                            <span>Cancelaciones</span>
+                            {pendingCancelacionesCount > 0 && (
+                                <span style={{
+                                    fontSize: '0.60rem',
+                                    background: '#DC2626',
+                                    color: '#FFFFFF',
+                                    padding: '0 5px',
+                                    borderRadius: '8px',
+                                    fontWeight: 800
+                                }}>
+                                    {pendingCancelacionesCount}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setShiftSummaryModalOpen(true)}
+                            title="Final de Turno: ver métricas e insights de hoy (mensajes, cierres, tipos de consultas y turnos SALUS)"
+                            style={{
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #CBD5E1',
+                                background: '#FFFFFF',
+                                color: '#0284C7',
+                                fontSize: '0.66rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                            }}
+                        >
+                            <BarChart3 size={11} />
+                            <span>Mi Turno</span>
+                        </button>
+                    </div>
+
+                    {myAssignedChats.length > 0 && (
                         <button
                             type="button"
                             onClick={() => setHandoverModalOpen(true)}
                             title="Traspaso de Turno / Pase de Guardia: reasigna todas tus conversaciones al terminar tu horario"
                             style={{
-                                padding: '3px 10px',
+                                padding: '3px 8px',
                                 borderRadius: '6px',
                                 border: 'none',
                                 background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
@@ -3662,10 +3984,10 @@ export default function ContactCenterChatConsole({
                             }}
                         >
                             <ArrowRightLeft size={11} />
-                            <span>Pase de Guardia ({myAssignedChats.length})</span>
+                            <span>Pase Guardia ({myAssignedChats.length})</span>
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 {/* SUB-FILTROS DE AGENTES (solo visibles en tab Otras) */}
                 {filterTab === 'asignadas_otros' && (() => {
@@ -3943,10 +4265,7 @@ export default function ContactCenterChatConsole({
                                     onClick={() => {
                                         const currentIncoming = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
                                         readChatMsgCountRef.current.set(chat.id, currentIncoming);
-                                        const targetTab = getChatFilterTab(chat);
-                                        if (targetTab && targetTab !== filterTab) {
-                                            setFilterTab(targetTab);
-                                        }
+                                        // No conmutar forzadamente de pastilla: el operador permanece en la pastilla donde decidió estar
                                         if (onSelectChat) onSelectChat(chat.id);
                                     }}
                                     style={{
@@ -4983,6 +5302,50 @@ export default function ContactCenterChatConsole({
                     </div>
                 )}
 
+                {/* Banner de Cancelación de Turno */}
+                {(selectedChat?.tags?.includes('Cancelación') || (selectedChat?.motivoConsulta || '').toLowerCase().includes('cancelar') || (selectedChat?.motivoConsulta || '').toLowerCase().includes('cancelación')) && (
+                    <div style={{
+                        flexShrink: 0,
+                        padding: '6px 14px',
+                        background: '#FEF2F2',
+                        borderBottom: '1px solid #FECACA',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.72rem',
+                        color: '#991B1B',
+                        fontWeight: 600
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <CalendarX size={14} color="#DC2626" />
+                            <span>
+                                <strong>Cancelación de Turno:</strong> Este paciente solicitó dar de baja un turno. Registrado en la Bolsa de Cancelaciones.
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => onNavigateTab && onNavigateTab('cancelaciones')}
+                            style={{
+                                background: '#DC2626',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                borderRadius: '5px',
+                                padding: '3px 8px',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 3px rgba(220,38,38,0.2)'
+                            }}
+                        >
+                            <CalendarX size={11} />
+                            Ver en Cancelaciones
+                        </button>
+                    </div>
+                )}
+
                 {/* Área de Mensajes con Estilo AsisteClick + Tags de Autoría */}
                 <div 
                     ref={messagesContainerRef}
@@ -4990,6 +5353,9 @@ export default function ContactCenterChatConsole({
                         flex: 1,
                         minHeight: 0,
                         overflowY: 'auto',
+                        overflowX: 'hidden',
+                        width: '100%',
+                        boxSizing: 'border-box',
                         padding: '16px 20px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -5118,44 +5484,101 @@ export default function ContactCenterChatConsole({
                                         </button>
                                     </div>
                                 )}
-                                {visibleMsgs.map(msg => {
-                        if (msg.sender === 'system') {
-                            return (
-                                <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
-                                    <span style={{
-                                        background: '#FFFFFF', border: '1px solid #E2E8F0',
-                                        color: '#475569', fontSize: '0.72rem', fontWeight: 600, padding: '4px 14px',
-                                        borderRadius: '20px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}>
-                                        <Clock size={12} color="#94A3B8" />
-                                        {msg.text}
-                                    </span>
-                                </div>
-                            );
-                        }
+                                {visibleMsgs.map((msg, idx) => {
+                                    const currDateStr = msg.created_at ? new Date(msg.created_at).toDateString() : null;
+                                    const prevMsg = idx > 0 ? visibleMsgs[idx - 1] : null;
+                                    const prevDateStr = prevMsg?.created_at ? new Date(prevMsg.created_at).toDateString() : null;
+                                    const showDateDivider = currDateStr && currDateStr !== prevDateStr;
+                                    const dateDividerLabel = showDateDivider ? formatChatDateDivider(msg.created_at) : null;
 
-                        const isPatient = msg.sender === 'patient';
-                        const isNote = Boolean(msg.isNote || msg.direction === 'note' || msg.sender === 'note' || msg.is_note);
-                        const agentObj = !isPatient ? getAgentById(msg.senderAgentId || msg.senderName) : null;
+                                    if (msg.sender === 'system') {
+                                        return (
+                                            <React.Fragment key={msg.id || `sys_${idx}`}>
+                                                {showDateDivider && dateDividerLabel && (
+                                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px', width: '100%' }}>
+                                                        <span style={{
+                                                            background: ccTheme.isDark ? '#1E293B' : 'rgba(241, 245, 249, 0.95)',
+                                                            backdropFilter: 'blur(4px)',
+                                                            border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
+                                                            color: ccTheme.isDark ? '#94A3B8' : '#334155',
+                                                            fontSize: '0.72rem',
+                                                            fontWeight: 700,
+                                                            padding: '4px 16px',
+                                                            borderRadius: '16px',
+                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            textTransform: 'capitalize'
+                                                        }}>
+                                                            <Calendar size={13} color="#0284C7" />
+                                                            {dateDividerLabel}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
+                                                    <span style={{
+                                                        background: '#FFFFFF', border: '1px solid #E2E8F0',
+                                                        color: '#475569', fontSize: '0.72rem', fontWeight: 600, padding: '4px 14px',
+                                                        borderRadius: '20px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                        display: 'flex', alignItems: 'center', gap: '6px'
+                                                    }}>
+                                                        <Clock size={12} color="#94A3B8" />
+                                                        {msg.text}
+                                                    </span>
+                                                </div>
+                                            </React.Fragment>
+                                        );
+                                    }
 
+                                    const isPatient = msg.sender === 'patient';
+                                    const isNote = Boolean(msg.isNote || msg.direction === 'note' || msg.sender === 'note' || msg.is_note);
+                                    const agentObj = !isPatient ? getAgentById(msg.senderAgentId || msg.senderName) : null;
 
-                        return (
-                            <div 
-                                key={msg.id}
-                                style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: isPatient ? 'flex-start' : 'flex-end',
-                                    maxWidth: '82%',
-                                    alignSelf: isPatient ? 'flex-start' : 'flex-end'
-                                }}
-                            >
+                                    return (
+                                        <React.Fragment key={msg.id || idx}>
+                                            {showDateDivider && dateDividerLabel && (
+                                                <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px', width: '100%' }}>
+                                                    <span style={{
+                                                        background: ccTheme.isDark ? '#1E293B' : 'rgba(241, 245, 249, 0.95)',
+                                                        backdropFilter: 'blur(4px)',
+                                                        border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
+                                                        color: ccTheme.isDark ? '#94A3B8' : '#334155',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        padding: '4px 16px',
+                                                        borderRadius: '16px',
+                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        textTransform: 'capitalize'
+                                                    }}>
+                                                        <Calendar size={13} color="#0284C7" />
+                                                        {dateDividerLabel}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            <div 
+                                                style={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: isPatient ? 'flex-start' : 'flex-end',
+                                                    maxWidth: '78%',
+                                                    width: 'fit-content',
+                                                    alignSelf: isPatient ? 'flex-start' : 'flex-end',
+                                                    minWidth: 0,
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            >
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'flex-start',
                                     gap: '8px',
-                                    flexDirection: isPatient ? 'row' : 'row-reverse'
+                                    flexDirection: isPatient ? 'row' : 'row-reverse',
+                                    maxWidth: '100%',
+                                    minWidth: 0,
+                                    boxSizing: 'border-box'
                                 }}>
                                     {/* Avatar circular con color de la agente o del paciente */}
                                     <div style={{
@@ -5182,7 +5605,12 @@ export default function ContactCenterChatConsole({
                                             boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
                                             color: '#1E293B',
                                             fontSize: '0.86rem',
-                                            lineHeight: 1.45
+                                            lineHeight: 1.45,
+                                            maxWidth: '100%',
+                                            minWidth: 0,
+                                            boxSizing: 'border-box',
+                                            wordBreak: 'break-word',
+                                            overflowWrap: 'anywhere'
                                         }}>
                                         {/* Micro-Barra Flotante de Acciones al pasar el mouse: Emojis Rápidos y Botón Responder */}
                                         {hoveredMsgId === msg.id && (
@@ -5284,17 +5712,45 @@ export default function ContactCenterChatConsole({
                                             return (
                                                 <div style={{
                                                     background: isPatient ? 'rgba(0, 0, 0, 0.04)' : 'rgba(2, 132, 199, 0.08)',
-                                                    borderLeft: `3px solid ${isPatient ? '#0284C7' : '#0369A1'}`,
+                                                    borderLeft: `3.5px solid ${isPatient ? '#0284C7' : '#0369A1'}`,
                                                     borderRadius: '6px',
-                                                    padding: '5px 8px',
+                                                    padding: '5px 9px',
                                                     marginBottom: '8px',
-                                                    fontSize: '0.75rem',
-                                                    lineHeight: 1.3
+                                                    maxWidth: '460px',
+                                                    width: '100%',
+                                                    minWidth: 0,
+                                                    boxSizing: 'border-box',
+                                                    overflow: 'hidden'
                                                 }}>
-                                                    <div style={{ fontWeight: 800, color: isPatient ? '#0284C7' : '#0369A1', fontSize: '0.68rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <Reply size={11} /> {q.senderName || 'Mensaje citado'}
+                                                    <div style={{
+                                                        fontWeight: 800,
+                                                        color: isPatient ? '#0284C7' : '#0369A1',
+                                                        fontSize: '0.68rem',
+                                                        marginBottom: '2px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis'
+                                                    }}>
+                                                        <Reply size={11} />
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {q.senderName || 'Mensaje citado'}
+                                                        </span>
                                                     </div>
-                                                    <div style={{ color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    <div style={{
+                                                        color: '#475569',
+                                                        fontSize: '0.74rem',
+                                                        lineHeight: 1.35,
+                                                        display: '-webkit-box',
+                                                        WebkitLineClamp: 2,
+                                                        WebkitBoxOrient: 'vertical',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        wordBreak: 'break-word',
+                                                        overflowWrap: 'anywhere'
+                                                    }}>
                                                         {q.text || (q.type === 'image' ? '📷 Foto' : q.type === 'audio' ? '🎤 Audio' : q.type === 'sticker' ? '🏷️ Sticker' : '📎 Archivo')}
                                                     </div>
                                                 </div>
@@ -5937,12 +6393,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     }}>
                                                         <LayoutTemplate size={12} /> Plantilla Oficial de Meta WhatsApp
                                                     </div>
-                                                    <div style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: '#1E293B', lineHeight: 1.45 }}>
+                                                    <div style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: '#1E293B', lineHeight: 1.45, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                                                         {formatWhatsAppText(msg.text.replace(/^📋\s*\[Plantilla Meta:[^\]]*\]\s*/, ''))}
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div style={{ whiteSpace: 'pre-line' }}>
+                                                <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0 }}>
                                                     {formatWhatsAppText(msg.text)}
                                                 </div>
                                             )
@@ -5992,6 +6448,11 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px'
                                         }}>
                                             <span title={msg.created_at ? new Date(msg.created_at).toLocaleString('es-AR') : msg.timestamp}>
+                                                {msg.created_at && !formatChatDateDivider(msg.created_at)?.startsWith('Hoy') && (
+                                                    <span style={{ marginRight: '4px', opacity: 0.85, fontWeight: 700 }}>
+                                                        {new Date(msg.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
+                                                    </span>
+                                                )}
                                                 {msg.timestamp}
                                             </span>
                                             {!isPatient && !isNote && (
@@ -6003,8 +6464,9 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
                                 </div>
                             </div>
-                        );
-                    })}
+                        </React.Fragment>
+                    );
+                })}
                             </>
                         );
                 })()}
@@ -6584,16 +7046,16 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     }}>
                                         <span>⚡ ATAJOS RÁPIDOS (Enter: Enviar • Tab: Editar • Esc: Cerrar)</span>
                                         <span style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem' }}>
-                                            {filterQuickReplies(quickReplyFilter).length} resultados
+                                            {filterQuickReplies(quickReplyFilter, currentAgentId).length} resultados
                                         </span>
                                     </div>
                                     <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
-                                        {filterQuickReplies(quickReplyFilter).length === 0 ? (
+                                        {filterQuickReplies(quickReplyFilter, currentAgentId).length === 0 ? (
                                             <div style={{ padding: '14px', fontSize: '0.76rem', color: '#94A3B8', textAlign: 'center' }}>
                                                 No hay atajos que coincidan con "<strong>/{quickReplyFilter}</strong>".
                                             </div>
                                         ) : (
-                                            filterQuickReplies(quickReplyFilter).map((qr, idx) => {
+                                            filterQuickReplies(quickReplyFilter, currentAgentId).map((qr, idx) => {
                                                 const isSel = idx === selectedQuickReplyIndex;
                                                 return (
                                                     <div 
@@ -6609,9 +7071,19 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                         }}
                                                     >
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0284C7' }}>
-                                                                /{qr.shortcut} <span style={{ color: '#0F172A', fontWeight: 700 }}>• {qr.title}</span>
-                                                            </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0284C7' }}>
+                                                                    /{qr.shortcut} <span style={{ color: '#0F172A', fontWeight: 700 }}>• {qr.title}</span>
+                                                                </span>
+                                                                {qr.isPersonal && (
+                                                                    <span style={{
+                                                                        fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px',
+                                                                        borderRadius: '4px', background: '#EDE9FE', color: '#6D28D9'
+                                                                    }}>
+                                                                        👤 Mío
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <div style={{ display: 'flex', gap: '4px' }}>
                                                                 <button
                                                                     type="button"
@@ -8055,15 +8527,39 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     {/* TAB 2: HISTORIAL CLÍNICO 360° */}
                     {activeDetailTab === 'historial' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
                                 <div style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase' }}>
                                     Historial {crmForm.pacienteNombre ? `— ${crmForm.pacienteNombre}` : (selectedChat.contactName ? `— ${selectedChat.contactName}` : '')}
                                 </div>
-                                {(patientHistory?.nhc || selectedChat.customFields?.nhc) && (
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}` }}>
-                                        NHC: {patientHistory?.nhc || selectedChat.customFields?.nhc}
-                                    </span>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRefreshPatientHistory(true)}
+                                        disabled={loadingHistory}
+                                        title="Recargar consultas y visitas desde SALUS"
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            padding: '3px 8px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.68rem',
+                                            fontWeight: 700,
+                                            background: ccTheme.isDark ? '#1E293B' : '#F1F5F9',
+                                            border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
+                                            color: ccTheme.accentColor || '#0284C7',
+                                            cursor: loadingHistory ? 'wait' : 'pointer'
+                                        }}
+                                    >
+                                        <RefreshCw size={11} className={loadingHistory ? 'spin' : ''} />
+                                        Actualizar
+                                    </button>
+                                    {(patientHistory?.nhc || selectedChat.customFields?.nhc) && (
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}` }}>
+                                            NHC: {patientHistory?.nhc || selectedChat.customFields?.nhc}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
                             {loadingHistory ? (
@@ -8613,99 +9109,510 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                     <div 
                         onClick={(e) => e.stopPropagation()}
                         style={{
-                            background: '#FFFFFF', width: '100%', maxWidth: '520px', maxHeight: '82vh',
+                            background: '#FFFFFF', width: '100%', maxWidth: '640px', maxHeight: '86vh',
                             borderRadius: '16px', boxShadow: '0 20px 45px rgba(0,0,0,0.2)',
                             display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0'
                         }}
                     >
-                        {/* Cabecera idéntica a la imagen */}
-                        <div style={{ padding: '24px 24px 12px 24px', textAlign: 'center', position: 'relative' }}>
-                            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#334155', margin: 0 }}>
-                                Respuestas rápidas
-                            </h2>
+                        {/* Cabecera institucional con información de operadora y botón de nuevo atajo */}
+                        <div style={{
+                            padding: '18px 24px 14px 24px', borderBottom: '1px solid #F1F5F9',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: '#F8FAFC'
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                                        Respuestas rápidas y Atajos
+                                    </h2>
+                                    <span style={{
+                                        fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px',
+                                        borderRadius: '12px', background: '#E0F2FE', color: '#0369A1'
+                                    }}>
+                                        Contact Center
+                                    </span>
+                                </div>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                    Operadora activa: <strong style={{ color: '#0284C7' }}>{activeAgent?.name || currentAgentId}</strong> • Las ediciones pueden ser personales o institucionales
+                                </p>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenNewQuickReply}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '7px 12px', borderRadius: '8px', border: 'none',
+                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                        cursor: 'pointer', boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
+                                    }}
+                                >
+                                    <Plus size={14} /> Nuevo atajo
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setQuickRepliesModalOpen(false)}
+                                    style={{
+                                        border: 'none', background: 'transparent', color: '#94A3B8',
+                                        cursor: 'pointer', padding: '6px', borderRadius: '6px'
+                                    }}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Barra de pestañas por ámbito (Todas / Solo para mí / Institucionales) */}
+                        <div style={{
+                            display: 'flex', gap: '6px', padding: '12px 24px 8px 24px',
+                            borderBottom: '1px solid #F1F5F9', background: '#FFFFFF'
+                        }}>
                             <button
                                 type="button"
-                                onClick={() => setQuickRepliesModalOpen(false)}
+                                onClick={() => setQuickReplyScopeFilter('all')}
                                 style={{
-                                    position: 'absolute', right: '16px', top: '16px', border: 'none',
-                                    background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '4px'
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
+                                    border: quickReplyScopeFilter === 'all' ? '1px solid #0284C7' : '1px solid #E2E8F0',
+                                    background: quickReplyScopeFilter === 'all' ? '#F0F9FF' : '#FFFFFF',
+                                    color: quickReplyScopeFilter === 'all' ? '#0284C7' : '#64748B',
+                                    cursor: 'pointer'
                                 }}
+                            >
+                                Todas ({filterQuickReplies('', currentAgentId, 'all').length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQuickReplyScopeFilter('me')}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
+                                    border: quickReplyScopeFilter === 'me' ? '1px solid #7C3AED' : '1px solid #E2E8F0',
+                                    background: quickReplyScopeFilter === 'me' ? '#FAF5FF' : '#FFFFFF',
+                                    color: quickReplyScopeFilter === 'me' ? '#7C3AED' : '#64748B',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <User size={12} /> Solo para mí ({filterQuickReplies('', currentAgentId, 'me').length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQuickReplyScopeFilter('institutional')}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
+                                    border: quickReplyScopeFilter === 'institutional' ? '1px solid #0D9488' : '1px solid #E2E8F0',
+                                    background: quickReplyScopeFilter === 'institutional' ? '#F0FDFA' : '#FFFFFF',
+                                    color: quickReplyScopeFilter === 'institutional' ? '#0D9488' : '#64748B',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <Globe size={12} /> Institucionales ({filterQuickReplies('', currentAgentId, 'institutional').length})
+                            </button>
+                        </div>
+
+                        {/* Campo de búsqueda con icono */}
+                        <div style={{ padding: '12px 24px 10px 24px' }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                border: '1.5px solid #CBD5E1', borderRadius: '8px',
+                                padding: '8px 12px', background: '#FFFFFF'
+                            }}>
+                                <Search size={16} color="#64748B" />
+                                <input 
+                                    type="text"
+                                    autoFocus
+                                    placeholder="Filtrar por atajo (/rx, /dan, /bosi), título o contenido..."
+                                    value={quickReplyFilter}
+                                    onChange={(e) => setQuickReplyFilter(e.target.value)}
+                                    style={{
+                                        flex: 1, border: 'none', outline: 'none', fontSize: '0.84rem', color: '#1E293B'
+                                    }}
+                                />
+                                {quickReplyFilter && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setQuickReplyFilter('')}
+                                        style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '2px' }}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Lista scrolleable de respuestas rápidas */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            {filterQuickReplies(quickReplyFilter, currentAgentId, quickReplyScopeFilter).length === 0 ? (
+                                <div style={{ padding: '36px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
+                                    No se encontraron atajos para este criterio de búsqueda o filtro.
+                                </div>
+                            ) : (
+                                filterQuickReplies(quickReplyFilter, currentAgentId, quickReplyScopeFilter).map((qr) => (
+                                    <div 
+                                        key={qr.id || qr.shortcut} 
+                                        style={{
+                                            display: 'flex', flexDirection: 'column', gap: '6px',
+                                            padding: '12px 14px', borderRadius: '10px',
+                                            border: qr.isPersonal ? '1.5px solid #DDD6FE' : '1px solid #E2E8F0',
+                                            background: qr.isPersonal ? '#FAF5FF' : '#FFFFFF',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 800, background: '#E0F2FE', padding: '2px 8px', borderRadius: '6px' }}>
+                                                    /{qr.shortcut}
+                                                </span>
+                                                <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#1E293B' }}>
+                                                    {qr.title}
+                                                </span>
+
+                                                {/* Badge de ámbito */}
+                                                {qr.isPersonal ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                        fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px',
+                                                        borderRadius: '6px', background: '#EDE9FE', color: '#6D28D9'
+                                                    }}>
+                                                        <User size={10} /> Solo para mí
+                                                    </span>
+                                                ) : (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                        fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px',
+                                                        borderRadius: '6px', background: '#F1F5F9', color: '#475569'
+                                                    }}>
+                                                        <Globe size={10} /> Institucional
+                                                    </span>
+                                                )}
+
+                                                {qr.isPersonal && qr.hasGlobalFallback && (
+                                                    <span style={{ fontSize: '0.64rem', color: '#7C3AED', fontWeight: 600 }}>
+                                                        (Sobrescribe oficial)
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Botones de configuración del atajo */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEditQuickReply(qr)}
+                                                    title="Editar este atajo (puedes guardarlo solo para ti o para todas)"
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '3px',
+                                                        padding: '3px 8px', borderRadius: '5px', border: '1px solid #CBD5E1',
+                                                        background: '#FFFFFF', color: '#334155', fontSize: '0.68rem', fontWeight: 600,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <Edit3 size={11} /> Editar
+                                                </button>
+
+                                                {qr.isPersonal && qr.hasGlobalFallback && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleResetQuickReplyAction(qr)}
+                                                        title="Restablecer a la versión institucional oficial"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '3px',
+                                                            padding: '3px 8px', borderRadius: '5px', border: '1px solid #E2E8F0',
+                                                            background: '#FFFFFF', color: '#7C3AED', fontSize: '0.68rem', fontWeight: 600,
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <RotateCw size={11} /> Restablecer
+                                                    </button>
+                                                )}
+
+                                                {qr.isPersonal && !qr.hasGlobalFallback && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteQuickReplyAction(qr)}
+                                                        title="Eliminar este atajo personal"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '3px',
+                                                            padding: '3px 8px', borderRadius: '5px', border: '1px solid #FCA5A5',
+                                                            background: '#FEF2F2', color: '#DC2626', fontSize: '0.68rem', fontWeight: 600,
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <Trash2 size={11} /> Eliminar
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <p style={{
+                                            margin: '4px 0 0 0', fontSize: '0.78rem', color: '#475569',
+                                            lineHeight: 1.45, whiteSpace: 'pre-line'
+                                        }}>
+                                            {qr.content}
+                                        </p>
+
+                                        {/* Acciones para enviar al chat activo */}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setMessageInput(resolveQuickReplyText(qr.content));
+                                                    setQuickRepliesModalOpen(false);
+                                                    inputRef.current?.focus();
+                                                }}
+                                                style={{
+                                                    padding: '5px 12px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                    background: '#FFFFFF', color: '#334155', fontSize: '0.72rem', fontWeight: 600,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Insertar en chat
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote);
+                                                    setQuickRepliesModalOpen(false);
+                                                }}
+                                                style={{
+                                                    padding: '5px 12px', borderRadius: '6px', border: 'none',
+                                                    background: '#0284C7', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700,
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                                }}
+                                            >
+                                                <Send size={11} /> Enviar directo
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* SUBMODAL EDITOR: CAMBIAR SOLO PARA MÍ vs CAMBIAR PARA TODOS       */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {editingQuickReply && (
+                <div 
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 10050,
+                        background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+                    }} 
+                    onClick={() => !isSavingQuickReply && setEditingQuickReply(null)}
+                >
+                    <div 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF', width: '100%', maxWidth: '580px',
+                            borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                            display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0'
+                        }}
+                    >
+                        {/* Cabecera del Editor */}
+                        <div style={{
+                            padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            background: '#F8FAFC'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    width: '34px', height: '34px', borderRadius: '8px',
+                                    background: '#E0F2FE', color: '#0284C7',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <Zap size={18} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
+                                        {editingQuickReply.isNew ? 'Crear Nuevo Atajo Rápido' : `Editar Atajo /${editingQuickReply.shortcut}`}
+                                    </h3>
+                                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
+                                        Operadora activa: <strong style={{ color: '#0284C7' }}>{activeAgent?.name || currentAgentId}</strong>
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !isSavingQuickReply && setEditingQuickReply(null)}
+                                style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
                             >
                                 <X size={20} />
                             </button>
                         </div>
 
-                        {/* Campo de búsqueda con icono de lupa (verde azulado idéntico a imagen) */}
-                        <div style={{ padding: '0 24px 16px 24px' }}>
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                border: '1.5px solid #0D9488', borderRadius: '6px',
-                                padding: '8px 12px', background: '#FFFFFF'
-                            }}>
-                                <Search size={16} color="#0D9488" />
-                                <input 
-                                    type="text"
-                                    autoFocus
-                                    placeholder="Escribe para filtrar"
-                                    value={quickReplyFilter}
-                                    onChange={(e) => setQuickReplyFilter(e.target.value)}
+                        {/* Formulario */}
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '68vh', overflowY: 'auto' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                                        Comando / Atajo (sin espacios) *
+                                    </label>
+                                    <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #CBD5E1', borderRadius: '8px', overflow: 'hidden', background: '#F8FAFC' }}>
+                                        <span style={{ padding: '0 8px', color: '#0284C7', fontWeight: 800, fontSize: '0.86rem' }}>/</span>
+                                        <input 
+                                            type="text"
+                                            placeholder="ej: rx, saludo, lab"
+                                            value={editingQuickReply.shortcut}
+                                            onChange={(e) => setEditingQuickReply(prev => ({ ...prev, shortcut: e.target.value.replace(/^\//, '').toLowerCase().replace(/\s+/g, '') }))}
+                                            style={{ flex: 1, border: 'none', background: '#FFFFFF', padding: '8px 10px', fontSize: '0.84rem', outline: 'none' }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                                        Título identificador *
+                                    </label>
+                                    <input 
+                                        type="text"
+                                        placeholder="ej: Rayos X / Guardia Pasiva"
+                                        value={editingQuickReply.title}
+                                        onChange={(e) => setEditingQuickReply(prev => ({ ...prev, title: e.target.value }))}
+                                        style={{ width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px 10px', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                                    Categoría
+                                </label>
+                                <select
+                                    value={editingQuickReply.category || 'general'}
+                                    onChange={(e) => setEditingQuickReply(prev => ({ ...prev, category: e.target.value }))}
+                                    style={{ width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px 10px', fontSize: '0.84rem', outline: 'none', background: '#FFFFFF' }}
+                                >
+                                    <option value="general">General</option>
+                                    <option value="saludo">Saludos de Agente</option>
+                                    <option value="medicos">Médicos / Especialistas</option>
+                                    <option value="estudios">Estudios y Radiología</option>
+                                    <option value="laboratorio">Laboratorio / Extracciones</option>
+                                    <option value="chequeo">Chequeo Preventivo</option>
+                                    <option value="cierre">Cierre y Despedida</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155' }}>
+                                        Texto del mensaje *
+                                    </label>
+                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                        Variables automáticas (haz clic para insertar):
+                                    </span>
+                                </div>
+
+                                {/* Chips de variables dinámicas */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                    {[
+                                        { code: '{{name}}', label: '👤 Paciente' },
+                                        { code: '{{agent_name}}', label: '👩‍💼 Mi Nombre' },
+                                        { code: '{{tipo_consulta}}', label: '📋 Consulta' },
+                                        { code: '{{medico}}', label: '🩺 Médico' },
+                                        { code: '{{sede}}', label: '🏥 Sede 1' }
+                                    ].map(variable => (
+                                        <button
+                                            key={variable.code}
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingQuickReply(prev => ({
+                                                    ...prev,
+                                                    content: (prev.content ? prev.content + ' ' : '') + variable.code
+                                                }));
+                                            }}
+                                            style={{
+                                                border: '1px dashed #93C5FD', background: '#EFF6FF', color: '#1E40AF',
+                                                borderRadius: '6px', padding: '3px 8px', fontSize: '0.7rem', fontWeight: 600,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
+                                            }}
+                                        >
+                                            <Plus size={10} /> {variable.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <textarea
+                                    rows={5}
+                                    placeholder="Escribe el texto de la respuesta rápida..."
+                                    value={editingQuickReply.content}
+                                    onChange={(e) => setEditingQuickReply(prev => ({ ...prev, content: e.target.value }))}
                                     style={{
-                                        flex: 1, border: 'none', outline: 'none', fontSize: '0.86rem', color: '#1E293B'
+                                        width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px',
+                                        padding: '10px', fontSize: '0.84rem', lineHeight: 1.45, outline: 'none',
+                                        fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box'
                                     }}
                                 />
                             </div>
+
+                            {/* Banner explicativo del mapeo por usuario */}
+                            <div style={{
+                                padding: '10px 14px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                fontSize: '0.73rem', color: '#475569', lineHeight: 1.4
+                            }}>
+                                <strong style={{ color: '#0F172A' }}>💡 ¿Cómo deseas guardar este atajo?</strong>
+                                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px' }}>
+                                    <li><strong>"Cambiar solo para mí":</strong> Quedará registrado únicamente en tu sesión ({activeAgent?.name || currentAgentId}). Las otras operadoras no verán tu cambio.</li>
+                                    <li><strong>"Cambiar para todos":</strong> Se actualizará como respuesta oficial compartida para todo el equipo.</li>
+                                </ul>
+                            </div>
                         </div>
 
-                        {/* Lista scrolleable de respuestas rápidas */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                            {filterQuickReplies(quickReplyFilter).map((qr) => (
-                                <div key={qr.id} style={{
-                                    display: 'flex', flexDirection: 'column', gap: '6px',
-                                    paddingBottom: '14px', borderBottom: '1px solid #F1F5F9'
-                                }}>
-                                    <div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E293B' }}>
-                                            {qr.title.includes(':') ? qr.title : `${qr.title}:`}
-                                        </span>
-                                        <span style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 700, marginLeft: '6px' }}>
-                                            /{qr.shortcut}
-                                        </span>
-                                    </div>
-                                    <p style={{
-                                        margin: 0, fontSize: '0.82rem', color: '#475569', lineHeight: 1.45, whiteSpace: 'pre-line'
-                                    }}>
-                                        {qr.content}
-                                    </p>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setMessageInput(resolveQuickReplyText(qr.content));
-                                                setQuickRepliesModalOpen(false);
-                                                inputRef.current?.focus();
-                                            }}
-                                            style={{
-                                                padding: '6px 14px', borderRadius: '6px', border: '1px solid #CBD5E1',
-                                                background: '#FFFFFF', color: '#334155', fontSize: '0.76rem', fontWeight: 600,
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            Editar y enviar
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote)}
-                                            style={{
-                                                padding: '6px 14px', borderRadius: '6px', border: 'none',
-                                                background: '#0284C7', color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                            }}
-                                        >
-                                            <Send size={12} /> Enviar directo
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                        {/* Botones de acción principales solicitados por el usuario */}
+                        <div style={{
+                            padding: '14px 20px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC',
+                            display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px'
+                        }}>
+                            <button
+                                type="button"
+                                disabled={isSavingQuickReply}
+                                onClick={() => setEditingQuickReply(null)}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#475569', fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {/* Botón: Cambiar solo para mí */}
+                                <button
+                                    type="button"
+                                    disabled={isSavingQuickReply}
+                                    onClick={() => handleSaveQuickReplyAction('me')}
+                                    title="Guarda esta versión únicamente para tu usuario. No altera a las demás operadoras."
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: '#7C3AED', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)'
+                                    }}
+                                >
+                                    {isSavingQuickReply ? <Loader2 size={14} className="animate-spin" /> : <User size={14} />}
+                                    Cambiar solo para mí
+                                </button>
+
+                                {/* Botón: Cambiar para todos */}
+                                <button
+                                    type="button"
+                                    disabled={isSavingQuickReply}
+                                    onClick={() => handleSaveQuickReplyAction('all')}
+                                    title="Actualiza la plantilla oficial para todas las operadoras del Contact Center."
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                                    }}
+                                >
+                                    {isSavingQuickReply ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+                                    Cambiar para todos
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -10483,11 +11390,32 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
 
             {/* Modal de Personalización Visual (Presets, Nano Banana, Opacidad y Sidebars) */}
             <ContactCenterThemeModal
-
                 isOpen={themeModalOpen}
                 onClose={() => setThemeModalOpen(false)}
                 currentTheme={ccTheme}
                 onThemeChange={setCcTheme}
+            />
+
+            {/* Modal de Final de Turno e Insights Diarios del Agente */}
+            <AgentShiftSummaryModal
+                isOpen={shiftSummaryModalOpen}
+                onClose={() => setShiftSummaryModalOpen(false)}
+                activeAgent={activeAgent}
+                onOpenHandoverModal={() => setHandoverModalOpen(true)}
+                myAssignedChatsCount={myAssignedChats.length}
+            />
+
+            {/* Modal de Barrido Rápido de Inactivos (+24h) */}
+            <SweepInactiveChatsModal
+                isOpen={sweepModalOpen}
+                onClose={() => setSweepModalOpen(false)}
+                activeAgent={activeAgent}
+                chats={chats}
+                onSweepSuccess={(result) => {
+                    if (onReloadChats) {
+                        onReloadChats();
+                    }
+                }}
             />
         </div>
     );

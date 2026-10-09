@@ -220,3 +220,52 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         agentes: listaAgentes
     };
 }
+
+/**
+ * Obtiene los turnos creados hoy (o en una fecha dada) por cada operadora en SALUS.
+ */
+export async function getTurnosDiariosContactCenter(pool, { fecha = null } = {}) {
+    const today = fecha || new Date().toISOString().substring(0, 10); // YYYY-MM-DD
+    const dateFormatted = today.replace(/-/g, '');
+
+    const d = new Date(today + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    const nextDayFormatted = d.toISOString().substring(0, 10).replace(/-/g, '');
+
+    const agentNamesSql = Object.keys(SALUS_AGENTS_MAP).map(a => `'${a}'`).join(',');
+    const query = `
+        SELECT 
+            [Usuario Creacion Nombre] AS Agente,
+            COUNT(DISTINCT [idVisita]) AS TurnosCreados
+        FROM [SALUS].[dbo].[VLISE_Visitas]
+        WHERE [Fecha Hora Creacion] >= '${dateFormatted}'
+          AND [Fecha Hora Creacion] <  '${nextDayFormatted}'
+          AND [Usuario Creacion Nombre] IN (${agentNamesSql})
+          AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
+        GROUP BY [Usuario Creacion Nombre]
+    `;
+
+    const res = await pool.request().query(query);
+    const agentesMap = {
+        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0 },
+        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0 },
+        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0 },
+        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0 },
+        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0 }
+    };
+
+    for (const row of (res.recordset || [])) {
+        const meta = SALUS_AGENTS_MAP[row.Agente];
+        if (meta && agentesMap[meta.id]) {
+            agentesMap[meta.id].turnos += row.TurnosCreados;
+        }
+    }
+
+    return {
+        fecha: today,
+        synced_at: new Date().toISOString(),
+        total: Object.values(agentesMap).reduce((acc, a) => acc + a.turnos, 0),
+        agentes: Object.values(agentesMap)
+    };
+}
+

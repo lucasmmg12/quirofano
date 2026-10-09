@@ -50,6 +50,18 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
     const [resumen, setResumen] = useState({ pendientes: 0, enCarrito: 0, devueltas: 0, entregadas: 0 });
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(50);
+    const [sortBy, setSortBy] = useState('paciente'); // Orden alfabético por defecto
+    const [sortAsc, setSortAsc] = useState(true);
+
+    const handleToggleSort = (field) => {
+        if (sortBy === field) {
+            setSortAsc(prev => !prev);
+        } else {
+            setSortBy(field);
+            setSortAsc(true);
+        }
+        setPage(0);
+    };
 
     // Estado Pestaña 2: Carrito
     const [cartItems, setCartItems] = useState([]);
@@ -93,7 +105,9 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                     search: searchTerm,
                     filtroEstado,
                     page,
-                    pageSize
+                    pageSize,
+                    orderBy: sortBy,
+                    orderAsc: sortAsc
                 }),
                 fetchResumenFichas()
             ]);
@@ -106,7 +120,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, filtroEstado, page, pageSize]);
+    }, [searchTerm, filtroEstado, page, pageSize, sortBy, sortAsc]);
 
     const loadCarrito = useCallback(async () => {
         setLoadingCart(true);
@@ -792,9 +806,21 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                             style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                         />
                                     </th>
-                                    <th style={{ padding: '12px 14px' }}>Fecha Ingreso</th>
+                                    <th 
+                                        style={{ padding: '12px 14px', cursor: 'pointer', userSelect: 'none' }}
+                                        onClick={() => handleToggleSort('fecha_ingreso')}
+                                        title="Ordenar por fecha de ingreso"
+                                    >
+                                        Fecha Ingreso {sortBy === 'fecha_ingreso' ? (sortAsc ? '▲' : '▼') : '↕'}
+                                    </th>
                                     <th style={{ padding: '12px 14px' }}>N° Admisión</th>
-                                    <th style={{ padding: '12px 14px' }}>Paciente</th>
+                                    <th 
+                                        style={{ padding: '12px 14px', cursor: 'pointer', userSelect: 'none', color: '#0284c7' }}
+                                        onClick={() => handleToggleSort('paciente')}
+                                        title="Ordenar alfabéticamente por paciente"
+                                    >
+                                        Paciente {sortBy === 'paciente' ? (sortAsc ? '▲ A-Z' : '▼ Z-A') : '↕'}
+                                    </th>
                                     <th style={{ padding: '12px 14px' }}>DNI / NHC</th>
                                     <th style={{ padding: '12px 14px' }}>Obra Social / Prepaga</th>
                                     <th style={{ padding: '12px 14px' }}>Especialidad</th>
@@ -1019,7 +1045,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {cartItems.map((item, idx) => (
+                                {[...cartItems].sort((a, b) => (a.paciente || '').localeCompare(b.paciente || '', 'es', { sensitivity: 'base' })).map((item, idx) => (
                                     <div
                                         key={item.id}
                                         style={{
@@ -1375,7 +1401,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {detalle.detalles.map((d, dIdx) => {
+                                                                {[...(detalle.detalles || [])].sort((a, b) => (a.paciente || '').localeCompare(b.paciente || '', 'es', { sensitivity: 'base' })).map((d, dIdx) => {
                                                                     const isFichaDevuelta = d.estado_ficha === 'devuelta_a_recepcion';
                                                                     const isIncompleta = d.estado_documentacion === 'incompleta';
 
@@ -1389,11 +1415,11 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                                                             <td style={{ padding: '8px 10px', color: '#64748b' }}>{d.responsable_recepcion}</td>
                                                                             <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                                                                                 {isIncompleta ? (
-                                                                                    <span style={{ background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800 }}>
+                                                                                    <span style={{ background: '#fef3c7', color: '#b45309', padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                                                                                         ⚠️ {d.motivo_incompleta || 'Incompleta'}
                                                                                     </span>
                                                                                 ) : (
-                                                                                    <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800 }}>
+                                                                                    <span style={{ background: '#dcfce7', color: '#166534', padding: '3px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                                                                                         ✓ Completa
                                                                                     </span>
                                                                                 )}

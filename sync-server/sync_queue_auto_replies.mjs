@@ -64,12 +64,18 @@ export function getAfterHoursMessage(nextOpeningText) {
         `• *Sábados:* 8:00 a 12:00 hs\n` +
         `_(Domingos y Feriados cerrado)_\n\n` +
         `Tu mensaje quedó registrado y un asesor te responderá *${nextOpeningText}* en nuestro horario habitual.\n\n` +
+        `📲 *Gestión de Turnos Online 24 hs:*\n` +
+        `Recordá que desde la página web de Sanatorio Argentino también podés autogestionar tu turno médico en cualquier momento ingresando en:\n` +
+        `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
         `🚨 *Guardia Médica 24 hs:* Si presentás una urgencia, recordá que nuestra Guardia en Sede Central (San Luis 432 Oeste) atiende las *24 horas*.`;
 }
 
 export function getDelayWaitNoticeMessage() {
     return `¡Hola! 🏥 Estamos con algunas demoras en la atención debido a la alta demanda. Te pedimos disculpas por la espera.\n\n` +
         `En breve un agente estará respondiendo tu consulta por orden de llegada.\n\n` +
+        `📲 *Gestión de Turnos Online:*\n` +
+        `Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo desde la página web del Sanatorio:\n` +
+        `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
         `⏰ *Horarios de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
         `💡 _Si deseás volver a consultar opciones con el menú virtual, podés escribir *"Menú"* en cualquier momento._`;
 }

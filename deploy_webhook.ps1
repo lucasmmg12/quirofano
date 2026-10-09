@@ -1,4 +1,4 @@
-$token = 'sbp_5b15e67cd11ce4fd0768b3c956db8f7968d4f6b1'
+$token = $env:SUPABASE_ACCESS_TOKEN
 $projectRef = 'hakysnqiryimxbwdslwe'
 $functionName = 'whatsapp-webhook'
 

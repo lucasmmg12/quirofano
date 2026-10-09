@@ -28,7 +28,7 @@ import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
 import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase, parseOnlineComment } from './sync_turnos_online.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 import { syncTurnosActivos } from './sync_turnos_activos.mjs';
-import { getIncentivosContactCenter } from './incentivos_contact_center.mjs';
+import { getIncentivosContactCenter, getTurnosDiariosContactCenter } from './incentivos_contact_center.mjs';
 import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
 
 
@@ -4039,6 +4039,41 @@ app.get('/api/salus/incentivos-contact-center', async (req, res) => {
     }
 });
 
+// ── Sincronizador de Turnos Diarios por Agente (Final de Turno) ──
+export async function syncTurnosDiariosContactCenterToSupabase(fecha = null) {
+    try {
+        const poolInst = await getPool();
+        const data = await getTurnosDiariosContactCenter(poolInst, { fecha });
+        if (data) {
+            await supabase.from('app_config').upsert({
+                key: 'cc_turnos_hoy',
+                value: JSON.stringify(data),
+                label: 'Turnos Creados Contact Center Hoy (SALUS)',
+                category: 'contact_center_diario',
+                updated_at: new Date().toISOString(),
+                updated_by: 'salus_sync_server'
+            });
+            console.log(`📊 [Turnos Hoy Auto] Sincronizados ${data.total} turnos de hoy a Supabase app_config.`);
+        }
+        return data;
+    } catch (e) {
+        console.warn(`⚠️ [Turnos Hoy Auto] Error sincronizando turnos del día:`, e.message);
+        throw e;
+    }
+}
+
+// ── Endpoint HTTP de Turnos Creados Hoy por Agente ──
+app.get('/api/salus/turnos-agentes-hoy', async (req, res) => {
+    try {
+        const fecha = req.query.fecha || null;
+        const data = await syncTurnosDiariosContactCenterToSupabase(fecha);
+        res.json({ success: true, data });
+    } catch (err) {
+        console.error('Error obteniendo turnos diarios de SALUS:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ── Servidor ──
 
 // ── Heartbeat a Supabase (salus_sync_server_status) ──
@@ -4406,6 +4441,18 @@ app.listen(PORT, '0.0.0.0', () => {
         }
         setTimeout(syncIncentivosCiclo, 6000);
         setInterval(syncIncentivosCiclo, 15 * 60 * 1000);
+
+        // 5b. TURNOS DIARIOS CONTACT CENTER (Final de Turno - Inicio y cada 3 min)
+        async function syncTurnosDiariosCiclo() {
+            if (syncInProgress) return;
+            try {
+                await syncTurnosDiariosContactCenterToSupabase();
+            } catch (e) {
+                console.warn('⚠️ [Turnos Diarios Auto] Error en ciclo:', e.message);
+            }
+        }
+        setTimeout(syncTurnosDiariosCiclo, 8000);
+        setInterval(syncTurnosDiariosCiclo, 3 * 60 * 1000);
 
         // 6. AVISOS AUTOMÁTICOS COLA CONTACT CENTER (Demoras 20 min y Fuera de Horario)
         async function runQueueAlertsCycle() {
