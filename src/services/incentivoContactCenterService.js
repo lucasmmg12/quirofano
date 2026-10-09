@@ -365,12 +365,16 @@ export async function fetchHistoricoComparativoIncentivos() {
 
         const ago = monthsData['2026-08'] || {};
         const sep = monthsData['2026-09'] || {};
+        const oct = monthsData['2026-10'] || {};
 
         const agentesAgo = {};
         (ago.agentes || []).forEach(a => { agentesAgo[a.id] = a; });
 
         const agentesSep = {};
         (sep.agentes || []).forEach(a => { agentesSep[a.id] = a; });
+
+        const agentesOct = {};
+        (oct.agentes || []).forEach(a => { agentesOct[a.id] = a; });
 
         const agentOrder = ['solivier', 'vjacques', 'daguilera', 'eleal', 'macosta'];
         const agentNames = {
@@ -384,26 +388,32 @@ export async function fetchHistoricoComparativoIncentivos() {
         const comparativoAgentes = agentOrder.map(id => {
             const aAgo = agentesAgo[id] || {};
             const aSep = agentesSep[id] || {};
+            const aOct = agentesOct[id] || {};
 
             const turnosAgo = aAgo.turnos || 0;
             const turnosSep = aSep.turnos || 0;
+            const turnosOct = aOct.turnos || 0;
             const turnosDiff = turnosSep - turnosAgo;
             const turnosPct = turnosAgo > 0 ? Math.round((turnosDiff / turnosAgo) * 100) : 0;
 
             const asistAgo = aAgo.asistenciaPct || 0;
             const asistSep = aSep.asistenciaPct || 0;
+            const asistOct = aOct.asistenciaPct || 0;
             const asistDiff = Math.round((asistSep - asistAgo) * 100) / 100;
 
             const msjsAgo = aAgo.mensajesIndividuales || (id === 'solivier' ? 2256 : id === 'vjacques' ? 1622 : id === 'eleal' ? 732 : id === 'macosta' ? 2036 : 0);
             const msjsSep = aSep.mensajesIndividuales || (id === 'vjacques' ? 2505 : id === 'solivier' ? 2435 : id === 'daguilera' ? 1903 : id === 'eleal' ? 1744 : 0);
+            const msjsOct = aOct.mensajesIndividuales || (id === 'vjacques' ? 820 : id === 'solivier' ? 790 : id === 'daguilera' ? 610 : id === 'eleal' ? 552 : 0);
             const msjsDiff = msjsSep - msjsAgo;
             const msjsPct = msjsAgo > 0 ? Math.round((msjsDiff / msjsAgo) * 100) : 0;
 
             const varAgo = (aAgo.montoAsistencia || 0) + (aAgo.montoTurnos || 0);
             const varSep = (aSep.montoAsistencia || 0) + (aSep.montoTurnos || 0);
+            const varOct = (aOct.montoAsistencia || 0) + (aOct.montoTurnos || 0);
 
             const totalAgo = (aAgo.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varAgo;
             const totalSep = (aSep.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varSep;
+            const totalOct = (aOct.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varOct;
 
             return {
                 id,
@@ -412,24 +422,31 @@ export async function fetchHistoricoComparativoIncentivos() {
                 // Turnos
                 turnosAgo,
                 turnosSep,
+                turnosOct,
                 turnosDiff,
                 turnosPct,
                 // Asistencia
                 asistAgo,
                 asistSep,
+                asistOct,
                 asistDiff,
                 // Mensajes
                 msjsAgo,
                 msjsSep,
+                msjsOct,
                 msjsDiff,
                 msjsPct,
                 // Variable y Total
                 varAgo,
                 varSep,
+                varOct,
                 totalAgo,
                 totalSep,
+                totalOct,
                 fteSep: aSep.fte ?? 1.0,
-                estadoSep: aSep.estado || 'ACTIVA'
+                fteOct: aOct.fte ?? (id === 'macosta' ? 0 : id === 'eleal' ? 0.5 : 1.0),
+                estadoSep: aSep.estado || 'ACTIVA',
+                estadoOct: aOct.estado || (id === 'macosta' ? 'BAJA' : 'ACTIVA')
             };
         });
 
@@ -441,7 +458,8 @@ export async function fetchHistoricoComparativoIncentivos() {
                 turnosTotales: ago.turnosGrupales?.total || 4710,
                 convsTotales: ago.conversacionesUnicas || 7820,
                 asistenciaPromedio: 64.5,
-                montoTotalLiquidado: 998240
+                montoTotalLiquidado: 998240,
+                estado: 'Cerrado'
             },
             {
                 mes: 'Septiembre 2026',
@@ -449,7 +467,19 @@ export async function fetchHistoricoComparativoIncentivos() {
                 turnosTotales: sep.turnosGrupales?.total || 4174,
                 convsTotales: sep.conversacionesUnicas || 8587,
                 asistenciaPromedio: 56.5,
-                montoTotalLiquidado: 943867
+                montoTotalLiquidado: 943867,
+                estado: 'Cerrado'
+            },
+            {
+                mes: 'Octubre 2026 (En Curso)',
+                periodo: '2026-10',
+                turnosTotales: oct.turnosGrupales?.total || 785,
+                turnosProyectados: oct.proyeccionTurnos || 2704,
+                convsTotales: oct.conversacionesUnicas || 2772,
+                convsProyectadas: oct.proyeccionConvs || 9548,
+                asistenciaPromedio: 30.6,
+                montoTotalLiquidado: null,
+                estado: 'En Curso'
             }
         ];
 

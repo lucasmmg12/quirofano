@@ -47,6 +47,8 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     const [showEscalonesModal, setShowEscalonesModal] = useState(false);
     const [showReporteModal, setShowReporteModal] = useState(false);
     const [activeEscalonTab, setActiveEscalonTab] = useState('mensajes');
+    const [activeViewTab, setActiveViewTab] = useState('liquidacion'); // 'liquidacion' | 'bolsas' | 'comparativa'
+    const [octubreModoProyeccion, setOctubreModoProyeccion] = useState(false);
 
     // Estados para gráficos de performance de agentes y comparativa mes a mes
     const [historicoData, setHistoricoData] = useState(null);
@@ -91,35 +93,52 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             setDataSource(salusRes.source || 'cloud');
             setLastSyncDate(salusRes.updatedAt || new Date().toISOString());
 
-            // Priorizar valor de conversaciones únicas auditadas (Virginia: 2505, Sofia: 2435, Daniela: 1903, Erica: 1744 = 8587)
+            // Priorizar valor de conversaciones únicas auditadas
             let defaultMsgs = rawData.conversacionesUnicas;
-            if (p === '2026-09' || p === '2026-10') {
+            if (p === '2026-09') {
                 defaultMsgs = rawData.conversacionesUnicas || 8587;
+            } else if (p === '2026-10') {
+                defaultMsgs = rawData.conversacionesUnicas || 2772;
             } else if (!defaultMsgs) {
                 if (p === '2026-08') defaultMsgs = 7820;
-                else if (msgsSb && msgsSb > 3000) defaultMsgs = msgsSb;
+                else if (msgsSb && msgsSb > 1000) defaultMsgs = msgsSb;
                 else defaultMsgs = 8587;
             }
             setMensajesManuales(String(defaultMsgs));
 
             // Inicializar ajustes de FTE para casos específicos de altas/bajas
             if (p === '2026-08') {
-                setAjustesFte(prev => ({
-                    ...prev,
+                setAjustesFte({
                     eleal: 0.5, // Érica ingreso a mediados de agosto
-                    macosta: 1.0
-                }));
+                    macosta: 1.0,
+                    solivier: 1.0,
+                    vjacques: 1.0,
+                    daguilera: 1.0
+                });
             } else if (p === '2026-09') {
-                setAjustesFte(prev => ({
-                    ...prev,
+                setAjustesFte({
                     eleal: 0.5, // Curva 50%
-                    macosta: 0.15 // Baja a principios de septiembre (días trabajados)
-                }));
+                    macosta: 0.15, // Baja a principios de septiembre (días trabajados)
+                    solivier: 1.0,
+                    vjacques: 1.0,
+                    daguilera: 1.0
+                });
+            } else if (p === '2026-10') {
+                setAjustesFte({
+                    eleal: 0.5, // Curva 50%
+                    macosta: 0.0, // Ya cesó
+                    solivier: 1.0,
+                    vjacques: 1.0,
+                    daguilera: 1.0
+                });
             } else {
-                setAjustesFte(prev => ({
-                    ...prev,
-                    eleal: 0.5
-                }));
+                setAjustesFte({
+                    eleal: 0.5,
+                    macosta: 0.0,
+                    solivier: 1.0,
+                    vjacques: 1.0,
+                    daguilera: 1.0
+                });
             }
         } catch (err) {
             console.error('Error cargando métricas de incentivos:', err);
@@ -152,14 +171,31 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
     // Cálculo dinámico de la liquidación
     const liquidacion = useMemo(() => {
-        const msgs = Number(mensajesManuales) || 0;
+        let msgs = Number(mensajesManuales) || 0;
+        let datosAUsar = datosSalus;
+
+        if (periodo === '2026-10' && octubreModoProyeccion && datosSalus) {
+            msgs = datosSalus.proyeccionConvs || Math.round((Number(mensajesManuales) || 2772) / 9 * 31) || 9548;
+            datosAUsar = {
+                ...datosSalus,
+                turnosGrupales: {
+                    ...datosSalus.turnosGrupales,
+                    total: datosSalus.proyeccionTurnos || Math.round((datosSalus.turnosGrupales?.total || 785) / 9 * 31) || 2704
+                },
+                agentes: (datosSalus.agentes || []).map(ag => ({
+                    ...ag,
+                    turnos: Math.round((ag.turnos || 0) / 9 * 31)
+                }))
+            };
+        }
+
         return calcularLiquidacionCompleta({
             periodo,
             mensajesTotales: msgs,
-            datosSalus,
+            datosSalus: datosAUsar,
             ajustesFte
         });
-    }, [periodo, mensajesManuales, datosSalus, ajustesFte]);
+    }, [periodo, mensajesManuales, datosSalus, ajustesFte, octubreModoProyeccion]);
 
     const formatCurrency = (val) => {
         return new Intl.NumberFormat('es-AR', {
@@ -412,11 +448,179 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             )}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 2. TARJETAS DE INDICADORES GLOBALES (KPIs)                      */}
+            {/* SUB-NAVEGACIÓN LIMPIA Y ORGANIZADA (ADN QOAG)                    */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1px solid #CBD5E1',
+                padding: '5px 8px',
+                marginBottom: '18px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                flexWrap: 'wrap',
+                gap: '8px'
+            }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        onClick={() => setActiveViewTab('liquidacion')}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeViewTab === 'liquidacion' ? '#003B71' : 'transparent',
+                            color: activeViewTab === 'liquidacion' ? '#FFFFFF' : '#475569',
+                            fontWeight: 800, fontSize: '0.80rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            boxShadow: activeViewTab === 'liquidacion' ? '0 2px 5px rgba(0, 59, 113, 0.25)' : 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <FileText size={15} />
+                        Liquidación Oficial & Haberes
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveViewTab('bolsas')}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeViewTab === 'bolsas' ? '#003B71' : 'transparent',
+                            color: activeViewTab === 'bolsas' ? '#FFFFFF' : '#475569',
+                            fontWeight: 800, fontSize: '0.80rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            boxShadow: activeViewTab === 'bolsas' ? '0 2px 5px rgba(0, 59, 113, 0.25)' : 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <Target size={15} />
+                        Regla de las 3 Bolsas (50 / 25 / 25)
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveViewTab('comparativa')}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeViewTab === 'comparativa' ? '#003B71' : 'transparent',
+                            color: activeViewTab === 'comparativa' ? '#FFFFFF' : '#475569',
+                            fontWeight: 800, fontSize: '0.80rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            boxShadow: activeViewTab === 'comparativa' ? '0 2px 5px rgba(0, 59, 113, 0.25)' : 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <BarChart3 size={15} />
+                        Gráficos & Comparativa Mes a Mes
+                    </button>
+                </div>
+
+                {periodo === '2026-10' ? (
+                    <span style={{
+                        fontSize: '0.72rem', fontWeight: 800,
+                        background: '#FEF3C7', color: '#B45309',
+                        padding: '4px 12px', borderRadius: '20px',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        border: '1px solid #FDE68A'
+                    }}>
+                        <Activity size={13} color="#D97706" />
+                        Mes en Curso • Día 9 de 31
+                    </span>
+                ) : (
+                    <span style={{
+                        fontSize: '0.72rem', fontWeight: 800,
+                        background: '#F0FDF4', color: '#15803D',
+                        padding: '4px 12px', borderRadius: '20px',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        border: '1px solid #BBF7D0'
+                    }}>
+                        <CheckCircle2 size={13} color="#16A34A" />
+                        Período Cerrado & Auditado
+                    </span>
+                )}
+            </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* SUB-TAB 1: LIQUIDACIÓN OFICIAL & HABERES                         */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {activeViewTab === 'liquidacion' && (
+                <div>
+                    {/* Banner de Mes en Curso: Toggle Real vs Proyección */}
+                    {periodo === '2026-10' && (
+                        <div style={{
+                            background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
+                            border: '1px solid #FDE68A',
+                            borderRadius: '14px',
+                            padding: '12px 18px',
+                            marginBottom: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    background: '#F59E0B', color: '#FFFFFF',
+                                    width: '32px', height: '32px', borderRadius: '8px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 2px 4px rgba(245,158,11,0.2)'
+                                }}>
+                                    <Activity size={18} />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#92400E' }}>
+                                        Octubre 2026 está en curso (Día 9 de 31)
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
+                                        {octubreModoProyeccion 
+                                            ? 'Mostrando liquidación estimada proyectada a fin de mes manteniendo el ritmo actual.'
+                                            : 'Mostrando producción real auditada acumulada al 9 de Octubre (2.772 convs • 785 turnos).'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{
+                                display: 'flex', background: '#FFFFFF', borderRadius: '10px',
+                                border: '1px solid #FCD34D', padding: '3px'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setOctubreModoProyeccion(false)}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: '8px', border: 'none',
+                                        background: !octubreModoProyeccion ? '#D97706' : 'transparent',
+                                        color: !octubreModoProyeccion ? '#FFFFFF' : '#78350F',
+                                        fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    📍 Real Acumulado al Día (Día 9)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setOctubreModoProyeccion(true)}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: '8px', border: 'none',
+                                        background: octubreModoProyeccion ? '#D97706' : 'transparent',
+                                        color: octubreModoProyeccion ? '#FFFFFF' : '#78350F',
+                                        fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    📈 Proyección a Fin de Mes
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ═════════════════════════════════════════════════════════════════ */}
+                    {/* 2. TARJETAS DE INDICADORES GLOBALES (KPIs)                      */}
+                    {/* ═════════════════════════════════════════════════════════════════ */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                 gap: '14px',
                 marginBottom: '16px'
             }}>
@@ -575,12 +779,166 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 </div>
             </div>
 
+            {/* TABLA DE LIQUIDACIÓN NOMINAL POR COLABORADORA */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                border: '1px solid #E2E8F0',
+                padding: '22px 24px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                marginBottom: '20px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: 800, color: '#0F2942' }}>
+                            Desglose de Liquidación Individual por Colaboradora
+                        </h3>
+                        <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
+                            Cálculo transparente de haberes: Piso histórico garantizado + 3 bolsas independientes prorrateadas por FTE.
+                        </p>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontWeight: 700, color: '#475569' }}>
+                        Dotación Evaluada: {liquidacion.agentes.length} operadoras
+                    </span>
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                        <thead>
+                            <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
+                                <th style={{ padding: '10px 12px', fontWeight: 800 }}>Colaboradora</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800 }}>Estado / FTE</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Piso Garantizado</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Msjs (50%)</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Turnos (25%)</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Asistencia Individual</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Asoc. (25%)</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Total Variable</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 900, textAlign: 'right', color: '#003B71' }}>Total a Liquidar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {liquidacion.agentes.map((ag) => (
+                                <tr key={ag.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s ease' }}>
+                                    <td style={{ padding: '12px', fontWeight: 700, color: '#0F2942' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{
+                                                width: '26px', height: '26px', borderRadius: '50%',
+                                                background: '#003B71', color: '#FFFFFF',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: '0.68rem', fontWeight: 800
+                                            }}>
+                                                {ag.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                            </div>
+                                            <div>
+                                                <div>{ag.name}</div>
+                                                <div style={{ fontSize: '0.66rem', color: '#94A3B8' }}>{ag.salusKey}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    {/* Control FTE / Estado */}
+                                    <td style={{ padding: '12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <select
+                                                value={ag.fte}
+                                                onChange={(e) => handleFteChange(ag.id, e.target.value)}
+                                                style={{
+                                                    padding: '3px 6px', borderRadius: '6px',
+                                                    border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700,
+                                                    background: ag.fte === 1.0 ? '#F0FDF4' : '#FFFBEB',
+                                                    color: ag.fte === 1.0 ? '#166534' : '#92400E'
+                                                }}
+                                            >
+                                                <option value="1.0">100% FTE (Pleno)</option>
+                                                <option value="0.75">75% FTE</option>
+                                                <option value="0.5">50% FTE (Curva/Lic)</option>
+                                                <option value="0.25">25% FTE</option>
+                                                <option value="0.15">15% FTE (Cese)</option>
+                                                <option value="0">0% (Inactiva)</option>
+                                            </select>
+                                        </div>
+                                    </td>
+
+                                    {/* Piso Garantizado */}
+                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>
+                                        {formatCurrency(ag.baseGarantizadaLiquidada)}
+                                    </td>
+
+                                    {/* Bolsa Mensajes */}
+                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
+                                        <div>+{formatCurrency(ag.montoMensajes)}</div>
+                                        {ag.mensajesIndividuales > 0 && (
+                                            <div style={{ fontSize: '0.64rem', color: '#0369A1', fontWeight: 700 }}>
+                                                {ag.mensajesIndividuales.toLocaleString()} msjs
+                                            </div>
+                                        )}
+                                    </td>
+
+                                    {/* Bolsa Turnos */}
+                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#7C3AED' }}>
+                                        +{formatCurrency(ag.montoTurnos)}
+                                    </td>
+
+                                    {/* Asistencia Individual % */}
+                                    <td style={{ padding: '12px', textAlign: 'right' }}>
+                                        <div style={{ fontWeight: 800, color: ag.asistenciaPct >= 55 ? '#059669' : ag.asistenciaPct >= 50 ? '#D97706' : '#DC2626' }}>
+                                            {ag.asistenciaPct}%
+                                        </div>
+                                        <div style={{ fontSize: '0.64rem', color: '#94A3B8' }}>
+                                            {ag.asistidas} de {ag.evaluables} citas
+                                        </div>
+                                    </td>
+
+                                    {/* Bolsa Asistencia Individual $ */}
+                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                                        +{formatCurrency(ag.montoAsistencia)}
+                                    </td>
+
+                                    {/* Total Variable */}
+                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#2563EB' }}>
+                                        +{formatCurrency(ag.totalVariable)}
+                                    </td>
+
+                                    {/* TOTAL A LIQUIDAR */}
+                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#003B71', fontSize: '0.90rem' }}>
+                                        {formatCurrency(ag.totalALiquidar)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
+                                <td colSpan="2" style={{ padding: '12px', color: '#0F2942' }}>
+                                    TOTALES CONSOLIDADOS DEL EQUIPO
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: '#475569' }}>
+                                    {formatCurrency(liquidacion.totalesEquipo.baseTotal)}
+                                </td>
+                                <td colSpan="4" style={{ padding: '12px', textAlign: 'right', color: '#64748B' }}>
+                                    Total Productividad Variable:
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: '#2563EB', fontWeight: 900 }}>
+                                    +{formatCurrency(liquidacion.totalesEquipo.variableTotal)}
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'right', color: '#003B71', fontSize: '1.05rem', fontWeight: 900 }}>
+                                    {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            </div>
+            )}
+
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 3. DETALLE DE LAS 3 BOLSAS Y TERMÓMETROS DE PROGRESO             */}
+            {/* SUB-TAB 2: DETALLE DE LAS 3 BOLSAS (50 / 25 / 25)                */}
             {/* ═════════════════════════════════════════════════════════════════ */}
+            {activeViewTab === 'bolsas' && (
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
                 gap: '14px',
                 marginBottom: '16px'
             }}>
@@ -772,10 +1130,12 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </div>
                 </div>
             </div>
+            )}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 3.B PERFORMANCE DE AGENTES Y COMPARATIVA MES A MES (GRÁFICOS)     */}
+            {/* SUB-TAB 3: GRÁFICOS & COMPARATIVA MES A MES                      */}
             {/* ═════════════════════════════════════════════════════════════════ */}
+            {activeViewTab === 'comparativa' && (
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '16px',
@@ -1086,159 +1446,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </table>
                 </div>
             </div>
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 4. TABLA DE LIQUIDACIÓN NOMINAL POR COLABORADORA                 */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                background: '#FFFFFF',
-                borderRadius: '16px',
-                border: '1px solid #E2E8F0',
-                padding: '22px 24px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                marginBottom: '20px'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <div>
-                        <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: 800, color: '#0F2942' }}>
-                            Desglose de Liquidación Individual por Colaboradora
-                        </h3>
-                        <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                            Cálculo transparente de haberes: Piso histórico garantizado + 3 bolsas independientes prorrateadas por FTE.
-                        </p>
-                    </div>
-                    <span style={{ fontSize: '0.72rem', background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontWeight: 700, color: '#475569' }}>
-                        Dotación Evaluada: {liquidacion.agentes.length} operadoras
-                    </span>
-                </div>
-
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                        <thead>
-                            <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
-                                <th style={{ padding: '10px 12px', fontWeight: 800 }}>Colaboradora</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800 }}>Estado / FTE</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Piso Garantizado</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Msjs (50%)</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Turnos (25%)</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Asistencia Individual</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Asoc. (25%)</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Total Variable</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 900, textAlign: 'right', color: '#003B71' }}>Total a Liquidar</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {liquidacion.agentes.map((ag) => (
-                                <tr key={ag.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s ease' }}>
-                                    <td style={{ padding: '12px', fontWeight: 700, color: '#0F2942' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={{
-                                                width: '26px', height: '26px', borderRadius: '50%',
-                                                background: '#003B71', color: '#FFFFFF',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontSize: '0.68rem', fontWeight: 800
-                                            }}>
-                                                {ag.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                            </div>
-                                            <div>
-                                                <div>{ag.name}</div>
-                                                <div style={{ fontSize: '0.66rem', color: '#94A3B8' }}>{ag.salusKey}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-
-                                    {/* Control FTE / Estado */}
-                                    <td style={{ padding: '12px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <select
-                                                value={ag.fte}
-                                                onChange={(e) => handleFteChange(ag.id, e.target.value)}
-                                                style={{
-                                                    padding: '3px 6px', borderRadius: '6px',
-                                                    border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700,
-                                                    background: ag.fte === 1.0 ? '#F0FDF4' : '#FFFBEB',
-                                                    color: ag.fte === 1.0 ? '#166534' : '#92400E'
-                                                }}
-                                            >
-                                                <option value="1.0">100% FTE (Pleno)</option>
-                                                <option value="0.75">75% FTE</option>
-                                                <option value="0.5">50% FTE (Curva/Lic)</option>
-                                                <option value="0.25">25% FTE</option>
-                                                <option value="0.15">15% FTE (Cese)</option>
-                                                <option value="0">0% (Inactiva)</option>
-                                            </select>
-                                        </div>
-                                    </td>
-
-                                    {/* Piso Garantizado */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>
-                                        {formatCurrency(ag.baseGarantizadaLiquidada)}
-                                    </td>
-
-                                    {/* Bolsa Mensajes */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
-                                        <div>+{formatCurrency(ag.montoMensajes)}</div>
-                                        {ag.mensajesIndividuales > 0 && (
-                                            <div style={{ fontSize: '0.64rem', color: '#0369A1', fontWeight: 700 }}>
-                                                {ag.mensajesIndividuales.toLocaleString()} msjs
-                                            </div>
-                                        )}
-                                    </td>
-
-                                    {/* Bolsa Turnos */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#7C3AED' }}>
-                                        +{formatCurrency(ag.montoTurnos)}
-                                    </td>
-
-                                    {/* Asistencia Individual % */}
-                                    <td style={{ padding: '12px', textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 800, color: ag.asistenciaPct >= 55 ? '#059669' : ag.asistenciaPct >= 50 ? '#D97706' : '#DC2626' }}>
-                                            {ag.asistenciaPct}%
-                                        </div>
-                                        <div style={{ fontSize: '0.64rem', color: '#94A3B8' }}>
-                                            {ag.asistidas} de {ag.evaluables} citas
-                                        </div>
-                                    </td>
-
-                                    {/* Bolsa Asistencia Individual $ */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
-                                        +{formatCurrency(ag.montoAsistencia)}
-                                    </td>
-
-                                    {/* Total Variable */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#2563EB' }}>
-                                        +{formatCurrency(ag.totalVariable)}
-                                    </td>
-
-                                    {/* TOTAL A LIQUIDAR */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#003B71', fontSize: '0.90rem' }}>
-                                        {formatCurrency(ag.totalALiquidar)}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
-                                <td colSpan="2" style={{ padding: '12px', color: '#0F2942' }}>
-                                    TOTALES CONSOLIDADOS DEL EQUIPO
-                                </td>
-                                <td style={{ padding: '12px', textAlign: 'right', color: '#475569' }}>
-                                    {formatCurrency(liquidacion.totalesEquipo.baseTotal)}
-                                </td>
-                                <td colSpan="4" style={{ padding: '12px', textAlign: 'right', color: '#64748B' }}>
-                                    Total Productividad Variable:
-                                </td>
-                                <td style={{ padding: '12px', textAlign: 'right', color: '#2563EB', fontWeight: 900 }}>
-                                    +{formatCurrency(liquidacion.totalesEquipo.variableTotal)}
-                                </td>
-                                <td style={{ padding: '12px', textAlign: 'right', color: '#003B71', fontSize: '1.05rem', fontWeight: 900 }}>
-                                    {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
+            )}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* 5. MODAL: TABLA DE ESCALONES PROGRESIVOS                         */}
