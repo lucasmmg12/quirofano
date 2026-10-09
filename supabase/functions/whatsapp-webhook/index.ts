@@ -5747,7 +5747,7 @@ async function handleChatbotTriage(
     // Lunes a viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs por orden de llegada con pedido médico.
     // La autorización se realiza directamente en el momento al ingresar.
     // =============================================
-    else if (analysis.intent === 'radiografia' || (!isInfImg && !isInfGen && isRadiografiaQuery(cleanText) && currentStage !== 'informacion_respondida')) {
+    else if (analysis.intent === 'radiografia' || (isRadiografiaQuery(cleanText) && currentStage !== 'informacion_respondida')) {
         updates.motivo_consulta = 'Información: Radiografía / Rayos X (Guardia Pasiva Sede 1)';
         replyText = getRadiografiaInfoMessage(fullName || whatsappName);
         updates.bot_active = true;
