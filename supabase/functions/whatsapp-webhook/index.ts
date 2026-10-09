@@ -997,133 +997,132 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
 
         // =============================================
         // =============================================
-        // CHATBOT TRIAGE & AI SUMMARY EN SEGUNDO PLANO (NON-BLOCKING)
-        // Para que BuilderBot reciba HTTP 200 en ~50ms y NO encole ni demore los mensajes entrantes
+        // =============================================
+        // CHATBOT TRIAGE & AI SUMMARY
+        // Procesa el mensaje de forma segura y consistente antes de retornar el HTTP 200
         // =============================================
         const nonContactCenterLines = ['line_a', 'line_b', 'line_c', 'line_recepciones', 'line_meta'];
         const isTargetContactCenter = lineId === 'contact_center' || (!nonContactCenterLines.includes(lineId || ''));
 
+        let triageResult: any = null;
         if (direction === 'incoming' && phone && isTargetContactCenter) {
-            const backgroundTriagePromise = (async () => {
-                try {
-                    // =========================================================
-                    // DEBOUNCE & MESSAGE BUFFERING (COALESCING DE MENSAJES RÁFAGA)
-                    // Espera 3.5 segundos por si el paciente envía varios mensajes seguidos
-                    // =========================================================
-                    const DEBOUNCE_WAIT_MS = 3500;
-                    await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_WAIT_MS));
+            try {
+                // =========================================================
+                // DEBOUNCE & MESSAGE BUFFERING (COALESCING DE MENSAJES RÁFAGA)
+                // Espera breve (1.2s) por si el paciente envía varios mensajes seguidos
+                // =========================================================
+                const DEBOUNCE_WAIT_MS = 1200;
+                await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_WAIT_MS));
 
-                    // Verificar si entró otro mensaje más nuevo para este mismo teléfono
-                    const currentMsgId = insertedData?.id;
-                    if (currentMsgId) {
-                        const { data: latestMsg } = await supabase
-                            .from('whatsapp_messages')
-                            .select('id')
-                            .eq('phone', phone)
-                            .eq('direction', 'incoming')
-                            .order('created_at', { ascending: false })
-                            .order('id', { ascending: false })
-                            .limit(1)
-                            .maybeSingle();
-
-                        if (latestMsg && latestMsg.id !== currentMsgId) {
-                            console.log(`[webhook-debounce] ⏭️ Se detectó mensaje entrante posterior (${latestMsg.id} vs actual ${currentMsgId}) para ${phone}. Cediendo procesamiento al mensaje final.`);
-                            return;
-                        }
-                    }
-
-                    // Si este es el mensaje ganador (último de la ráfaga), recopilar todos los mensajes
-                    // entrantes no respondidos del paciente desde la última respuesta saliente del bot
-                    const { data: lastOutgoing } = await supabase
+                // Verificar si entró otro mensaje más nuevo para este mismo teléfono
+                const currentMsgId = insertedData?.id;
+                if (currentMsgId) {
+                    const { data: latestMsg } = await supabase
                         .from('whatsapp_messages')
-                        .select('created_at')
+                        .select('id')
                         .eq('phone', phone)
-                        .eq('direction', 'outgoing')
+                        .eq('direction', 'incoming')
                         .order('created_at', { ascending: false })
+                        .order('id', { ascending: false })
                         .limit(1)
                         .maybeSingle();
 
-                    const lastOutgoingTime = lastOutgoing?.created_at 
-                        ? new Date(lastOutgoing.created_at).toISOString() 
-                        : new Date(Date.now() - 60000).toISOString();
-
-                    const { data: burstMessages } = await supabase
-                        .from('whatsapp_messages')
-                        .select('id, content, media_type, media_url, created_at')
-                        .eq('phone', phone)
-                        .eq('direction', 'incoming')
-                        .gt('created_at', lastOutgoingTime)
-                        .order('created_at', { ascending: true });
-
-                    let consolidatedText = '';
-                    let consolidatedMediaType = finalMediaType;
-                    let consolidatedMediaUrl = mediaUrl;
-
-                    if (burstMessages && burstMessages.length > 0) {
-                        const fragments: string[] = [];
-                        for (const m of burstMessages) {
-                            const t = (m.content || '').trim();
-                            if (m.id === currentMsgId && audioTranscriptionText) {
-                                fragments.push(audioTranscriptionText);
-                            } else if (t && !t.startsWith('[image]') && !t.startsWith('[document]') && !t.startsWith('[audio]') && !t.startsWith('[voice]')) {
-                                fragments.push(t);
-                            }
-                            if (m.media_url && !consolidatedMediaUrl) {
-                                consolidatedMediaUrl = m.media_url;
-                                consolidatedMediaType = m.media_type || 'image';
-                            }
-                        }
-                        const lastFragment = fragments[fragments.length - 1] || '';
-                        if (isNavigationBackOrMenu(lastFragment) || fragments.some(f => isNavigationBackOrMenu(f))) {
-                            consolidatedText = 'Menú';
-                        } else {
-                            consolidatedText = fragments.join('\n').trim();
-                        }
+                    if (latestMsg && latestMsg.id !== currentMsgId) {
+                        console.log(`[webhook-debounce] ⏭️ Se detectó mensaje entrante posterior (${latestMsg.id} vs actual ${currentMsgId}) para ${phone}. Cediendo procesamiento al mensaje final.`);
+                        return new Response(
+                            JSON.stringify({ ok: true, debounced: true, phone, lineId, supersededBy: latestMsg.id }),
+                            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        );
                     }
-
-                    if (!consolidatedText) {
-                        consolidatedText = audioTranscriptionText || content || (consolidatedMediaUrl ? `[${consolidatedMediaType}]` : '');
-                    }
-
-                    console.log(`[webhook-debounce] 📦 Ráfaga consolidada para ${phone} (${burstMessages?.length || 1} msgs agrupados):\n"${consolidatedText}"`);
-
-                    await handleChatbotTriage(
-                        supabase, 
-                        phone, 
-                        consolidatedText, 
-                        senderName, 
-                        lineId || 'contact_center', 
-                        consolidatedMediaType, 
-                        consolidatedMediaUrl
-                    );
-                } catch (triageError: any) {
-                    console.error('[webhook] Error en handleChatbotTriage (non-fatal):', triageError?.message || triageError);
                 }
 
-                // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador
-                try {
-                    const r = await fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-                        },
-                        body: JSON.stringify({ phone })
-                    });
-                    const text = await r.text();
-                    console.log(`[webhook] ✅ Resumen IA generado automáticamente para ${phone}:`, text.slice(0, 120));
-                } catch (aiErr: any) {
+                // Si este es el mensaje ganador (último de la ráfaga), recopilar todos los mensajes
+                // entrantes no respondidos del paciente desde la última respuesta saliente del bot
+                const { data: lastOutgoing } = await supabase
+                    .from('whatsapp_messages')
+                    .select('created_at')
+                    .eq('phone', phone)
+                    .eq('direction', 'outgoing')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                const lastOutgoingTime = lastOutgoing?.created_at 
+                    ? new Date(lastOutgoing.created_at).toISOString() 
+                    : new Date(Date.now() - 60000).toISOString();
+
+                const { data: burstMessages } = await supabase
+                    .from('whatsapp_messages')
+                    .select('id, content, media_type, media_url, created_at')
+                    .eq('phone', phone)
+                    .eq('direction', 'incoming')
+                    .gt('created_at', lastOutgoingTime)
+                    .order('created_at', { ascending: true });
+
+                let consolidatedText = '';
+                let consolidatedMediaType = finalMediaType;
+                let consolidatedMediaUrl = mediaUrl;
+
+                if (burstMessages && burstMessages.length > 0) {
+                    const fragments: string[] = [];
+                    for (const m of burstMessages) {
+                        const t = (m.content || '').trim();
+                        if (m.id === currentMsgId && audioTranscriptionText) {
+                            fragments.push(audioTranscriptionText);
+                        } else if (t && !t.startsWith('[image]') && !t.startsWith('[document]') && !t.startsWith('[audio]') && !t.startsWith('[voice]')) {
+                            fragments.push(t);
+                        }
+                        if (m.media_url && !consolidatedMediaUrl) {
+                            consolidatedMediaUrl = m.media_url;
+                            consolidatedMediaType = m.media_type || 'image';
+                        }
+                    }
+                    const lastFragment = fragments[fragments.length - 1] || '';
+                    if (isNavigationBackOrMenu(lastFragment) || fragments.some(f => isNavigationBackOrMenu(f))) {
+                        consolidatedText = 'Menú';
+                    } else {
+                        consolidatedText = fragments.join('\n').trim();
+                    }
+                }
+
+                if (!consolidatedText) {
+                    consolidatedText = audioTranscriptionText || content || (consolidatedMediaUrl ? `[${consolidatedMediaType}]` : '');
+                }
+
+                console.log(`[webhook-debounce] 📦 Ráfaga consolidada para ${phone} (${burstMessages?.length || 1} msgs agrupados):\n"${consolidatedText}"`);
+
+                console.log(`[webhook] 🤖 Llamando a handleChatbotTriage para ${phone}...`);
+                triageResult = await handleChatbotTriage(
+                    supabase, 
+                    phone, 
+                    consolidatedText, 
+                    senderName, 
+                    lineId || 'contact_center', 
+                    consolidatedMediaType, 
+                    consolidatedMediaUrl
+                );
+                console.log(`[webhook] ✅ handleChatbotTriage completado para ${phone}:`, JSON.stringify(triageResult));
+
+                // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador (asíncrono no crítico)
+                fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                    },
+                    body: JSON.stringify({ phone })
+                }).catch((aiErr: any) => {
                     console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr);
-                }
-            })();
+                });
 
-            if (typeof (globalThis as any).EdgeRuntime !== 'undefined' && (globalThis as any).EdgeRuntime?.waitUntil) {
-                (globalThis as any).EdgeRuntime.waitUntil(backgroundTriagePromise);
+            } catch (triageError: any) {
+                console.error('[webhook] Error en handleChatbotTriage:', triageError?.message || triageError, triageError?.stack);
+                triageResult = { error: triageError?.message || String(triageError), stack: triageError?.stack };
             }
         }
 
         return new Response(
-            JSON.stringify({ ok: true, direction, phone, mediaType: finalMediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId }),
+            JSON.stringify({ ok: true, direction, phone, mediaType: finalMediaType, hasMedia: !!mediaUrl, persisted: mediaUrl !== originalMediaUrl, lineId, triageResult }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
 
@@ -3475,36 +3474,45 @@ function resolveBotTags(
     const stage = context?.botStage || '';
     const accion = context?.gestionTurno?.accion || '';
 
+    const isConsultation = motivoNorm.includes('consulta de turno') || motivoNorm.includes('consultar turno') || stage === 'turno_consultado' || stage === 'esperando_dni_turno';
+    const patientHasExplicitCancel = /\b(cancelar|cancelo|cancela|cancelen|cancelarme|cancelado|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir)\b/i.test(norm);
+
     // 1. CANCELACIÓN: cuando el paciente expresa de forma explícita que quiere cancelar un turno
     const isExplicitCancel = 
-        accion === 'cancelar' ||
-        intent === 'cancelar_turno_online' ||
-        stage === 'esperando_confirmacion_cancelacion' ||
-        /\b(cancel\w*|cancelae|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir|no\s+voy\s+a\s+asistir)\b/i.test(norm) ||
-        motivoNorm.includes('cancelar') || 
-        motivoNorm.includes('cancelacion') ||
-        motivoNorm.includes('baja de turno');
+        !isConsultation && (
+            accion === 'cancelar' ||
+            intent === 'cancelar_turno_online' ||
+            stage === 'esperando_confirmacion_cancelacion' ||
+            stage === 'cancelacion_completada' ||
+            patientHasExplicitCancel ||
+            ((motivoNorm.includes('cancelar') || motivoNorm.includes('cancelacion') || motivoNorm.includes('baja de turno')) && !isConsultation)
+        );
 
     if (isExplicitCancel) {
         tagsSet.add('Cancelación');
         tagsSet.delete('Reprogramación');
         tagsSet.delete('Triage Completo');
+    } else if (isConsultation || !patientHasExplicitCancel) {
+        tagsSet.delete('Cancelación');
     }
 
     // 2. REPROGRAMACIÓN: cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno
+    const patientHasExplicitReprog = /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita|fecha|dia|horario)|modificar\s+(?:el\s+|mi\s+)?(?:turno|cita|fecha|dia|horario)|mover\s+(?:el\s+|mi\s+)?(?:turno|cita)|pasar\s+(?:el\s+|mi\s+)?(?:turno|cita)\s+(?:para|a)|postergar\s+(?:el\s+|mi\s+)?(?:turno|cita)|otro\s+dia|otra\s+fecha)\b/i.test(norm);
     const isExplicitReprog = 
-        accion === 'reprogramar' ||
-        intent === 'reprogramar_turno_online' ||
-        stage === 'esperando_preferencia_reprogramacion' ||
-        stage === 'esperando_profesional_reprogramacion' ||
-        /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita|fecha|dia|horario)|modificar\s+(?:el\s+|mi\s+)?(?:turno|cita|fecha|dia|horario)|mover\s+(?:el\s+|mi\s+)?(?:turno|cita)|pasar\s+(?:el\s+|mi\s+)?(?:turno|cita)\s+(?:para|a)|postergar\s+(?:el\s+|mi\s+)?(?:turno|cita)|otro\s+dia|otra\s+fecha)\b/i.test(norm) ||
-        motivoNorm.includes('reprogramar') || 
-        motivoNorm.includes('reprogramacion') ||
-        motivoNorm.includes('modificar turno');
+        !isConsultation && (
+            accion === 'reprogramar' ||
+            intent === 'reprogramar_turno_online' ||
+            stage === 'esperando_preferencia_reprogramacion' ||
+            stage === 'esperando_profesional_reprogramacion' ||
+            patientHasExplicitReprog ||
+            ((motivoNorm.includes('reprogramar') || motivoNorm.includes('reprogramacion') || motivoNorm.includes('modificar turno')) && !isConsultation)
+        );
 
     if (isExplicitReprog && !isExplicitCancel) {
         tagsSet.add('Reprogramación');
         tagsSet.delete('Cancelación');
+    } else if (isConsultation || !patientHasExplicitReprog) {
+        tagsSet.delete('Reprogramación');
     }
 
     // 3. AUTORIZACIÓN: cuando el paciente no está pidiendo turno, solamente está pidiendo autorización

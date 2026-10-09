@@ -5283,7 +5283,12 @@ export default function ContactCenterChatConsole({
                 )}
 
                 {/* Banner de Cancelación de Turno */}
-                {(selectedChat?.tags?.includes('Cancelación') || (selectedChat?.motivoConsulta || '').toLowerCase().includes('cancelar') || (selectedChat?.motivoConsulta || '').toLowerCase().includes('cancelación')) && (
+                {(
+                    selectedChat?.tags?.includes('Cancelación') &&
+                    !(selectedChat?.motivoConsulta || '').toLowerCase().includes('consulta de turno') &&
+                    !(selectedChat?.motivoConsulta || '').toLowerCase().includes('consultar turno') &&
+                    !((selectedChat?.aiSummary?.tipo_tramite || '').toLowerCase().includes('informacion') && !(selectedChat?.aiSummary?.resumen_solicitud || '').toLowerCase().includes('cancelar'))
+                ) && (
                     <div style={{
                         flexShrink: 0,
                         padding: '6px 14px',

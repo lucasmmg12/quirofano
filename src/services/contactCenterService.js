@@ -663,63 +663,89 @@ export function resolveConversationTags(conv, messages = []) {
         });
     }
 
-    // 2. Detección retroactiva / Fallback sobre motivo_consulta y mensajes entrantes
-    const motivo = (conv?.motivo_consulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    const stage = (conv?.bot_stage || '').toLowerCase();
-    
-    // Textos de mensajes del paciente
+    // 2. Análisis de Inteligencia Artificial (ai_summary)
+    const aiSummary = conv?.ai_summary || {};
+    const aiResumen = String(aiSummary?.resumen_solicitud || '').toLowerCase();
+    const aiTipoTramite = String(aiSummary?.tipo_tramite || '').toLowerCase();
+    const aiGestionAccion = String(aiSummary?.gestion_turno?.accion || '').toLowerCase();
+
+    // La IA identificó explícitamente cancelación
+    const aiIndicatesCancel = 
+        aiGestionAccion === 'cancelar' ||
+        aiTipoTramite.includes('cancel') ||
+        /\b(cancelar|cancelo|cancela|cancelen|dar\s+de\s+baja|anular\s+turno)\b/i.test(aiResumen);
+
+    // La IA identificó que el paciente solo pidió consultar / información de turno y no cancelar
+    const aiIndicatesConsultationOnly = 
+        (aiTipoTramite.includes('informacion') || aiTipoTramite.includes('información') || aiTipoTramite.includes('consulta')) &&
+        /\b(consultar|consulta|consulto|recordar|recuerda|averiguar|saber\s+fecha)\b/i.test(aiResumen) &&
+        !aiIndicatesCancel;
+
+    // 3. Textos de mensajes del PACIENTE en el chat (NUNCA del bot)
     const patientMsgs = (messages || [])
         .filter(m => m.direction === 'incoming' || m.sender === 'patient')
         .map(m => (m.content || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase())
-        .slice(0, 10);
+        .slice(0, 15);
     const fullPatientCorpus = patientMsgs.join(' ');
-    const lastMsgText = (conv?.last_message_text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-    // A. CANCELACIÓN: cuando el paciente expresa de forma explícita que quiere cancelar un turno
-    const isCancel = 
-        motivo.includes('cancelar') || 
-        motivo.includes('cancelacion') || 
-        motivo.includes('baja de turno') ||
-        /\b(cancel\w*|cancelae|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir|no\s+voy\s+a\s+asistir)\b/i.test(lastMsgText) ||
-        /\b(cancel\w*|cancelae|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno)\b/i.test(fullPatientCorpus);
+    // El paciente usó expresamente palabras de cancelación en sus mensajes:
+    const patientHasExplicitCancel = /\b(cancelar|cancelo|cancela|cancelen|cancelarme|cancelado|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir)\b/i.test(fullPatientCorpus);
+
+    const motivo = (conv?.motivo_consulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const stage = (conv?.bot_stage || '').toLowerCase();
+    const isConsultationMotivo = motivo.includes('consulta de turno') || motivo.includes('consultar turno') || motivo.includes('consulta propia') || stage === 'turno_consultado' || stage === 'esperando_dni_turno';
+
+    // A. CANCELACIÓN: Solo cuando expresamente el paciente quiera cancelar o la IA determine trámite de cancelación
+    // Si la IA o el motivo determinan que es solo consulta de turno y el paciente no escribió "cancelar/cancelo/cancela", NO ES CANCELACIÓN
+    const isCancel = !aiIndicatesConsultationOnly && !isConsultationMotivo && (
+        patientHasExplicitCancel || 
+        aiIndicatesCancel ||
+        stage === 'esperando_confirmacion_cancelacion' ||
+        stage === 'cancelacion_completada' ||
+        ((motivo.includes('cancelar') || motivo.includes('cancelacion') || motivo.includes('baja de turno')) && !isConsultationMotivo)
+    );
 
     if (isCancel) {
         tagsSet.add('Cancelación');
         tagsSet.delete('Reprogramación');
+    } else if (aiIndicatesConsultationOnly || isConsultationMotivo || !patientHasExplicitCancel) {
+        // Limpieza: si fue consulta o no hubo intención explícita de cancelar, remover tag de cancelación
+        tagsSet.delete('Cancelación');
     }
 
-    // B. REPROGRAMACIÓN: cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno
-    const isReprog = 
-        motivo.includes('reprogramar') || 
-        motivo.includes('reprogramacion') || 
-        motivo.includes('modificar turno') ||
+    // B. REPROGRAMACIÓN: cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar
+    const patientHasExplicitReprog = /\b(reprogramar|reprogramo|reprograma|reprogramen|cambiar\s+(?:el\s+|mi\s+)?turno|modificar\s+(?:el\s+|mi\s+)?turno|mover\s+(?:el\s+|mi\s+)?turno|pasar\s+(?:el\s+|mi\s+)?turno|otro\s+dia|otra\s+fecha)\b/i.test(fullPatientCorpus);
+    const aiIndicatesReprog = aiGestionAccion === 'reprogramar' || aiTipoTramite.includes('reprogram') || /\b(reprogramar|cambiar\s+turno)\b/i.test(aiResumen);
+
+    const isReprog = !aiIndicatesConsultationOnly && !isConsultationMotivo && (
+        patientHasExplicitReprog ||
+        aiIndicatesReprog ||
         stage === 'esperando_preferencia_reprogramacion' ||
         stage === 'esperando_profesional_reprogramacion' ||
-        /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita|fecha|dia|horario)|modificar\s+(?:el\s+|mi\s+)?(?:turno|cita|fecha|dia|horario)|mover\s+(?:el\s+|mi\s+)?(?:turno|cita)|pasar\s+(?:el\s+|mi\s+)?(?:turno|cita)\s+(?:para|a)|otro\s+dia|otra\s+fecha)\b/i.test(lastMsgText) ||
-        /\b(reprogram\w*|re\s*programar|cambiar\s+(?:el\s+|mi\s+|la\s+|de\s+)?(?:turno|cita))\b/i.test(fullPatientCorpus);
+        ((motivo.includes('reprogramar') || motivo.includes('reprogramacion') || motivo.includes('modificar turno')) && !isConsultationMotivo)
+    );
 
     if (isReprog && !isCancel) {
         tagsSet.add('Reprogramación');
         tagsSet.delete('Cancelación');
+    } else if (aiIndicatesConsultationOnly || isConsultationMotivo || !patientHasExplicitReprog) {
+        tagsSet.delete('Reprogramación');
     }
 
     // C. AUTORIZACIÓN: cuando el paciente no está pidiendo turno, solamente está pidiendo autorización
     const asksTurno = 
         motivo.includes('solicitud de turno') ||
-        /\b(nuevo\s+turno|sacar\s+turno|pedir\s+turno|solicitar\s+turno|quiero\s+un\s+turno|agendar\s+turno|dar\s+un\s+turno)\b/i.test(lastMsgText) ||
         /\b(nuevo\s+turno|sacar\s+turno|pedir\s+turno|solicitar\s+turno)\b/i.test(fullPatientCorpus);
 
     const isAutoriz = 
         (stage === 'esperando_foto_autorizacion' ||
         motivo.includes('autorizacion') || 
         motivo.includes('autorizar') ||
-        /\b(autoriz\w*|autorizacion|auditar|auditoria|pedido\s+medico\s+para\s+autorizar|orden\s+para\s+autorizar|orden\s+medica\s+para\s+autorizar)\b/i.test(lastMsgText) ||
-        /\b(autoriz\w*|autorizacion|auditar|auditoria)\b/i.test(fullPatientCorpus)) &&
-        !asksTurno &&
-        !isCancel &&
-        !isReprog;
+        aiTipoTramite.includes('autoriz') ||
+        /\b(autoriz\w*|auditar|auditoria|pedido\s+medico\s+para\s+autorizar|orden\s+para\s+autorizar)\b/i.test(fullPatientCorpus)) &&
+        !asksTurno;
 
-    if (isAutoriz) {
+    if (isAutoriz && !isCancel && !isReprog) {
         tagsSet.add('Autorización');
     }
 
