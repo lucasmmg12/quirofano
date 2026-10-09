@@ -12,6 +12,7 @@ import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
 import ContactCenterMetricsTab from './ContactCenterMetricsTab';
 import ContactCenterConfigTab from './ContactCenterConfigTab';
 import ContactCenterIncentivosTab from './ContactCenterIncentivosTab';
+import ChatWindow from '../ChatWindow';
 import { 
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
@@ -44,6 +45,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }
     };
     const [chats, setChats] = useState([]);
+    const [panelChatOpen, setPanelChatOpen] = useState(false);
+    const [panelChatPatient, setPanelChatPatient] = useState({ name: '', phone: '', dni: '' });
     const [activeChatId, setActiveChatId] = useState(() => {
         try {
             return localStorage.getItem('sa_cc_active_chat_id') || null;
@@ -1004,7 +1007,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         setActiveSubTab('conversaciones');
     };
 
-    const handleOpenChatWithPhone = (phone) => {
+    const handleOpenChatWithPhone = (phone, patientData = {}) => {
         if (!phone) return;
         const cleanPhone = phone.replace(/\D/g, '');
         const existing = chats.find(c => {
@@ -1016,7 +1019,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             setActiveChatId(existing.id);
             setActiveSubTab('conversaciones');
         } else {
-            setActiveSubTab('nueva_conversacion');
+            setPanelChatPatient({
+                name: patientData.name || patientData.paciente || '',
+                phone: phone,
+                dni: patientData.dni || ''
+            });
+            setPanelChatOpen(true);
         }
     };
 
@@ -1347,6 +1355,16 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     saving={savingPermisos}
                 />
             )}
+
+            {/* Ventana Flotante de Chat estilo Cirugías / MSN Messenger */}
+            <ChatWindow
+                open={panelChatOpen}
+                onClose={() => setPanelChatOpen(false)}
+                patientName={panelChatPatient.name}
+                patientPhone={panelChatPatient.phone}
+                patientContext={{ dni: panelChatPatient.dni }}
+                addToast={addToast}
+            />
         </div>
     );
 }

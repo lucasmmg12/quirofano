@@ -11,6 +11,7 @@ import {
     descartarCancelacion,
     subscribeToCancelaciones 
 } from '../../services/cancelacionesService';
+import ChatWindow from '../ChatWindow';
 
 export default function ContactCenterCancelacionesTab({ 
     activeAgent, 
@@ -36,6 +37,22 @@ export default function ContactCenterCancelacionesTab({
     const [copiedDni, setCopiedDni] = useState(null);
     const [actionModal, setActionModal] = useState(null); // { caso, tipo: 'cancelar' | 'descartar', notas: '', saving: false }
     const [showGuia, setShowGuia] = useState(true);
+
+    // Chat Window estilo Cirugías / MSN Messenger
+    const [chatOpen, setChatOpen] = useState(false);
+    const [chatPatient, setChatPatient] = useState({ name: '', phone: '', dni: '', medico: '', especialidad: '', fechaTurno: '' });
+
+    const handleOpenChat = (caso) => {
+        setChatPatient({
+            name: caso.paciente_nombre || 'Paciente',
+            phone: caso.phone,
+            dni: caso.dni,
+            medico: caso.medico,
+            especialidad: caso.especialidad,
+            fechaTurno: caso.fecha_turno
+        });
+        setChatOpen(true);
+    };
 
     // Cargar datos
     const loadData = async (isSilent = false) => {
@@ -892,11 +909,11 @@ export default function ContactCenterCancelacionesTab({
 
                                 {/* Columna 4: Botones de Acción */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                    {/* Botón Ver Chat */}
-                                    {onOpenChatWithPhone && (
+                                    {/* Botón Ver Chat estilo MSN / Cirugías */}
+                                    {caso.phone && (
                                         <button
-                                            onClick={() => onOpenChatWithPhone(caso.phone)}
-                                            title="Ver conversación de WhatsApp donde canceló"
+                                            onClick={() => handleOpenChat(caso)}
+                                            title="Ver conversación de WhatsApp donde canceló el turno"
                                             style={{
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
@@ -911,8 +928,16 @@ export default function ContactCenterCancelacionesTab({
                                                 cursor: 'pointer',
                                                 transition: 'all 0.15s ease'
                                             }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.borderColor = '#0284C7';
+                                                e.currentTarget.style.color = '#0284C7';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.borderColor = '#CBD5E1';
+                                                e.currentTarget.style.color = '#0F2942';
+                                            }}
                                         >
-                                            <MessageSquare size={13} /> Ver Chat
+                                            <MessageSquare size={13} color="#0284C7" /> Ver Chat
                                         </button>
                                     )}
 
@@ -1167,6 +1192,21 @@ export default function ContactCenterCancelacionesTab({
                     </div>
                 </div>
             )}
+
+            {/* Modal ChatWindow estilo MSN Messenger / Cirugías */}
+            <ChatWindow
+                open={chatOpen}
+                onClose={() => setChatOpen(false)}
+                patientName={chatPatient.name}
+                patientPhone={chatPatient.phone}
+                patientContext={{
+                    dni: chatPatient.dni,
+                    medico: chatPatient.medico,
+                    especialidad: chatPatient.especialidad,
+                    fechaTurno: chatPatient.fechaTurno
+                }}
+                addToast={addToast}
+            />
         </div>
     );
 }
