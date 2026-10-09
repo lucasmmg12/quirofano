@@ -1042,7 +1042,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     return (
         <div className="content no-print" style={{ padding: activeSubTab === 'conversaciones' ? '6px 10px 0 10px' : '16px 20px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
-            {/* Barra permanente de navegación del módulo Contact Center */}
+            {/* Barra permanente de navegación del módulo Contact Center (solo para consola y submódulos de chat) */}
+            {activeSubTab !== 'incentivos' && (
             <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -1163,27 +1164,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             Métricas y Costos
                         </button>
 
-                        <button
-                            onClick={() => handleNavigateTab('incentivos')}
-                            style={{
-                                padding: '6px 12px', borderRadius: '6px', border: 'none',
-                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '5px',
-                                background: activeSubTab === 'incentivos' ? '#0F2942' : 'transparent',
-                                color: activeSubTab === 'incentivos' ? '#FFFFFF' : '#0D9488',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            <Award size={14} />
-                            Incentivos Contact Center
-                            <span style={{
-                                background: activeSubTab === 'incentivos' ? '#0D9488' : '#CCFBF1',
-                                color: activeSubTab === 'incentivos' ? '#FFFFFF' : '#0F766E',
-                                fontSize: '0.65rem', padding: '1px 5px', borderRadius: '8px', fontWeight: 800
-                            }}>
-                                10 Esc.
-                            </span>
-                        </button>
 
                         <button
                             onClick={() => handleNavigateTab('configuracion')}
@@ -1275,6 +1255,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         </div>
                     </div>
                 </div>
+            )}
 
             {/* Vistas del Módulo */}
             {activeSubTab === 'cancelaciones' && (

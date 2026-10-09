@@ -142,9 +142,15 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 { id: 'contact_center_cancelaciones', label: 'Cancelaciones', icon: CalendarX, badge: 'Bolsa', badgeColor: '#DC2626' },
                 { id: 'turnos_online', label: 'Turnos', icon: AlertTriangle, badge: 'Alertas' },
                 { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
-                { id: 'contact_center_incentivos', label: 'Incentivos', icon: Award, badge: '10 Esc.', badgeColor: '#059669' },
                 { id: 'contact_center_config', label: 'Configuración', icon: Settings },
             ]
+        },
+        { 
+            id: 'contact_center_incentivos', 
+            label: 'Incentivos Contact Center', 
+            icon: Award, 
+            badge: '10 Esc.', 
+            badgeColor: '#059669' 
         },
         { id: 'turnos_online_duplicados', originalId: 'turnos_online', label: 'Turnos Online Duplicados', icon: AlertTriangle },
     ].filter(i => isModuleVisible(i.originalId || i.id));
@@ -268,6 +274,19 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                                     >
                                         <Icon size={17} className="sidebar__item-icon" />
                                         <span className="sidebar__item-label" style={{ flex: 1 }}>{item.label}</span>
+                                        {item.badge && (
+                                            <span style={{
+                                                background: item.badgeColor || '#059669',
+                                                color: '#FFFFFF',
+                                                fontSize: '0.58rem',
+                                                padding: '1px 5px',
+                                                borderRadius: '8px',
+                                                fontWeight: 800,
+                                                marginRight: '6px'
+                                            }}>
+                                                {item.badge}
+                                            </span>
+                                        )}
                                         {isActive && <div className="sidebar__item-indicator" />}
                                     </Link>
 
