@@ -194,6 +194,7 @@ const VIEW_LABELS = {
     contact_center_metricas: 'Contact Center - Métricas y Costos',
     contact_center_incentivos: 'Contact Center - Incentivos y Productividad',
     contact_center_config: 'Contact Center - Configuración',
+    contact_center_permisos: 'Contact Center - Permisos',
     gobernanza: 'Gobernanza de Datos',
     gobernanza_indicadores: 'Gobernanza UCI',
 };
@@ -911,7 +912,7 @@ function App({ currentUser, onLogout }) {
                     <ActivosPanel currentUser={currentUser} addToast={addToast} />
                 )}
 
-                {['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_config', 'contact_center_incentivos'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
+                {['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_config', 'contact_center_incentivos', 'contact_center_permisos'].includes(activeView) && canUserAccessContactCenter(currentUser) && (
                     <ContactCenterPanel 
                         currentUser={currentUser} 
                         addToast={addToast} 
@@ -922,6 +923,7 @@ function App({ currentUser, onLogout }) {
                             activeView === 'contact_center_metricas' ? 'metricas' :
                             activeView === 'contact_center_config' ? 'configuracion' :
                             activeView === 'contact_center_incentivos' ? 'incentivos' :
+                            activeView === 'contact_center_permisos' ? 'permisos' :
                             'conversaciones'
                         }
                         onTabChange={(tab) => {
@@ -933,6 +935,7 @@ function App({ currentUser, onLogout }) {
                                 metricas: 'contact_center_metricas',
                                 configuracion: 'contact_center_config',
                                 incentivos: 'contact_center_incentivos',
+                                permisos: 'contact_center_permisos',
                             };
                             if (tabToView[tab] && activeView !== tabToView[tab]) {
                                 setActiveView(tabToView[tab]);

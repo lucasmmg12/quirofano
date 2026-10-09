@@ -14,6 +14,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
     const isUciOnly = username === 'naguilera';
+    const isLMarinero = ['lmarinero', 'lucas marinero'].includes(username) || MASTER_ADMINS.includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
@@ -25,7 +26,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         if (isContactCenterOnly) {
             // Estricto: Únicamente Contact Center y el módulo Simon IA ENTERO (Chat, Documentos, Reglas, Analytics)
             return [
-                'contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config',
+                'contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config', 'contact_center_permisos',
                 'beto', 'simon', 'beto_rules', 'beto_analytics'
             ].includes(id);
         }
@@ -143,6 +144,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 { id: 'turnos_online', label: 'Turnos', icon: CalendarCheck },
                 { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
                 { id: 'contact_center_config', label: 'Configuración', icon: Settings },
+                ...(isLMarinero ? [{ id: 'contact_center_permisos', label: 'Permisos', icon: ShieldCheck }] : []),
             ]
         },
         { 
@@ -159,7 +161,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isAltasActive = altasSubItems.some(i => activeView === i.id);
     const isCirugiasActive = cirugiasSubItems.some(i => activeView === i.id);
     const isSimonActive = simonSubItems.some(i => activeView === i.id);
-    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView);
+    const isContactCenterActive = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config', 'contact_center_permisos'].includes(activeView);
 
     useEffect(() => {
         if (isContactCenterActive) {
