@@ -3940,29 +3940,6 @@ export default function ContactCenterChatConsole({
                                 </span>
                             )}
                         </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setShiftSummaryModalOpen(true)}
-                            title="Final de Turno: ver métricas e insights de hoy (mensajes, cierres, tipos de consultas y turnos SALUS)"
-                            style={{
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #CBD5E1',
-                                background: '#FFFFFF',
-                                color: '#0284C7',
-                                fontSize: '0.66rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                            }}
-                        >
-                            <BarChart3 size={11} />
-                            <span>Mi Turno</span>
-                        </button>
                     </div>
 
                     {myAssignedChats.length > 0 && (
