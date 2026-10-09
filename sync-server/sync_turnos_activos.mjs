@@ -43,6 +43,49 @@ function generateTurnoId(origen, dni, fecha, hora, medico, agenda) {
     return crypto.createHash('md5').update(raw).digest('hex');
 }
 
+/**
+ * Resuelve de forma inequívoca la Sede de atención a partir del Centro y la Agenda de SALUS.
+ * REGLA ESTRICTA DE NEGOCIO:
+ * Si no es posible determinar con 100% de exactitud y certeza la sede a partir de la agenda o centro,
+ * retorna null. Bajo ninguna circunstancia se debe suponer o adivinar la sede.
+ */
+export function resolveSedeFromAgenda({ centro, agendaNombre, tipoAgenda }) {
+    const rawCentro = String(centro || '').trim().toUpperCase();
+    const rawAgenda = String(agendaNombre || '').trim().toUpperCase();
+    const rawTipo = String(tipoAgenda || '').trim().toUpperCase();
+
+    // 1. Mapeo canónico exacto por Centro en SALUS
+    if (rawCentro === 'SANTA FE' || rawCentro.includes('SANTA FE')) {
+        return 'Sede Santa Fe (Santa Fe 263 Este)';
+    }
+    if (rawCentro === 'SAN LUIS SEDE 3' || rawCentro.includes('SEDE 3') || rawCentro.includes('SEDE3')) {
+        return 'Sede 3 (San Luis 463 Oeste)';
+    }
+    if (rawCentro === 'SAN LUIS NORTE') {
+        return 'Sede 2 (San Luis 433 Oeste)';
+    }
+    if (rawCentro === 'SAN LUIS SUR') {
+        return 'Sede Central (San Luis 432 Oeste)';
+    }
+
+    // 2. Mapeo unívoco por nomenclatura de la Agenda o Tipo de Agenda
+    if (rawAgenda.includes('(CE)') || rawAgenda.includes('SANTA FE') || rawTipo.includes('SANTA FE') || rawTipo.includes('SECTOR 1') || rawTipo.includes('SECTOR 2')) {
+        return 'Sede Santa Fe (Santa Fe 263 Este)';
+    }
+    if (rawAgenda.includes('SEDE 3') || rawAgenda.includes('SEDE3') || rawAgenda.includes('SLS 3') || rawAgenda.includes('SLS3') || rawAgenda.includes('SAN LUIS 463')) {
+        return 'Sede 3 (San Luis 463 Oeste)';
+    }
+    if (rawAgenda.includes('SEDE 2') || rawAgenda.includes('SEDE2') || rawAgenda.includes('SLS 2') || rawAgenda.includes('SLS2') || rawAgenda.includes('SAN LUIS NORTE') || rawAgenda.includes('SAN LUIS 433')) {
+        return 'Sede 2 (San Luis 433 Oeste)';
+    }
+    if (rawAgenda.includes('SEDE 1') || rawAgenda.includes('SEDE1') || rawAgenda.includes('SLS 1') || rawAgenda.includes('SLS1') || rawAgenda.includes('SAN LUIS SUR') || rawAgenda.includes('SAN LUIS 432') || rawTipo.includes('QUIRÓFANOS CENTRALES') || rawTipo.includes('QUIROFANOS CENTRALES') || rawTipo.includes('MATERNIDAD')) {
+        return 'Sede Central (San Luis 432 Oeste)';
+    }
+
+    // Si no se puede determinar con certeza exacta, se retorna null para no informar sede errónea
+    return null;
+}
+
 export async function syncTurnosActivos(pool, supabase) {
     console.log('\n======================================================');
     console.log('🔄 [SYNC-TURNOS] Iniciando sincronización de turnos activos...');
@@ -114,7 +157,11 @@ export async function syncTurnosActivos(pool, supabase) {
                 hora: horaStr,
                 medico,
                 especialidad: (r.ESPECIALIDAD || 'Consulta Médica').trim(),
-                sede: null,
+                sede: resolveSedeFromAgenda({
+                    centro: r.Centro,
+                    agendaNombre: r.AgendaNombre,
+                    tipoAgenda: r['TIPO AGENDA']
+                }),
                 obra_social: (r.CLIENTE || 'Particular / A confirmar').trim(),
                 tipo_visita: r['TIPO VISITA'] ? String(r['TIPO VISITA']).trim() : null,
                 motivo: r.MOTIVO ? String(r.MOTIVO).trim() : null,
@@ -140,7 +187,8 @@ export async function syncTurnosActivos(pool, supabase) {
                     v.HoraFi,
                     v.FechaCreacion,
                     v.Internet,
-                    vn.Comentarios
+                    vn.Comentarios,
+                    vl.Centro
                 FROM Visitas v
                 INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
                 LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
@@ -184,7 +232,11 @@ export async function syncTurnosActivos(pool, supabase) {
                     hora: horaStr,
                     medico,
                     especialidad: contact.motivo || agenda || 'Consulta Médica',
-                    sede: null,
+                    sede: resolveSedeFromAgenda({
+                        centro: r.Centro,
+                        agendaNombre: r.NombreAgenda,
+                        tipoAgenda: null
+                    }),
                     obra_social: (contact.mutua || 'Particular / A confirmar').trim(),
                     tipo_visita: 'Turno Web Online',
                     motivo: contact.motivo || 'Reserva Online',
@@ -235,7 +287,11 @@ export async function syncTurnosActivos(pool, supabase) {
                                 hora: hTurno,
                                 medico,
                                 especialidad: subTurno.motivo || 'Consulta Online',
-                                sede: null,
+                                sede: resolveSedeFromAgenda({
+                                    centro: subTurno.centro || to.centro,
+                                    agendaNombre: subTurno.agenda || to.agenda_nombre,
+                                    tipoAgenda: null
+                                }),
                                 obra_social: to.mutua || 'A confirmar',
                                 tipo_visita: subTurno.motivo || 'Turno Web',
                                 motivo: subTurno.motivo || null,

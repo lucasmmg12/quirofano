@@ -304,8 +304,8 @@ Deno.serve(async (req) => {
                 if (activeTurnos && activeTurnos.length > 0) {
                     turnosStr = '\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n' +
                         activeTurnos.map((t: any, idx: number) => 
-                            `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Cobertura: ${t.obra_social || 'A confirmar'}`
-                        ).join('\n');
+                            `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad}${t.sede ? ` | Sede: ${t.sede}` : ''} | Cobertura: ${t.obra_social || 'A confirmar'}`
+                        ).join('\n') + `\n(Nota: Informar la Sede solo si viene explícita en los datos; de lo contrario no mencionarla).`;
                 }
             }
 
@@ -2093,6 +2093,9 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
         reply += `⏰ *Horario:* ${t.hora} hs\n`;
         reply += `🩺 *Especialidad:* ${t.especialidad || t.tipo_visita || 'Consulta Médica'}\n`;
         reply += `👨‍⚕️ *Profesional:* ${t.medico || 'Profesional Asignado'}\n`;
+        if (t.sede && String(t.sede).trim() !== '') {
+            reply += `🏢 *Sede:* ${String(t.sede).trim()}\n`;
+        }
         if (t.obra_social && t.obra_social !== 'Particular / A confirmar') {
             reply += `📋 *Cobertura:* ${t.obra_social}\n`;
         }
@@ -2220,8 +2223,8 @@ async function generateChatGptConversationalResponse(
         const turnosContextStr = (context?.turnosActivosProximos && context.turnosActivosProximos.length > 0)
             ? `\nTURNOS PRÓXIMOS AGENDADOS DEL PACIENTE EN EL SANATORIO:\n` +
               context.turnosActivosProximos.map((t, idx) => 
-                `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad} | Cobertura: ${t.obra_social}`
-              ).join('\n') + `\n(Si el paciente consulta sobre su cita o detalles de su turno, bríndale esta información de forma cálida, clara y completa).\n`
+                `${idx + 1}. Fecha: ${t.fecha} | Hora: ${t.hora} hs | Profesional: ${t.medico} | Especialidad: ${t.especialidad}${t.sede ? ` | Sede: ${t.sede}` : ''} | Cobertura: ${t.obra_social}`
+              ).join('\n') + `\n(REGLA ESTRICTA: Si el turno tiene Sede indicada en los datos, infórmasela al paciente. Si NO tiene Sede indicada o no es exacta, NO inventes ni supongas la sede, simplemente no la menciones).\n`
             : '';
 
         // Obtener configuración dinámica (System Prompt editable desde el Contact Center)
@@ -6101,11 +6104,15 @@ async function handleChatbotTriage(
             updates.bot_active = true;
             nextStage = 'turno_consultado';
         } else if (!isAskingNewTurno && turnoOnlineProximo) {
+            const sedeLine = (turnoOnlineProximo.sede && String(turnoOnlineProximo.sede).trim() !== '')
+                ? `• *Sede:* ${String(turnoOnlineProximo.sede).trim()}\n`
+                : '';
             replyText = `¡Hola *${fullName}*! 🏥\n\n` +
                 `📅 *Tenés un turno online agendado:*\n` +
                 `• *Profesional:* ${turnoOnlineProximo.profesional}\n` +
                 `• *Fecha y Hora:* ${turnoOnlineProximo.fecha} a las ${turnoOnlineProximo.hora} hs\n` +
-                `• *Agenda:* ${turnoOnlineProximo.agenda}\n\n` +
+                `• *Agenda:* ${turnoOnlineProximo.agenda}\n` +
+                `${sedeLine}\n` +
                 `¿Deseás confirmar, reprogramar o cancelar tu turno?\n\n` +
                 `💡 *¿Deseás averiguar sobre el turno de otro paciente o familiar?* Indícanos su número de *DNI*.\n\n` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;

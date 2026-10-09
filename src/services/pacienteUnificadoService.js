@@ -456,6 +456,7 @@ export async function fetchPacienteDetalle(paciente) {
                                 hora_visita: row.hora || '',
                                 agenda: row.tipo_agenda || row.especialidad || 'Consulta Médica',
                                 medico: row.medico || 'Profesional Asignado',
+                                sede: row.sede || null,
                                 tipo_visita: row.tipo_visita || (row.origen === 'turno_online' ? 'Turno Web Online' : 'Consulta Médica'),
                                 asistencia: row.asistencia || (row.origen === 'turno_online' ? 'Reservado Online' : 'Programado'),
                                 cliente: row.obra_social || 'Particular / Prepaga',

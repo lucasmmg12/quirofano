@@ -27,7 +27,7 @@ import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncPacientes, syncSinglePaciente } from './sync_pacientes.mjs';
 import { getTurnosOnlineDuplicados, setGestionTurnoOnline, syncTurnosOnlineToSupabase, parseOnlineComment } from './sync_turnos_online.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
-import { syncTurnosActivos } from './sync_turnos_activos.mjs';
+import { syncTurnosActivos, resolveSedeFromAgenda } from './sync_turnos_activos.mjs';
 import { getIncentivosContactCenter, getTurnosDiariosContactCenter } from './incentivos_contact_center.mjs';
 import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
 
@@ -374,7 +374,8 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                         v.HoraFi,
                         v.FechaCreacion,
                         v.Internet,
-                        vn.Comentarios
+                        vn.Comentarios,
+                        vl.Centro
                     FROM Visitas v
                     INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
                     LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
@@ -410,6 +411,11 @@ async function getPacienteHistorialClinico(pool, { dni, nhc, telefono, nombre })
                             hora_visita: hStr,
                             agenda: r.NombreAgenda || 'Turno Web',
                             medico: r.NombreProfesional || 'Profesional Asignado',
+                            sede: resolveSedeFromAgenda({
+                                centro: r.Centro,
+                                agendaNombre: r.NombreAgenda,
+                                tipoAgenda: null
+                            }),
                             tipo_visita: 'Turno Web Online',
                             asistencia: 'Reservado Online',
                             cliente: contact.mutua || 'Particular / Prepaga',
