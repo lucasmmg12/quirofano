@@ -302,28 +302,21 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 setWhatsappLines(lines);
 
                 // 2. Verificar asignación actual
-                const lineId = await getAssignedLine(patientPhone);
+                let lineId = await getAssignedLine(patientPhone);
                 if (cancelled) return;
 
-                const available = lines.filter(l => l.id !== 'line_recepciones');
+                const available = lines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
 
-                if (lineId) {
-                    // Ya tiene línea asignada
-                    setAssignedLineId(lineId);
-                } else if (available.length === 1) {
-                    // Auto-asignar si solo hay una línea disponible
-                    const autoLine = available[0];
-                    setAssignedLineId(autoLine.id);
-                    assignLine(patientPhone, autoLine.id).catch(err =>
-                        console.warn('[ChatWindow] Auto-assign line error:', err)
+                // REGLA: Por defecto Contact Center (5492645825637), sin mezclar con autorizaciones (line_b)
+                if (!lineId || lineId === 'line_b' || lineId === 'line_a' || !available.some(l => l.id === lineId)) {
+                    lineId = 'contact_center';
+                    assignLine(patientPhone, 'contact_center').catch(err =>
+                        console.warn('[ChatWindow] Default assign contact_center error:', err)
                     );
-                    addToast?.(`Línea ${autoLine.label} asignada automáticamente`, 'success');
-                } else if (available.length > 1) {
-                    // Múltiples líneas: mostrar selector
-                    setShowLineSelector(true);
-                } else {
-                    console.warn('[ChatWindow] No WhatsApp lines available');
                 }
+
+                setAssignedLineId(lineId);
+                setShowLineSelector(false);
             } catch (err) {
                 console.error('[ChatWindow] Error loading lines:', err);
                 if (!cancelled) {
@@ -342,7 +335,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     const currentLine = whatsappLines.find(l => l.id === assignedLineId) || null;
 
     // === META 24H WINDOW LOGIC ===
-    const isMetaLine = currentLine?.is_meta === true;
+    // Solo aplica a la línea oficial de plantillas Meta (line_b). La línea de Contact Center permite texto libre.
+    const isMetaLine = currentLine?.is_meta === true && currentLine?.id === 'line_b';
     const isWindowExpired = useMemo(() => {
         if (!isMetaLine) return false;
         // Sin mensajes en línea Meta = nunca hubo conversación = ventana expirada
@@ -368,8 +362,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         });
     }, [isMetaLine, open, assignedLineId]);
 
-    // Lines available for this system (exclude recepciones)
-    const availableLines = whatsappLines.filter(l => l.id !== 'line_recepciones');
+    // Lines available for this system (exclude recepciones y autorizaciones line_b)
+    const availableLines = whatsappLines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
 
     // Whether the composer should be blocked (no line assigned)
     const composerBlocked = !assignedLineId && !linesLoading;

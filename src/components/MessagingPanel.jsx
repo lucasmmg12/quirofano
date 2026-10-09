@@ -736,9 +736,12 @@ export default function MessagingPanel({ addToast, currentUser }) {
     useEffect(() => {
         if (!selectedPhone) { setAssignedLineId(null); return; }
         getAssignedLine(selectedPhone).then(lineId => {
-            setAssignedLineId(lineId);
-            if (!lineId) setShowLineSelector(true);
-            else setShowLineSelector(false);
+            const finalLineId = (!lineId || lineId === 'line_b' || lineId === 'line_a') ? 'contact_center' : lineId;
+            setAssignedLineId(finalLineId);
+            setShowLineSelector(false);
+            if (!lineId || lineId === 'line_b' || lineId === 'line_a') {
+                assignLine(selectedPhone, 'contact_center').catch(console.warn);
+            }
         }).catch(console.error);
     }, [selectedPhone]);
 
@@ -746,7 +749,8 @@ export default function MessagingPanel({ addToast, currentUser }) {
     const currentLine = whatsappLines.find(l => l.id === assignedLineId) || null;
 
     // === META 24H WINDOW LOGIC ===
-    const isMetaLine = currentLine?.is_meta === true;
+    // Solo aplica a line_b oficial de Meta. La línea del Contact Center permite texto libre.
+    const isMetaLine = currentLine?.is_meta === true && currentLine?.id === 'line_b';
     const isWindowExpired = useMemo(() => {
         if (!isMetaLine) return false;
         // Sin mensajes en línea Meta = nunca hubo conversación = ventana expirada
