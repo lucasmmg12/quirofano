@@ -3597,15 +3597,15 @@ async function handleChatbotTriage(
         /\b(turno|cita|consulta|ecograf[ií]a|radiograf[ií]a|rayos|rx|tomograf[ií]a|mamograf[ií]a|resonancia|densitometr[ií]a|m[eé]dico|doctor|dra?|especialidad|guardia|urgencia|autorizaci[oó]n|estudio|agente|operador|humano|cancel\w*|reprogram\w*)\b/i.test(cleanText);
 
     // Detección de cortesía, agradecimiento o calificación en chat ya finalizado
-    // Evita desarchivar el chat si el paciente responde "muchas gracias", "👍", "5 estrellas", etc.
+    // Evita desarchivar el chat si el paciente responde EXCLUSIVAMENTE "muchas gracias", "👍", "5 estrellas", etc.
     const isCourtesyOrRating = 
-        /^(gracias+|muchas\s+gracias|mil\s+gracias|muchisimas\s+gracias|much[ií]simas\s+gracias|gracias\s+por\s+todo|gracias\s+por\s+la\s+atenci[oó]n|gracias\s+a\s+vos|gracias\s+a\s+ustedes|gracias\s+chicos?|gracias\s+chicas?|muy\s+amable|muy\s+atentos?|de\s+nada|por\s+nada|ok+|okei|okay|dale|listo|perfecto|joya|genial|buenisimo|buen[ií]simo|excelente|impecable|de\s+diez|de\s+10|chau+|adi[oó]s|adios|hasta\s+luego|saludos|que\s+tengas?\s+buen\s+d[ií]a|buen\s+d[ií]a\s+gracias|igualmente|[1-5](\s*estrellas?)?|10|[👍👌🙏❤️👏⭐]+)[!.\s]*$/i.test(cleanText.trim()) ||
-        (/\b(gracias|muchas gracias|mil gracias|muchisimas gracias|excelente atencion|muy amable|saludos|gracias a vos|gracias chicos)\b/i.test(cleanText.trim()) && cleanText.trim().length <= 70);
+        /^(gracias+|muchas\s+gracias|mil\s+gracias|muchisimas\s+gracias|much[ií]simas\s+gracias|gracias\s+por\s+todo|gracias\s+por\s+la\s+atenci[oó]n|gracias\s+a\s+vos|gracias\s+a\s+ustedes|gracias\s+chicos?|gracias\s+chicas?|muy\s+amable|muy\s+atentos?|de\s+nada|por\s+nada|ok+|okei|okay|dale|listo|perfecto|joya|genial|buenisimo|buen[ií]simo|excelente|impecable|de\s+diez|de\s+10|chau+|adi[oó]s|adios|hasta\s+luego|saludos|que\s+tengas?\s+buen\s+d[ií]a|buen\s+d[ií]a\s+gracias|igualmente|[1-5](\s*estrellas?)?|10|[👍👌🙏❤️👏⭐]+)[!.\s]*$/i.test(cleanText.trim());
 
     // Ventana de gracia pos-cierre (15 minutos):
-    // Si la conversación fue finalizada hace menos de 15 minutos y el paciente envía cortesías o mensajes cortos,
-    // NO despertar al bot de inmediato (evita que el bot le hable con el menú de bienvenida tras un 'gracias').
-    if (wasClosed && (isCourtesyOrRating || (minutesSinceClosed < 15 && !isExplicitGreetingOrMenu && cleanText.length <= 45))) {
+    // Si la conversación fue finalizada hace menos de 15 minutos y el paciente envía ÚNICAMENTE cortesía o agradecimiento formal de despedida,
+    // mantenerla archivada para no ser invasivo con el menú de bienvenida.
+    // Si el paciente escribe cualquier consulta real, prueba, pregunta o saludo ("test", "hola", etc.), reactivar al bot de inmediato.
+    if (wasClosed && isCourtesyOrRating && minutesSinceClosed < 15) {
         console.log(`[triage-bot] Chat ${phone} finalizado hace ${minutesSinceClosed.toFixed(1)} min. Mensaje de cortesía pos-cierre ("${cleanText}"). Manteniendo estado ARCHIVADO sin activar bot.`);
         await supabase
             .from('contact_center_conversations')
@@ -3812,7 +3812,16 @@ async function handleChatbotTriage(
     let updates: Record<string, any> = {
         last_message_text: cleanText,
         last_message_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        ...(wasClosed || isSessionExpiredByInactivity ? {
+            closed_at: null,
+            resolution_reason: null,
+            closed_by_agent_id: null,
+            closed_by_agent_name: null,
+            assigned_agent_id: null,
+            assigned_agent_name: null,
+            assigned_at: null
+        } : {})
     };
 
     /**
