@@ -159,9 +159,9 @@ const getMetaTemplateVariables = (tpl, context, patientName) => {
     });
 };
 
-export default function ChatWindow({ open, onClose, patientName, patientPhone, defaultLineId = 'line_a', lockLineId, patientContext = {}, addToast }) {
-    // Cirugías: fijar permanentemente a línea A (5492644774612) sin permitir cambiarla
-    const isSurgery = lockLineId === 'line_a' || defaultLineId === 'line_a' || Boolean(patientContext?.fechaCirugia || patientContext?.medico);
+export default function ChatWindow({ open, onClose, patientName, patientPhone, defaultLineId = 'line_b', lockLineId, patientContext = {}, addToast }) {
+    // Cirugías: fijar permanentemente a línea oficial de cirugías 077 (line_b: 5492644809077) sin permitir cambiarla
+    const isSurgery = lockLineId === 'line_b' || defaultLineId === 'line_b' || Boolean(patientContext?.fechaCirugia || patientContext?.medico);
 
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -307,19 +307,19 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                 // Determinar asignación de línea
                 let lineId;
                 if (isSurgery) {
-                    // En control de cirugías: usar SIEMPRE la línea institucional de cirugías (line_a)
-                    lineId = 'line_a';
-                    assignLine(patientPhone, 'line_a').catch(err =>
-                        console.warn('[ChatWindow] Surgery line_a assign error:', err)
+                    // En control de cirugías: usar SIEMPRE la línea oficial de cirugías 077 (line_b)
+                    lineId = 'line_b';
+                    assignLine(patientPhone, 'line_b').catch(err =>
+                        console.warn('[ChatWindow] Surgery line_b assign error:', err)
                     );
                 } else {
                     lineId = await getAssignedLine(patientPhone, defaultLineId);
                     if (cancelled) return;
 
-                    const available = lines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
+                    const available = lines.filter(l => l.id !== 'line_recepciones');
 
-                    // Si no tiene línea válida asignada o tenía line_b (autorizaciones), asignar la línea por defecto
-                    if (!lineId || lineId === 'line_b' || !available.some(l => l.id === lineId)) {
+                    // Si no tiene línea válida asignada, asignar la línea por defecto
+                    if (!lineId || !available.some(l => l.id === lineId)) {
                         lineId = available.some(l => l.id === defaultLineId) ? defaultLineId : (available[0]?.id || 'contact_center');
                         assignLine(patientPhone, lineId).catch(err =>
                             console.warn('[ChatWindow] Default assign error:', err)
@@ -346,11 +346,12 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
 
     // Get current line info
     const currentLine = (isSurgery
-        ? (whatsappLines.find(l => l.id === 'line_a') || {
-            id: 'line_a',
+        ? (whatsappLines.find(l => l.id === 'line_b') || {
+            id: 'line_b',
             label: 'Cirugías / Admisión',
-            phone: '5492644774612',
-            color: '#0284C7'
+            phone: '5492644809077',
+            color: '#0088CC',
+            is_meta: true
         })
         : (whatsappLines.find(l => l.id === assignedLineId) || null)
     );
@@ -1195,13 +1196,13 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                             color: '#fff', fontWeight: 600,
                                             cursor: 'default', userSelect: 'none',
                                         }}
-                                        title="Línea institucional asignada: Cirugías"
+                                        title="Línea institucional oficial de Cirugías: 5492644809077"
                                     >
                                         <span style={{
                                             width: '6px', height: '6px', borderRadius: '50%',
                                             background: '#4ade80', display: 'inline-block',
                                         }} />
-                                        Cirugías ···4612
+                                        Cirugías ···077
                                     </span>
                                 ) : currentLine ? (
                                     <span

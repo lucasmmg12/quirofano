@@ -82,9 +82,7 @@ export async function fetchMessages(phone) {
         .from('whatsapp_messages')
         .select('*')
         .eq('phone', normalized)
-        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
         .neq('line_id', 'line_recepciones')
-        .neq('line_id', 'line_b')
         .order('created_at', { ascending: true });
 
     if (error) {
@@ -92,9 +90,7 @@ export async function fetchMessages(phone) {
         throw error;
     }
 
-    const validLines = new Set(['line_a', 'contact_center', 'line_c', 'line_meta']);
     return (data || []).filter(msg => {
-        if (msg.line_id && !validLines.has(msg.line_id)) return false;
         if (msg.sender_name === 'Bot Sanatorio' || msg.raw_payload?.source === 'bot_triage') return false;
         return true;
     });
@@ -113,9 +109,7 @@ export async function markAsRead(phone) {
         .eq('phone', normalized)
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
-        .neq('line_id', 'line_recepciones')
-        .neq('line_id', 'line_b');
+        .neq('line_id', 'line_recepciones');
 
     if (error) {
         console.error('Error marking messages as read:', error);
@@ -131,9 +125,7 @@ export async function markAllAsRead() {
         .update({ is_read: true })
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
-        .neq('line_id', 'line_recepciones')
-        .neq('line_id', 'line_b');
+        .neq('line_id', 'line_recepciones');
 
     if (error) {
         console.error('Error marking all messages as read:', error);
@@ -383,8 +375,7 @@ export async function fetchWhatsAppLines() {
         .from('whatsapp_lines')
         .select('id, label, phone, is_active, color, icon, is_meta')
         .eq('is_active', true)
-        .in('id', ['line_a', 'contact_center', 'line_c', 'line_meta'])
-        .neq('id', 'line_b') // Excluir explícitamente autorizaciones
+        .in('id', ['line_a', 'line_b', 'contact_center', 'line_c', 'line_meta'])
         .order('id', { ascending: true });
 
     if (error) {
@@ -397,10 +388,10 @@ export async function fetchWhatsAppLines() {
 /**
  * Obtiene la línea asignada a un paciente por su teléfono
  * @param {string} phone - Teléfono del paciente
- * @param {string} [defaultFallback='line_a'] - Línea por defecto si no tiene asignación previa
+ * @param {string} [defaultFallback='line_b'] - Línea por defecto si no tiene asignación previa
  * @returns {Promise<string>} — line_id
  */
-export async function getAssignedLine(phone, defaultFallback = 'line_a') {
+export async function getAssignedLine(phone, defaultFallback = 'line_b') {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return defaultFallback;
 
@@ -410,7 +401,7 @@ export async function getAssignedLine(phone, defaultFallback = 'line_a') {
         .eq('phone', normalized)
         .maybeSingle();
 
-    if (error || !data || !data.assigned_line_id || data.assigned_line_id === 'line_b') {
+    if (error || !data || !data.assigned_line_id) {
         return defaultFallback;
     }
     return data.assigned_line_id;
