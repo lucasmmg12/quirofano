@@ -1357,6 +1357,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                             }
 
                             const isOut = item.direction === 'outgoing';
+                            const isBot = item.sender_name === 'Bot Sanatorio' || item.raw_payload?.source === 'bot_triage' || Boolean(item.raw_payload?.bot);
+                            const isNote = item.direction === 'note';
 
                             return (
                                 <div key={item.id || idx} style={{
@@ -1368,16 +1370,36 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                         maxWidth: '78%', padding: '8px 12px',
                                         borderRadius: isOut ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
                                         background: isOut
-                                            ? 'linear-gradient(135deg, #D9FDD3 0%, #C8F5C0 100%)'
-                                            : '#FFFFFF',
+                                            ? (isBot ? 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)' : 'linear-gradient(135deg, #D9FDD3 0%, #C8F5C0 100%)')
+                                            : (isNote ? '#F5F3FF' : '#FFFFFF'),
                                         color: '#111B21',
                                         boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
                                         position: 'relative',
+                                        border: isBot ? '1px solid rgba(2, 132, 199, 0.15)' : 'none'
                                     }}>
+                                        {isOut && isBot && (
+                                            <div style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                margin: '0 0 4px', fontSize: '0.68rem',
+                                                fontWeight: 700, color: '#0284C7',
+                                                background: 'rgba(2, 132, 199, 0.08)',
+                                                padding: '1px 6px', borderRadius: '4px'
+                                            }}>
+                                                <span>🤖 Bot Sanatorio</span>
+                                            </div>
+                                        )}
+                                        {isOut && !isBot && item.sender_name && (
+                                            <p style={{
+                                                margin: '0 0 4px', fontSize: '0.72rem',
+                                                fontWeight: 700, color: '#0369A1',
+                                            }}>
+                                                {item.sender_name}
+                                            </p>
+                                        )}
                                         {!isOut && item.sender_name && (
                                             <p style={{
                                                 margin: '0 0 4px', fontSize: '0.72rem',
-                                                fontWeight: 700, color: '#1FA855',
+                                                fontWeight: 700, color: isNote ? '#6B21A8' : '#1FA855',
                                             }}>
                                                 {item.sender_name}
                                             </p>

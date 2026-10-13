@@ -90,10 +90,7 @@ export async function fetchMessages(phone) {
         throw error;
     }
 
-    return (data || []).filter(msg => {
-        if (msg.sender_name === 'Bot Sanatorio' || msg.raw_payload?.source === 'bot_triage') return false;
-        return true;
-    });
+    return data || [];
 }
 
 /**
@@ -241,11 +238,9 @@ export function subscribeToMessages(phone, callback) {
                 filter: `phone=eq.${normalized}`,
             },
             (payload) => {
-                // Descartar mensajes de otras líneas (Recepciones o Contact Center)
-                if (payload.new.line_id === 'line_recepciones' || payload.new.line_id === 'contact_center') return;
-                // Descartar si es un mensaje de triage del bot de contact center
-                if (payload.new.sender_name === 'Bot Sanatorio' || payload.new.raw_payload?.source === 'bot_triage') return;
-                const validLines = ['line_a', 'line_b', 'line_c', 'line_meta'];
+                // Descartar mensajes de Recepciones
+                if (payload.new.line_id === 'line_recepciones') return;
+                const validLines = ['line_a', 'line_b', 'line_c', 'line_meta', 'contact_center'];
                 if (payload.new.line_id && !validLines.includes(payload.new.line_id)) return;
                 callback(payload.new);
             }
