@@ -21,7 +21,7 @@ export const SECTORES_CONFIG = [
         icon: '🔪', 
         camasDefault: 0,
         serviciosSalus: ['QUIROFANO', 'HOSPITAL DE DIA'],
-        descripcion: 'Cirugía Mayor, Ambulatoria y Quirófano 7',
+        descripcion: '',
         activo: true,
         badge: 'Activo'
     },

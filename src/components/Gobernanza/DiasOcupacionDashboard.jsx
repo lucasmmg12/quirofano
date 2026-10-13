@@ -2524,9 +2524,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             : `${activeIndicatorIds.length} Indicadores`}
                                 </span>
                             </div>
-                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                {activeSectorConfig.descripcion}
-                            </span>
                         </div>
 
                         {/* Sub-Selector Tripartito Exclusivo para UCI (Cuidados Críticos) */}
