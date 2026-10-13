@@ -136,7 +136,7 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(203, 213, 225);
-    doc.text('Sistema ADM-QUI · Live Insights', pageW - margin, 19, { align: 'right' });
+    doc.text('Sistema ADM-QUI · Contact Center', pageW - margin, 19, { align: 'right' });
     const formattedEmision = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
     doc.text(`Corte: ${formattedEmision} hs`, pageW - margin, 24, { align: 'right' });
 

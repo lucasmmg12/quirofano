@@ -179,17 +179,18 @@ export default function AgentShiftSummaryModal({
                                 <h2 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                                     {selectedAgent?.id === 'todos' ? 'Resumen General del Día' : 'Resumen de Final de Turno'}
                                 </h2>
-                                <span style={{
-                                    fontSize: '0.66rem',
-                                    fontWeight: 700,
-                                    padding: '2px 8px',
-                                    borderRadius: '12px',
-                                    background: selectedAgent?.id === 'todos' ? '#10B981' : 'rgba(56, 189, 248, 0.2)',
-                                    color: '#FFFFFF',
-                                    border: selectedAgent?.id === 'todos' ? 'none' : '1px solid rgba(56, 189, 248, 0.3)'
-                                }}>
-                                    {selectedAgent?.id === 'todos' ? 'Equipo Completo' : 'Live Insights'}
-                                </span>
+                                {selectedAgent?.id === 'todos' && (
+                                    <span style={{
+                                        fontSize: '0.66rem',
+                                        fontWeight: 700,
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        background: '#10B981',
+                                        color: '#FFFFFF'
+                                    }}>
+                                        Equipo Completo
+                                    </span>
+                                )}
                             </div>
                             <p style={{ margin: 0, fontSize: '0.76rem', color: '#E0F2FE', opacity: 0.9 }}>
                                 {selectedAgent?.id === 'todos' 
