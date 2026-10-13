@@ -193,6 +193,12 @@ export default function GuardiaClinicaDashboard({
         const targetYearMonth = fechaDesde.slice(0, 7);
         if (historialResumen.some(h => h.periodo === targetYearMonth)) {
             setSelectedPeriodo(targetYearMonth);
+        } else {
+            const availableMonthly = historialResumen.filter(h => !h.periodo.includes('ANUAL'));
+            const match = availableMonthly.find(h => h.periodo <= targetYearMonth) || availableMonthly[0];
+            if (match) {
+                setSelectedPeriodo(match.periodo);
+            }
         }
     }, [fechaDesde, fechaHasta, historialResumen]);
 
@@ -470,118 +476,6 @@ export default function GuardiaClinicaDashboard({
                             Métricas normadas de Oportunidad, Calidad, Resolutividad e Intensidad Diagnóstica
                         </span>
                     </div>
-                </div>
-
-                {/* Controles de Selección de Período */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{
-                        display: 'flex',
-                        background: '#F1F5F9',
-                        borderRadius: '8px',
-                        padding: '3px',
-                        border: '1px solid #CBD5E1',
-                        gap: '2px'
-                    }}>
-                        {/* Últimos 4 meses cronológicos */}
-                        {monthlyPeriods.slice(0, 4).map(h => {
-                            const isSel = selectedPeriodo === h.periodo;
-                            return (
-                                <button
-                                    key={h.periodo}
-                                    type="button"
-                                    onClick={() => handleSelectPeriodo(h.periodo)}
-                                    style={{
-                                        background: isSel ? '#1E40AF' : 'transparent',
-                                        color: isSel ? '#FFFFFF' : '#475569',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '5px 10px',
-                                        fontSize: '0.76rem',
-                                        fontWeight: isSel ? 700 : 500,
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    {formatPeriodoLabel(h.periodo)}
-                                </button>
-                            );
-                        })}
-
-                        {/* Botón rápido para Acumulado Anual */}
-                        {annualPeriod && (
-                            <button
-                                key={annualPeriod.periodo}
-                                type="button"
-                                onClick={() => handleSelectPeriodo(annualPeriod.periodo)}
-                                title="Ver consolidado acumulado de todo el año 2026"
-                                style={{
-                                    background: selectedPeriodo === annualPeriod.periodo ? '#1E40AF' : 'transparent',
-                                    color: selectedPeriodo === annualPeriod.periodo ? '#FFFFFF' : '#1E40AF',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '5px 10px',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                📊 {formatPeriodoLabel(annualPeriod.periodo)}
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Dropdown con todos los períodos históricos */}
-                    {historialResumen.length > 0 && (
-                        <select
-                            value={selectedPeriodo}
-                            onChange={(e) => handleSelectPeriodo(e.target.value)}
-                            style={{
-                                padding: '5px 10px',
-                                borderRadius: '8px',
-                                border: '1px solid #CBD5E1',
-                                background: '#FFFFFF',
-                                color: '#1E293B',
-                                fontSize: '0.78rem',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                            }}
-                        >
-                            {annualPeriod && (
-                                <option value={annualPeriod.periodo}>
-                                    📊 {formatPeriodoLabel(annualPeriod.periodo)} ({annualPeriod.total_consultas?.toLocaleString()} consult.)
-                                </option>
-                            )}
-                            <optgroup label="Meses 2026">
-                                {monthlyPeriods.map(h => (
-                                    <option key={h.periodo} value={h.periodo}>
-                                        {formatPeriodoLabel(h.periodo)} ({h.total_consultas?.toLocaleString()} consult.)
-                                    </option>
-                                ))}
-                            </optgroup>
-                        </select>
-                    )}
-
-                    <button
-                        type="button"
-                        onClick={onOpenDocModal}
-                        style={{
-                            background: '#EFF6FF',
-                            border: '1px solid #BFDBFE',
-                            color: '#1E40AF',
-                            borderRadius: '8px',
-                            padding: '6px 12px',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <BookOpen size={14} />
-                        Fórmulas & SQL
-                    </button>
                 </div>
             </div>
 
