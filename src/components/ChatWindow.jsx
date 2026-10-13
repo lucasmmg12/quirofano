@@ -159,7 +159,7 @@ const getMetaTemplateVariables = (tpl, context, patientName) => {
     });
 };
 
-export default function ChatWindow({ open, onClose, patientName, patientPhone, patientContext = {}, addToast }) {
+export default function ChatWindow({ open, onClose, patientName, patientPhone, defaultLineId = 'line_a', patientContext = {}, addToast }) {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [inputText, setInputText] = useState('');
@@ -301,17 +301,22 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 if (cancelled) return;
                 setWhatsappLines(lines);
 
+                // Determinar línea preferida: si el contexto indica cirugía o el default es line_a, usar line_a
+                const effectiveDefault = (patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a')
+                    ? 'line_a'
+                    : defaultLineId;
+
                 // 2. Verificar asignación actual
-                let lineId = await getAssignedLine(patientPhone);
+                let lineId = await getAssignedLine(patientPhone, effectiveDefault);
                 if (cancelled) return;
 
                 const available = lines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
 
-                // REGLA: Por defecto Contact Center (5492645825637), sin mezclar con autorizaciones (line_b)
-                if (!lineId || lineId === 'line_b' || lineId === 'line_a' || !available.some(l => l.id === lineId)) {
-                    lineId = 'contact_center';
-                    assignLine(patientPhone, 'contact_center').catch(err =>
-                        console.warn('[ChatWindow] Default assign contact_center error:', err)
+                // Si no tiene línea válida asignada o tenía line_b (autorizaciones), asignar la línea por defecto (line_a en Cirugías)
+                if (!lineId || lineId === 'line_b' || !available.some(l => l.id === lineId)) {
+                    lineId = available.some(l => l.id === effectiveDefault) ? effectiveDefault : (available[0]?.id || 'line_a');
+                    assignLine(patientPhone, lineId).catch(err =>
+                        console.warn('[ChatWindow] Default assign error:', err)
                     );
                 }
 
@@ -581,11 +586,12 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     // ==========================================
     const handleSend = useCallback(async () => {
         if (!inputText.trim() || sending || !patientPhone) return;
-        // Block sending without assigned line
-        if (!assignedLineId) {
-            addToast?.('⚠️ Seleccioná una línea WhatsApp primero', 'error');
-            setShowLineSelector(true);
-            return;
+        // Asegurar línea asignada antes de enviar
+        let targetLine = assignedLineId;
+        if (!targetLine) {
+            targetLine = (patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId;
+            setAssignedLineId(targetLine);
+            assignLine(patientPhone, targetLine).catch(err => console.warn('[ChatWindow] Auto-assign on send error:', err));
         }
         // Block free-text sending when Meta line window expired
         if (isMetaLine && isWindowExpired) {
@@ -598,13 +604,14 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         setSending(true);
         setShowEmojis(false);
 
+        const effectiveLine = targetLine || assignedLineId || ((patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId);
         try {
-            await sendWhatsAppMessage({ content: text, number: patientPhone, lineId: assignedLineId });
+            await sendWhatsAppMessage({ content: text, number: patientPhone, lineId: effectiveLine });
             await saveOutgoingMessage({
                 phone: patientPhone,
                 content: text,
                 mediaType: 'text',
-                lineId: assignedLineId,
+                lineId: effectiveLine,
             });
             // No agregamos al state manualmente — el realtime subscription se encarga
             // Esto evita la race condition que causaba mensajes duplicados
@@ -615,7 +622,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
         } finally {
             setSending(false);
         }
-    }, [inputText, sending, patientPhone, addToast, assignedLineId, isMetaLine, isWindowExpired]);
+    }, [inputText, sending, patientPhone, addToast, assignedLineId, isMetaLine, isWindowExpired, patientContext, defaultLineId]);
 
     // ==========================================
     // ENVIAR IMAGEN / CAPTURA DE PANTALLA
@@ -633,6 +640,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
             return;
         }
 
+        const effectiveLine = assignedLineId || ((patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId);
         setUploadingMedia(true);
         try {
             const mediaUrl = await uploadMedia(file, 'images');
@@ -640,14 +648,14 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 content: inputText.trim() || '📷 Imagen',
                 number: patientPhone,
                 mediaUrl,
-                lineId: assignedLineId,
+                lineId: effectiveLine,
             });
             await saveOutgoingMessage({
                 phone: patientPhone,
                 content: inputText.trim() || '📷 Imagen',
                 mediaType: 'image',
                 mediaUrl,
-                lineId: assignedLineId,
+                lineId: effectiveLine,
             });
             // Realtime se encarga de agregar al state
             setInputText('');
@@ -754,6 +762,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
     };
 
     const sendAudioBlob = async (blob) => {
+        const effectiveLine = assignedLineId || ((patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId);
         setUploadingMedia(true);
         try {
             const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
@@ -762,14 +771,14 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, p
                 content: '🎤 Audio',
                 number: patientPhone,
                 mediaUrl,
-                lineId: assignedLineId,
+                lineId: effectiveLine,
             });
             await saveOutgoingMessage({
                 phone: patientPhone,
                 content: '🎤 Audio',
                 mediaType: 'audio',
                 mediaUrl,
-                lineId: assignedLineId,
+                lineId: effectiveLine,
             });
             // Realtime se encarga de agregar al state
             addToast?.('Audio enviado', 'success');

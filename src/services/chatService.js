@@ -16,7 +16,7 @@ export async function fetchConversations() {
     const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('phone, content, direction, sender_name, is_read, created_at, media_type, line_id, raw_payload')
-        .or('line_id.in.(contact_center,line_c,line_meta),line_id.is.null')
+        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
         .neq('line_id', 'line_recepciones')
         .neq('line_id', 'line_b')
         .order('created_at', { ascending: false })
@@ -27,7 +27,7 @@ export async function fetchConversations() {
         throw error;
     }
 
-    const validLines = new Set(['contact_center', 'line_c', 'line_meta']);
+    const validLines = new Set(['line_a', 'contact_center', 'line_c', 'line_meta']);
 
     // Group by phone — keep first (latest) as preview
     const map = {};
@@ -82,7 +82,7 @@ export async function fetchMessages(phone) {
         .from('whatsapp_messages')
         .select('*')
         .eq('phone', normalized)
-        .or('line_id.in.(contact_center,line_c,line_meta),line_id.is.null')
+        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
         .neq('line_id', 'line_recepciones')
         .neq('line_id', 'line_b')
         .order('created_at', { ascending: true });
@@ -92,7 +92,7 @@ export async function fetchMessages(phone) {
         throw error;
     }
 
-    const validLines = new Set(['contact_center', 'line_c', 'line_meta']);
+    const validLines = new Set(['line_a', 'contact_center', 'line_c', 'line_meta']);
     return (data || []).filter(msg => {
         if (msg.line_id && !validLines.has(msg.line_id)) return false;
         if (msg.sender_name === 'Bot Sanatorio' || msg.raw_payload?.source === 'bot_triage') return false;
@@ -113,7 +113,7 @@ export async function markAsRead(phone) {
         .eq('phone', normalized)
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(contact_center,line_c,line_meta),line_id.is.null')
+        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
         .neq('line_id', 'line_recepciones')
         .neq('line_id', 'line_b');
 
@@ -131,7 +131,7 @@ export async function markAllAsRead() {
         .update({ is_read: true })
         .eq('direction', 'incoming')
         .eq('is_read', false)
-        .or('line_id.in.(contact_center,line_c,line_meta),line_id.is.null')
+        .or('line_id.in.(line_a,contact_center,line_c,line_meta),line_id.is.null')
         .neq('line_id', 'line_recepciones')
         .neq('line_id', 'line_b');
 
@@ -383,7 +383,7 @@ export async function fetchWhatsAppLines() {
         .from('whatsapp_lines')
         .select('id, label, phone, is_active, color, icon, is_meta')
         .eq('is_active', true)
-        .in('id', ['contact_center', 'line_c', 'line_a', 'line_meta'])
+        .in('id', ['line_a', 'contact_center', 'line_c', 'line_meta'])
         .neq('id', 'line_b') // Excluir explícitamente autorizaciones
         .order('id', { ascending: true });
 
@@ -391,18 +391,18 @@ export async function fetchWhatsAppLines() {
         console.error('Error fetching WhatsApp lines:', error);
         return [];
     }
-    // contact_center debe ser siempre la primera opción
-    return (data || []).sort((a, b) => (a.id === 'contact_center' ? -1 : b.id === 'contact_center' ? 1 : 0));
+    return data || [];
 }
 
 /**
  * Obtiene la línea asignada a un paciente por su teléfono
  * @param {string} phone - Teléfono del paciente
- * @returns {Promise<string|null>} — line_id o null
+ * @param {string} [defaultFallback='line_a'] - Línea por defecto si no tiene asignación previa
+ * @returns {Promise<string>} — line_id
  */
-export async function getAssignedLine(phone) {
+export async function getAssignedLine(phone, defaultFallback = 'line_a') {
     const normalized = normalizeArgentinePhone(phone);
-    if (!normalized) return 'contact_center';
+    if (!normalized) return defaultFallback;
 
     const { data, error } = await supabase
         .from('crm_contacts')
@@ -410,8 +410,8 @@ export async function getAssignedLine(phone) {
         .eq('phone', normalized)
         .maybeSingle();
 
-    if (error || !data || !data.assigned_line_id || data.assigned_line_id === 'line_b' || data.assigned_line_id === 'line_a') {
-        return 'contact_center'; // Línea oficial por defecto: Contact Center
+    if (error || !data || !data.assigned_line_id || data.assigned_line_id === 'line_b') {
+        return defaultFallback;
     }
     return data.assigned_line_id;
 }

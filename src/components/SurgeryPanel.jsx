@@ -3021,6 +3021,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 onClose={() => setChatOpen(false)}
                 patientName={chatPatient.name}
                 patientPhone={chatPatient.phone}
+                defaultLineId="line_a"
                 patientContext={{
                     obraSocial: chatPatient.obraSocial,
                     fechaCirugia: chatPatient.fechaCirugia,

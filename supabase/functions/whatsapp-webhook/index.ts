@@ -202,10 +202,10 @@ Deno.serve(async (req) => {
         // Auto-resolver lineId por projectId si no vino en el query param del URL
         if (!lineId) {
             const incomingProjectId = payload.projectId || data?.projectId;
-            if (incomingProjectId === 'ddaeae5f-7204-4205-bc37-31236f277539' || incomingProjectId === 'c3fd918b-b736-40dc-a841-cbb73d3b2a8d') lineId = 'contact_center';
+            if (incomingProjectId === 'ddaeae5f-7204-4205-bc37-31236f277539') lineId = 'contact_center';
+            else if (incomingProjectId === 'c3fd918b-b736-40dc-a841-cbb73d3b2a8d' || incomingProjectId === 'c42aa354-f1a3-44a6-b95b-5ccb24562254') lineId = 'line_a';
             else if (incomingProjectId === '2bf4fc78-5564-4b9c-9d7b-26e328db06c7') lineId = 'line_b';
             else if (incomingProjectId === 'f6c7b99b-88ec-46c4-bcd2-6a3457a36ca3') lineId = 'line_c';
-            else if (incomingProjectId === 'c42aa354-f1a3-44a6-b95b-5ccb24562254') lineId = 'line_a';
             else if (incomingProjectId === 'e03a7adc-28de-4be3-99b9-fee02de099e0') lineId = 'line_recepciones';
             else {
                 // Fallback por defecto a contact_center para asegurar que el chatbot nunca quede inactivo por falta de parámetro
