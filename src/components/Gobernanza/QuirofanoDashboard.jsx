@@ -458,15 +458,62 @@ const CHART_HELP_CATALOGO = {
 };
 
 // ─── COMPILADOR EN UN SOLO PASE (STREAM REDUCER) PARA AHORRO DE MEMORIA RAM ───
-function compileQuirofanoMetrics(rows) {
-    if (!rows || rows.length === 0) return null;
+function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
+    if (!allRows || allRows.length === 0) return null;
+
+    const globalTotal = allRows.length;
+    let globalSuspendidas = 0;
+    let globalRealizadas = 0;
+    let centrales = 0;
+    let centralesRealizadas = 0;
+    let centralesSuspendidas = 0;
+    let hdd = 0;
+    let hddRealizadas = 0;
+    let hddSuspendidas = 0;
+    let hemodinamia = 0;
+    let hemodinamiaRealizadas = 0;
+    let hemodinamiaSuspendidas = 0;
+
+    for (let i = 0; i < globalTotal; i++) {
+        const s = allRows[i];
+        const isSusp = s.ausente === '1' || s.status === 'rojo' || Boolean(s.motivo && s.motivo.trim());
+        if (isSusp) globalSuspendidas++; else globalRealizadas++;
+
+        const rawGrup = (s.grupo_agendas || '').toUpperCase();
+        if (rawGrup.includes('HDD') || rawGrup.includes('HOSPITAL DE DIA')) {
+            hdd++;
+            if (isSusp) hddSuspendidas++; else hddRealizadas++;
+        } else if (rawGrup.includes('HEMODINAMIA')) {
+            hemodinamia++;
+            if (isSusp) hemodinamiaSuspendidas++; else hemodinamiaRealizadas++;
+        } else {
+            centrales++;
+            if (isSusp) centralesSuspendidas++; else centralesRealizadas++;
+        }
+    }
+
+    // Filtrar filas según el ámbito seleccionado
+    let rows = allRows;
+    if (ambitoFilter === 'CENTRALES') {
+        rows = allRows.filter(s => {
+            const g = (s.grupo_agendas || '').toUpperCase();
+            return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
+        });
+    } else if (ambitoFilter === 'HDD') {
+        rows = allRows.filter(s => {
+            const g = (s.grupo_agendas || '').toUpperCase();
+            return g.includes('HDD') || g.includes('HOSPITAL DE DIA');
+        });
+    } else if (ambitoFilter === 'HEMODINAMIA') {
+        rows = allRows.filter(s => {
+            const g = (s.grupo_agendas || '').toUpperCase();
+            return g.includes('HEMODINAMIA');
+        });
+    }
 
     const total = rows.length;
     let suspendidas = 0;
     let realizadas = 0;
-    let centrales = 0;
-    let hdd = 0;
-    let hemodinamia = 0;
     let urgencias = 0;
 
     const medicosMap = {};
@@ -480,7 +527,6 @@ function compileQuirofanoMetrics(rows) {
 
     for (let i = 0; i < total; i++) {
         const s = rows[i];
-        // En Sanatorio Argentino: ausente === '1' o status === 'rojo' o con motivo tipificado
         const isSusp = s.ausente === '1' || s.status === 'rojo' || Boolean(s.motivo && s.motivo.trim());
         if (isSusp) {
             suspendidas++;
@@ -498,15 +544,6 @@ function compileQuirofanoMetrics(rows) {
         const rawGrup = (s.grupo_agendas || '').toUpperCase();
         if (rawMod.includes('URGENC') || rawDesc.includes('URGENC') || rawGrup.includes('URGENC')) {
             urgencias++;
-        }
-
-        const grupo = rawGrup;
-        if (grupo.includes('HDD') || grupo.includes('HOSPITAL DE DIA')) {
-            hdd++;
-        } else if (grupo.includes('HEMODINAMIA')) {
-            hemodinamia++;
-        } else {
-            centrales++;
         }
 
         if (s.medico) {
@@ -566,7 +603,7 @@ function compileQuirofanoMetrics(rows) {
         .map(([nombre, cant], idx) => ({
             nombre,
             cant,
-            pct: Number(((cant / total) * 100).toFixed(1)),
+            pct: total > 0 ? Number(((cant / total) * 100).toFixed(1)) : 0,
             color: osColors[idx % osColors.length]
         }))
         .sort((a, b) => b.cant - a.cant)
@@ -576,21 +613,27 @@ function compileQuirofanoMetrics(rows) {
         .map(([nombre, cant], idx) => ({
             nombre,
             cant,
-            pct: Number(((cant / total) * 100).toFixed(1)),
+            pct: total > 0 ? Number(((cant / total) * 100).toFixed(1)) : 0,
             color: osColors[idx % osColors.length]
         }))
         .sort((a, b) => b.cant - a.cant)
         .slice(0, 12);
 
-    const salasData = [
-        { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: Math.round(centrales * 0.28), horas: Number((centrales * 0.28 * 2.3).toFixed(1)), ocupacionPct: Number(Math.min(96, Math.max(40, 75 + (centrales % 20))).toFixed(1)), color: '#1E40AF' },
-        { sala: 'Qx 2', nombre: 'Quirófano 2 (Cirugía General)', cirugias: Math.round(centrales * 0.26), horas: Number((centrales * 0.26 * 2.2).toFixed(1)), ocupacionPct: Number(Math.min(94, Math.max(40, 72 + (centrales % 18))).toFixed(1)), color: '#2563EB' },
-        { sala: 'Qx 3', nombre: 'Quirófano 3 (Traumatología / Ortopedia)', cirugias: Math.round(centrales * 0.24), horas: Number((centrales * 0.24 * 2.2).toFixed(1)), ocupacionPct: Number(Math.min(90, Math.max(40, 70 + (centrales % 15))).toFixed(1)), color: '#3B82F6' },
-        { sala: 'Qx 4', nombre: 'Quirófano 4 (Gineco-Obstetricia)', cirugias: Math.round(centrales * 0.22), horas: Number((centrales * 0.22 * 2.1).toFixed(1)), ocupacionPct: Number(Math.min(92, Math.max(40, 74 + (centrales % 16))).toFixed(1)), color: '#60A5FA' },
-        { sala: 'Qx 5 - HdD', nombre: 'Quirófano 5 (Hospital de Día)', cirugias: Math.round(hdd * 0.55), horas: Number((hdd * 0.55 * 2.0).toFixed(1)), ocupacionPct: Number(Math.min(88, Math.max(35, 65 + (hdd % 14))).toFixed(1)), color: '#059669' },
-        { sala: 'Qx 6 - HdD', nombre: 'Quirófano 6 (Endoscopía HdD)', cirugias: Math.round(hdd * 0.45), horas: Number((hdd * 0.45 * 1.9).toFixed(1)), ocupacionPct: Number(Math.min(84, Math.max(35, 60 + (hdd % 12))).toFixed(1)), color: '#10B981' },
-        { sala: 'SALA DE PARTO', nombre: 'Sala de Partos', cirugias: Math.max(5, Math.round(centrales * 0.05)), horas: Number((Math.max(5, centrales * 0.05) * 2.1).toFixed(1)), ocupacionPct: 45.0, color: '#F59E0B' }
+    const allSalas = [
+        { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: Math.round(centralesRealizadas * 0.28), horas: Number((centralesRealizadas * 0.28 * 2.3).toFixed(1)), ocupacionPct: Number(Math.min(96, Math.max(40, 75 + (centrales % 20))).toFixed(1)), color: '#1E40AF', tipo: 'CENTRALES' },
+        { sala: 'Qx 2', nombre: 'Quirófano 2 (Cirugía General)', cirugias: Math.round(centralesRealizadas * 0.26), horas: Number((centralesRealizadas * 0.26 * 2.2).toFixed(1)), ocupacionPct: Number(Math.min(94, Math.max(40, 72 + (centrales % 18))).toFixed(1)), color: '#2563EB', tipo: 'CENTRALES' },
+        { sala: 'Qx 3', nombre: 'Quirófano 3 (Traumatología / Ortopedia)', cirugias: Math.round(centralesRealizadas * 0.24), horas: Number((centralesRealizadas * 0.24 * 2.2).toFixed(1)), ocupacionPct: Number(Math.min(90, Math.max(40, 70 + (centrales % 15))).toFixed(1)), color: '#3B82F6', tipo: 'CENTRALES' },
+        { sala: 'Qx 4', nombre: 'Quirófano 4 (Gineco-Obstetricia)', cirugias: Math.round(centralesRealizadas * 0.22), horas: Number((centralesRealizadas * 0.22 * 2.1).toFixed(1)), ocupacionPct: Number(Math.min(92, Math.max(40, 74 + (centrales % 16))).toFixed(1)), color: '#60A5FA', tipo: 'CENTRALES' },
+        { sala: 'Qx 5 - HdD', nombre: 'Quirófano 5 (Hospital de Día)', cirugias: Math.round(hddRealizadas * 0.55), horas: Number((hddRealizadas * 0.55 * 2.0).toFixed(1)), ocupacionPct: Number(Math.min(88, Math.max(35, 65 + (hdd % 14))).toFixed(1)), color: '#059669', tipo: 'HDD' },
+        { sala: 'Qx 6 - HdD', nombre: 'Quirófano 6 (Endoscopía HdD)', cirugias: Math.round(hddRealizadas * 0.45), horas: Number((hddRealizadas * 0.45 * 1.9).toFixed(1)), ocupacionPct: Number(Math.min(84, Math.max(35, 60 + (hdd % 12))).toFixed(1)), color: '#10B981', tipo: 'HDD' },
+        { sala: 'SALA DE PARTO', nombre: 'Sala de Partos', cirugias: Math.max(5, Math.round(centralesRealizadas * 0.05)), horas: Number((Math.max(5, centralesRealizadas * 0.05) * 2.1).toFixed(1)), ocupacionPct: 45.0, color: '#F59E0B', tipo: 'CENTRALES' }
     ];
+
+    const salasData = ambitoFilter === 'CENTRALES'
+        ? allSalas.filter(s => s.tipo === 'CENTRALES')
+        : ambitoFilter === 'HDD'
+            ? allSalas.filter(s => s.tipo === 'HDD')
+            : allSalas;
 
     // Motivos de suspensión
     let motivosSuspension = [];
@@ -658,13 +701,23 @@ function compileQuirofanoMetrics(rows) {
 
     return {
         dynamicMetrics: {
+            ambitoFilter,
             total,
             realizadas,
             suspendidas,
             tasaSusp,
             centrales,
+            centralesRealizadas,
+            centralesSuspendidas,
             hdd,
+            hddRealizadas,
+            hddSuspendidas,
             hemodinamia,
+            hemodinamiaRealizadas,
+            hemodinamiaSuspendidas,
+            globalTotal,
+            globalRealizadas,
+            globalSuspendidas,
             urgencias,
             cirujanos,
             obrasSociales,
@@ -740,8 +793,8 @@ export default function QuirofanoDashboard({
     const [selectedChartHelp, setSelectedChartHelp] = useState(null);
     const [showSqlModal, setShowSqlModal] = useState(false);
     const [sortMotivosBy, setSortMotivosBy] = useState('codigo'); // 'codigo' | 'cantidad'
-    // Para máximo ahorro de RAM, almacenamos únicamente el objeto compilado (~25KB) y nunca el array crudo de 7.000 filas
-    const [compiledData, setCompiledData] = useState(null);
+    const [allSurgeriesRows, setAllSurgeriesRows] = useState([]);
+    const [ambitoFilter, setAmbitoFilter] = useState('TODOS'); // 'TODOS' | 'CENTRALES' | 'HDD'
     const [loadingSurgeries, setLoadingSurgeries] = useState(false);
 
     // Fechas por defecto en caso de que el componente sea montado sin props de fecha
@@ -796,10 +849,7 @@ export default function QuirofanoDashboard({
                 }
 
                 if (!isCancelled) {
-                    // Compilar en un solo pase ultra rápido (< 1ms) y liberar el buffer de memoria
-                    const compiled = compileQuirofanoMetrics(allRows);
-                    setCompiledData(compiled);
-                    // allRows queda fuera de alcance para inmediata recolección de basura (GC)
+                    setAllSurgeriesRows(allRows);
                 }
             } catch (err) {
                 console.error('Error cargando cirugías por fecha:', err);
@@ -811,6 +861,11 @@ export default function QuirofanoDashboard({
         loadSurgeries();
         return () => { isCancelled = true; };
     }, [effectiveDesde, effectiveHasta]);
+
+    const compiledData = useMemo(() => {
+        if (!allSurgeriesRows || allSurgeriesRows.length === 0) return null;
+        return compileQuirofanoMetrics(allSurgeriesRows, ambitoFilter);
+    }, [allSurgeriesRows, ambitoFilter]);
 
     const dynamicMetrics = compiledData ? compiledData.dynamicMetrics : null;
     const activeSalasData = dynamicMetrics ? dynamicMetrics.salasData : SALAS_DATA;
@@ -998,8 +1053,73 @@ export default function QuirofanoDashboard({
                         </h1>
                     </div>
 
-                    {isModal && onClose && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {/* SELECTOR PARA TOCAR Y DIFERENCIAR ENTRE HDD Y QX CENTRALES */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            background: 'rgba(0, 0, 0, 0.35)',
+                            padding: '4px',
+                            borderRadius: '10px',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            gap: '4px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setAmbitoFilter('TODOS')}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '7px',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: ambitoFilter === 'TODOS' ? 800 : 600,
+                                    background: ambitoFilter === 'TODOS' ? '#FFFFFF' : 'transparent',
+                                    color: ambitoFilter === 'TODOS' ? '#0F172A' : '#E2E8F0',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: ambitoFilter === 'TODOS' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
+                                }}
+                            >
+                                🌐 Todas las Salas {dynamicMetrics ? `(${dynamicMetrics.globalRealizadas})` : ''}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAmbitoFilter('CENTRALES')}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '7px',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: ambitoFilter === 'CENTRALES' ? 800 : 600,
+                                    background: ambitoFilter === 'CENTRALES' ? '#38BDF8' : 'transparent',
+                                    color: ambitoFilter === 'CENTRALES' ? '#0F172A' : '#E2E8F0',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: ambitoFilter === 'CENTRALES' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
+                                }}
+                            >
+                                🏥 Qx Centrales (1-4) {dynamicMetrics ? `(${dynamicMetrics.centralesRealizadas})` : ''}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAmbitoFilter('HDD')}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '7px',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: ambitoFilter === 'HDD' ? 800 : 600,
+                                    background: ambitoFilter === 'HDD' ? '#34D399' : 'transparent',
+                                    color: ambitoFilter === 'HDD' ? '#0F172A' : '#E2E8F0',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: ambitoFilter === 'HDD' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
+                                }}
+                            >
+                                ☀️ Hospital de Día - HdD {dynamicMetrics ? `(${dynamicMetrics.hddRealizadas})` : ''}
+                            </button>
+                        </div>
+
+                        {isModal && onClose && (
                             <button
                                 type="button"
                                 onClick={onClose}
@@ -1019,15 +1139,19 @@ export default function QuirofanoDashboard({
                             >
                                 <X size={16} /> Cerrar
                             </button>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
-                {/* KPI CARDS ENCABEZADO REACTIVOS AL PERÍODO */}
+                {/* KPI CARDS ENCABEZADO REACTIVOS AL PERÍODO Y AL ÁMBITO */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
                     <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                            Cirugías Realizadas (Período)
+                            {ambitoFilter === 'CENTRALES' 
+                                ? 'Cirugías Realizadas (Centrales)' 
+                                : ambitoFilter === 'HDD' 
+                                    ? 'Cirugías Realizadas (Hospital de Día)' 
+                                    : 'Cirugías Realizadas (Período)'}
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900 }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? dynamicMetrics.realizadas.toLocaleString('es-AR') : '0'}
@@ -1039,7 +1163,11 @@ export default function QuirofanoDashboard({
 
                     <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                            Tasa de Suspensión Neta
+                            {ambitoFilter === 'CENTRALES' 
+                                ? 'Tasa Suspensión (Centrales)' 
+                                : ambitoFilter === 'HDD' 
+                                    ? 'Tasa Suspensión (HdD)' 
+                                    : 'Tasa de Suspensión Neta'}
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#FCD34D' }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSusp}%` : '0%'}
@@ -1049,15 +1177,52 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
-                    <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                            Distribución de Salas
+                    {/* TARJETA 3: DISTRIBUCIÓN CLARA Y TOCABLE */}
+                    <div 
+                        onClick={() => {
+                            if (ambitoFilter === 'TODOS') setAmbitoFilter('CENTRALES');
+                            else if (ambitoFilter === 'CENTRALES') setAmbitoFilter('HDD');
+                            else setAmbitoFilter('TODOS');
+                        }}
+                        style={{ 
+                            background: 'rgba(255,255,255,0.10)', 
+                            backdropFilter: 'blur(8px)', 
+                            borderRadius: '12px', 
+                            padding: '14px 16px', 
+                            border: ambitoFilter !== 'TODOS' ? '1.5px solid #38BDF8' : '1px solid rgba(255,255,255,0.15)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                        }}
+                        title="Haz clic para alternar filtro entre Quirófanos Centrales, Hospital de Día y Todas"
+                    >
+                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                                {ambitoFilter === 'TODOS' ? 'Distribución de Salas' : `Ámbito: ${ambitoFilter === 'CENTRALES' ? 'Qx Centrales (1-4)' : 'Hospital de Día (HdD)'}`}
+                            </span>
+                            <span style={{ fontSize: '0.62rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                Alternar
+                            </span>
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#67E8F9' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.centrales} / ${dynamicMetrics.hdd}` : '0 / 0'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? (
+                                ambitoFilter === 'TODOS' 
+                                    ? `${dynamicMetrics.centralesRealizadas} / ${dynamicMetrics.hddRealizadas}`
+                                    : `${dynamicMetrics.realizadas} realizadas`
+                            ) : '0 / 0'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '2px' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `Centrales (Qx 1-4): ${dynamicMetrics.centrales} · HdD (Qx 5-6): ${dynamicMetrics.hdd}` : 'Sin cirugías'}
+                        <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '2px', lineHeight: 1.35 }}>
+                            {loadingSurgeries ? '...' : dynamicMetrics ? (
+                                ambitoFilter === 'TODOS' ? (
+                                    <>
+                                        <div><strong>Realizadas:</strong> Centrales {dynamicMetrics.centralesRealizadas} · HdD {dynamicMetrics.hddRealizadas}{dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · Hemo ${dynamicMetrics.hemodinamiaRealizadas}` : ''}</div>
+                                        <div style={{ opacity: 0.8, fontSize: '0.68rem', marginTop: '2px' }}>
+                                            <strong>Programadas ({dynamicMetrics.globalTotal}):</strong> Centrales {dynamicMetrics.centrales} · HdD {dynamicMetrics.hdd}{dynamicMetrics.hemodinamia > 0 ? ` · Hemo ${dynamicMetrics.hemodinamia}` : ''}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div>{dynamicMetrics.total} programadas ({((dynamicMetrics.realizadas / Math.max(1, dynamicMetrics.globalRealizadas)) * 100).toFixed(1)}% del total del Sanatorio)</div>
+                                )
+                            ) : 'Sin cirugías'}
                         </div>
                     </div>
 
