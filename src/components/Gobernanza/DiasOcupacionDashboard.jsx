@@ -2685,28 +2685,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     {/* Filtros Paramétricos Centrales */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         
-                        {/* Botón Catálogo de Indicadores */}
-                        {sectorId === 'UCI' && (
-                            <button
-                                onClick={() => setIsCatalogoOpen(true)}
-                                style={{
-                                    background: '#FFFFFF',
-                                    border: '1px solid #2563EB',
-                                    color: '#1E40AF',
-                                    borderRadius: '8px',
-                                    padding: '6px 12px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 700,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <Sliders size={15} />
-                                Catálogo ({activeIndicatorIds.length})
-                            </button>
-                        )}
+                        {/* Botón Catálogo de Indicadores - Removido ya que se encuentra integrado en el sidebar */}
 
                         {/* Botones Fórmulas & SQL e Indicadores - Ocultados a solicitud */}
 
