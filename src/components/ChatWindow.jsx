@@ -219,6 +219,14 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
     const fileInputRef = useRef(null);
     const shortcutPopupRef = useRef(null);
 
+    // Filtro de línea según contexto (Contact Center exclusivo vs Cirugías)
+    const targetLineFilter = useMemo(() => {
+        if (isContactCenter) return 'contact_center';
+        if (isSurgery) return ['line_b', 'line_a', 'line_c', 'line_meta'];
+        if (lockLineId) return lockLineId;
+        return null;
+    }, [isContactCenter, isSurgery, lockLineId]);
+
     // ==========================================
     // CARGAR MENSAJES + REALTIME + POLLING
     // ==========================================
@@ -231,9 +239,9 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
         const loadMessages = async () => {
             setLoading(true);
             try {
-                const msgs = await fetchMessages(patientPhone);
+                const msgs = await fetchMessages(patientPhone, targetLineFilter);
                 setMessages(msgs);
-                await markAsRead(patientPhone);
+                await markAsRead(patientPhone, targetLineFilter);
             } catch (err) {
                 console.error('Error loading chat:', err);
                 addToast?.('Error cargando chat', 'error');
@@ -255,7 +263,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
         }
 
         // Suscribir a nuevos mensajes en tiempo real
-        console.log('[ChatWindow] Subscribing to realtime for:', patientPhone);
+        console.log('[ChatWindow] Subscribing to realtime for:', patientPhone, 'lineFilter:', targetLineFilter);
         unsubscribe = subscribeToMessages(patientPhone, (newMsg) => {
             console.log('[ChatWindow] Realtime message received:', newMsg);
             setMessages(prev => {
@@ -264,17 +272,17 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                 return [...prev, newMsg];
             });
             if (newMsg.direction === 'incoming') {
-                markAsRead(patientPhone);
+                markAsRead(patientPhone, targetLineFilter);
             }
-        });
+        }, targetLineFilter);
 
         // Polling fallback cada 5s
         pollInterval = setInterval(async () => {
             try {
-                const msgs = await fetchMessages(patientPhone);
+                const msgs = await fetchMessages(patientPhone, targetLineFilter);
                 setMessages(prev => {
                     if (msgs.length !== prev.length) {
-                        markAsRead(patientPhone);
+                        markAsRead(patientPhone, targetLineFilter);
                         return msgs;
                     }
                     return prev;
@@ -288,7 +296,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
             unsubscribe();
             if (pollInterval) clearInterval(pollInterval);
         };
-    }, [open, patientPhone]);
+    }, [open, patientPhone, targetLineFilter]);
 
     // Load WhatsApp lines + assigned line (sequential to avoid race condition)
     useEffect(() => {

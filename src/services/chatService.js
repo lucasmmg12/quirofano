@@ -73,17 +73,28 @@ export async function fetchConversations() {
 
 /**
  * Obtiene todos los mensajes de un teléfono, ordenados cronológicamente
+ * Opcionalmente filtrados por línea (lineId o array de lineIds)
  */
-export async function fetchMessages(phone) {
+export async function fetchMessages(phone, lineFilter = null) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return [];
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('whatsapp_messages')
         .select('*')
         .eq('phone', normalized)
         .neq('line_id', 'line_recepciones')
         .order('created_at', { ascending: true });
+
+    if (lineFilter) {
+        if (Array.isArray(lineFilter)) {
+            query = query.in('line_id', lineFilter);
+        } else {
+            query = query.eq('line_id', lineFilter);
+        }
+    }
+
+    const { data, error } = await query;
 
     if (error) {
         console.error('Error fetching messages:', error);
@@ -95,18 +106,29 @@ export async function fetchMessages(phone) {
 
 /**
  * Marca todos los mensajes incoming de un teléfono como leídos
+ * Opcionalmente filtrados por línea
  */
-export async function markAsRead(phone) {
+export async function markAsRead(phone, lineFilter = null) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return;
 
-    const { error } = await supabase
+    let query = supabase
         .from('whatsapp_messages')
         .update({ is_read: true })
         .eq('phone', normalized)
         .eq('direction', 'incoming')
         .eq('is_read', false)
         .neq('line_id', 'line_recepciones');
+
+    if (lineFilter) {
+        if (Array.isArray(lineFilter)) {
+            query = query.in('line_id', lineFilter);
+        } else {
+            query = query.eq('line_id', lineFilter);
+        }
+    }
+
+    const { error } = await query;
 
     if (error) {
         console.error('Error marking messages as read:', error);
@@ -222,13 +244,15 @@ export async function saveOutgoingMessage({ phone, content, mediaUrl, mediaType,
  * Suscribe a cambios en tiempo real en whatsapp_messages
  * para un teléfono específico. Llama callback cuando llega un nuevo mensaje.
  * Retorna función de cleanup para desuscribirse.
+ * Opcionalmente filtra por línea.
  */
-export function subscribeToMessages(phone, callback) {
+export function subscribeToMessages(phone, callback, lineFilter = null) {
     const normalized = normalizeArgentinePhone(phone);
     if (!normalized) return () => { };
 
+    const filterKey = lineFilter ? (Array.isArray(lineFilter) ? lineFilter.join('_') : lineFilter) : 'all';
     const channel = supabase
-        .channel(`chat-${normalized}`)
+        .channel(`chat-${normalized}-${filterKey}`)
         .on(
             'postgres_changes',
             {
@@ -240,8 +264,19 @@ export function subscribeToMessages(phone, callback) {
             (payload) => {
                 // Descartar mensajes de Recepciones
                 if (payload.new.line_id === 'line_recepciones') return;
-                const validLines = ['line_a', 'line_b', 'line_c', 'line_meta', 'contact_center'];
-                if (payload.new.line_id && !validLines.includes(payload.new.line_id)) return;
+
+                // Filtrar según lineFilter si fue provisto
+                if (lineFilter) {
+                    if (Array.isArray(lineFilter)) {
+                        if (!lineFilter.includes(payload.new.line_id)) return;
+                    } else if (payload.new.line_id !== lineFilter) {
+                        return;
+                    }
+                } else {
+                    const validLines = ['line_a', 'line_b', 'line_c', 'line_meta', 'contact_center'];
+                    if (payload.new.line_id && !validLines.includes(payload.new.line_id)) return;
+                }
+
                 callback(payload.new);
             }
         )
