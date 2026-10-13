@@ -1205,8 +1205,20 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Asignar conversación manteniendo la pestaña activa del operador (ej: 'sin_asignar') para agilizar la gestión continua
+    // Asignar conversación: fija el chat inmediatamente y cambia la pestaña a "Mis chats" ('asignadas_mi')
+    // para que la agente atienda fluidamente su nueva conversación asignada y evitar cualquier desincronización de filtros
     const handleAssignChatAndSwitchTab = async (chatId, agentId, options) => {
+        if (!chatId) return;
+        // 1. Fijar chat de inmediato en el estado activo
+        if (onSelectChat) {
+            onSelectChat(chatId);
+        }
+        // 2. Cambiar inmediatamente a la pestaña de "Mis chats" para que la conversación quede visible en su cola
+        setFilterTab('asignadas_mi');
+        try {
+            localStorage.setItem('sa_cc_filter_tab', 'asignadas_mi');
+        } catch (_) {}
+
         if (!onAssignChat) return;
         try {
             await onAssignChat(chatId, agentId, options);
@@ -1302,17 +1314,37 @@ export default function ContactCenterChatConsole({
         if (isFinalizadosCurrentTab) {
             return chats.find(c => isClosedOrArchived(c)) || archivedChats[0] || null;
         }
-        return chats.find(c => !isClosedOrArchived(c)) || chats[0] || archivedChats[0] || null;
+        // Fallback seguro: primero chats propios del operador, luego sin asignar. NUNCA chats de otras agentes.
+        return chats.find(c => isMineChat(c)) || chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) || null;
     }, [chats, archivedChats, filterTab, myAliases, activeAgent.name, isFinalizadosCurrentTab]);
 
-    // PRIORIDAD Y ESTABILIDAD ABSOLUTA:
-    // Si el operador tiene un chat seleccionado (activeChatFromPool), ESE ES EL CHAT QUE DEBE VERSE.
-    // NUNCA descartarlo o cambiarlo arbitrariamente porque pertenezca a otra pestaña (ej: al buscarlo o asignarlo).
-    // Solo si el operador navega intencionalmente a la pestaña "Finalizados" (sin estar buscando), pero su chat activo
-    // era un chat abierto, se prioriza mostrar un historial finalizado de esa pestaña.
-    const selectedChat = (isFinalizadosCurrentTab && !activeChatIsClosed && !isSearchActive)
-        ? (tabFallbackChat || activeChatFromPool || {})
-        : (activeChatFromPool || tabFallbackChat || chats[0] || archivedChats[0] || {});
+    // Retención de chat activo en memoria para evitar parpadeos o saltos indeseados
+    const lastValidSelectedChatRef = useRef(null);
+
+    // PRIORIDAD Y ESTABILIDAD ABSOLUTA (AISLAMIENTO MULTI-AGENTE):
+    // 1. Si el operador tiene un chat seleccionado (activeChatFromPool), ESE ES EL CHAT QUE DEBE VERSE.
+    // 2. Si activeChatFromPool no está disponible transitoriamente por actualización de estado, pero
+    //    coincide con el chat retenido en memoria (lastValidSelectedChatRef), se conserva el chat retenido.
+    // 3. Si no, se utiliza tabFallbackChat de la pestaña activa.
+    // 4. NUNCA caer ciegamente en chats[0], ya que en un entorno multi-agente chats[0] suele pertenecer
+    //    a otra agente activa que acaba de enviar/recibir un mensaje (ej: Daniela respondiendo a Julieta Cisterna).
+    let candidateChat = null;
+    if (isFinalizadosCurrentTab && !activeChatIsClosed && !isSearchActive) {
+        candidateChat = tabFallbackChat || activeChatFromPool || null;
+    } else {
+        candidateChat = activeChatFromPool || 
+            (lastValidSelectedChatRef.current && matchChat(lastValidSelectedChatRef.current, activeChatId) ? lastValidSelectedChatRef.current : null) ||
+            tabFallbackChat || 
+            chats.find(c => isMineChat(c)) || 
+            chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) || 
+            (isSupervisor ? (chats[0] || archivedChats[0]) : null) || 
+            {};
+    }
+
+    if (candidateChat && candidateChat.id) {
+        lastValidSelectedChatRef.current = candidateChat;
+    }
+    const selectedChat = candidateChat || {};
 
     // === REGLA META 24H: ÚLTIMO MENSAJE ENTRANTE DEL PACIENTE Y ESTADO DE VENTANA ===
     const lastIncomingMsg = useMemo(() => {

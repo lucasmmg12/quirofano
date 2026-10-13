@@ -244,8 +244,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     // CONSERVAR targetId. NUNCA cambiarle el chat de forma arbitraria.
                     return targetId;
                 }
-                const firstActive = loaded.find(c => !isClosedOrArchived(c.status));
-                const fallbackId = firstActive?.id || loaded[0]?.id || null;
+                // Si no había ningún chat activo previo, buscar uno propio del operador o sin asignar (NUNCA el chat de otro agente)
+                const myAgentId = (activeAgent?.id || '').toLowerCase();
+                const myFirst = loaded.find(c => !isClosedOrArchived(c.status) && (
+                    (c.assignedTo || '').toLowerCase() === myAgentId ||
+                    (c.assignedToName || '').toLowerCase().includes(activeAgent?.name?.toLowerCase() || '')
+                ));
+                const firstUnassigned = loaded.find(c => !isClosedOrArchived(c.status) && !c.assignedTo);
+                const fallbackId = myFirst?.id || firstUnassigned?.id || null;
                 if (fallbackId) {
                     try { localStorage.setItem('sa_cc_active_chat_id', String(fallbackId)); } catch (_) {}
                 }
@@ -641,8 +647,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     // Asignar chat exclusivamente a una agente (bloqueo contra colisión o reasignación confirmada)
     const handleAssignChat = async (chatId, targetAgentId = activeAgent.id, options = {}) => {
-        const targetChat = chats.find(c => c.id === chatId);
+        const targetChat = chats.find(c => c.id === chatId || String(c.id) === String(chatId));
         if (!targetChat) return;
+
+        // Fijar inmediatamente activeChatId para que ningún mensaje entrante de otra agente lo desplace
+        setActiveChatId(chatId);
+        try { localStorage.setItem('sa_cc_active_chat_id', String(chatId)); } catch (_) {}
 
         try {
             const targetAgent = getAgentById(targetAgentId);
@@ -661,18 +671,22 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 auditNote = `👤 [Asignación de Atención]: Conversación asignada a ${targetAgent.name}.`;
             }
 
-            // 2. Registrar nota privada de auditoría (persiste en Supabase whatsapp_messages con direction note y agrega a mensajes)
-            await handleSendMessage(chatId, auditNote, true);
-
-            // 3. Persistir asignación en base de datos y actualizar estado local
+            // 2. Persistir asignación en base de datos y actualizar estado local de forma INMEDIATA (optimista)
             const updated = assignChatExclusively(targetChat, targetAgent, currentUser, options);
             setChats(prev => prev.map(c => {
-                if (c.id !== chatId) return c;
+                if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
                 return {
                     ...updated,
-                    messages: c.messages // preserva los mensajes que ya tienen la nota privada agregada por handleSendMessage
+                    messages: c.messages || targetChat.messages || []
                 };
             }));
+
+            // 3. Registrar nota privada de auditoría (persiste en Supabase whatsapp_messages con direction note)
+            await handleSendMessage(chatId, auditNote, true);
+
+            // Reafirmar que la conversación activa sigue siendo la asignada
+            setActiveChatId(chatId);
+            try { localStorage.setItem('sa_cc_active_chat_id', String(chatId)); } catch (_) {}
 
             if (addToast) {
                 const toastMsg = options?.forceReassign || isReassign
