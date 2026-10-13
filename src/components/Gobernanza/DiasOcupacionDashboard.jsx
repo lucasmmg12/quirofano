@@ -218,7 +218,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
 
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
-    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(false); // Colapsado por defecto a solicitud
     const [sectorId, setSectorId] = useState('UCI');
     const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
     const [isUciOpen, setIsUciOpen] = useState(() => {
@@ -2484,18 +2484,22 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             onClick={() => setSidebarOpen(prev => !prev)}
                             title={sidebarOpen ? "Ocultar panel de sectores" : "Mostrar panel de sectores"}
                             style={{
-                                background: '#F1F5F9',
-                                border: '1px solid #CBD5E1',
+                                background: sidebarOpen ? '#EFF6FF' : '#F1F5F9',
+                                border: `1px solid ${sidebarOpen ? '#93C5FD' : '#CBD5E1'}`,
                                 borderRadius: '8px',
-                                padding: '7px',
+                                padding: '6px 10px',
                                 cursor: 'pointer',
-                                color: '#475569',
+                                color: sidebarOpen ? '#1D4ED8' : '#475569',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                gap: '6px',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                transition: 'all 0.15s ease'
                             }}
                         >
                             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+                            <span>Sectores</span>
                         </button>
 
                         <div>
@@ -2722,52 +2726,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             </button>
                         )}
 
-                        {/* Botón de Documentación Técnica */}
-                        {!isUciOnly && (
-                            <button
-                                onClick={() => {
-                                    setDocModalTab(sectorId);
-                                    setShowDocModal(true);
-                                }}
-                                style={{
-                                    background: '#F8FAFC',
-                                    border: '1px solid #CBD5E1',
-                                    color: '#334155',
-                                    borderRadius: '8px',
-                                    padding: '6px 12px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 600,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <BookOpen size={15} color="#2563EB" />
-                                Fórmulas & SQL
-                            </button>
-                        )}
-
-                        {/* Botón Tablero de Indicadores */}
-                        <button
-                            onClick={() => setViewMode('dashboard')}
-                            style={{
-                                background: viewMode === 'dashboard' ? '#1E40AF' : '#F8FAFC',
-                                color: viewMode === 'dashboard' ? '#FFFFFF' : '#1E40AF',
-                                border: viewMode === 'dashboard' ? 'none' : '1px solid #CBD5E1',
-                                borderRadius: '8px',
-                                padding: '6px 12px',
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <LayoutDashboard size={15} />
-                            Indicadores
-                        </button>
+                        {/* Botones Fórmulas & SQL e Indicadores - Ocultados a solicitud */}
 
                         {/* Botón Gantt Camas UCI */}
                         {sectorId === 'UCI' && (
@@ -3113,6 +3072,52 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             {/* ─── CUERPO UNIFICADO: SIDEBAR DE SECTORES + LIENZO MODULAR DEL TELAR ─── */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 
+                {/* PESTAÑA LATERAL MINIFICADA CUANDO ESTÁ COLAPSADO */}
+                {!sidebarOpen && (
+                    <button
+                        onClick={() => setSidebarOpen(true)}
+                        title="Abrir panel de sectores"
+                        style={{
+                            width: '32px',
+                            minWidth: '32px',
+                            borderRight: '1px solid #E2E8F0',
+                            background: '#F8FAFC',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'flex-start',
+                            paddingTop: '16px',
+                            gap: '10px',
+                            cursor: 'pointer',
+                            borderTop: 'none',
+                            borderBottom: 'none',
+                            borderLeft: 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={e => {
+                            e.currentTarget.style.background = '#EFF6FF';
+                            e.currentTarget.style.borderRightColor = '#93C5FD';
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.background = '#F8FAFC';
+                            e.currentTarget.style.borderRightColor = '#E2E8F0';
+                        }}
+                    >
+                        <PanelLeftOpen size={16} color="#2563EB" />
+                        <span style={{
+                            writingMode: 'vertical-rl',
+                            transform: 'rotate(180deg)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: '#475569',
+                            letterSpacing: '1px',
+                            textTransform: 'uppercase'
+                        }}>
+                            Sectores
+                        </span>
+                    </button>
+                )}
+
                 {/* SIDEBAR LATERAL: SECTOR > UCI > LISTA DE INDICADORES CON CHECKLIST */}
                 {sidebarOpen && (
                     <div style={{
@@ -3126,7 +3131,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     }}>
                         {/* Nivel 1: Sector */}
                         <div style={{
-                            padding: '12px 16px',
+                            padding: '10px 14px',
                             borderBottom: '1px solid #F1F5F9',
                             background: '#F8FAFC',
                             display: 'flex',
@@ -3137,10 +3142,30 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Sector
                                 </span>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', padding: '2px 7px', borderRadius: '6px' }}>
+                                    Sanatorio Argentino
+                                </span>
                             </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E40AF', background: '#DBEAFE', padding: '2px 7px', borderRadius: '6px' }}>
-                                Sanatorio Argentino
-                            </span>
+                            <button
+                                onClick={() => setSidebarOpen(false)}
+                                title="Colapsar panel de sectores"
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '4px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    color: '#64748B',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#E2E8F0'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                            >
+                                <PanelLeftClose size={16} />
+                            </button>
                         </div>
 
                         {/* CONTENEDOR DE SERVICIOS (ACORDEÓN MODULAR) */}
