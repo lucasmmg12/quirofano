@@ -735,12 +735,12 @@ export default function MessagingPanel({ addToast, currentUser }) {
     // === Load assigned line for selected conversation ===
     useEffect(() => {
         if (!selectedPhone) { setAssignedLineId(null); return; }
-        getAssignedLine(selectedPhone).then(lineId => {
-            const finalLineId = (!lineId || lineId === 'line_b' || lineId === 'line_a') ? 'contact_center' : lineId;
+        getAssignedLine(selectedPhone, 'line_b').then(lineId => {
+            const finalLineId = lineId || 'line_b';
             setAssignedLineId(finalLineId);
             setShowLineSelector(false);
-            if (!lineId || lineId === 'line_b' || lineId === 'line_a') {
-                assignLine(selectedPhone, 'contact_center').catch(console.warn);
+            if (!lineId) {
+                assignLine(selectedPhone, 'line_b').catch(console.warn);
             }
         }).catch(console.error);
     }, [selectedPhone]);

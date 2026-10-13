@@ -919,11 +919,12 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
         // =============================================
         // MANEJO DE MENSAJES SALIENTES DE WHATSAPP WEB (isFromMe)
         // Registra la respuesta del operador humano y pausa el bot
-        // para que no interfiera en la atención ni le responda al operador
+        // para que no interfiera en la atención ni le responda al operador.
+        // AISLAMIENTO: Solo aplica a la línea de Contact Center. Cirugías (line_b) u otras líneas no tocan contact_center_conversations.
         // =============================================
         if (isFromMe) {
-            console.log(`[webhook] 📤 Mensaje saliente de WhatsApp Web detectado (${senderName}) hacia ${phone}. Omitiendo bot triage.`);
-            if (phone) {
+            console.log(`[webhook] 📤 Mensaje saliente detectado (${senderName}) hacia ${phone} en línea ${lineId}. Omitiendo bot triage.`);
+            if (phone && lineId === 'contact_center') {
                 try {
                     const nowIso = new Date().toISOString();
                     const { data: existingConv } = await supabase
