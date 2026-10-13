@@ -3106,36 +3106,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                     </div>
 
-                    {/* Sincronización y Exportación IA */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {!isUciOnly && (
-                            <SalusSyncButton onComplete={() => { fetchData(); fetchUltimaActualizacion(); }} showTimestamp={false} />
-                        )}
-                        
-                        {onOpenInfografia && (
-                            <button
-                                onClick={() => onOpenInfografia(activeIndicatorsList, metrics, filteredRows)}
-                                style={{
-                                    background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
-                                    color: '#FFFFFF',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    padding: '7px 12px',
-                                    fontWeight: 600,
-                                    fontSize: '0.8rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)'
-                                }}
-                                title="Exportar a PowerPoint PPTX, Excel, PDF, Infografía y Más"
-                            >
-                                <Sparkles size={14} />
-                                Centro de Exportación
-                            </button>
-                        )}
-                    </div>
+                    {/* Sincronización y Exportación IA - Ocultado a solicitud en Gobernanza de Datos */}
                 </div>
             </div>
 
