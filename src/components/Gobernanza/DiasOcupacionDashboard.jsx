@@ -3193,16 +3193,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     </div>
                                     
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{
-                                            fontSize: '0.68rem',
-                                            background: isUciOpen ? '#2563EB' : '#DBEAFE',
-                                            color: isUciOpen ? '#FFFFFF' : '#1E40AF',
-                                            padding: '2px 8px',
-                                            borderRadius: '10px',
-                                            fontWeight: 800
-                                        }}>
-                                            {activeIndicatorIds.length} activos
-                                        </span>
                                         <span style={{ color: isUciOpen ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
                                             {isUciOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                         </span>
@@ -3463,16 +3453,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         </div>
                                         
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{
-                                                fontSize: '0.68rem',
-                                                background: sectorId === 'GUARDIA' ? '#2563EB' : '#DBEAFE',
-                                                color: sectorId === 'GUARDIA' ? '#FFFFFF' : '#1E40AF',
-                                                padding: '2px 8px',
-                                                borderRadius: '10px',
-                                                fontWeight: 800
-                                            }}>
-                                                {activeGuardiaIds.length} activos
-                                            </span>
                                             <span style={{ color: sectorId === 'GUARDIA' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
                                                 {isGuardiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                             </span>
@@ -3613,16 +3593,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         </div>
                                         
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{
-                                                fontSize: '0.68rem',
-                                                background: sectorId === 'QUIROFANO' ? '#2563EB' : '#DBEAFE',
-                                                color: sectorId === 'QUIROFANO' ? '#FFFFFF' : '#1E40AF',
-                                                padding: '2px 8px',
-                                                borderRadius: '10px',
-                                                fontWeight: 800
-                                            }}>
-                                                {activeQuirofanoIds.length} activos
-                                            </span>
                                             <span style={{ color: sectorId === 'QUIROFANO' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
                                                 {isQuirofanoOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                             </span>
