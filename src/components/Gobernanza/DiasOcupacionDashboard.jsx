@@ -2508,21 +2508,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
                                     {activeSectorConfig.label}
                                 </h2>
-                                <span style={{
-                                    fontSize: '0.72rem',
-                                    background: '#EFF6FF',
-                                    color: '#1E40AF',
-                                    padding: '2px 8px',
-                                    borderRadius: '12px',
-                                    fontWeight: 700,
-                                    border: '1px solid #BFDBFE'
-                                }}>
-                                    {sectorId === 'GUARDIA' 
-                                        ? `${activeGuardiaIds.length} Indicadores` 
-                                        : sectorId === 'QUIROFANO'
-                                            ? `${activeQuirofanoIds.length} Indicadores`
-                                            : `${activeIndicatorIds.length} Indicadores`}
-                                </span>
                             </div>
                         </div>
 
