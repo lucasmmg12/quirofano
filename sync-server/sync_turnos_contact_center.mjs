@@ -237,6 +237,80 @@ export async function syncTurnosContactCenter(targetDate = null) {
     return payload;
 }
 
+// ==============================================================================
+// 3. INGESTIÓN CONTINUA DE SOLICITUDES DE CANCELACIÓN DESDE WHATSAPP
+// ==============================================================================
+const regexCancel = /^-?Hola soy\s+(.+?),\s*con DNI:\s*(\d+),\s*tengo turno el\s*(\d{1,2}\/\d{1,2}\/\d{4})\s*a las\s*(\d{1,2}:\d{2}),?\s*en\s*(.+?),\s*con el (?:doctor|profesional|médico|medico)\s*(.+?),\s*y necesito\s*(.*)$/i;
+
+function parseDateDmy(dmy) {
+    if (!dmy) return null;
+    const parts = dmy.split('/');
+    if (parts.length === 3) {
+        return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return null;
+}
+
+export async function syncWhatsAppCancellations() {
+    try {
+        const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const { data: messages, error } = await supabase
+            .from('whatsapp_messages')
+            .select('*')
+            .gte('created_at', since)
+            .eq('direction', 'incoming')
+            .ilike('content', '%-Hola soy%')
+            .order('created_at', { ascending: true });
+
+        if (error || !messages?.length) return 0;
+
+        const { data: existentes } = await supabase
+            .from('contact_center_cancelaciones')
+            .select('dni, fecha_turno, hora_turno');
+
+        const existSet = new Set((existentes || []).map(e => `${e.dni}_${e.fecha_turno}_${e.hora_turno}`));
+        let inserted = 0;
+
+        for (const msg of messages) {
+            const m = msg.content.trim().match(regexCancel);
+            if (!m) continue;
+
+            const [, nombre, dni, fechaStr, hora, sede, medico, accion] = m;
+            if (!(accion || '').toLowerCase().includes('cancelar')) continue;
+
+            const fechaIso = parseDateDmy(fechaStr);
+            const key = `${dni}_${fechaIso}_${hora}`;
+            if (existSet.has(key)) continue;
+
+            const { error: insErr } = await supabase
+                .from('contact_center_cancelaciones')
+                .insert({
+                    phone: msg.phone,
+                    dni: dni.trim(),
+                    paciente_nombre: nombre.trim().toUpperCase(),
+                    fecha_turno: fechaIso,
+                    hora_turno: hora.trim(),
+                    sede: sede.trim(),
+                    medico: medico.trim().toUpperCase(),
+                    motivo_paciente: msg.content.trim(),
+                    origen: 'bot_whatsapp',
+                    estado: 'pendiente',
+                    created_at: msg.created_at,
+                    updated_at: msg.created_at
+                });
+
+            if (!insErr) {
+                inserted++;
+                existSet.add(key);
+            }
+        }
+        return inserted;
+    } catch (e) {
+        console.warn('[syncWhatsAppCancellations] Error:', e.message);
+        return 0;
+    }
+}
+
 // Modo demonio / ejecutor periódico (cada 5 minutos)
 const INTERVAL_MS = 5 * 60 * 1000;
 
@@ -250,8 +324,13 @@ async function runCycle() {
                 console.log(`   • ${a.name}: ${a.turnos} turnos dados, ${a.cancelados} cancelados`);
             }
         });
+
+        const cancelIngested = await syncWhatsAppCancellations();
+        if (cancelIngested > 0) {
+            console.log(`[${timestamp}] 📥 Ingestadas ${cancelIngested} nuevas cancelaciones de pacientes vía WhatsApp.`);
+        }
     } catch (err) {
-        console.error(`[${timestamp}] ❌ Error en sincronización de turnos CC:`, err.message);
+        console.error(`[${timestamp}] ❌ Error en ciclo de sincronización CC:`, err.message);
     }
 }
 
