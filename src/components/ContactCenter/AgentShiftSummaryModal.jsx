@@ -3,11 +3,12 @@ import {
     X, Calendar, Clock, MessageSquare, CheckCircle2, 
     Stethoscope, FileText, RotateCcw, AlertTriangle, HelpCircle, 
     TrendingUp, Award, Zap, Copy, Check, RefreshCw, ArrowRightLeft,
-    Sparkles, ShieldCheck, User, BarChart2, Info
+    Sparkles, ShieldCheck, User, BarChart2, Info, FileDown
 } from 'lucide-react';
 import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText } from '../../services/agentShiftService';
 import { CONTACT_CENTER_AGENTS } from '../../services/contactCenterService';
 import AgentTurnosMappingModal from './AgentTurnosMappingModal';
+import { generateAgentShiftPdf } from '../../utils/agentShiftReportPdf';
 
 export default function AgentShiftSummaryModal({
     isOpen,
@@ -22,6 +23,7 @@ export default function AgentShiftSummaryModal({
     const [loading, setLoading] = useState(true);
     const [metrics, setMetrics] = useState(null);
     const [copied, setCopied] = useState(false);
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [showTurnosModal, setShowTurnosModal] = useState(false);
 
@@ -76,6 +78,20 @@ export default function AgentShiftSummaryModal({
             document.body.removeChild(ta);
             setCopied(true);
             setTimeout(() => setCopied(false), 2500);
+        }
+    };
+
+    // Descargar reporte oficial en formato PDF (Estética Asociaciones)
+    const handleDownloadPdf = async () => {
+        if (!metrics || downloadingPdf) return;
+        try {
+            setDownloadingPdf(true);
+            await generateAgentShiftPdf(metrics);
+        } catch (err) {
+            console.error('[AgentShiftSummaryModal] Error generando PDF:', err);
+            alert('Ocurrió un error al generar el documento PDF. Por favor reintenta.');
+        } finally {
+            setDownloadingPdf(false);
         }
     };
 
@@ -903,6 +919,37 @@ export default function AgentShiftSummaryModal({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <button
                             type="button"
+                            onClick={handleDownloadPdf}
+                            disabled={loading || !metrics || downloadingPdf}
+                            title="Descargar informe oficial en PDF (formato institucional A4 con estética de Asociaciones)"
+                            style={{
+                                padding: '8px 14px',
+                                borderRadius: '8px',
+                                border: '1px solid #002D59',
+                                background: downloadingPdf ? '#F0F9FF' : '#003B71',
+                                color: downloadingPdf ? '#0369A1' : '#FFFFFF',
+                                fontSize: '0.76rem',
+                                fontWeight: 700,
+                                cursor: downloadingPdf ? 'wait' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                boxShadow: '0 1px 3px rgba(0, 59, 113, 0.25)',
+                                transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!downloadingPdf) e.currentTarget.style.background = '#0284C7';
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!downloadingPdf) e.currentTarget.style.background = '#003B71';
+                            }}
+                        >
+                            {downloadingPdf ? <RefreshCw size={14} className="spin" /> : <FileDown size={14} />}
+                            <span>{downloadingPdf ? 'Generando PDF...' : 'Descargar PDF'}</span>
+                        </button>
+
+                        <button
+                            type="button"
                             onClick={handleCopyReport}
                             disabled={loading || !metrics}
                             style={{
@@ -921,7 +968,7 @@ export default function AgentShiftSummaryModal({
                             }}
                         >
                             {copied ? <Check size={14} color="#16A34A" /> : <Copy size={14} />}
-                            <span>{copied ? '¡Reporte Copiado!' : 'Copiar Reporte de Turno'}</span>
+                            <span>{copied ? '¡Reporte Copiado!' : 'Copiar Reporte'}</span>
                         </button>
 
                         <button
@@ -930,13 +977,12 @@ export default function AgentShiftSummaryModal({
                             style={{
                                 padding: '8px 18px',
                                 borderRadius: '8px',
-                                border: 'none',
-                                background: '#0284C7',
-                                color: '#FFFFFF',
+                                border: '1px solid #CBD5E1',
+                                background: '#F8FAFC',
+                                color: '#334155',
                                 fontSize: '0.76rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
+                                fontWeight: 700,
+                                cursor: 'pointer'
                             }}
                         >
                             Cerrar
