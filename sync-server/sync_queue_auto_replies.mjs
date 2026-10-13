@@ -22,21 +22,21 @@ export function getContactCenterScheduleInfo(now = new Date()) {
     const currentMin = hour * 60 + min;
 
     let isOpen = false;
-    let nextOpeningText = 'el próximo día hábil a partir de las 7:30 hs';
+    let nextOpeningText = 'el próximo día hábil a partir de las 7:00 hs';
 
     if (day >= 1 && day <= 5) {
-        // Lunes a Viernes: 7:30 a 21:00 hs (450 a 1260 minutos)
-        if (currentMin >= 450 && currentMin < 1260) {
+        // Lunes a Viernes: 7:00 a 21:00 hs (420 a 1260 minutos)
+        if (currentMin >= 420 && currentMin < 1260) {
             isOpen = true;
-        } else if (currentMin < 450) {
-            nextOpeningText = 'hoy a partir de las 7:30 hs';
+        } else if (currentMin < 420) {
+            nextOpeningText = 'hoy a partir de las 7:00 hs';
         } else {
             // Pasadas las 21:00 hs
             if (day === 5) {
                 // Viernes noche -> Sábado 8:00 hs
                 nextOpeningText = 'mañana sábado a partir de las 8:00 hs';
             } else {
-                nextOpeningText = 'mañana a partir de las 7:30 hs';
+                nextOpeningText = 'mañana a partir de las 7:00 hs';
             }
         }
     } else if (day === 6) {
@@ -46,12 +46,12 @@ export function getContactCenterScheduleInfo(now = new Date()) {
         } else if (currentMin < 480) {
             nextOpeningText = 'hoy sábado a partir de las 8:00 hs';
         } else {
-            // Sábado después de las 12:00 hs -> Lunes 7:30 hs
-            nextOpeningText = 'el próximo lunes a partir de las 7:30 hs';
+            // Sábado después de las 12:00 hs -> Lunes 7:00 hs
+            nextOpeningText = 'el próximo lunes a partir de las 7:00 hs';
         }
     } else {
-        // Domingo -> Lunes 7:30 hs
-        nextOpeningText = 'el próximo lunes a partir de las 7:30 hs';
+        // Domingo -> Lunes 7:00 hs
+        nextOpeningText = 'el próximo lunes a partir de las 7:00 hs';
     }
 
     return { isOpen, nextOpeningText };
@@ -60,7 +60,7 @@ export function getContactCenterScheduleInfo(now = new Date()) {
 export function getAfterHoursMessage(nextOpeningText) {
     return `¡Hola! 🏥 Te informamos que en este momento nuestro equipo de atención se encuentra *fuera del horario laboral*.\n\n` +
         `⏰ *Nuestros horarios de atención son:*\n` +
-        `• *Lunes a Viernes:* 7:30 a 21:00 hs\n` +
+        `• *Lunes a Viernes:* 7:00 a 21:00 hs\n` +
         `• *Sábados:* 8:00 a 12:00 hs\n` +
         `_(Domingos y Feriados cerrado)_\n\n` +
         `Tu mensaje quedó registrado y un asesor te responderá *${nextOpeningText}* en nuestro horario habitual.\n\n` +
@@ -76,7 +76,7 @@ export function getDelayWaitNoticeMessage() {
         `📲 *Gestión de Turnos Online:*\n` +
         `Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo desde la página web del Sanatorio:\n` +
         `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
-        `⏰ *Horarios de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
+        `⏰ *Horarios de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
         `💡 _Si deseás volver a consultar opciones con el menú virtual, podés escribir *"Menú"* en cualquier momento._`;
 }
 
