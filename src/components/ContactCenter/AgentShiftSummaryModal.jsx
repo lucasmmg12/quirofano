@@ -492,8 +492,23 @@ export default function AgentShiftSummaryModal({
                                         </div>
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
-                                            {kpis.turnosSalus}
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
+                                                {kpis.turnosSalus}
+                                            </span>
+                                            {kpis.turnosCancelados > 0 && (
+                                                <span style={{ 
+                                                    fontSize: '0.72rem', 
+                                                    fontWeight: 700, 
+                                                    color: '#DC2626',
+                                                    background: '#FEF2F2',
+                                                    border: '1px solid #FECACA',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '6px'
+                                                }}>
+                                                    {kpis.turnosCancelados} cancelados
+                                                </span>
+                                            )}
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
                                             <span style={{ fontSize: '0.7rem', color: '#8B5CF6', fontWeight: 600 }}>
@@ -938,6 +953,7 @@ export default function AgentShiftSummaryModal({
                     agent={selectedAgent}
                     selectedDate={selectedDate}
                     turnosRawList={metrics?.turnosSalusDetalle || []}
+                    canceladosRawList={metrics?.canceladosSalusDetalle || []}
                     onOpenChatWithPhone={(phone) => {
                         setShowTurnosModal(false);
                         onClose();

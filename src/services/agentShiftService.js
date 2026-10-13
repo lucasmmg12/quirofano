@@ -34,7 +34,25 @@ function normalizeAgentName(name) {
 export async function fetchTurnosSalusHoy(dateStr = null) {
     const today = dateStr || new Date().toISOString().substring(0, 10);
 
-    // 1. Intento HTTP directo al sync-server (si estamos en red local / localhost)
+    // 1. Consulta prioritaria a Supabase app_config con key cc_turnos_contact_center_hoy (con DNI y cancelaciones)
+    try {
+        const { data: row } = await supabase
+            .from('app_config')
+            .select('value, updated_at')
+            .eq('key', 'cc_turnos_contact_center_hoy')
+            .maybeSingle();
+
+        if (row?.value) {
+            const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+            if (parsed && Array.isArray(parsed.agentes) && parsed.agentes.length > 0) {
+                return parsed;
+            }
+        }
+    } catch (err) {
+        console.warn('[agentShiftService] Error leyendo cc_turnos_contact_center_hoy:', err);
+    }
+
+    // 2. Intento HTTP directo al sync-server (si estamos en red local / localhost)
     const base = getSalusSyncBaseUrl();
     if (base) {
         try {
@@ -49,7 +67,7 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
         } catch (_) {}
     }
 
-    // 2. Consulta a Supabase app_config
+    // 3. Fallback a cc_turnos_hoy
     try {
         const { data: row } = await supabase
             .from('app_config')
@@ -180,6 +198,7 @@ export async function getAgentDailyShiftMetrics({
         );
     });
     const turnosSalusCount = agSalus ? agSalus.turnos : 0;
+    const turnosCanceladosCount = agSalus ? (agSalus.cancelados || 0) : 0;
 
     // Categorización de tipos de consultas recibidas
     const categorias = {
@@ -383,12 +402,14 @@ export async function getAgentDailyShiftMetrics({
             conversacionesFinalizadas: totalFinalizadas,
             conversacionesGestionadas: totalGestionadas,
             turnosSalus: turnosSalusCount,
+            turnosCancelados: turnosCanceladosCount,
             tasaResolucion,
             promMensajesPorChat,
             chatsPendientes: chatsActivosSinCerrar.length,
             archivedOver24h: agentArchivedOver24h
         },
         turnosSalusDetalle: agSalus?.turnosDetalle || [],
+        canceladosSalusDetalle: agSalus?.canceladosDetalle || [],
         resolutionHistogram: agentResolutionHistogram,
         hourlyDistribution,
         categorias,

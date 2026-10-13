@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     X, Search, Stethoscope, MessageSquare, CheckCircle2, AlertCircle, 
     Copy, Check, Users, ArrowUpRight, Filter, Phone, Calendar, Clock, 
-    ExternalLink, ShieldCheck, UserCheck, Sparkles, RefreshCw
+    ExternalLink, ShieldCheck, UserCheck, Sparkles, RefreshCw, Ban
 } from 'lucide-react';
 import { mapTurnosWithWhatsApp } from '../../services/agentShiftService';
 
@@ -12,12 +12,13 @@ export default function AgentTurnosMappingModal({
     agent,
     selectedDate,
     turnosRawList = [],
+    canceladosRawList = [],
     onOpenChatWithPhone
 }) {
     const [loading, setLoading] = useState(true);
     const [mappedTurnos, setMappedTurnos] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('todos'); // 'todos' | 'dni' | 'familiares' | 'sin_match'
+    const [activeFilter, setActiveFilter] = useState('todos'); // 'todos' | 'dni' | 'familiares' | 'sin_match' | 'cancelados'
     const [copiedDni, setCopiedDni] = useState(null);
 
     // Cargar el mapeo inteligente de turnos con WhatsApp
@@ -64,6 +65,7 @@ export default function AgentTurnosMappingModal({
         const familyMatches = mappedTurnos.filter(t => t.isFamilyBooking).length;
         const phoneMatches = mappedTurnos.filter(t => t.matchType === 'phone').length;
         const sinMatch = mappedTurnos.filter(t => t.matchType === 'none').length;
+        const cancelados = canceladosRawList.length;
         const pctEfectividad = total > 0 ? Math.round(((dniMatches + phoneMatches) / total) * 100) : 0;
 
         return {
@@ -72,12 +74,14 @@ export default function AgentTurnosMappingModal({
             familyMatches,
             phoneMatches,
             sinMatch,
+            cancelados,
             pctEfectividad
         };
-    }, [mappedTurnos]);
+    }, [mappedTurnos, canceladosRawList]);
 
     // Filtrar turnos
     const filteredTurnos = useMemo(() => {
+        if (activeFilter === 'cancelados') return [];
         return mappedTurnos.filter(t => {
             // Filtro por tab activo
             if (activeFilter === 'dni' && !(t.matchType === 'dni_message' || t.matchType === 'dni_conv')) return false;
@@ -99,6 +103,22 @@ export default function AgentTurnosMappingModal({
             );
         });
     }, [mappedTurnos, activeFilter, searchQuery]);
+
+    // Filtrar cancelados
+    const filteredCancelados = useMemo(() => {
+        if (!canceladosRawList || canceladosRawList.length === 0) return [];
+        if (!searchQuery.trim()) return canceladosRawList;
+        const q = searchQuery.toLowerCase().trim();
+        return canceladosRawList.filter(c => 
+            (c.paciente || '').toLowerCase().includes(q) ||
+            (c.dni || '').includes(q) ||
+            (c.especialidad || '').toLowerCase().includes(q) ||
+            (c.medico || '').toLowerCase().includes(q) ||
+            (c.asistencia || '').toLowerCase().includes(q) ||
+            (c.motivoAusencia || '').toLowerCase().includes(q) ||
+            (c.telefono1 || '').includes(q)
+        );
+    }, [canceladosRawList, searchQuery]);
 
     if (!isOpen) return null;
 
@@ -251,6 +271,26 @@ export default function AgentTurnosMappingModal({
                             Llamada o Presencial
                         </span>
                     </div>
+
+                    <div style={{ 
+                        background: '#FFFFFF', 
+                        padding: '12px 14px', 
+                        borderRadius: '10px', 
+                        border: stats.cancelados > 0 ? '1px solid #FECACA' : '1px solid #E2E8F0',
+                        cursor: stats.cancelados > 0 ? 'pointer' : 'default'
+                    }}
+                    onClick={() => { if (stats.cancelados > 0) setActiveFilter('cancelados'); }}
+                    >
+                        <span style={{ fontSize: '0.68rem', color: stats.cancelados > 0 ? '#DC2626' : '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Turnos Cancelados
+                        </span>
+                        <div style={{ fontSize: '1.45rem', fontWeight: 900, color: stats.cancelados > 0 ? '#DC2626' : '#64748B', marginTop: '2px' }}>
+                            {stats.cancelados}
+                        </div>
+                        <span style={{ fontSize: '0.68rem', color: stats.cancelados > 0 ? '#EF4444' : '#94A3B8', fontWeight: 600 }}>
+                            {stats.cancelados > 0 ? 'Ver cancelaciones ↗' : 'Sin cancelaciones'}
+                        </span>
+                    </div>
                 </div>
 
                 {/* ── BUSCADOR Y PESTAÑAS DE FILTRO ── */}
@@ -356,10 +396,27 @@ export default function AgentTurnosMappingModal({
                         >
                             ⚪ Sin Chat ({stats.sinMatch})
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveFilter('cancelados')}
+                            style={{
+                                padding: '6px 12px', 
+                                borderRadius: '8px', 
+                                border: activeFilter === 'cancelados' ? '1px solid #DC2626' : '1px solid #FECACA',
+                                fontSize: '0.72rem', 
+                                fontWeight: 700, 
+                                cursor: 'pointer',
+                                background: activeFilter === 'cancelados' ? '#DC2626' : '#FEF2F2',
+                                color: activeFilter === 'cancelados' ? '#FFFFFF' : '#B91C1C',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            🚫 Cancelados ({stats.cancelados})
+                        </button>
                     </div>
                 </div>
 
-                {/* ── CUERPO CON LA LISTA DE TURNOS ── */}
+                {/* ── CUERPO CON LA LISTA DE TURNOS O CANCELACIONES ── */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
                     {loading ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: '12px' }}>
@@ -371,6 +428,124 @@ export default function AgentTurnosMappingModal({
                                 Contrastando DNIs y mensajes enviados por familiares en tiempo real.
                             </div>
                         </div>
+                    ) : activeFilter === 'cancelados' ? (
+                        filteredCancelados.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748B' }}>
+                                <AlertCircle size={32} color="#94A3B8" style={{ margin: '0 auto 10px auto' }} />
+                                <div style={{ fontSize: '0.90rem', fontWeight: 700, color: '#334155' }}>
+                                    No se encontraron cancelaciones {searchQuery ? 'con esa búsqueda' : 'para esta operadora hoy'}
+                                </div>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '0.76rem' }}>
+                                    Las cancelaciones se auditan directamente a través del registro de ausencia y anulación en SALUS.
+                                </p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {filteredCancelados.map((canc, idx) => (
+                                    <div
+                                        key={canc.idVisita || idx}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            borderRadius: '12px',
+                                            border: '1px solid #FECACA',
+                                            borderLeft: '5px solid #DC2626',
+                                            padding: '14px 18px',
+                                            display: 'grid',
+                                            gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(320px, 1.3fr)',
+                                            gap: '16px',
+                                            alignItems: 'start',
+                                            transition: 'all 0.15s ease',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                                        }}
+                                    >
+                                        {/* COLUMNA 1: DATOS DEL TURNO CANCELADO */}
+                                        <div style={{ borderRight: '1px solid #F1F5F9', paddingRight: '14px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{
+                                                        width: '20px', height: '20px', borderRadius: '50%',
+                                                        background: '#FEF2F2', color: '#DC2626',
+                                                        fontSize: '0.65rem', fontWeight: 800,
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                    }}>
+                                                        {idx + 1}
+                                                    </span>
+                                                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F2942' }}>
+                                                        {canc.paciente}
+                                                    </h3>
+                                                </div>
+                                                <span style={{
+                                                    fontSize: '0.66rem', fontWeight: 800,
+                                                    background: '#FEF2F2', color: '#DC2626',
+                                                    padding: '2px 8px', borderRadius: '6px',
+                                                    border: '1px solid #FECACA'
+                                                }}>
+                                                    Cancelado / Ausencia
+                                                </span>
+                                            </div>
+
+                                            {/* DNI Chip y Teléfono */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '6px 0', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={(e) => handleCopyDni(canc.dni, e)}
+                                                    title="Copiar DNI del paciente"
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        background: '#EFF6FF', border: '1px solid #BAE6FD',
+                                                        color: '#0369A1', padding: '2px 8px', borderRadius: '6px',
+                                                        fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <span>DNI: {canc.dni || 'Sin DNI'}</span>
+                                                    {copiedDni === canc.dni ? <Check size={12} color="#16A34A" /> : <Copy size={11} />}
+                                                </button>
+                                                {canc.telefono1 && (
+                                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        Tel: {canc.telefono1}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Médico y Especialidad */}
+                                            <div style={{ fontSize: '0.76rem', color: '#334155', marginTop: '6px' }}>
+                                                <div>
+                                                    <strong style={{ color: '#DC2626' }}>{canc.especialidad || 'CONSULTA MÉDICA'}</strong>
+                                                    {canc.medico ? ` • ${canc.medico}` : ''}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', fontSize: '0.70rem', color: '#64748B' }}>
+                                                    <span>📅 Fecha Cita: <strong>{canc.fechaVisita}</strong></span>
+                                                    <span>⏰ Hora: <strong>{canc.horaVisita}</strong></span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* COLUMNA 2: DETALLES DE CANCELACIÓN */}
+                                        <div>
+                                            <div style={{
+                                                background: '#FEF2F2',
+                                                borderRadius: '8px',
+                                                padding: '10px 12px',
+                                                border: '1px solid #FECACA',
+                                                fontSize: '0.74rem'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#991B1B', fontWeight: 800, marginBottom: '6px' }}>
+                                                    <Ban size={14} color="#DC2626" />
+                                                    <span>Estado: {canc.asistencia || 'Cancelado'}</span>
+                                                </div>
+                                                {canc.motivoAusencia && (
+                                                    <div style={{ color: '#7F1D1D', marginBottom: '6px', fontSize: '0.72rem' }}>
+                                                        <strong>Motivo:</strong> {canc.motivoAusencia}
+                                                    </div>
+                                                )}
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', borderTop: '1px dashed #FCA5A5', paddingTop: '6px', marginTop: '4px' }}>
+                                                    Registrado por: <strong>{canc.agenteCancelacion || agent?.name || 'Operadora'}</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
                     ) : filteredTurnos.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748B' }}>
                             <AlertCircle size={32} color="#94A3B8" style={{ margin: '0 auto 10px auto' }} />
@@ -610,7 +785,11 @@ export default function AgentTurnosMappingModal({
                     fontSize: '0.74rem'
                 }}>
                     <span style={{ color: '#64748B' }}>
-                        Mostrando <strong>{filteredTurnos.length}</strong> de <strong>{mappedTurnos.length}</strong> citas médicas
+                        {activeFilter === 'cancelados' ? (
+                            <>Mostrando <strong>{filteredCancelados.length}</strong> de <strong>{stats.cancelados}</strong> cancelaciones registradas</>
+                        ) : (
+                            <>Mostrando <strong>{filteredTurnos.length}</strong> de <strong>{mappedTurnos.length}</strong> citas médicas</>
+                        )}
                     </span>
                     <button
                         onClick={onClose}
