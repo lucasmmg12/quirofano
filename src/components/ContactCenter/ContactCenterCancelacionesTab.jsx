@@ -1169,17 +1169,20 @@ export default function ContactCenterCancelacionesTab({
                 </div>
             )}
 
-            {/* Modal ChatWindow estilo MSN Messenger / Cirugías */}
+            {/* Modal ChatWindow de Contact Center */}
             <ChatWindow
                 open={chatOpen}
                 onClose={() => setChatOpen(false)}
                 patientName={chatPatient.name}
                 patientPhone={chatPatient.phone}
+                defaultLineId="contact_center"
+                lockLineId="contact_center"
                 patientContext={{
                     dni: chatPatient.dni,
                     medico: chatPatient.medico,
                     especialidad: chatPatient.especialidad,
-                    fechaTurno: chatPatient.fechaTurno
+                    fechaTurno: chatPatient.fechaTurno,
+                    isContactCenter: true
                 }}
                 addToast={addToast}
             />

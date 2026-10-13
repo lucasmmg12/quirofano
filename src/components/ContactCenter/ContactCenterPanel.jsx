@@ -1141,13 +1141,18 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 />
             )}
 
-            {/* Ventana Flotante de Chat estilo Cirugías / MSN Messenger */}
+            {/* Ventana Flotante de Chat de Contact Center */}
             <ChatWindow
                 open={panelChatOpen}
                 onClose={() => setPanelChatOpen(false)}
                 patientName={panelChatPatient.name}
                 patientPhone={panelChatPatient.phone}
-                patientContext={{ dni: panelChatPatient.dni }}
+                defaultLineId="contact_center"
+                lockLineId="contact_center"
+                patientContext={{
+                    dni: panelChatPatient.dni,
+                    isContactCenter: true
+                }}
                 addToast={addToast}
             />
         </div>

@@ -1115,12 +1115,15 @@ export default function PacientesPanel({ addToast, currentUser }) {
                 onClose={() => setChatOpen(false)}
                 patientName={chatPatient.name}
                 patientPhone={chatPatient.phone}
+                defaultLineId="line_b"
+                lockLineId="line_b"
                 patientContext={{
                     obraSocial: chatPatient.obraSocial,
                     fechaCirugia: chatPatient.fechaCirugia,
                     medico: chatPatient.medico,
                     idPaciente: chatPatient.idPaciente,
                     dni: chatPatient.dni,
+                    isSurgery: true,
                 }}
                 addToast={addToast}
             />
