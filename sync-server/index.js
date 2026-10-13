@@ -30,6 +30,8 @@ import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 import { syncTurnosActivos, resolveSedeFromAgenda } from './sync_turnos_activos.mjs';
 import { getIncentivosContactCenter, getTurnosDiariosContactCenter } from './incentivos_contact_center.mjs';
 import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
+import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turnos_contact_center.mjs';
+import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 
 
 
@@ -4080,6 +4082,44 @@ app.get('/api/salus/turnos-agentes-hoy', async (req, res) => {
     }
 });
 
+// ── Endpoint HTTP de Guardia Internado: Traumatología y Control Clínico / Interconsultas ──
+app.get('/api/salus/guardia-internado', async (req, res) => {
+    try {
+        const forceRefresh = req.query.refresh === 'true';
+        if (!forceRefresh) {
+            // Intentar leer de Supabase app_config primero para velocidad instantánea
+            const { data: cfg } = await supabase
+                .from('app_config')
+                .select('value, updated_at')
+                .eq('key', 'guardia_internado_cache')
+                .maybeSingle();
+
+            if (cfg?.value) {
+                try {
+                    const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
+                    return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
+                } catch (_) {}
+            }
+        }
+
+        // Si se pide refresh forzado o no hay caché, ejecutar extracción directa
+        const freshData = await syncGuardiaInternado();
+        res.json({ success: true, fromCache: false, data: freshData });
+    } catch (err) {
+        console.error('Error en /api/salus/guardia-internado:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/sync/guardia-internado', async (req, res) => {
+    try {
+        const data = await syncGuardiaInternado();
+        res.json({ success: true, results: data });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ── Servidor ──
 
 // ── Heartbeat a Supabase (salus_sync_server_status) ──
@@ -4448,11 +4488,13 @@ app.listen(PORT, '0.0.0.0', () => {
         setTimeout(syncIncentivosCiclo, 6000);
         setInterval(syncIncentivosCiclo, 15 * 60 * 1000);
 
-        // 5b. TURNOS DIARIOS CONTACT CENTER (Final de Turno - Inicio y cada 3 min)
+        // 5b. TURNOS DIARIOS CONTACT CENTER (Final de Turno y Mapeo DNI con SALUS - Inicio y cada 3 min)
         async function syncTurnosDiariosCiclo() {
             if (syncInProgress) return;
             try {
                 await syncTurnosDiariosContactCenterToSupabase();
+                await syncTurnosContactCenter();
+                await syncWhatsAppCancellations();
             } catch (e) {
                 console.warn('⚠️ [Turnos Diarios Auto] Error en ciclo:', e.message);
             }

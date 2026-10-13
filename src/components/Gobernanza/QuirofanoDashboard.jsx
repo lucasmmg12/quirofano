@@ -24,7 +24,8 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip as RechartsTooltip,
-    Legend
+    Legend,
+    LabelList
 } from 'recharts';
 import SqlDocumentationModal from './SqlDocumentationModal';
 import './Gobernanza.css';
@@ -98,16 +99,16 @@ const OBRAS_SOCIALES_DATA = [
 
 // Catálogo Oficial Numerado de Motivos de Suspensión (Tableau 1..13)
 const MOTIVOS_SUSPENSION_OFICIAL = [
-    { codigo: 1, motivo: '1. Cx Reprogramada', cantidad: 20, pct: 8.0, color: '#3B82F6', tipo: 'OPERATIVO' },
-    { codigo: 2, motivo: '2. No autorizada por Obra social', cantidad: 54, pct: 21.6, color: '#EF4444', tipo: 'FINANCIADOR' },
-    { codigo: 3, motivo: '3. Ya fue realizado', cantidad: 8, pct: 3.2, color: '#10B981', tipo: 'ADMINISTRATIVO' },
-    { codigo: 4, motivo: '4. Paciente enfermo', cantidad: 31, pct: 12.4, color: '#F59E0B', tipo: 'CLINICO' },
-    { codigo: 5, motivo: '5. Paciente sin prequirúrgicos', cantidad: 1, pct: 0.4, color: '#8B5CF6', tipo: 'CLINICO' },
-    { codigo: 6, motivo: '6. Paciente sin ayuno', cantidad: 14, pct: 5.6, color: '#EC4899', tipo: 'PREPARACION' },
-    { codigo: 7, motivo: '7. Otro motivo de paciente', cantidad: 61, pct: 24.4, color: '#1E40AF', tipo: 'PACIENTE' },
-    { codigo: 8, motivo: '8. Otro motivo de cirujanos', cantidad: 13, pct: 5.2, color: '#0D9488', tipo: 'CIRUJANO' },
-    { codigo: 9, motivo: '9. Motivos económicos', cantidad: 14, pct: 5.6, color: '#D97706', tipo: 'ADMINISTRATIVO' },
-    { codigo: 10, motivo: '10. Ortopedia / Prótesis', cantidad: 10, pct: 4.0, color: '#6366F1', tipo: 'PROVEEDOR' },
+    { codigo: 1, motivo: '1. Cx Reprogramada', cantidad: 20, pct: 8.0, color: '#0284C7', tipo: 'OPERATIVO' },
+    { codigo: 2, motivo: '2. No autorizada por Obra social', cantidad: 54, pct: 21.6, color: '#E11D48', tipo: 'FINANCIADOR' },
+    { codigo: 3, motivo: '3. Ya fue realizado', cantidad: 8, pct: 3.2, color: '#0D9488', tipo: 'ADMINISTRATIVO' },
+    { codigo: 4, motivo: '4. Paciente enfermo', cantidad: 31, pct: 12.4, color: '#D97706', tipo: 'CLINICO' },
+    { codigo: 5, motivo: '5. Paciente sin prequirúrgicos', cantidad: 1, pct: 0.4, color: '#F59E0B', tipo: 'CLINICO' },
+    { codigo: 6, motivo: '6. Paciente sin ayuno', cantidad: 14, pct: 5.6, color: '#7C3AED', tipo: 'PREPARACION' },
+    { codigo: 7, motivo: '7. Otro motivo de paciente', cantidad: 61, pct: 24.4, color: '#2563EB', tipo: 'PACIENTE' },
+    { codigo: 8, motivo: '8. Otro motivo de cirujanos', cantidad: 13, pct: 5.2, color: '#059669', tipo: 'CIRUJANO' },
+    { codigo: 9, motivo: '9. Motivos económicos', cantidad: 14, pct: 5.6, color: '#EA580C', tipo: 'PACIENTE' },
+    { codigo: 10, motivo: '10. Ortopedia / Prótesis', cantidad: 10, pct: 4.0, color: '#4F46E5', tipo: 'PROVEEDOR' },
     { codigo: 13, motivo: '13. Otros (técnicos/edilicios)', cantidad: 4, pct: 1.6, color: '#64748B', tipo: 'INFRAESTRUCTURA' }
 ];
 
@@ -309,15 +310,15 @@ const INTERANUAL_DATA = [
     { mes: 'Oct', a2022: 723, a2023: 803, a2024: 723, a2025: 760, a2026: 72, central2026: 55, hdd2026: 17 }
 ];
 
-// Matriz de Bloques Quirúrgicos
+// Matriz de Bloques Quirúrgicos (Con trazabilidad de Paciente Ficticio, Titular vs Pérdida de Bloque)
 const BLOQUES_DATA = [
-    { cirujano: 'Dr. Matías Muñoz Carratú', quirofano: 'Qx 1', dia: 'Miércoles', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasUso: 17.5, horasOciosas: 4.1, ocupacionPct: 81.0, estado7dias: 'COMPLETO', alerta: false },
-    { cirujano: 'Dr. Marcelo Ponce', quirofano: 'HdD (Qx 6)', dia: 'Lunes', horario: '08:00 - 12:30 (4.5h)', horasMes: 19.5, horasUso: 18.0, horasOciosas: 1.5, ocupacionPct: 92.3, estado7dias: 'COMPLETO', alerta: false },
-    { cirujano: 'Dr. Martín Galvarini', quirofano: 'HdD (Qx 6)', dia: 'Viernes', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasUso: 20.0, horasOciosas: 1.6, ocupacionPct: 92.6, estado7dias: 'COMPLETO', alerta: false },
-    { cirujano: 'Dr. Wadi Azuri', quirofano: 'Qx 1 (Láser)', dia: 'Sábado', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasUso: 15.0, horasOciosas: 6.6, ocupacionPct: 69.4, estado7dias: 'PARCIAL', alerta: true },
-    { cirujano: 'Cirugía Cardiovascular', quirofano: 'Qx 1', dia: 'Jueves', horario: '07:00 - 16:00 (9h)', horasMes: 39.0, horasUso: 31.5, horasOciosas: 7.5, ocupacionPct: 80.8, estado7dias: 'COMPLETO', alerta: false },
-    { cirujano: 'Dr. Diego Gempel', quirofano: 'Qx 2', dia: 'Martes', horario: '08:00 - 14:00 (6h)', horasMes: 26.0, horasUso: 21.0, horasOciosas: 5.0, ocupacionPct: 80.8, estado7dias: 'COMPLETO', alerta: false },
-    { cirujano: 'Dra. Daniela Saldivar Ozán', quirofano: 'Qx 4', dia: 'Lunes', horario: '14:00 - 20:00 (6h)', horasMes: 26.0, horasUso: 16.0, horasOciosas: 10.0, ocupacionPct: 61.5, estado7dias: 'LIBERADO_24H', alerta: true }
+    { cirujano: 'Dr. Matías Muñoz Carratú', quirofano: 'Qx 1', dia: 'Miércoles', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasTitular: 16.0, horasPerdida: 1.5, horasOciosas: 4.1, ocupacionTitularPct: 74.1, estado7dias: 'CONFIRMADO', alerta: false },
+    { cirujano: 'Dr. Marcelo Ponce', quirofano: 'HdD (Qx 6)', dia: 'Lunes', horario: '08:00 - 12:30 (4.5h)', horasMes: 19.5, horasTitular: 18.0, horasPerdida: 0.0, horasOciosas: 1.5, ocupacionTitularPct: 92.3, estado7dias: 'CONFIRMADO', alerta: false },
+    { cirujano: 'Dr. Martín Galvarini', quirofano: 'HdD (Qx 6)', dia: 'Viernes', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasTitular: 19.0, horasPerdida: 1.0, horasOciosas: 1.6, ocupacionTitularPct: 88.0, estado7dias: 'CONFIRMADO', alerta: false },
+    { cirujano: 'Dr. Wadi Azuri', quirofano: 'Qx 1 (Láser)', dia: 'Sábado', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasTitular: 10.5, horasPerdida: 4.5, horasOciosas: 6.6, ocupacionTitularPct: 48.6, estado7dias: 'LIBERAR', alerta: true },
+    { cirujano: 'Cirugía Cardiovascular', quirofano: 'Qx 1', dia: 'Jueves', horario: '07:00 - 16:00 (9h)', horasMes: 39.0, horasTitular: 31.5, horasPerdida: 0.0, horasOciosas: 7.5, ocupacionTitularPct: 80.8, estado7dias: 'CONFIRMADO', alerta: false },
+    { cirujano: 'Dr. Diego Gempel', quirofano: 'Qx 2', dia: 'Martes', horario: '08:00 - 14:00 (6h)', horasMes: 26.0, horasTitular: 17.5, horasPerdida: 3.5, horasOciosas: 5.0, ocupacionTitularPct: 67.3, estado7dias: 'CONFIRMADO', alerta: false },
+    { cirujano: 'Dra. Daniela Saldivar Ozán', quirofano: 'Qx 4', dia: 'Lunes', horario: '14:00 - 20:00 (6h)', horasMes: 26.0, horasTitular: 9.5, horasPerdida: 6.5, horasOciosas: 10.0, ocupacionTitularPct: 36.5, estado7dias: 'LIBERAR', alerta: true }
 ];
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS (QUIRÓFANO) ───
@@ -466,6 +467,7 @@ function compileQuirofanoMetrics(rows) {
     let centrales = 0;
     let hdd = 0;
     let hemodinamia = 0;
+    let urgencias = 0;
 
     const medicosMap = {};
     const obrasSocialesMap = {};
@@ -491,7 +493,14 @@ function compileQuirofanoMetrics(rows) {
             realizadas++;
         }
 
-        const grupo = (s.grupo_agendas || '').toUpperCase();
+        const rawMod = (s.modulo || '').toUpperCase();
+        const rawDesc = (s.descripcion || '').toUpperCase();
+        const rawGrup = (s.grupo_agendas || '').toUpperCase();
+        if (rawMod.includes('URGENC') || rawDesc.includes('URGENC') || rawGrup.includes('URGENC')) {
+            urgencias++;
+        }
+
+        const grupo = rawGrup;
         if (grupo.includes('HDD') || grupo.includes('HOSPITAL DE DIA')) {
             hdd++;
         } else if (grupo.includes('HEMODINAMIA')) {
@@ -606,7 +615,7 @@ function compileQuirofanoMetrics(rows) {
         let allocated = 0;
         motivosSuspension = MOTIVOS_SUSPENSION_OFICIAL.map((m, idx) => {
             if (idx === MOTIVOS_SUSPENSION_OFICIAL.length - 1) {
-                const cantidad = Math.max(0, totalSusp - allocated);
+                const cantidad = Math.max(0, suspendidas - allocated);
                 return { ...m, cantidad, pct: suspendidas > 0 ? Number(((cantidad / suspendidas) * 100).toFixed(1)) : 0 };
             }
             const cantidad = Math.round(suspendidas * (m.pct / 100));
@@ -656,6 +665,7 @@ function compileQuirofanoMetrics(rows) {
             centrales,
             hdd,
             hemodinamia,
+            urgencias,
             cirujanos,
             obrasSociales,
             especialidades,
@@ -666,6 +676,51 @@ function compileQuirofanoMetrics(rows) {
         procedimientosSuspendidos
     };
 }
+
+// Tooltip clínico estilizado para el gráfico de causales de suspensión
+const CustomSuspensionTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+        const data = payload[0].payload;
+        return (
+            <div style={{
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                minWidth: '240px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                    <span style={{ 
+                        fontSize: '0.68rem', 
+                        fontWeight: 800, 
+                        padding: '2px 8px', 
+                        borderRadius: '6px', 
+                        background: `${data.color}15`, 
+                        color: data.color, 
+                        textTransform: 'uppercase',
+                        border: `1px solid ${data.color}35`
+                    }}>
+                        {data.tipo || 'Causal'}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700 }}>
+                        Cód. #{data.codigo}
+                    </span>
+                </div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', marginBottom: '8px', lineHeight: 1.3 }}>
+                    {data.motivo}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #F1F5F9', paddingTop: '8px' }}>
+                    <span style={{ fontSize: '0.76rem', color: '#64748B', fontWeight: 600 }}>Casos en período:</span>
+                    <span style={{ fontSize: '0.90rem', fontWeight: 900, color: data.color }}>
+                        {data.cantidad} <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600 }}>({data.pct}%)</span>
+                    </span>
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
 
 export default function QuirofanoDashboard({ 
     isModal = false, 
@@ -684,13 +739,29 @@ export default function QuirofanoDashboard({
     const [searchCirujano, setSearchCirujano] = useState('');
     const [selectedChartHelp, setSelectedChartHelp] = useState(null);
     const [showSqlModal, setShowSqlModal] = useState(false);
+    const [sortMotivosBy, setSortMotivosBy] = useState('codigo'); // 'codigo' | 'cantidad'
     // Para máximo ahorro de RAM, almacenamos únicamente el objeto compilado (~25KB) y nunca el array crudo de 7.000 filas
     const [compiledData, setCompiledData] = useState(null);
     const [loadingSurgeries, setLoadingSurgeries] = useState(false);
 
+    // Fechas por defecto en caso de que el componente sea montado sin props de fecha
+    const defaultDesde = useMemo(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    }, []);
+
+    const defaultHasta = useMemo(() => {
+        const d = new Date();
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    }, []);
+
+    const effectiveDesde = fechaDesde || defaultDesde;
+    const effectiveHasta = fechaHasta || defaultHasta;
+
     // Cargar cirugías dinámicas desde Supabase según el rango de fechas seleccionado en la barra superior
     useEffect(() => {
-        if (!fechaDesde || !fechaHasta) return;
+        if (!effectiveDesde || !effectiveHasta) return;
         let isCancelled = false;
 
         const loadSurgeries = async () => {
@@ -707,8 +778,8 @@ export default function QuirofanoDashboard({
                         .from('surgeries')
                         .select('medico, modulo, descripcion, obra_social, status, ausente, motivo, grupo_agendas')
                         .eq('excluido', false)
-                        .gte('fecha_cirugia', fechaDesde)
-                        .lte('fecha_cirugia', fechaHasta)
+                        .gte('fecha_cirugia', effectiveDesde)
+                        .lte('fecha_cirugia', effectiveHasta)
                         .range(page * pageSize, (page + 1) * pageSize - 1);
 
                     if (error) throw error;
@@ -739,7 +810,7 @@ export default function QuirofanoDashboard({
 
         loadSurgeries();
         return () => { isCancelled = true; };
-    }, [fechaDesde, fechaHasta]);
+    }, [effectiveDesde, effectiveHasta]);
 
     const dynamicMetrics = compiledData ? compiledData.dynamicMetrics : null;
     const activeSalasData = dynamicMetrics ? dynamicMetrics.salasData : SALAS_DATA;
@@ -760,16 +831,16 @@ export default function QuirofanoDashboard({
     }, [searchCirujano, dynamicMetrics]);
 
     const formattedPeriodo = useMemo(() => {
-        if (!fechaDesde || !fechaHasta) return 'Histórico Institucional';
-        const [yD, mD, dD] = fechaDesde.split('-');
-        const [yH, mH, dH] = fechaHasta.split('-');
+        if (!effectiveDesde || !effectiveHasta) return 'Histórico Institucional';
+        const [yD, mD, dD] = effectiveDesde.split('-');
+        const [yH, mH, dH] = effectiveHasta.split('-');
         return `${dD}/${mD}/${yD} al ${dH}/${mH}/${yH}`;
-    }, [fechaDesde, fechaHasta]);
+    }, [effectiveDesde, effectiveHasta]);
 
     const activePeriodLabel = useMemo(() => {
-        if (!fechaDesde || !fechaHasta) return 'Histórico Institucional';
-        const [yD, mD, dD] = fechaDesde.split('-');
-        const [yH, mH, dH] = fechaHasta.split('-');
+        if (!effectiveDesde || !effectiveHasta) return 'Histórico Institucional';
+        const [yD, mD, dD] = effectiveDesde.split('-');
+        const [yH, mH, dH] = effectiveHasta.split('-');
         const meses = [
             'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -783,7 +854,7 @@ export default function QuirofanoDashboard({
             return `${meses[mIdxD]} - ${meses[mIdxH]} ${yD}`;
         }
         return `${dD}/${mD}/${yD} al ${dH}/${mH}/${yH}`;
-    }, [fechaDesde, fechaHasta]);
+    }, [effectiveDesde, effectiveHasta]);
 
     // Tabla de motivos con columna del período activo integrada a la matriz
     const activeMotivosTableData = useMemo(() => {
@@ -797,6 +868,37 @@ export default function QuirofanoDashboard({
             };
         });
     }, [activeMotivosSuspension]);
+
+    // Motivos ordenados para el gráfico de barras según preferencia de auditoría
+    const displayMotivosSuspension = useMemo(() => {
+        const list = [...activeMotivosSuspension];
+        if (sortMotivosBy === 'cantidad') {
+            return list.sort((a, b) => b.cantidad - a.cantidad);
+        }
+        return list.sort((a, b) => a.codigo - b.codigo);
+    }, [activeMotivosSuspension, sortMotivosBy]);
+
+    // Resumen agrupado por categorías de causas de suspensión para KPI Cards
+    const suspensionCategoriesSummary = useMemo(() => {
+        let financiador = 0;
+        let paciente = 0;
+        let clinico = 0;
+        let operativo = 0;
+        activeMotivosSuspension.forEach(m => {
+            if (m.tipo === 'FINANCIADOR') financiador += m.cantidad;
+            else if (m.tipo === 'PACIENTE' || m.tipo === 'PREPARACION' || m.codigo === 9) paciente += m.cantidad;
+            else if (m.tipo === 'CLINICO') clinico += m.cantidad;
+            else operativo += m.cantidad;
+        });
+        const total = dynamicMetrics ? dynamicMetrics.suspendidas : (financiador + paciente + clinico + operativo);
+        return {
+            financiador: { cant: financiador, pct: total > 0 ? ((financiador / total) * 100).toFixed(1) : '0' },
+            paciente: { cant: paciente, pct: total > 0 ? ((paciente / total) * 100).toFixed(1) : '0' },
+            clinico: { cant: clinico, pct: total > 0 ? ((clinico / total) * 100).toFixed(1) : '0' },
+            operativo: { cant: operativo, pct: total > 0 ? ((operativo / total) * 100).toFixed(1) : '0' },
+            total
+        };
+    }, [activeMotivosSuspension, dynamicMetrics]);
 
     // Demografía etaria adaptada al volumen del período seleccionado
     const activeEdadesData = useMemo(() => {
@@ -881,10 +983,7 @@ export default function QuirofanoDashboard({
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                            <span style={{ background: 'rgba(255,255,255,0.18)', padding: '4px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                                Gobernanza de Datos · Sanatorio Argentino
-                            </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <span style={{ background: 'rgba(56, 189, 248, 0.25)', border: '1px solid #38BDF8', color: '#BAE6FD', padding: '3px 10px', borderRadius: '8px', fontSize: '0.74rem', fontWeight: 800 }}>
                                 🗓️ Período: {activePeriodLabel !== formattedPeriodo ? `${activePeriodLabel} (${formattedPeriodo})` : formattedPeriodo}
                             </span>
@@ -895,42 +994,12 @@ export default function QuirofanoDashboard({
                             )}
                         </div>
                         <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.5px' }}>
-                            Centro Quirúrgico · Producción, Demografía y Capacidad
+                            QUIROFANO
                         </h1>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', opacity: 0.9 }}>
-                            Quirófano Central (Qx 1-4) · Hospital de Día (Qx 5-6) · Bloques Médicos · Urgencias vs Electivas · Trazabilidad de Suspensión
-                        </p>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <button
-                            type="button"
-                            onClick={onOpenDocModal || (() => setShowSqlModal(true))}
-                            style={{
-                                background: 'rgba(255,255,255,0.18)',
-                                border: '1px solid rgba(255,255,255,0.35)',
-                                color: '#FFFFFF',
-                                padding: '7px 14px',
-                                borderRadius: '10px',
-                                fontSize: '0.80rem',
-                                fontWeight: 800,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer',
-                                backdropFilter: 'blur(6px)',
-                                transition: 'all 0.15s ease'
-                            }}
-                            title="Ver repositorio maestro de queries SQL SALUS para Quirófano"
-                        >
-                            <BookOpen size={16} /> Fórmulas & SQL (12)
-                        </button>
-
-                        <span style={{ background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10B981', color: '#6EE7B7', padding: '6px 14px', borderRadius: '10px', fontSize: '0.80rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <CheckCircle2 size={16} /> 7 Salas Operativas Activas
-                        </span>
-
-                        {isModal && onClose && (
+                    {isModal && onClose && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <button
                                 type="button"
                                 onClick={onClose}
@@ -950,8 +1019,8 @@ export default function QuirofanoDashboard({
                             >
                                 <X size={16} /> Cerrar
                             </button>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* KPI CARDS ENCABEZADO REACTIVOS AL PERÍODO */}
@@ -961,10 +1030,10 @@ export default function QuirofanoDashboard({
                             Cirugías Realizadas (Período)
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900 }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? (dynamicMetrics.total - dynamicMetrics.suspendidas).toLocaleString('es-AR') : '5.618'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? dynamicMetrics.realizadas.toLocaleString('es-AR') : '0'}
                         </div>
                         <div style={{ fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                            <TrendingUp size={13} /> {dynamicMetrics ? `${dynamicMetrics.total} cirugías programadas` : '+ 587 Reprogramadas Concretadas'}
+                            <TrendingUp size={13} /> {loadingSurgeries ? 'Cargando...' : dynamicMetrics ? `${dynamicMetrics.total.toLocaleString('es-AR')} programadas` : 'Sin registros'}
                         </div>
                     </div>
 
@@ -973,10 +1042,10 @@ export default function QuirofanoDashboard({
                             Tasa de Suspensión Neta
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#FCD34D' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSusp}%` : '5,17%'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSusp}%` : '0%'}
                         </div>
                         <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '2px' }}>
-                            {dynamicMetrics ? `${dynamicMetrics.suspendidas} cancelaciones netas s/ ${dynamicMetrics.total} turnos` : '306 cancelaciones netas s/ 6.511 turnos'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.suspendidas} cancelaciones netas s/ ${dynamicMetrics.total} turnos` : '0 cancelaciones'}
                         </div>
                     </div>
 
@@ -985,10 +1054,10 @@ export default function QuirofanoDashboard({
                             Distribución de Salas
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#67E8F9' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.centrales} / ${dynamicMetrics.hdd}` : '4.409'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.centrales} / ${dynamicMetrics.hdd}` : '0 / 0'}
                         </div>
                         <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '2px' }}>
-                            {dynamicMetrics ? 'Centrales (Qx 1-4) vs HdD (Qx 5-6)' : '4.409 pacientes (50.3% del total Qx)'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? `Centrales (Qx 1-4): ${dynamicMetrics.centrales} · HdD (Qx 5-6): ${dynamicMetrics.hdd}` : 'Sin cirugías'}
                         </div>
                     </div>
 
@@ -997,10 +1066,10 @@ export default function QuirofanoDashboard({
                             Urgencias / Demanda
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#FCA5A5' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${Math.round(dynamicMetrics.total * 0.11)}` : '50 - 76'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.urgencias > 0 ? dynamicMetrics.urgencias : Math.round(dynamicMetrics.total * 0.11)}` : '0'}
                         </div>
                         <div style={{ fontSize: '0.74rem', color: '#FCA5A5', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                            <Flame size={13} /> {dynamicMetrics ? '~11% Urgencias derivadas de Guardia' : 'Presión no programada activa'}
+                            <Flame size={13} /> {loadingSurgeries ? '...' : dynamicMetrics ? (dynamicMetrics.urgencias > 0 ? `${dynamicMetrics.urgencias} urgencias registradas` : '~11% presión no programada') : 'Sin registros'}
                         </div>
                     </div>
                 </div>
@@ -1023,8 +1092,7 @@ export default function QuirofanoDashboard({
                     { id: 'suspensiones', label: '🚫 Detalle de Suspendidas (Causales 1..13)', icon: AlertTriangle },
                     { id: 'bloques', label: '⏱️ Bloques Quirúrgicos & Alertas 7d', icon: Clock },
                     { id: 'equipos', label: '👥 Equipos & Colaboradores', icon: Users },
-                    { id: 'interanual', label: '📈 Evolución Interanual (2022-2026)', icon: TrendingUp },
-                    { id: 'hemoterapia', label: '🩸 Hemoterapia & Soporte IntraQx', icon: Droplets }
+                    { id: 'interanual', label: '📈 Evolución Interanual (2022-2026)', icon: TrendingUp }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -1552,30 +1620,179 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
+                    {/* Resumen Ejecutivo por Categoría de Causal */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FECDD3', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#9F1239', textTransform: 'uppercase' }}>
+                                    Financiador / O.S.
+                                </span>
+                                <span style={{ fontSize: '0.70rem', background: '#FFE4E6', color: '#E11D48', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                                    {suspensionCategoriesSummary.financiador.pct}% del total
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#E11D48' }}>
+                                {suspensionCategoriesSummary.financiador.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
+                                Causal #2 (Falta de autorización O.S.)
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #BFDBFE', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
+                                    Factores del Paciente
+                                </span>
+                                <span style={{ fontSize: '0.70rem', background: '#DBEAFE', color: '#1D4ED8', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                                    {suspensionCategoriesSummary.paciente.pct}% del total
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#2563EB' }}>
+                                {suspensionCategoriesSummary.paciente.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
+                                Causales #6, #7, #9 (Decisión, Económico, Ayuno)
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FED7AA', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#9A3412', textTransform: 'uppercase' }}>
+                                    Criterio Clínico
+                                </span>
+                                <span style={{ fontSize: '0.70rem', background: '#FFEDD5', color: '#EA580C', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                                    {suspensionCategoriesSummary.clinico.pct}% del total
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#D97706' }}>
+                                {suspensionCategoriesSummary.clinico.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
+                                Causales #4, #5 (Paciente enfermo, Sin preqx)
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #BBF7D0', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>
+                                    Operativo & Logística
+                                </span>
+                                <span style={{ fontSize: '0.70rem', background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                                    {suspensionCategoriesSummary.operativo.pct}% del total
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#059669' }}>
+                                {suspensionCategoriesSummary.operativo.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
+                                Causales #1, #3, #8, #10, #13 (Reprog., Quirófano, Prótesis)
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Gráfico de Barras Horizontales con los 11 Motivos Codificados */}
-                    <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '22px 26px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
                             <div>
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Distribución de Suspensiones por Motivo Codificado ({activePeriodLabel})
+                                <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <BarChart3 size={18} color="#2563EB" /> Distribución de Suspensiones por Motivo Codificado ({activePeriodLabel})
                                 </h3>
-                                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                                <p style={{ margin: '3px 0 0 0', fontSize: '0.80rem', color: '#64748B' }}>
                                     Desglose de los causales oficiales codificados según catálogo institucional SALUS para el período seleccionado.
                                 </p>
                             </div>
-                            <span style={{ fontSize: '0.76rem', background: '#F1F5F9', color: '#334155', padding: '4px 10px', borderRadius: '8px', fontWeight: 700 }}>
-                                Total en el período: <strong style={{ color: '#DC2626' }}>{dynamicMetrics ? dynamicMetrics.suspendidas : 250}</strong> suspensiones
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSortMotivosBy('codigo')}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            background: sortMotivosBy === 'codigo' ? '#FFFFFF' : 'transparent',
+                                            color: sortMotivosBy === 'codigo' ? '#0F172A' : '#64748B',
+                                            boxShadow: sortMotivosBy === 'codigo' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                        }}
+                                    >
+                                        🔢 Catálogo (1..13)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSortMotivosBy('cantidad')}
+                                        style={{
+                                            padding: '4px 10px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            background: sortMotivosBy === 'cantidad' ? '#FFFFFF' : 'transparent',
+                                            color: sortMotivosBy === 'cantidad' ? '#0F172A' : '#64748B',
+                                            boxShadow: sortMotivosBy === 'cantidad' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                        }}
+                                    >
+                                        📊 Mayor a Menor
+                                    </button>
+                                </div>
+
+                                <span style={{ fontSize: '0.78rem', background: '#F8FAFC', color: '#334155', padding: '5px 12px', borderRadius: '8px', fontWeight: 700, border: '1px solid #E2E8F0' }}>
+                                    Total período: <strong style={{ color: '#DC2626' }}>{dynamicMetrics ? dynamicMetrics.suspendidas : 250}</strong> suspensiones
+                                </span>
+                            </div>
                         </div>
-                        <div style={{ height: '360px', width: '100%' }}>
+
+                        {/* Contenedor del gráfico con dimensiones ampliadas para visualización clínica sin solapamiento */}
+                        <div style={{ height: `${Math.max(480, displayMotivosSuspension.length * 44)}px`, width: '100%' }}>
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={activeMotivosSuspension} layout="vertical" margin={{ top: 5, right: 30, left: 160, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
-                                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                                    <YAxis type="category" dataKey="motivo" tick={{ fontSize: 11, fontWeight: 700 }} />
-                                    <RechartsTooltip formatter={(val, name, item) => [`${val} casos (${item.payload.pct}%)`, 'Suspensiones']} />
-                                    <Bar dataKey="cantidad" radius={[0, 6, 6, 0]}>
-                                        {activeMotivosSuspension.map((entry, index) => (
+                                <BarChart 
+                                    data={displayMotivosSuspension} 
+                                    layout="vertical" 
+                                    margin={{ top: 10, right: 90, left: 10, bottom: 10 }}
+                                    barCategoryGap={8}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                                    <XAxis 
+                                        type="number" 
+                                        tick={{ fontSize: 11, fill: '#64748B' }} 
+                                        axisLine={{ stroke: '#E2E8F0' }}
+                                        tickLine={false}
+                                    />
+                                    <YAxis 
+                                        type="category" 
+                                        dataKey="motivo" 
+                                        width={245} 
+                                        tick={{ fontSize: 12, fill: '#1E293B', fontWeight: 600 }}
+                                        axisLine={{ stroke: '#CBD5E1' }}
+                                        tickLine={false}
+                                    />
+                                    <RechartsTooltip content={<CustomSuspensionTooltip />} />
+                                    <Bar dataKey="cantidad" radius={[0, 6, 6, 0]} barSize={22}>
+                                        <LabelList 
+                                            dataKey="cantidad" 
+                                            position="right" 
+                                            content={(props) => {
+                                                const { x, y, width, height, value, index } = props;
+                                                const item = displayMotivosSuspension[index];
+                                                if (!item || value === undefined) return null;
+                                                return (
+                                                    <text 
+                                                        x={x + width + 8} 
+                                                        y={y + height / 2 + 4} 
+                                                        fill="#334155" 
+                                                        fontSize="11px" 
+                                                        fontWeight="700"
+                                                    >
+                                                        {value} ({item.pct}%)
+                                                    </text>
+                                                );
+                                            }}
+                                        />
+                                        {displayMotivosSuspension.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Bar>
@@ -1652,42 +1869,171 @@ export default function QuirofanoDashboard({
             {/* PESTAÑA 5: BLOQUES QUIRÚRGICOS & ALERTAS DE 7 DÍAS */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {activeTab === 'bloques' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC', borderRadius: '14px', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                                <Clock size={22} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+                    
+                    {/* Tarjeta Didáctica Institucional: ¿Qué es un Bloque Quirúrgico? */}
+                    <div style={{
+                        background: 'linear-gradient(135deg, #F0FDF4 0%, #FFFFFF 100%)',
+                        border: '1.5px solid #86EFAC',
+                        borderRadius: '16px',
+                        padding: '24px 28px',
+                        boxShadow: '0 4px 16px rgba(22, 163, 74, 0.08)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFF', boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)' }}>
+                                    <Clock size={24} />
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#14532D' }}>
+                                            ¿Qué es un Bloque Quirúrgico en Sanatorio Argentino?
+                                        </h3>
+                                        <span style={{ fontSize: '0.70rem', background: '#DCFCE7', color: '#15803D', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, border: '1px solid #86EFAC' }}>
+                                            Regla Oficial de Auditoría
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: '3px 0 0 0', fontSize: '0.82rem', color: '#166534' }}>
+                                        Mecanismo de reserva horaria protegida mediante <strong>pacientes ficticios</strong> y reglas de control de uso, desvío y liberación a 7 días.
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#166534' }}>
-                                    Regla de Negocio Sanatorial: Ventana de Liberación a 7 Días
-                                </h4>
-                                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#14532D' }}>
-                                    Monitoreo de horas asignadas vs ejecutadas en el período {activePeriodLabel}. Todo bloque sin ocupar activa alerta a 7 días.
+                            <span style={{ fontSize: '0.76rem', background: '#15803D', color: '#FFFFFF', padding: '5px 12px', borderRadius: '8px', fontWeight: 800 }}>
+                                Período Auditado: {activePeriodLabel}
+                            </span>
+                        </div>
+
+                        {/* 3 Pasos del Ciclo de Vida del Bloque */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginTop: '16px' }}>
+                            
+                            {/* Paso 1: Paciente Ficticio */}
+                            <div style={{ background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                    <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#EFF6FF', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 900 }}>1</span>
+                                    <h4 style={{ margin: 0, fontSize: '0.90rem', fontWeight: 800, color: '#1E293B' }}>
+                                        Reserva: "Paciente Ficticio"
+                                    </h4>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
+                                    Para <strong>guardarle el lugar al doctor</strong> y asegurarle que pueda operar en horarios fijos, se genera un <em>paciente ficticio</em> como marcador de agenda. Ese quirófano queda reservado de manera exclusiva para el titular del bloque.
+                                </p>
+                            </div>
+
+                            {/* Paso 2: Uso Efectivo */}
+                            <div style={{ background: '#FFFFFF', border: '1.5px solid #86EFAC', borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                    <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#DCFCE7', color: '#15803D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 900 }}>2</span>
+                                    <h4 style={{ margin: 0, fontSize: '0.90rem', fontWeight: 800, color: '#15803D' }}>
+                                        Uso Efectivo (Concreción)
+                                    </h4>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
+                                    Cuando el médico titular programa la intervención, <strong>se borra el paciente ficticio y se coloca el paciente real</strong>. La cirugía la ejecuta el mismo doctor asignado. Se computa como <strong>Uso Efectivo</strong> y aprovechamiento óptimo del recurso.
+                                </p>
+                            </div>
+
+                            {/* Paso 3: Pérdida del Bloque */}
+                            <div style={{ background: '#FFFFFF', border: '1.5px solid #FECDD3', borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                    <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#FFE4E6', color: '#E11D48', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 900 }}>3</span>
+                                    <h4 style={{ margin: 0, fontSize: '0.90rem', fontWeight: 800, color: '#E11D48' }}>
+                                        Pérdida de Bloque (Desvío)
+                                    </h4>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
+                                    Si se saca el paciente ficticio pero la cirugía la termina operando <strong>otro médico que no es el titular del bloque</strong>, se audita formalmente como <strong>Pérdida de Bloque</strong>: el titular no utilizó su franja exclusiva y requirió cesión de urgencia.
                                 </p>
                             </div>
                         </div>
-                        <span style={{ fontSize: '0.74rem', background: '#15803D', color: '#fff', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
-                            Auditoría: {activePeriodLabel}
-                        </span>
+
+                        {/* Regla de Alerta de 7 Días */}
+                        <div style={{ marginTop: '14px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <AlertCircle size={18} color="#D97706" style={{ flexShrink: 0 }} />
+                            <span style={{ fontSize: '0.78rem', color: '#334155' }}>
+                                <strong>Ventana de Liberación a 7 Días:</strong> Si faltando 7 días la franja horaria aún conserva el paciente ficticio sin confirmación de paciente real, el sistema emite alerta para liberar la sala a agenda abierta y evitar horas ociosas en quirófano.
+                            </span>
+                        </div>
                     </div>
 
+                    {/* Resumen Cuantitativo de la Eficiencia de Bloques */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>
+                                Horas Asignadas (Mes)
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
+                                175.3h
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                                7 Bloques Médicos Activos
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #86EFAC', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase' }}>
+                                Horas Uso Titular (Concretado)
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#15803D', marginTop: '2px' }}>
+                                133.5h
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#15803D', fontWeight: 700, marginTop: '2px' }}>
+                                76.2% de ocupación efectiva titular
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FECDD3', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#9F1239', fontWeight: 800, textTransform: 'uppercase' }}>
+                                Pérdidas de Bloque (Otro Médico)
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#E11D48', marginTop: '2px' }}>
+                                16.5h
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#E11D48', fontWeight: 700, marginTop: '2px' }}>
+                                9.4% desvío a profesionales externos
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FED7AA', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#9A3412', fontWeight: 800, textTransform: 'uppercase' }}>
+                                Horas Ociosas / Sin Ocupar
+                            </div>
+                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#D97706', marginTop: '2px' }}>
+                                25.3h
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 700, marginTop: '2px' }}>
+                                14.4% capacidad pasible de liberación
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Matriz Detallada de Bloques con Pérdidas y Uso Titular */}
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <h3 style={{ margin: '0 0 14px 0', fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                            Matriz de Ocupación de Bloques vs. Horas Ociosas ({activePeriodLabel})
-                        </h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Matriz de Ocupación de Bloques vs. Horas Ociosas y Pérdidas ({activePeriodLabel})
+                                </h3>
+                                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                                    Trazabilidad de horas asignadas, horas operadas por el cirujano titular, horas perdidas (operó otro médico) y horas vacías.
+                                </p>
+                            </div>
+                            <span style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#334155', padding: '4px 10px', borderRadius: '8px', fontWeight: 700 }}>
+                                7 franjas monitoreadas
+                            </span>
+                        </div>
 
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                 <thead>
                                     <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #CBD5E1', color: '#334155', textAlign: 'left' }}>
-                                        <th style={{ padding: '10px 12px' }}>Cirujano / Servicio</th>
+                                        <th style={{ padding: '10px 12px' }}>Cirujano Titular / Servicio</th>
                                         <th style={{ padding: '10px 12px' }}>Sala</th>
                                         <th style={{ padding: '10px 12px' }}>Día y Franja</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Mes</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Uso</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Asignadas</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right', background: '#F0FDF4', color: '#166534' }}>Hs Titular</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right', background: '#FFF1F2', color: '#9F1239' }}>Hs Pérdida Bloque</th>
                                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Ociosas</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Ocupación</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Eficiencia Titular</th>
                                         <th style={{ padding: '10px 12px', textAlign: 'center' }}>Alerta 7d</th>
                                     </tr>
                                 </thead>
@@ -1697,13 +2043,18 @@ export default function QuirofanoDashboard({
                                             <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>{b.cirujano}</td>
                                             <td style={{ padding: '10px 12px', fontWeight: 800, color: '#1E40AF' }}>{b.quirofano}</td>
                                             <td style={{ padding: '10px 12px', color: '#475569' }}>{b.dia} · {b.horario}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{b.horasMes}h</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803D' }}>{b.horasUso}h</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{b.horasMes}h</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803D', background: '#F0FDF4' }}>
+                                                {b.horasTitular}h
+                                            </td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasPerdida > 0 ? '#E11D48' : '#94A3B8', background: '#FFF1F2' }}>
+                                                {b.horasPerdida > 0 ? `${b.horasPerdida}h` : '0h'}
+                                            </td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasOciosas > 5 ? '#DC2626' : '#64748B' }}>
                                                 {b.horasOciosas}h
                                             </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900 }}>
-                                                {b.ocupacionPct}%
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: b.ocupacionTitularPct >= 75 ? '#15803D' : b.ocupacionTitularPct >= 55 ? '#D97706' : '#DC2626' }}>
+                                                {b.ocupacionTitularPct}%
                                             </td>
                                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                                                 {b.alerta ? (
@@ -1889,124 +2240,7 @@ export default function QuirofanoDashboard({
                 </div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════ */}
-            {/* PESTAÑA 8: HEMOTERAPIA & SOPORTE INTRAQX */}
-            {/* ═══════════════════════════════════════════════════════════════ */}
-            {activeTab === 'hemoterapia' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-                    
-                    <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '22px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <Droplets size={20} />
-                                </div>
-                                <div>
-                                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                        Protocolo Hemoterapia: Paciente Agrupado ({activePeriodLabel})
-                                    </h4>
-                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                        Relevamiento Dr. Sota / UTI / Quirófano Central
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.hemoterapia_soporte)}
-                                style={{
-                                    border: 'none',
-                                    background: '#EFF6FF',
-                                    color: '#1E40AF',
-                                    borderRadius: '6px',
-                                    padding: '3px 8px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}
-                                title="Explicación clínica de hemoterapia y transfusiones"
-                            >
-                                <HelpCircle size={13} /> Explicación
-                            </button>
-                        </div>
 
-                        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '14px' }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#991B1B', marginBottom: '6px' }}>
-                                Regla de Disponibilidad en Heladera Qx ({activePeriodLabel})
-                            </div>
-                            <p style={{ fontSize: '0.75rem', color: '#7F1D1D', margin: 0, lineHeight: 1.4 }}>
-                                Toda cirugía cardiovascular mayor, nefrectomía o trauma complejo exige por protocolo <strong>2 unidades de glóbulos rojos listas en la heladera de quirófano</strong> antes del inicio de anestesia.
-                            </p>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.76rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#F8FAFC', borderRadius: '8px' }}>
-                                <span style={{ color: '#475569' }}>Pacientes Agrupados con Reserva:</span>
-                                <strong style={{ color: '#0F172A' }}>
-                                    {dynamicMetrics ? Math.max(1, Math.round(13 * (dynamicMetrics.total / 5618))) : 13} cirugías en {activePeriodLabel}
-                                </strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#F8FAFC', borderRadius: '8px' }}>
-                                <span style={{ color: '#475569' }}>Transfusiones Efectivas Administradas:</span>
-                                <strong style={{ color: '#DC2626' }}>
-                                    {dynamicMetrics ? Math.max(0, Math.round(4 * (dynamicMetrics.total / 5618))) : 4} pacientes ({dynamicMetrics ? '30.7%' : '30.7%'})
-                                </strong>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#F8FAFC', borderRadius: '8px' }}>
-                                <span style={{ color: '#475569' }}>Unidades Retornadas a Banco de Sangre:</span>
-                                <strong style={{ color: '#15803D' }}>
-                                    {dynamicMetrics ? Math.max(1, Math.round(18 * (dynamicMetrics.total / 5618))) : 18} unidades (sin pérdida de cadena)
-                                </strong>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '22px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#F0F9FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Flame size={20} />
-                            </div>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Servicios de Soporte en Quirófano ({activePeriodLabel})
-                                </h4>
-                                <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                    Intensificador de imágenes (Rayos X), laboratorio y congelación
-                                </p>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '14px' }}>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>
-                                    Intensificador de Imágenes (Arco en C)
-                                </div>
-                                <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0 }}>
-                                    En colecistectomías laparoscópicas para colangiografías intraoperatorias. El técnico radiólogo queda asentado en foja para facturar a la obra social y justificar horas en el servicio de imágenes.
-                                </p>
-                                <div style={{ marginTop: '8px', fontSize: '0.74rem', fontWeight: 800, color: '#0369A1' }}>
-                                    Horas estimadas período: {dynamicMetrics ? (86.4 * (dynamicMetrics.total / 5618)).toFixed(1) : '86.4'} hs · {dynamicMetrics ? Math.round(42 * (dynamicMetrics.total / 5618)) : 42} cirugías asistidas
-                                </div>
-                            </div>
-
-                            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '14px' }}>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', marginBottom: '4px' }}>
-                                    Peticiones Intraoperatorias de Laboratorio
-                                </div>
-                                <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0 }}>
-                                    Circuito estandarizado digitalmente: quirófano genera la petición, laboratorio recibe la alerta inmediata en su sistema y extrae la muestra en sala con resultado en historia clínica.
-                                </p>
-                                <div style={{ marginTop: '8px', fontSize: '0.74rem', fontWeight: 800, color: '#15803D' }}>
-                                    Tiempo promedio de respuesta analítica: 18 min
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            )}
 
             {/* ─── MODAL DE EXPLICACIÓN DETALLADA DE GRÁFICOS (GOBERNANZA QUIRÓFANO) ─── */}
             {selectedChartHelp && (

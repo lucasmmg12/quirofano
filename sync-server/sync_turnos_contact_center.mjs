@@ -105,6 +105,8 @@ export async function syncTurnosContactCenter(targetDate = null) {
             [Cliente] AS ObraSocial,
             [Usuario Creacion Nombre] AS Agente,
             [Fecha Hora Creacion] AS CreadoEl,
+            CONVERT(VARCHAR(8), [Fecha Hora Creacion], 108) AS HoraCreacionExacta,
+            CONVERT(VARCHAR(19), [Fecha Hora Creacion], 120) AS CreadoEl_str,
             [EstadoReprogramacion],
             [Asistencia],
             [Motivo_Ausencia],
@@ -137,7 +139,9 @@ export async function syncTurnosContactCenter(targetDate = null) {
             [Asistencia],
             [Motivo_Ausencia],
             [EstadoReprogramacion],
-            [Fecha Hora Creacion] AS CreadoEl
+            [Fecha Hora Creacion] AS CreadoEl,
+            CONVERT(VARCHAR(8), [Fecha Hora Creacion], 108) AS HoraCreacionExacta,
+            CONVERT(VARCHAR(19), [Fecha Hora Creacion], 120) AS CreadoEl_str
         FROM [SALUS].[dbo].[VLISE_Visitas]
         WHERE [Usuario_Ausencia] IN (${agentNamesSql})
           AND [Fecha Visita] >= '${dateFormatted}'
@@ -177,8 +181,8 @@ export async function syncTurnosContactCenter(targetDate = null) {
                 tipoVisita: row.TipoVisita || '',
                 obraSocial: row.ObraSocial || '',
                 asistencia: row.Asistencia || null,
-                horaCreacion: row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
-                creadoEl: row.CreadoEl ? row.CreadoEl.toISOString() : ''
+                horaCreacion: row.HoraCreacionExacta || (row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''),
+                creadoEl: row.CreadoEl_str ? `${row.CreadoEl_str.replace(' ', 'T')}-03:00` : (row.CreadoEl ? row.CreadoEl.toISOString() : '')
             });
         }
     }
@@ -334,11 +338,13 @@ async function runCycle() {
     }
 }
 
-// Ejecutar inmediatamente
-runCycle();
-
-// Si se ejecuta con flag --daemon o normal, mantener corriendo cada 5 min
-if (process.argv.includes('--daemon') || process.argv.includes('-d')) {
-    console.log(`🚀 Servicio autónomo de turnos Contact Center activo. Intervalo: 5 minutos.`);
-    setInterval(runCycle, INTERVAL_MS);
+// Ejecutar inmediatamente solo si es invocado directamente desde consola
+const isMain = process.argv[1] && (process.argv[1].includes('sync_turnos_contact_center') || process.argv[1].endsWith('sync_turnos_contact_center.mjs'));
+if (isMain) {
+    runCycle();
+    if (process.argv.includes('--daemon') || process.argv.includes('-d')) {
+        console.log(`🚀 Servicio autónomo de turnos Contact Center activo. Intervalo: 5 minutos.`);
+        setInterval(runCycle, INTERVAL_MS);
+    }
 }
+

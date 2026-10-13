@@ -30,6 +30,7 @@ import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
 import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
 import QuirofanoDashboard from './QuirofanoDashboard';
+import GuardiaInternadoPanel from './GuardiaInternadoPanel';
 import './Gobernanza.css';
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS ───
@@ -167,6 +168,7 @@ export default function GuardiaClinicaDashboard({
     const [copiedSql, setCopiedSql] = useState(false);
     const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
     const [showQuirofanoModal, setShowQuirofanoModal] = useState(false);
+    const [activeDashboardTab, setActiveDashboardTab] = useState('indicadores'); // 'indicadores' | 'internado'
 
     // Cargar datos consolidados desde Supabase
     useEffect(() => {
@@ -583,6 +585,74 @@ export default function GuardiaClinicaDashboard({
                 </div>
             </div>
 
+            {/* ─── CONMUTADOR DE SECCIÓN: INDICADORES DE GUARDIA VS INTERNADO & CONTROL CLÍNICO ─── */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '12px',
+                padding: '8px 12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+            }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                        type="button"
+                        onClick={() => setActiveDashboardTab('indicadores')}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: activeDashboardTab === 'indicadores' ? '#1E40AF' : 'transparent',
+                            color: activeDashboardTab === 'indicadores' ? '#FFFFFF' : '#475569',
+                            fontWeight: activeDashboardTab === 'indicadores' ? 800 : 600,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            boxShadow: activeDashboardTab === 'indicadores' ? '0 2px 4px rgba(30, 64, 175, 0.2)' : 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <BarChart3 size={16} /> Tablero General e Indicadores de Guardia
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveDashboardTab('internado')}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: activeDashboardTab === 'internado' ? '#1E40AF' : 'transparent',
+                            color: activeDashboardTab === 'internado' ? '#FFFFFF' : '#475569',
+                            fontWeight: activeDashboardTab === 'internado' ? 800 : 600,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            boxShadow: activeDashboardTab === 'internado' ? '0 2px 4px rgba(30, 64, 175, 0.2)' : 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <Bed size={16} /> Internado: Traumatología y Control Clínico / Interconsultas
+                    </button>
+                </div>
+
+                <div style={{ fontSize: '0.75rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ShieldCheck size={14} color="#2563EB" /> Auditoría Médica & Internado SALUS
+                </div>
+            </div>
+
+            {activeDashboardTab === 'internado' ? (
+                <GuardiaInternadoPanel addToast={addToast} />
+            ) : (
+                <>
             {/* ─── RESUMEN DE ACTIVIDAD GENERAL DEL MES ─── */}
             <div style={{
                 background: 'linear-gradient(135deg, #1E3A8A 0%, #1E40AF 100%)',
@@ -2062,6 +2132,8 @@ export default function GuardiaClinicaDashboard({
                         </div>
                     </div>
                 </div>
+            )}
+                </>
             )}
 
             {/* ─── MODAL DE TRAZABILIDAD Y LÍNEA DE TIEMPO DE CIRUGÍAS (48 HORAS) ─── */}

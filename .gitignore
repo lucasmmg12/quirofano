@@ -43,3 +43,6 @@ supabase/.temp/
 scratch/
 
 .vercel
+
+# Planes y notas internas privadas
+PLAN_MEJORAS_SECTORES_SANATORIO.md

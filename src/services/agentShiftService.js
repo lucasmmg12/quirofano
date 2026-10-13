@@ -98,7 +98,8 @@ export async function getAgentDailyShiftMetrics({
     const startIso = `${targetDate}T00:00:00`;
     const endIso = `${targetDate}T23:59:59.999`;
 
-    const cleanFirstName = (agentName || '').split(' ')[0].trim();
+    const isTeamOverview = agentId === 'todos' || agentId === 'equipo' || agentId === 'all';
+    const cleanFirstName = isTeamOverview ? 'Equipo' : (agentName || '').split(' ')[0].trim();
     const normalizedAgentName = normalizeAgentName(agentName);
 
     // Ejecución en paralelo de consultas clave
@@ -133,8 +134,12 @@ export async function getAgentDailyShiftMetrics({
             .lte('updated_at', endIso)
     ]);
 
-    // Filtrar mensajes de esta agente específica
+    // Filtrar mensajes de esta agente específica (o de todo el equipo si es resumen del día)
     const agentOutgoingMessages = (outgoingMessagesRes.data || []).filter(msg => {
+        if (isTeamOverview) {
+            const sName = (msg.sender_name || '').toLowerCase();
+            return msg.sender_name && sName !== 'bot sanatorio' && !sName.includes('bot');
+        }
         const sender = normalizeAgentName(msg.sender_name);
         return (
             (cleanFirstName && sender.includes(normalizeAgentName(cleanFirstName))) ||
@@ -164,8 +169,9 @@ export async function getAgentDailyShiftMetrics({
         }
     });
 
-    // Filtrar conversaciones finalizadas por esta agente
+    // Filtrar conversaciones finalizadas por esta agente (o todas si es resumen del día)
     const agentClosedConversations = (closedConversationsRes.data || []).filter(conv => {
+        if (isTeamOverview) return true;
         const closerName = normalizeAgentName(conv.closed_by_agent_name);
         const closerId = (conv.closed_by_agent_id || '').toLowerCase();
         return (
@@ -177,6 +183,7 @@ export async function getAgentDailyShiftMetrics({
 
     // Filtrar conversaciones gestionadas/atendidas hoy
     const agentAttendedConversations = (attendedConversationsRes.data || []).filter(conv => {
+        if (isTeamOverview) return true;
         const assignedName = normalizeAgentName(conv.assigned_agent_name);
         const assignedId = (conv.assigned_agent_id || '').toLowerCase();
         const closerName = normalizeAgentName(conv.closed_by_agent_name);
@@ -187,18 +194,37 @@ export async function getAgentDailyShiftMetrics({
         );
     });
 
-    // Turnos otorgados en SALUS por esta operadora
-    const agSalus = (turnosSalusData?.agentes || []).find(a => {
-        const salusName = normalizeAgentName(a.name);
-        const salusId = (a.id || '').toLowerCase();
-        return (
-            salusId === (agentId || '').toLowerCase() ||
-            (cleanFirstName && salusName.includes(normalizeAgentName(cleanFirstName))) ||
-            (normalizedAgentName && salusName.includes(normalizedAgentName))
-        );
-    });
-    const turnosSalusCount = agSalus ? agSalus.turnos : 0;
-    const turnosCanceladosCount = agSalus ? (agSalus.cancelados || 0) : 0;
+    // Turnos otorgados en SALUS (por esta operadora o por todo el equipo)
+    let turnosSalusCount = 0;
+    let turnosCanceladosCount = 0;
+    let turnosSalusDetalle = [];
+    let canceladosSalusDetalle = [];
+
+    if (isTeamOverview) {
+        turnosSalusCount = turnosSalusData?.total || 0;
+        turnosCanceladosCount = turnosSalusData?.totalCancelados || 0;
+        (turnosSalusData?.agentes || []).forEach(a => {
+            if (Array.isArray(a.turnosDetalle)) turnosSalusDetalle.push(...a.turnosDetalle);
+            if (Array.isArray(a.canceladosDetalle)) canceladosSalusDetalle.push(...a.canceladosDetalle);
+        });
+        // Ordenar por hora de creación descendente
+        turnosSalusDetalle.sort((a, b) => (b.horaCreacion || '').localeCompare(a.horaCreacion || ''));
+        canceladosSalusDetalle.sort((a, b) => (b.horaVisita || '').localeCompare(a.horaVisita || ''));
+    } else {
+        const agSalus = (turnosSalusData?.agentes || []).find(a => {
+            const salusName = normalizeAgentName(a.name);
+            const salusId = (a.id || '').toLowerCase();
+            return (
+                salusId === (agentId || '').toLowerCase() ||
+                (cleanFirstName && salusName.includes(normalizeAgentName(cleanFirstName))) ||
+                (normalizedAgentName && salusName.includes(normalizedAgentName))
+            );
+        });
+        turnosSalusCount = agSalus ? agSalus.turnos : 0;
+        turnosCanceladosCount = agSalus ? (agSalus.cancelados || 0) : 0;
+        turnosSalusDetalle = agSalus?.turnosDetalle || [];
+        canceladosSalusDetalle = agSalus?.canceladosDetalle || [];
+    }
 
     // Categorización de tipos de consultas recibidas
     const categorias = {
@@ -327,7 +353,11 @@ export async function getAgentDailyShiftMetrics({
     let scoreColor = '#10B981';
     let scoreDiagnostico = '';
 
-    if (totalFinalizadas >= 40 || turnosSalusCount >= 20 || totalMensajes >= 150) {
+    if (isTeamOverview) {
+        scoreNivel = 'Operación Global del Día';
+        scoreColor = '#003B71';
+        scoreDiagnostico = `Balance diario del equipo de Contact Center: ${totalMensajes} mensajes emitidos, ${totalGestionadas} casos tomados (${totalFinalizadas} cerrados) y ${turnosSalusCount} turnos efectivos cargados en SALUS (${turnosCanceladosCount} cancelaciones procesadas).`;
+    } else if (totalFinalizadas >= 40 || turnosSalusCount >= 20 || totalMensajes >= 150) {
         scoreNivel = 'Sobresaliente / Alto Impacto';
         scoreColor = '#059669';
         scoreDiagnostico = `Jornada de máxima productividad. Mantuviste un ritmo de respuesta continuo con ${totalMensajes} mensajes y un volumen destacado de ${turnosSalusCount} turnos efectivos cargados en SALUS.`;
@@ -408,8 +438,8 @@ export async function getAgentDailyShiftMetrics({
             chatsPendientes: chatsActivosSinCerrar.length,
             archivedOver24h: agentArchivedOver24h
         },
-        turnosSalusDetalle: agSalus?.turnosDetalle || [],
-        canceladosSalusDetalle: agSalus?.canceladosDetalle || [],
+        turnosSalusDetalle,
+        canceladosSalusDetalle,
         resolutionHistogram: agentResolutionHistogram,
         hourlyDistribution,
         categorias,

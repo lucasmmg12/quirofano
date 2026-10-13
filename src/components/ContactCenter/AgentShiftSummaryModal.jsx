@@ -10,6 +10,14 @@ import { CONTACT_CENTER_AGENTS } from '../../services/contactCenterService';
 import AgentTurnosMappingModal from './AgentTurnosMappingModal';
 import { generateAgentShiftPdf } from '../../utils/agentShiftReportPdf';
 
+export const ALL_AGENTS_OPTION = {
+    id: 'todos',
+    name: 'Todo el Equipo',
+    fullName: 'Resumen General del Día (Todo el Equipo)',
+    role: 'Global / Contact Center',
+    color: '#003B71'
+};
+
 export default function AgentShiftSummaryModal({
     isOpen,
     onClose,
@@ -169,22 +177,24 @@ export default function AgentShiftSummaryModal({
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <h2 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                                    Resumen de Final de Turno
+                                    {selectedAgent?.id === 'todos' ? 'Resumen General del Día' : 'Resumen de Final de Turno'}
                                 </h2>
                                 <span style={{
                                     fontSize: '0.66rem',
                                     fontWeight: 700,
                                     padding: '2px 8px',
                                     borderRadius: '12px',
-                                    background: 'rgba(56, 189, 248, 0.2)',
-                                    color: '#BAE6FD',
-                                    border: '1px solid rgba(56, 189, 248, 0.3)'
+                                    background: selectedAgent?.id === 'todos' ? '#10B981' : 'rgba(56, 189, 248, 0.2)',
+                                    color: '#FFFFFF',
+                                    border: selectedAgent?.id === 'todos' ? 'none' : '1px solid rgba(56, 189, 248, 0.3)'
                                 }}>
-                                    Live Insights
+                                    {selectedAgent?.id === 'todos' ? 'Equipo Completo' : 'Live Insights'}
                                 </span>
                             </div>
                             <p style={{ margin: 0, fontSize: '0.76rem', color: '#E0F2FE', opacity: 0.9 }}>
-                                Métricas de productividad, consultas recibidas y turnos agendados en SALUS
+                                {selectedAgent?.id === 'todos' 
+                                    ? 'Métricas consolidadas de productividad, atención por WhatsApp y turnos en SALUS'
+                                    : 'Métricas de productividad, consultas recibidas y turnos agendados en SALUS'}
                             </p>
                         </div>
                     </div>
@@ -192,14 +202,18 @@ export default function AgentShiftSummaryModal({
                     {/* Selector de Agente y Selector de Fecha */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <select
-                            value={selectedAgent?.id || ''}
+                            value={selectedAgent?.id || 'todos'}
                             onChange={(e) => {
-                                const found = CONTACT_CENTER_AGENTS.find(a => a.id === e.target.value);
-                                if (found) setSelectedAgent(found);
+                                if (e.target.value === 'todos') {
+                                    setSelectedAgent(ALL_AGENTS_OPTION);
+                                } else {
+                                    const found = CONTACT_CENTER_AGENTS.find(a => a.id === e.target.value);
+                                    if (found) setSelectedAgent(found);
+                                }
                             }}
                             style={{
-                                background: 'rgba(255, 255, 255, 0.12)',
-                                border: '1px solid rgba(255, 255, 255, 0.25)',
+                                background: 'rgba(255, 255, 255, 0.15)',
+                                border: '1px solid rgba(255, 255, 255, 0.3)',
                                 color: '#FFFFFF',
                                 borderRadius: '8px',
                                 padding: '6px 10px',
@@ -209,11 +223,16 @@ export default function AgentShiftSummaryModal({
                                 cursor: 'pointer'
                             }}
                         >
-                            {CONTACT_CENTER_AGENTS.map(ag => (
-                                <option key={ag.id} value={ag.id} style={{ color: '#0F172A', background: '#FFFFFF' }}>
-                                    {ag.fullName || ag.name}
-                                </option>
-                            ))}
+                            <option value="todos" style={{ color: '#0369A1', background: '#F0F9FF', fontWeight: 800 }}>
+                                📊 Resumen General del Día (Todo el Equipo)
+                            </option>
+                            <optgroup label="Operadoras Individuales" style={{ color: '#64748B', fontWeight: 600 }}>
+                                {CONTACT_CENTER_AGENTS.map(ag => (
+                                    <option key={ag.id} value={ag.id} style={{ color: '#0F172A', background: '#FFFFFF' }}>
+                                        {ag.fullName || ag.name}
+                                    </option>
+                                ))}
+                            </optgroup>
                         </select>
 
                         <input 
@@ -344,7 +363,7 @@ export default function AgentShiftSummaryModal({
                                     <div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                                             <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.05em' }}>
-                                                Diagnóstico General del Turno
+                                                {selectedAgent?.id === 'todos' ? 'Diagnóstico General de la Jornada' : 'Diagnóstico General del Turno'}
                                             </span>
                                             <span style={{
                                                 fontSize: '0.7rem',
@@ -364,7 +383,9 @@ export default function AgentShiftSummaryModal({
                                 </div>
 
                                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>Operadora</span>
+                                    <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>
+                                        {selectedAgent?.id === 'todos' ? 'Alcance' : 'Operadora'}
+                                    </span>
                                     <span style={{ fontSize: '0.92rem', fontWeight: 800, color: selectedAgent?.color || '#0284C7' }}>
                                         {selectedAgent?.fullName || selectedAgent?.name}
                                     </span>
@@ -1000,6 +1021,7 @@ export default function AgentShiftSummaryModal({
                     selectedDate={selectedDate}
                     turnosRawList={metrics?.turnosSalusDetalle || []}
                     canceladosRawList={metrics?.canceladosSalusDetalle || []}
+                    onRefresh={() => loadMetrics(selectedAgent, selectedDate)}
                     onOpenChatWithPhone={(phone) => {
                         setShowTurnosModal(false);
                         onClose();

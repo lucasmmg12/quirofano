@@ -13,6 +13,7 @@ export default function AgentTurnosMappingModal({
     selectedDate,
     turnosRawList = [],
     canceladosRawList = [],
+    onRefresh,
     onOpenChatWithPhone
 }) {
     const [loading, setLoading] = useState(true);
@@ -193,26 +194,51 @@ export default function AgentTurnosMappingModal({
                         </div>
                     </div>
 
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: 'rgba(255, 255, 255, 0.12)',
-                            border: 'none',
-                            color: '#FFFFFF',
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
-                    >
-                        <X size={18} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {onRefresh && (
+                            <button
+                                onClick={onRefresh}
+                                title="Actualizar turnos de SALUS"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.12)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    width: '34px',
+                                    height: '34px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
+                            >
+                                <RefreshCw size={16} />
+                            </button>
+                        )}
+                        <button
+                            onClick={onClose}
+                            style={{
+                                background: 'rgba(255, 255, 255, 0.12)',
+                                border: 'none',
+                                color: '#FFFFFF',
+                                width: '34px',
+                                height: '34px',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)'}
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* ── BARRA RESUMEN DE INDICADORES (KPIs) ── */}
