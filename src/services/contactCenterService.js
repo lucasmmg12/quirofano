@@ -159,17 +159,67 @@ export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 
 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
-    { id: 'daguilera', username: 'daguilera', legacyId: 'daniela', name: 'Daniela Aguilera', fullName: 'Daniela Aguilera', role: 'Atención al Paciente', color: '#E11D48', avatar: 'DA' },
-    { id: 'solivier', username: 'solivier', legacyId: 'sofia', name: 'Sofia Olivier', fullName: 'Sofia Olivier', role: 'Atención al Paciente', color: '#8B5CF6', avatar: 'SO' },
-    { id: 'vjacques', username: 'vjacques', legacyId: 'virginia', name: 'Virginia Jacques', fullName: 'Virginia Jacques', role: 'Atención al Paciente', color: '#059669', avatar: 'VJ' },
-    { id: 'eleal', username: 'eleal', legacyId: 'erica', name: 'Erica Leal', fullName: 'Erica Leal', role: 'Atención al Paciente', color: '#D97706', avatar: 'EL' },
-    { id: 'lmarinero', username: 'lmarinero', legacyId: 'lucas', name: 'Lucas Marinero', fullName: 'Lucas Marinero', role: 'Supervisor Contact Center', color: '#0284C7', avatar: 'LM' },
+    { 
+        id: 'daguilera', 
+        username: 'daguilera', 
+        legacyId: 'daniela', 
+        name: 'Daniela Aguilera', 
+        fullName: 'Daniela Aguilera', 
+        aliases: ['daguilera', 'daniela', 'aguilera', 'daniela aguilera'],
+        role: 'Atención al Paciente', 
+        color: '#E11D48', 
+        avatar: 'DA' 
+    },
+    { 
+        id: 'solivier', 
+        username: 'solivier', 
+        legacyId: 'sofia', 
+        name: 'Sofia Olivier', 
+        fullName: 'Sofia Olivier', 
+        aliases: ['solivier', 'sofia', 'olivier', 'olivieri', 'sofia olivier', 'sofia olivieri', 'sofia fernanda olivier', 'sofia fernanda olivieri'],
+        role: 'Atención al Paciente', 
+        color: '#8B5CF6', 
+        avatar: 'SO' 
+    },
+    { 
+        id: 'vjacques', 
+        username: 'vjacques', 
+        legacyId: 'virginia', 
+        name: 'Virginia Jacques', 
+        fullName: 'Virginia Jacques', 
+        aliases: ['vjacques', 'virginia', 'jacques', 'virginia jacques'],
+        role: 'Atención al Paciente', 
+        color: '#059669', 
+        avatar: 'VJ' 
+    },
+    { 
+        id: 'eleal', 
+        username: 'eleal', 
+        legacyId: 'erica', 
+        name: 'Erica Leal', 
+        fullName: 'Erica Leal', 
+        aliases: ['eleal', 'erica', 'leal', 'erica leal'],
+        role: 'Atención al Paciente', 
+        color: '#D97706', 
+        avatar: 'EL' 
+    },
+    { 
+        id: 'lmarinero', 
+        username: 'lmarinero', 
+        legacyId: 'lucas', 
+        name: 'Lucas Marinero', 
+        fullName: 'Lucas Marinero', 
+        aliases: ['lmarinero', 'lucas', 'marinero', 'lucas marinero'],
+        role: 'Supervisor Contact Center', 
+        color: '#0284C7', 
+        avatar: 'LM' 
+    },
 ];
 
 export const CONTACT_CENTER_AUTHORIZED_USERNAMES = [
     'lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya',
     'daguilera', 'daniela',
-    'solivier', 'sofia',
+    'solivier', 'sofia', 'olivier', 'olivieri',
     'vjacques', 'virginia',
     'eleal', 'erica'
 ];
@@ -204,8 +254,16 @@ export function isUserAuthorizedForContactCenter(user) {
         return true;
     }
 
-    // 3. Sofia Olivier
-    if (username.includes('sofia') || username.includes('olivier') || username.includes('solivier') || username.includes('olivier') || nombre.includes('sofia')) {
+    // 3. Sofia Olivier (incluye variaciones de username y apellido Olivieri)
+    if (
+        username.includes('sofia') || 
+        username.includes('olivier') || 
+        username.includes('solivier') || 
+        username.includes('olivieri') || 
+        nombre.includes('sofia') ||
+        nombre.includes('olivier') ||
+        nombre.includes('olivieri')
+    ) {
         return true;
     }
 
@@ -227,13 +285,44 @@ export function isUserAuthorizedForContactCenter(user) {
  */
 export function getAgentById(agentIdOrName) {
     if (!agentIdOrName) return null;
-    const clean = String(agentIdOrName).toLowerCase().trim();
-    return CONTACT_CENTER_AGENTS.find(a => 
-        a.id === clean || 
-        a.username === clean || 
-        a.legacyId === clean || 
-        a.name.toLowerCase() === clean
-    ) || {
+    const clean = String(agentIdOrName).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // 1. Búsqueda exacta y por alias normalizados
+    const directMatch = CONTACT_CENTER_AGENTS.find(a => {
+        const id = (a.id || '').toLowerCase();
+        const username = (a.username || '').toLowerCase();
+        const legacyId = (a.legacyId || '').toLowerCase();
+        const name = (a.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const fullName = (a.fullName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const aliases = (a.aliases || []).map(x => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+        
+        return id === clean ||
+            username === clean ||
+            legacyId === clean ||
+            name === clean ||
+            fullName === clean ||
+            aliases.includes(clean);
+    });
+    if (directMatch) return directMatch;
+
+    // 2. Coincidencia difusa por subcadenas clave (Sofia Olivier / Olivieri)
+    if (clean.includes('sofia') || clean.includes('solivier') || clean.includes('olivier') || clean.includes('olivieri')) {
+        return CONTACT_CENTER_AGENTS.find(a => a.id === 'solivier');
+    }
+    if (clean.includes('daniela') || clean.includes('aguilera') || clean.includes('daguilera')) {
+        return CONTACT_CENTER_AGENTS.find(a => a.id === 'daguilera');
+    }
+    if (clean.includes('virginia') || clean.includes('jacques') || clean.includes('vjacques')) {
+        return CONTACT_CENTER_AGENTS.find(a => a.id === 'vjacques');
+    }
+    if (clean.includes('erica') || clean.includes('leal') || clean.includes('eleal')) {
+        return CONTACT_CENTER_AGENTS.find(a => a.id === 'eleal');
+    }
+    if (clean.includes('lucas') || clean.includes('marinero') || clean.includes('lmarinero')) {
+        return CONTACT_CENTER_AGENTS.find(a => a.id === 'lmarinero');
+    }
+
+    return {
         id: clean,
         name: agentIdOrName,
         fullName: agentIdOrName,
@@ -461,11 +550,11 @@ export function isChatLockedForUser(chat, currentAgentId, currentUser) {
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     if (MASTER_ADMINS.includes(username)) return false; // Supervisor nunca se bloquea
     
-    const assigned = chat.assignedTo.toLowerCase();
-    const current = (currentAgentId || username).toLowerCase();
+    const assigned = String(chat.assignedTo).toLowerCase().trim();
+    const current = String(currentAgentId || username).toLowerCase().trim();
 
     const agentAssigned = getAgentById(assigned);
-    const agentCurrent = getAgentById(current);
+    const agentCurrent = getAgentById(current) || getAgentById(username);
     if (agentAssigned && agentCurrent && agentAssigned.id === agentCurrent.id) {
         return false;
     }
@@ -481,9 +570,10 @@ export function assignChatExclusively(chat, targetAgent, currentUser, { forceRea
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
     
     // Si ya está asignado a otra persona y no es supervisor ni reasignación confirmada
-    const currentAssigned = chat.assignedTo ? chat.assignedTo.toLowerCase() : null;
+    const currentAssigned = chat.assignedTo ? String(chat.assignedTo).toLowerCase().trim() : null;
     const currentOwner = currentAssigned ? getAgentById(currentAssigned) : null;
-    const isSameAgent = currentOwner && currentOwner.id === targetAgent.id;
+    const resolvedTarget = getAgentById(targetAgent?.id || targetAgent);
+    const isSameAgent = currentOwner && resolvedTarget && currentOwner.id === resolvedTarget.id;
 
     if (currentAssigned && !isSameAgent && !isSupervisor && !forceReassign) {
         const ownerName = currentOwner?.name || chat.assignedTo;
@@ -1209,13 +1299,16 @@ export async function sendContactCenterMessage({
     fileName = null,
     quotedMessage = null
 }) {
-    if (!isUserAuthorizedForContactCenter(currentUser)) {
-        throw new Error('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos operativos de respuesta.');
-    }
+    // Las notas privadas internas del sistema (auditoría, reasignación, toma de chat) nunca se bloquean por locks
+    if (!isNote) {
+        if (!isUserAuthorizedForContactCenter(currentUser)) {
+            throw new Error('No tienes autorización para responder en el Contact Center. Solo las 4 agentes asignadas y Lucas Marinero tienen permisos operativos de respuesta.');
+        }
 
-    const isLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
-    if (isLocked) {
-        throw new Error(`No puedes responder. Esta conversación está asignada exclusivamente a ${chat.assignedToName || chat.assignedTo}.`);
+        const isLocked = isChatLockedForUser(chat, activeAgent?.id, currentUser);
+        if (isLocked) {
+            throw new Error(`No puedes responder. Esta conversación está asignada exclusivamente a ${chat.assignedToName || chat.assignedTo}.`);
+        }
     }
 
     const now = new Date();

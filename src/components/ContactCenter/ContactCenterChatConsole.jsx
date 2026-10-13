@@ -1213,7 +1213,17 @@ export default function ContactCenterChatConsole({
         if (onSelectChat) {
             onSelectChat(chatId);
         }
-        // 2. Cambiar inmediatamente a la pestaña de "Mis chats" para que la conversación quede visible en su cola
+
+        // 2. Asignar optimísticamente el chat en memoria para feedback instantáneo
+        if (selectedChat && (selectedChat.id === chatId || String(selectedChat.id) === String(chatId))) {
+            const ag = getAgentById(agentId);
+            selectedChat.assignedTo = agentId;
+            selectedChat.assignedToName = ag?.name || selectedChat.assignedToName;
+            selectedChat.status = 'abierto';
+            selectedChat.botActive = false;
+        }
+
+        // 3. Cambiar inmediatamente a la pestaña de "Mis chats" para que la conversación quede visible en su cola
         setFilterTab('asignadas_mi');
         try {
             localStorage.setItem('sa_cc_filter_tab', 'asignadas_mi');
@@ -1222,6 +1232,9 @@ export default function ContactCenterChatConsole({
         if (!onAssignChat) return;
         try {
             await onAssignChat(chatId, agentId, options);
+        } catch (err) {
+            console.error('[ContactCenterChatConsole] Error al asignar chat:', err);
+            showToast(err.message || 'Error al asignar conversación', 'error');
         } finally {
             if (chatId && onSelectChat) {
                 onSelectChat(chatId);
@@ -1261,14 +1274,46 @@ export default function ContactCenterChatConsole({
         return false;
     };
 
-    // Alias del agente actual (id, username, legacyId). Debe declararse ANTES de selectedChat:
+    // Alias del agente actual (id, username, legacyId, aliases). Debe declararse ANTES de selectedChat:
     // se usa en el fallback de la pestaña "Mis chats" (antes provocaba ReferenceError TDZ).
-    const myAliases = [activeAgent.id, activeAgent.username, activeAgent.legacyId].filter(Boolean).map(a => a.toLowerCase());
+    const myAliases = [
+        activeAgent?.id, 
+        activeAgent?.username, 
+        activeAgent?.legacyId,
+        ...(activeAgent?.aliases || [])
+    ].filter(Boolean).map(a => a.toLowerCase());
 
     const isMineChat = (c) => {
         if (!c || isClosedOrArchived(c)) return false;
         const a = (c.assignedTo || '').toLowerCase();
-        return (myAliases.includes(a) || (c.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase()));
+        const aName = (c.assignedToName || '').toLowerCase();
+        const curName = (activeAgent?.name || '').toLowerCase();
+
+        // 1. Coincidencia por aliases del agente
+        if (myAliases.includes(a)) return true;
+        if (curName && aName.includes(curName)) return true;
+
+        // 2. Soporte robusto e inquebrantable para Sofia (Olivier / Olivieri / solivier)
+        if (curName.includes('sofia') || activeAgent?.id === 'solivier') {
+            return a === 'solivier' || a === 'sofia' || aName.includes('sofia') || aName.includes('olivier') || aName.includes('olivieri');
+        }
+        // 3. Daniela
+        if (curName.includes('daniela') || activeAgent?.id === 'daguilera') {
+            return a === 'daguilera' || a === 'daniela' || aName.includes('daniela') || aName.includes('aguilera');
+        }
+        // 4. Virginia
+        if (curName.includes('virginia') || activeAgent?.id === 'vjacques') {
+            return a === 'vjacques' || a === 'virginia' || aName.includes('virginia') || aName.includes('jacques');
+        }
+        // 5. Erica
+        if (curName.includes('erica') || activeAgent?.id === 'eleal') {
+            return a === 'eleal' || a === 'erica' || aName.includes('erica') || aName.includes('leal');
+        }
+        // 6. Lucas
+        if (curName.includes('lucas') || activeAgent?.id === 'lmarinero') {
+            return a === 'lmarinero' || a === 'lucas' || aName.includes('lucas') || aName.includes('marinero');
+        }
+        return false;
     };
 
     const isSearchActive = Boolean(searchTerm && searchTerm.trim());
@@ -2338,11 +2383,8 @@ export default function ContactCenterChatConsole({
 
     // Determinar autorización para responder y bloqueo de chat
     const isAuthorized = isUserAuthorizedForContactCenter(currentUser);
-    const isLocked = isChatLockedForUser(selectedChat, activeAgent.id, currentUser);
-    const isAssignedToMe = selectedChat.assignedTo && (
-        myAliases.includes(selectedChat.assignedTo.toLowerCase()) ||
-        (selectedChat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
-    );
+    const isAssignedToMe = Boolean(selectedChat.assignedTo && isMineChat(selectedChat));
+    const isLocked = !isAssignedToMe && isChatLockedForUser(selectedChat, activeAgent?.id, currentUser);
     const isBot = (selectedChat.status === 'bot' || (selectedChat.botActive && selectedChat.status !== 'sin_asignar' && !selectedChat.assignedTo));
     const isUnassigned = !selectedChat.assignedTo && selectedChat.status === 'sin_asignar';
     const assignedAgentObj = selectedChat.assignedTo ? getAgentById(selectedChat.assignedTo) : null;
@@ -2595,10 +2637,7 @@ export default function ContactCenterChatConsole({
             } else {
                 base = searchedChats.filter(chat => {
                     const chatAssigned = (chat.assignedTo || '').toLowerCase();
-                    const isMine = chatAssigned && (
-                        myAliases.includes(chatAssigned) ||
-                        (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
-                    );
+                    const isMine = isMineChat(chat);
                     const closed = isClosedOrArchived(chat);
                     const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                     const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
@@ -2621,10 +2660,7 @@ export default function ContactCenterChatConsole({
         } else {
             base = chats.filter(chat => {
                 const chatAssigned = (chat.assignedTo || '').toLowerCase();
-                const isMine = chatAssigned && (
-                    myAliases.includes(chatAssigned) ||
-                    (chat.assignedToName || '').toLowerCase().includes(activeAgent.name.toLowerCase())
-                );
+                const isMine = isMineChat(chat);
                 const closed = isClosedOrArchived(chat);
                 const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                 const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;

@@ -113,28 +113,20 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     // Agente activo: match con las credenciales del usuario logueado o primera agente por defecto
     const userLogin = (currentUser?.usuario || '').toLowerCase().trim().split('@')[0];
-    const initialAgent = CONTACT_CENTER_AGENTS.find(a => 
-        a.id === userLogin || 
-        a.username === userLogin || 
-        (a.aliases && a.aliases.includes(userLogin)) ||
-        (a.legacyId && a.legacyId === userLogin)
-    ) || CONTACT_CENTER_AGENTS[0];
+    const userNombre = (currentUser?.nombre || '').toLowerCase().trim();
+    const initialAgent = getAgentById(userLogin) || getAgentById(userNombre) || CONTACT_CENTER_AGENTS[0];
     const [activeAgent, setActiveAgent] = useState(initialAgent);
 
     useEffect(() => {
-        if (currentUser?.usuario) {
-            const u = currentUser.usuario.toLowerCase().trim().split('@')[0];
-            const matched = CONTACT_CENTER_AGENTS.find(a => 
-                a.id === u || 
-                a.username === u || 
-                (a.aliases && a.aliases.includes(u)) ||
-                (a.legacyId && a.legacyId === u)
-            );
+        if (currentUser?.usuario || currentUser?.nombre) {
+            const u = (currentUser.usuario || '').toLowerCase().trim().split('@')[0];
+            const n = (currentUser.nombre || '').toLowerCase().trim();
+            const matched = getAgentById(u) || getAgentById(n);
             if (matched) {
                 setActiveAgent(matched);
             }
         }
-    }, [currentUser?.usuario]);
+    }, [currentUser?.usuario, currentUser?.nombre]);
 
     const isLMarinero = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim().split('@')[0]);
 
@@ -545,8 +537,20 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             });
 
             setChats(prev => {
-                const remaining = prev.filter(c => c.id !== chatId);
-                return [updatedChat, ...remaining].sort((a, b) => {
+                const existing = prev.find(c => c.id === chatId || String(c.id) === String(chatId)) || targetChat;
+                const merged = {
+                    ...existing,
+                    ...updatedChat,
+                    // Preservar la asignación y flags del estado si ya fue tomada u optimizada
+                    assignedTo: existing.assignedTo || updatedChat.assignedTo,
+                    assignedToName: existing.assignedToName || updatedChat.assignedToName,
+                    assignedAt: existing.assignedAt || updatedChat.assignedAt,
+                    status: (existing.status && existing.status !== 'bot' && existing.status !== 'sin_asignar') ? existing.status : updatedChat.status,
+                    botActive: existing.botActive === false ? false : updatedChat.botActive,
+                    messages: [...(existing.messages || []).filter(m => m.id !== newMsg.id), newMsg]
+                };
+                const remaining = prev.filter(c => c.id !== chatId && String(c.id) !== String(chatId));
+                return [merged, ...remaining].sort((a, b) => {
                     const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
                     const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
                     if (bKey !== aKey) return bKey - aKey;
@@ -676,13 +680,33 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             setChats(prev => prev.map(c => {
                 if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
                 return {
+                    ...c,
                     ...updated,
                     messages: c.messages || targetChat.messages || []
                 };
             }));
 
-            // 3. Registrar nota privada de auditoría (persiste en Supabase whatsapp_messages con direction note)
-            await handleSendMessage(chatId, auditNote, true);
+            // 3. Registrar nota privada de auditoría directamente sobre el objeto 'updated' (no sobre targetChat obsoleto)
+            try {
+                const { newMsg } = await sendContactCenterMessage({
+                    chat: updated,
+                    text: auditNote,
+                    isNote: true,
+                    activeAgent: targetAgent,
+                    currentUser
+                });
+                if (newMsg) {
+                    setChats(prev => prev.map(c => {
+                        if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
+                        return {
+                            ...c,
+                            messages: [...(c.messages || []), newMsg]
+                        };
+                    }));
+                }
+            } catch (noteErr) {
+                console.warn('[ContactCenterPanel] Nota de asignación no bloqueante:', noteErr);
+            }
 
             // Reafirmar que la conversación activa sigue siendo la asignada
             setActiveChatId(chatId);
@@ -702,22 +726,44 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     // Liberar conversación a la cola general
     const handleUnassignChat = async (chatId, note = '') => {
-        const targetChat = chats.find(c => c.id === chatId);
+        const targetChat = chats.find(c => c.id === chatId || String(c.id) === String(chatId));
         if (!targetChat) return;
 
         try {
             const fromName = activeAgent?.name || currentUser?.nombre || 'Agente';
             const auditNote = `🔓 [Liberación de Atención]: ${fromName} liberó la conversación a la cola general (Sin Asignar).${note ? ` Motivo: ${note}` : ''}`;
-            await handleSendMessage(chatId, auditNote, true);
-
             const updated = unassignChat(targetChat, activeAgent, currentUser);
+            
             setChats(prev => prev.map(c => {
-                if (c.id !== chatId) return c;
+                if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
                 return {
+                    ...c,
                     ...updated,
-                    messages: c.messages
+                    messages: c.messages || targetChat.messages || []
                 };
             }));
+
+            try {
+                const { newMsg } = await sendContactCenterMessage({
+                    chat: updated,
+                    text: auditNote,
+                    isNote: true,
+                    activeAgent,
+                    currentUser
+                });
+                if (newMsg) {
+                    setChats(prev => prev.map(c => {
+                        if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
+                        return {
+                            ...c,
+                            messages: [...(c.messages || []), newMsg]
+                        };
+                    }));
+                }
+            } catch (noteErr) {
+                console.warn('[ContactCenterPanel] Nota de liberación no bloqueante:', noteErr);
+            }
+
             if (addToast) {
                 addToast(`Conversación liberada a "Sin Asignar"`, 'info');
             }
@@ -728,23 +774,45 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     // Transferir chat a otra agente
     const handleTransferChat = async (chatId, toAgentId, note = '') => {
-        const targetChat = chats.find(c => c.id === chatId);
+        const targetChat = chats.find(c => c.id === chatId || String(c.id) === String(chatId));
         if (!targetChat) return;
 
         try {
             const toAgent = getAgentById(toAgentId);
             const fromName = activeAgent?.name || currentUser?.nombre || 'Agente';
             const auditNote = `🔄 [Transferencia de Chat]: Conversación transferida de ${fromName} a ${toAgent.name}.${note ? ` Motivo: ${note}` : ''}`;
-            await handleSendMessage(chatId, auditNote, true);
-
             const updated = transferChatToAgent(targetChat, activeAgent, toAgent, currentUser);
+            
             setChats(prev => prev.map(c => {
-                if (c.id !== chatId) return c;
+                if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
                 return {
+                    ...c,
                     ...updated,
-                    messages: c.messages
+                    messages: c.messages || targetChat.messages || []
                 };
             }));
+
+            try {
+                const { newMsg } = await sendContactCenterMessage({
+                    chat: updated,
+                    text: auditNote,
+                    isNote: true,
+                    activeAgent,
+                    currentUser
+                });
+                if (newMsg) {
+                    setChats(prev => prev.map(c => {
+                        if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
+                        return {
+                            ...c,
+                            messages: [...(c.messages || []), newMsg]
+                        };
+                    }));
+                }
+            } catch (noteErr) {
+                console.warn('[ContactCenterPanel] Nota transferencia no bloqueante:', noteErr);
+            }
+
             if (addToast) {
                 addToast(`Conversación transferida a ${toAgent.name}`, 'success');
             }
