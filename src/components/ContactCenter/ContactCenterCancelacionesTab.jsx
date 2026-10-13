@@ -3,7 +3,8 @@ import {
     CalendarX, CheckCircle2, Clock, Search, RefreshCw, 
     MessageSquare, Copy, Check, Filter, User, Calendar, 
     AlertCircle, ArrowLeft, ExternalLink, X, FileText,
-    ShieldAlert, ChevronRight, UserCheck, Trash2
+    ShieldAlert, ChevronRight, UserCheck, Trash2,
+    ChevronDown, ChevronUp, BookOpen
 } from 'lucide-react';
 import { 
     fetchCancelaciones, 
@@ -36,7 +37,17 @@ export default function ContactCenterCancelacionesTab({
     const [searchTerm, setSearchTerm] = useState('');
     const [copiedDni, setCopiedDni] = useState(null);
     const [actionModal, setActionModal] = useState(null); // { caso, tipo: 'cancelar' | 'descartar', notas: '', saving: false }
-    const [showGuia, setShowGuia] = useState(true);
+    const [showGuia, setShowGuia] = useState(() => {
+        return localStorage.getItem('contact_center_show_guia') === 'true';
+    });
+
+    const toggleGuia = () => {
+        setShowGuia(prev => {
+            const next = !prev;
+            localStorage.setItem('contact_center_show_guia', String(next));
+            return next;
+        });
+    };
 
     // Chat Window estilo Cirugías / MSN Messenger
     const [chatOpen, setChatOpen] = useState(false);
@@ -303,65 +314,84 @@ export default function ContactCenterCancelacionesTab({
                 </div>
             </div>
 
-            {/* Banner de Guía Rápida para la Agente */}
-            {showGuia && (
-                <div style={{
-                    background: 'linear-gradient(135deg, #0F2942 0%, #1E3A8A 100%)',
-                    borderRadius: '14px',
-                    padding: '16px 20px',
-                    color: '#FFFFFF',
-                    marginBottom: '20px',
-                    boxShadow: '0 4px 14px rgba(15, 41, 66, 0.15)',
-                    position: 'relative'
-                }}>
-                    <button
-                        onClick={() => setShowGuia(false)}
-                        title="Ocultar guía"
-                        style={{
-                            position: 'absolute',
-                            top: '12px',
-                            right: '12px',
-                            background: 'rgba(255, 255, 255, 0.15)',
-                            border: 'none',
-                            color: '#FFFFFF',
-                            borderRadius: '50%',
-                            width: '24px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <X size={14} />
-                    </button>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#93C5FD' }}>
+            {/* Acordeón / Desplegable de Manual Rápido para la Agente */}
+            <div style={{
+                background: 'linear-gradient(135deg, #0F2942 0%, #1E3A8A 100%)',
+                borderRadius: '12px',
+                color: '#FFFFFF',
+                marginBottom: '16px',
+                boxShadow: '0 2px 8px rgba(15, 41, 66, 0.12)',
+                overflow: 'hidden',
+                transition: 'all 0.2s ease'
+            }}>
+                <button
+                    onClick={toggleGuia}
+                    type="button"
+                    style={{
+                        width: '100%',
+                        padding: '10px 16px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        userSelect: 'none'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                        <BookOpen size={16} color="#93C5FD" />
+                        <span style={{ fontSize: '12.5px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#93C5FD' }}>
                             Manual Rápido de Gestión para la Agente
                         </span>
+                        <span style={{
+                            fontSize: '11px',
+                            background: 'rgba(255, 255, 255, 0.12)',
+                            color: '#E0E7FF',
+                            padding: '1px 8px',
+                            borderRadius: '12px',
+                            fontWeight: '600'
+                        }}>
+                            4 pasos
+                        </span>
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#CBD5E1' }}>
+                        <span>{showGuia ? 'Colapsar guía' : 'Desplegar guía'}</span>
+                        {showGuia ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </div>
+                </button>
+
+                {showGuia && (
                     <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                        gap: '14px',
-                        fontSize: '12px',
-                        lineHeight: '1.4'
+                        padding: '0 16px 14px 16px',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.1)'
                     }}>
-                        <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
-                            <strong style={{ color: '#FDE047' }}>1. Copiar DNI:</strong> Hacé clic en el botón 📋 del paciente para llevar el DNI al portapapeles.
-                        </div>
-                        <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
-                            <strong style={{ color: '#FDE047' }}>2. Buscar en SALUS:</strong> Pegá el DNI en SALUS, abrí la agenda del profesional y localizá el turno.
-                        </div>
-                        <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
-                            <strong style={{ color: '#FDE047' }}>3. Anular Turno:</strong> Cancelá el turno en SALUS con motivo <em>"Cancelado por paciente (WhatsApp)"</em>.
-                        </div>
-                        <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
-                            <strong style={{ color: '#FDE047' }}>4. Confirmar en Panel:</strong> Presioná <strong>"Marcar Cancelado en SALUS"</strong> ✅ para registrar tu autoría.
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                            gap: '12px',
+                            fontSize: '12px',
+                            lineHeight: '1.4',
+                            marginTop: '12px'
+                        }}>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
+                                <strong style={{ color: '#FDE047' }}>1. Copiar DNI:</strong> Hacé clic en el botón 📋 del paciente para llevar el DNI al portapapeles.
+                            </div>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
+                                <strong style={{ color: '#FDE047' }}>2. Buscar en SALUS:</strong> Pegá el DNI en SALUS, abrí la agenda del profesional y localizá el turno.
+                            </div>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
+                                <strong style={{ color: '#FDE047' }}>3. Anular Turno:</strong> Cancelá el turno en SALUS con motivo <em>"Cancelado por paciente (WhatsApp)"</em>.
+                            </div>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '10px 12px', borderRadius: '8px' }}>
+                                <strong style={{ color: '#FDE047' }}>4. Confirmar en Panel:</strong> Presioná <strong>"Marcar Cancelado en SALUS"</strong> ✅ para registrar tu autoría.
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* Barra de Filtros y Búsqueda */}
             <div style={{
