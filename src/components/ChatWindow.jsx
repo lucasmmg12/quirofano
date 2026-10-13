@@ -159,7 +159,10 @@ const getMetaTemplateVariables = (tpl, context, patientName) => {
     });
 };
 
-export default function ChatWindow({ open, onClose, patientName, patientPhone, defaultLineId = 'line_a', patientContext = {}, addToast }) {
+export default function ChatWindow({ open, onClose, patientName, patientPhone, defaultLineId = 'line_a', lockLineId, patientContext = {}, addToast }) {
+    // Cirugías: fijar permanentemente a línea A (5492644774612) sin permitir cambiarla
+    const isSurgery = lockLineId === 'line_a' || defaultLineId === 'line_a' || Boolean(patientContext?.fechaCirugia || patientContext?.medico);
+
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [inputText, setInputText] = useState('');
@@ -301,27 +304,32 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                 if (cancelled) return;
                 setWhatsappLines(lines);
 
-                // Determinar línea preferida: si el contexto indica cirugía o el default es line_a, usar line_a
-                const effectiveDefault = (patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a')
-                    ? 'line_a'
-                    : defaultLineId;
-
-                // 2. Verificar asignación actual
-                let lineId = await getAssignedLine(patientPhone, effectiveDefault);
-                if (cancelled) return;
-
-                const available = lines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
-
-                // Si no tiene línea válida asignada o tenía line_b (autorizaciones), asignar la línea por defecto (line_a en Cirugías)
-                if (!lineId || lineId === 'line_b' || !available.some(l => l.id === lineId)) {
-                    lineId = available.some(l => l.id === effectiveDefault) ? effectiveDefault : (available[0]?.id || 'line_a');
-                    assignLine(patientPhone, lineId).catch(err =>
-                        console.warn('[ChatWindow] Default assign error:', err)
+                // Determinar asignación de línea
+                let lineId;
+                if (isSurgery) {
+                    // En control de cirugías: usar SIEMPRE la línea institucional de cirugías (line_a)
+                    lineId = 'line_a';
+                    assignLine(patientPhone, 'line_a').catch(err =>
+                        console.warn('[ChatWindow] Surgery line_a assign error:', err)
                     );
+                } else {
+                    lineId = await getAssignedLine(patientPhone, defaultLineId);
+                    if (cancelled) return;
+
+                    const available = lines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
+
+                    // Si no tiene línea válida asignada o tenía line_b (autorizaciones), asignar la línea por defecto
+                    if (!lineId || lineId === 'line_b' || !available.some(l => l.id === lineId)) {
+                        lineId = available.some(l => l.id === defaultLineId) ? defaultLineId : (available[0]?.id || 'contact_center');
+                        assignLine(patientPhone, lineId).catch(err =>
+                            console.warn('[ChatWindow] Default assign error:', err)
+                        );
+                    }
                 }
 
                 setAssignedLineId(lineId);
                 setShowLineSelector(false);
+                setShowChangeLineModal(false);
             } catch (err) {
                 console.error('[ChatWindow] Error loading lines:', err);
                 if (!cancelled) {
@@ -334,10 +342,18 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
 
         loadLinesAndAssignment();
         return () => { cancelled = true; };
-    }, [open, patientPhone]);
+    }, [open, patientPhone, isSurgery, defaultLineId]);
 
     // Get current line info
-    const currentLine = whatsappLines.find(l => l.id === assignedLineId) || null;
+    const currentLine = (isSurgery
+        ? (whatsappLines.find(l => l.id === 'line_a') || {
+            id: 'line_a',
+            label: 'Cirugías / Admisión',
+            phone: '5492644774612',
+            color: '#0284C7'
+        })
+        : (whatsappLines.find(l => l.id === assignedLineId) || null)
+    );
 
     // === META 24H WINDOW LOGIC ===
     // Solo aplica a la línea oficial de plantillas Meta (line_b). La línea de Contact Center permite texto libre.
@@ -370,11 +386,12 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
     // Lines available for this system (exclude recepciones y autorizaciones line_b)
     const availableLines = whatsappLines.filter(l => l.id !== 'line_recepciones' && l.id !== 'line_b');
 
-    // Whether the composer should be blocked (no line assigned)
-    const composerBlocked = !assignedLineId && !linesLoading;
+    // Whether the composer should be blocked (no line assigned) - never blocked in surgery
+    const composerBlocked = !isSurgery && !assignedLineId && !linesLoading;
 
     // Handle line selection
     const handleSelectLine = async (lineId) => {
+        if (isSurgery) return; // En cirugías la línea está fija a line_a
         setAssignedLineId(lineId);
         setShowLineSelector(false);
         setShowChangeLineModal(false);
@@ -587,9 +604,9 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
     const handleSend = useCallback(async () => {
         if (!inputText.trim() || sending || !patientPhone) return;
         // Asegurar línea asignada antes de enviar
-        let targetLine = assignedLineId;
+        let targetLine = isSurgery ? 'line_a' : assignedLineId;
         if (!targetLine) {
-            targetLine = (patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId;
+            targetLine = defaultLineId || 'contact_center';
             setAssignedLineId(targetLine);
             assignLine(patientPhone, targetLine).catch(err => console.warn('[ChatWindow] Auto-assign on send error:', err));
         }
@@ -604,7 +621,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
         setSending(true);
         setShowEmojis(false);
 
-        const effectiveLine = targetLine || assignedLineId || ((patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId);
+        const effectiveLine = isSurgery ? 'line_a' : (targetLine || assignedLineId || defaultLineId || 'line_a');
         try {
             await sendWhatsAppMessage({ content: text, number: patientPhone, lineId: effectiveLine });
             await saveOutgoingMessage({
@@ -640,7 +657,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
             return;
         }
 
-        const effectiveLine = assignedLineId || ((patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId);
+        const effectiveLine = isSurgery ? 'line_a' : (assignedLineId || defaultLineId || 'line_a');
         setUploadingMedia(true);
         try {
             const mediaUrl = await uploadMedia(file, 'images');
@@ -762,7 +779,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
     };
 
     const sendAudioBlob = async (blob) => {
-        const effectiveLine = assignedLineId || ((patientContext?.fechaCirugia || patientContext?.medico || defaultLineId === 'line_a') ? 'line_a' : defaultLineId);
+        const effectiveLine = isSurgery ? 'line_a' : (assignedLineId || defaultLineId || 'line_a');
         setUploadingMedia(true);
         try {
             const file = new File([blob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
@@ -1169,7 +1186,24 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                 >
                                     <Copy size={11} />
                                 </button>
-                                {currentLine ? (
+                                {isSurgery ? (
+                                    <span
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                            marginLeft: '8px', padding: '2px 9px', borderRadius: '10px',
+                                            background: 'rgba(255,255,255,0.18)', fontSize: '0.72rem',
+                                            color: '#fff', fontWeight: 600,
+                                            cursor: 'default', userSelect: 'none',
+                                        }}
+                                        title="Línea institucional asignada: Cirugías"
+                                    >
+                                        <span style={{
+                                            width: '6px', height: '6px', borderRadius: '50%',
+                                            background: '#4ade80', display: 'inline-block',
+                                        }} />
+                                        Cirugías ···4612
+                                    </span>
+                                ) : currentLine ? (
                                     <span
                                         onClick={() => setShowChangeLineModal(true)}
                                         style={{
@@ -1802,7 +1836,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
             />
 
             {/* ===== LINE SELECTOR (first time) ===== */}
-            {showLineSelector && availableLines.length > 0 && (
+            {!isSurgery && showLineSelector && availableLines.length > 0 && (
                 <div style={{
                     position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10020,
                     background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
@@ -1885,7 +1919,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
             )}
 
             {/* ===== CHANGE LINE MODAL ===== */}
-            {showChangeLineModal && availableLines.length > 0 && (
+            {!isSurgery && showChangeLineModal && availableLines.length > 0 && (
                 <div style={{
                     position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10020,
                     background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(6px)',
