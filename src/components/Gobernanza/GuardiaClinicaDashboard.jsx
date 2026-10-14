@@ -29,6 +29,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { INDICADORES_GUARDIA_CATALOGO } from './telarConfig';
 import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
+import GuardiaPuertaMedicoProgressionModal from './GuardiaPuertaMedicoProgressionModal';
 import QuirofanoDashboard from './QuirofanoDashboard';
 import GuardiaInternadoPanel from './GuardiaInternadoPanel';
 import './Gobernanza.css';
@@ -168,6 +169,7 @@ export default function GuardiaClinicaDashboard({
     const [copiedSql, setCopiedSql] = useState(false);
     const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
     const [showQuirofanoModal, setShowQuirofanoModal] = useState(false);
+    const [showPuertaMedicoProgression, setShowPuertaMedicoProgression] = useState(false);
     const [activeDashboardTab, setActiveDashboardTab] = useState('resumen'); // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
     const [cirugiasConversionAll, setCirugiasConversionAll] = useState([]);
     const [triagePacientesAll, setTriagePacientesAll] = useState([]);
@@ -738,22 +740,51 @@ export default function GuardiaClinicaDashboard({
                                 onClick={() => setActiveDashboardTab('triage')}
                             />
 
-                            {/* 3. Puerta – Médico por Franja Horaria */}
-                            <div style={{
-                                background: '#FFFFFF',
-                                border: '1px solid #E2E8F0',
-                                borderRadius: '10px',
-                                padding: '14px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                justifyContent: 'space-between',
-                                position: 'relative'
-                            }}>
+                            {/* 3. Puerta – Médico por Franja Horaria (Clickeable: abre progresión temporal) */}
+                            <div 
+                                onClick={() => setShowPuertaMedicoProgression(true)}
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '10px',
+                                    padding: '14px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                    position: 'relative',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.borderColor = '#F59E0B';
+                                    e.currentTarget.style.boxShadow = '0 6px 18px -2px rgba(217, 119, 6, 0.16)';
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.borderColor = '#E2E8F0';
+                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.04)';
+                                }}
+                                title="Clic para abrir el gráfico de progresión día tras día, semana a semana o mes a mes"
+                            >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                         <Clock size={18} color="#D97706" />
                                         <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>
                                             3. Puerta – Médico (Horario)
+                                        </span>
+                                        <span style={{
+                                            fontSize: '0.64rem',
+                                            fontWeight: 700,
+                                            background: '#FEF3C7',
+                                            color: '#B45309',
+                                            border: '1px solid #FDE68A',
+                                            padding: '1px 5px',
+                                            borderRadius: '4px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '2px'
+                                        }}>
+                                            📈 Ver gráfico
                                         </span>
                                     </div>
                                     <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: enrichedMetrics.esperaDiurna <= 30 ? '#DCFCE7' : '#FEF3C7', color: enrichedMetrics.esperaDiurna <= 30 ? '#166534' : '#92400E' }}>
@@ -775,7 +806,7 @@ export default function GuardiaClinicaDashboard({
                                 <div style={{ display: 'flex', gap: '4px', background: '#F1F5F9', padding: '3px', borderRadius: '6px' }}>
                                     <button
                                         type="button"
-                                        onClick={() => setFranjaFiltro('diurna')}
+                                        onClick={(e) => { e.stopPropagation(); setFranjaFiltro('diurna'); }}
                                         style={{
                                             flex: 1,
                                             padding: '4px 6px',
@@ -793,7 +824,7 @@ export default function GuardiaClinicaDashboard({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setFranjaFiltro('nocturna')}
+                                        onClick={(e) => { e.stopPropagation(); setFranjaFiltro('nocturna'); }}
                                         style={{
                                             flex: 1,
                                             padding: '4px 6px',
@@ -811,7 +842,7 @@ export default function GuardiaClinicaDashboard({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setFranjaFiltro('24hs')}
+                                        onClick={(e) => { e.stopPropagation(); setFranjaFiltro('24hs'); }}
                                         style={{
                                             flex: 1,
                                             padding: '4px 6px',
@@ -2276,6 +2307,18 @@ export default function GuardiaClinicaDashboard({
                 onClose={() => setIsConversionModalOpen(false)}
                 periodo={currentData.periodo}
                 totalConsultas={currentData.total_consultas}
+            />
+
+            {/* ─── MODAL DE PROGRESIÓN TEMPORAL PUERTA - MÉDICO (DÍA / SEMANA / MES) ─── */}
+            <GuardiaPuertaMedicoProgressionModal
+                isOpen={showPuertaMedicoProgression}
+                onClose={() => setShowPuertaMedicoProgression(false)}
+                currentData={currentData}
+                historialResumen={historialResumen}
+                triagePacientesAll={triagePacientesAll}
+                selectedPeriodo={selectedPeriodo}
+                fechaDesde={fechaDesde}
+                fechaHasta={fechaHasta}
             />
 
             {/* ─── MODAL DE EXPLICACIÓN DETALLADA DE GRÁFICOS (GOBERNANZA CLÍNICA) ─── */}
