@@ -281,6 +281,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     resolvedCount: 0,
                     hourlyMap: Array(24).fill(0),
                     dayOfWeekMap: Array(7).fill(0),
+                    dailyMap: {},
+                    resolvedReasons: {},
                     responseTimesMin: [],
                     firstResponseTimesMin: [],
                     handleTimesMin: [],
@@ -299,6 +301,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 resolvedCount: 0,
                 hourlyMap: Array(24).fill(0),
                 dayOfWeekMap: Array(7).fill(0),
+                dailyMap: {},
+                resolvedReasons: {},
                 responseTimesMin: [],
                 firstResponseTimesMin: [],
                 handleTimesMin: [],
@@ -396,6 +400,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             agentDataMap[matchedAgId].count++;
                             agentDataMap[matchedAgId].hourlyMap[mDate.getHours()]++;
                             agentDataMap[matchedAgId].dayOfWeekMap[mDate.getDay()]++;
+                            agentDataMap[matchedAgId].dailyMap[dayKey] = (agentDataMap[matchedAgId].dailyMap[dayKey] || 0) + 1;
                         }
 
                         if (normPhone) {
@@ -877,11 +882,14 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         resHistogramCounts.de5a30m++;
                     }
 
-                    // Contabilizar resoluciones por agente
-                    const closedAgent = (c.closed_by_agent_name || '').toLowerCase();
+                    // Contabilizar resoluciones por agente y motivos de cierre
+                    const closedAgent = (c.closed_by_agent_name || c.assigned_agent_name || '').toLowerCase();
                     for (const ag of ALL_AGENTS_METRICS) {
                         if (closedAgent.includes(ag.id) || closedAgent.includes((ag.name || '').toLowerCase())) {
                             agentDataMap[ag.id].resolvedCount++;
+                            const matchedCat = MOTIVOS_FINALIZACION_CATALOGO.find(m => r.includes(m.key.toLowerCase()));
+                            const reasonLabel = matchedCat ? matchedCat.label : (c.resolution_reason || 'Otro / Consulta Respondida');
+                            agentDataMap[ag.id].resolvedReasons[reasonLabel] = (agentDataMap[ag.id].resolvedReasons[reasonLabel] || 0) + 1;
                             break;
                         }
                     }
@@ -1126,6 +1134,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     });
 
                     const withinSla = a.responseTimesMin.filter(x => x <= 15).length;
+                    const within60 = a.responseTimesMin.filter(x => x > 15 && x <= 60).length;
+                    const over60 = a.responseTimesMin.filter(x => x > 60).length;
+                    const totalSla = a.responseTimesMin.length || 1;
                     const agentSlaPct = a.responseTimesMin.length > 0 ? Math.round((withinSla / a.responseTimesMin.length) * 100) : 100;
 
                     const convPct = humanConversationsCount > 0
@@ -1134,6 +1145,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     const msgPerConv = a.conversationsCount > 0
                         ? Number((a.count / a.conversationsCount).toFixed(1))
                         : (a.count > 0 ? a.count : 0);
+
+                    // 1. Curva de Intensidad Horaria (07:00 a 21:00 hs)
+                    const hourlyChartData = [];
+                    for (let h = 7; h <= 21; h++) {
+                        hourlyChartData.push({
+                            hora: `${h.toString().padStart(2, '0')}:00`,
+                            mensajes: a.hourlyMap[h] || 0,
+                            esPico: h === maxHIdx
+                        });
+                    }
+
+                    // 2. Evolución Diaria en el mes
+                    const dailyChartData = Object.entries(a.dailyMap || {})
+                        .map(([dia, mensajes]) => ({ dia, mensajes }));
+
+                    // 3. Motivos de Cierre y Trámites
+                    const reasonsChartData = Object.entries(a.resolvedReasons || {})
+                        .map(([motivo, cantidad]) => ({ motivo, cantidad }))
+                        .sort((x, y) => y.cantidad - x.cantidad);
 
                     return {
                         ...a,
@@ -1145,7 +1175,19 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         avgHandleTimeMin: avgHandle,
                         medianHandleTimeMin: medianHandle,
                         peakHour: `${maxHIdx.toString().padStart(2, '0')}:00 hs`,
+                        peakCount: maxH,
                         slaCumplimientoPct: agentSlaPct,
+                        slaBreakdown: {
+                            optimo: withinSla,
+                            optimoPct: Math.round((withinSla / totalSla) * 100),
+                            aceptable: within60,
+                            aceptablePct: Math.round((within60 / totalSla) * 100),
+                            demorado: over60,
+                            demoradoPct: Math.max(0, 100 - Math.round((withinSla / totalSla) * 100) - Math.round((within60 / totalSla) * 100))
+                        },
+                        hourlyChartData,
+                        dailyChartData,
+                        reasonsChartData,
                         totalAtendidos: a.responseTimesMin.length,
                         assignedCount: a.assignedCount || a.resolvedCount || a.conversationsCount || a.responseTimesMin.length
                     };
@@ -3143,8 +3185,328 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             </div>
                                         </div>
 
-                                        <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                            Asesora asignada a la línea de atención al paciente del Sanatorio Argentino con permisos de respuesta y cierre de consultas.
+                                        {/* GRÁFICOS Y ANALÍTICA DE RENDIMIENTO DE LA AGENTE */}
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                                            gap: '14px',
+                                            marginTop: '4px'
+                                        }}>
+                                            {/* GRÁFICO 1: CURVA DE INTENSIDAD HORARIA */}
+                                            <div style={{
+                                                background: '#FFFFFF',
+                                                padding: '14px 16px',
+                                                borderRadius: '10px',
+                                                border: '1px solid #E2E8F0',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <Clock size={14} color={ag.color} />
+                                                            Curva de Despachos por Franja Horaria
+                                                        </div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                            Distribución de respuestas activas de 07:00 a 21:00 hs
+                                                        </div>
+                                                    </div>
+                                                    <span style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: '6px',
+                                                        background: `${ag.color}15`,
+                                                        color: ag.color,
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 800,
+                                                        border: `1px solid ${ag.color}35`
+                                                    }}>
+                                                        Pico: {ag.peakHour} ({ag.peakCount || 0} msgs)
+                                                    </span>
+                                                </div>
+                                                <div style={{ width: '100%', height: '170px' }}>
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <AreaChart data={ag.hourlyChartData || []} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
+                                                            <defs>
+                                                                <linearGradient id={`grad-agent-${ag.id}`} x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor={ag.color} stopOpacity={0.4} />
+                                                                    <stop offset="95%" stopColor={ag.color} stopOpacity={0.02} />
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                                                            <XAxis dataKey="hora" tick={{ fontSize: 9, fill: '#64748B' }} interval={2} tickLine={false} />
+                                                            <YAxis tick={{ fontSize: 9, fill: '#64748B' }} allowDecimals={false} tickLine={false} />
+                                                            <Tooltip 
+                                                                content={({ active, payload, label }) => {
+                                                                    if (active && payload && payload.length) {
+                                                                        return (
+                                                                            <div style={{
+                                                                                background: '#FFFFFF',
+                                                                                padding: '6px 10px',
+                                                                                borderRadius: '6px',
+                                                                                border: '1px solid #E2E8F0',
+                                                                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                                                                                fontSize: '0.72rem'
+                                                                            }}>
+                                                                                <div style={{ fontWeight: 700, color: '#0F2942' }}>{label}</div>
+                                                                                <div style={{ color: ag.color, fontWeight: 800 }}>{payload[0].value} mensajes enviados</div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                }}
+                                                            />
+                                                            <Area 
+                                                                type="monotone" 
+                                                                dataKey="mensajes" 
+                                                                stroke={ag.color} 
+                                                                strokeWidth={2.5} 
+                                                                fillOpacity={1} 
+                                                                fill={`url(#grad-agent-${ag.id})`} 
+                                                                dot={{ r: 2.5, fill: ag.color }}
+                                                                activeDot={{ r: 5, stroke: '#FFFFFF', strokeWidth: 2 }}
+                                                            />
+                                                        </AreaChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+
+                                            {/* GRÁFICO 2: EVOLUCIÓN DIARIA EN EL MES */}
+                                            <div style={{
+                                                background: '#FFFFFF',
+                                                padding: '14px 16px',
+                                                borderRadius: '10px',
+                                                border: '1px solid #E2E8F0',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <Calendar size={14} color="#059669" />
+                                                            Evolución Diaria de Respuestas
+                                                        </div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                            Volumen de despachos día por día en el período seleccionado
+                                                        </div>
+                                                    </div>
+                                                    <span style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: '6px',
+                                                        background: '#ECFDF5',
+                                                        color: '#047857',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 800,
+                                                        border: '1px solid #A7F3D0'
+                                                    }}>
+                                                        Total: {ag.count.toLocaleString('es-AR')} msgs
+                                                    </span>
+                                                </div>
+                                                <div style={{ width: '100%', height: '170px' }}>
+                                                    {ag.dailyChartData && ag.dailyChartData.length > 0 ? (
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <BarChart data={ag.dailyChartData} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
+                                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                                                                <XAxis dataKey="dia" tick={{ fontSize: 9, fill: '#64748B' }} tickLine={false} />
+                                                                <YAxis tick={{ fontSize: 9, fill: '#64748B' }} allowDecimals={false} tickLine={false} />
+                                                                <Tooltip 
+                                                                    content={({ active, payload, label }) => {
+                                                                        if (active && payload && payload.length) {
+                                                                            return (
+                                                                                <div style={{
+                                                                                    background: '#FFFFFF',
+                                                                                    padding: '6px 10px',
+                                                                                    borderRadius: '6px',
+                                                                                    border: '1px solid #E2E8F0',
+                                                                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                                                                                    fontSize: '0.72rem'
+                                                                                }}>
+                                                                                    <div style={{ fontWeight: 700, color: '#0F2942' }}>Día: {label}</div>
+                                                                                    <div style={{ color: '#059669', fontWeight: 800 }}>{payload[0].value} mensajes enviados</div>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    }}
+                                                                />
+                                                                <Bar dataKey="mensajes" fill={ag.color} radius={[4, 4, 0, 0]} />
+                                                            </BarChart>
+                                                        </ResponsiveContainer>
+                                                    ) : (
+                                                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.76rem' }}>
+                                                            Sin despachos registrados en el rango
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* FILA 2: DISTRIBUCIÓN DE TRÁMITES RESUELTOS & CALIDAD SLA */}
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                                            gap: '14px'
+                                        }}>
+                                            {/* PANEL: TRÁMITES Y MOTIVOS DE FINALIZACIÓN */}
+                                            <div style={{
+                                                background: '#FFFFFF',
+                                                padding: '14px 16px',
+                                                borderRadius: '10px',
+                                                border: '1px solid #E2E8F0',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '10px'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <CheckCircle2 size={14} color="#059669" />
+                                                            Trámites y Consultas Finalizadas
+                                                        </div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                            Tipología de gestiones resueltas por la asesora
+                                                        </div>
+                                                    </div>
+                                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#059669' }}>
+                                                        {ag.resolvedCount} cerrados
+                                                    </span>
+                                                </div>
+
+                                                {ag.reasonsChartData && ag.reasonsChartData.length > 0 ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                                                        {ag.reasonsChartData.slice(0, 5).map((rItem, idx) => {
+                                                            const pctMotivo = ag.resolvedCount > 0 ? Math.round((rItem.cantidad / ag.resolvedCount) * 100) : 0;
+                                                            return (
+                                                                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                                                                        <span style={{ fontWeight: 600, color: '#334155' }}>{rItem.motivo}</span>
+                                                                        <span style={{ fontWeight: 700, color: '#0F2942' }}>{rItem.cantidad} ({pctMotivo}%)</span>
+                                                                    </div>
+                                                                    <div style={{ width: '100%', height: '5px', background: '#F1F5F9', borderRadius: '4px', overflow: 'hidden' }}>
+                                                                        <div style={{
+                                                                            width: `${Math.min(pctMotivo, 100)}%`,
+                                                                            height: '100%',
+                                                                            background: idx === 0 ? '#059669' : idx === 1 ? '#0284C7' : idx === 2 ? '#8B5CF6' : '#64748B',
+                                                                            borderRadius: '4px'
+                                                                        }} />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ padding: '20px 10px', textAlign: 'center', color: '#94A3B8', fontSize: '0.74rem' }}>
+                                                        {ag.resolvedCount > 0 ? `${ag.resolvedCount} casos resueltos en gestión general.` : 'Sin casos finalizados en el período seleccionado.'}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* PANEL: VELOCIDAD Y CUMPLIMIENTO SLA */}
+                                            <div style={{
+                                                background: '#FFFFFF',
+                                                padding: '14px 16px',
+                                                borderRadius: '10px',
+                                                border: '1px solid #E2E8F0',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '10px'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <Zap size={14} color="#D97706" />
+                                                            Velocidad de Respuesta & Niveles SLA
+                                                        </div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                            Desglose de demoras antes del primer contacto
+                                                        </div>
+                                                    </div>
+                                                    <span style={{
+                                                        padding: '2px 8px',
+                                                        borderRadius: '6px',
+                                                        background: ag.slaCumplimientoPct >= 80 ? '#ECFDF5' : '#FFFBEB',
+                                                        color: ag.slaCumplimientoPct >= 80 ? '#047857' : '#B45309',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 800
+                                                    }}>
+                                                        {ag.slaCumplimientoPct}% en SLA
+                                                    </span>
+                                                </div>
+
+                                                {/* BARRA SEGMENTADA */}
+                                                <div style={{ marginTop: '4px' }}>
+                                                    <div style={{
+                                                        width: '100%',
+                                                        height: '10px',
+                                                        background: '#F1F5F9',
+                                                        borderRadius: '6px',
+                                                        overflow: 'hidden',
+                                                        display: 'flex'
+                                                    }}>
+                                                        <div 
+                                                            style={{ width: `${ag.slaBreakdown?.optimoPct || 0}%`, background: '#10B981', transition: 'width 0.3s' }} 
+                                                            title={`Óptimo (<15m): ${ag.slaBreakdown?.optimoPct || 0}%`}
+                                                        />
+                                                        <div 
+                                                            style={{ width: `${ag.slaBreakdown?.aceptablePct || 0}%`, background: '#F59E0B', transition: 'width 0.3s' }} 
+                                                            title={`Aceptable (15-60m): ${ag.slaBreakdown?.aceptablePct || 0}%`}
+                                                        />
+                                                        <div 
+                                                            style={{ width: `${ag.slaBreakdown?.demoradoPct || 0}%`, background: '#EF4444', transition: 'width 0.3s' }} 
+                                                            title={`Demorado (>60m): ${ag.slaBreakdown?.demoradoPct || 0}%`}
+                                                        />
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.66rem', color: '#64748B' }}>
+                                                        <span style={{ color: '#047857', fontWeight: 700 }}>● &lt;15m: {ag.slaBreakdown?.optimoPct || 0}%</span>
+                                                        <span style={{ color: '#B45309', fontWeight: 700 }}>● 15-60m: {ag.slaBreakdown?.aceptablePct || 0}%</span>
+                                                        <span style={{ color: '#DC2626', fontWeight: 700 }}>● &gt;1h: {ag.slaBreakdown?.demoradoPct || 0}%</span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(2, 1fr)',
+                                                    gap: '8px',
+                                                    marginTop: '6px',
+                                                    padding: '8px 10px',
+                                                    background: '#F8FAFC',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid #E2E8F0'
+                                                }}>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.62rem', color: '#64748B' }}>1er Contacto (FRT):</div>
+                                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F2942' }}>{ag.avgAgentFRTMin || ag.avgResponseTimeMin} min</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mediana de Resolución:</div>
+                                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#8B5CF6' }}>{ag.medianHandleTimeMin || 0} min</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', paddingTop: '4px' }}>
+                                            <span>Asesora asignada a la línea de atención al paciente del Sanatorio Argentino con permisos de respuesta y cierre de consultas.</span>
+                                            {onNavigateToIncentivos && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onNavigateToIncentivos();
+                                                    }}
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        background: '#003B71',
+                                                        color: '#FFFFFF',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 10px',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <Award size={12} /> Ver Esquema de Incentivos & Turnos SALUS
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 )}

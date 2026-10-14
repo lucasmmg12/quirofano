@@ -115,6 +115,48 @@ export function isHemodinamia(surgery) {
     return HEMODINAMIA_PATTERNS.some(pattern => textToCheck.includes(pattern));
 }
 
+/** Palabras clave y procedimientos oficiales de Reproducción Asistida / Fertilidad (CEMERA) */
+export const REPRODUCCION_PATTERNS = [
+    'REPRODUCCION ASISTIDA',
+    'REPRODUCCIÓN ASISTIDA',
+    'REPRODUCCION',
+    'REPRODUCCIÓN',
+    'DESCONGELACION Y TRANFERENCIA',
+    'DESCONGELACION Y TRANSFERENCIA',
+    'DESCONGELACIÓN Y TRANSFERENCIA',
+    'TRANSFERENCIA EMBRIONARIA',
+    'TRANSFERENCIA DE EMBRIONES',
+    'DESVITRIFICACION',
+    'DESVITRIFICACIÓN',
+    'PUNCION FOLICULAR',
+    'PUNCIÓN FOLICULAR',
+    'ASPIRACION FOLICULAR',
+    'ASPIRACIÓN FOLICULAR',
+    'EMBRIONES EN FRESCO',
+    'FERTILIZACION IN VITRO',
+    'FERTILIZACIÓN IN VITRO',
+    'CEMERA',
+    'OVODONACION',
+    'OVODONACIÓN',
+    'CRIOPRESERVACION',
+    'CRIOPRESERVACIÓN',
+    'CRIO-PRESERVACION',
+    'INSEMINACION ARTIFICIAL',
+    'INSEMINACIÓN ARTIFICIAL',
+];
+
+/** Identifica si una cirugía corresponde a Reproducción Asistida / Fertilidad */
+export function isReproduccionAsistida(surgery) {
+    if (!surgery) return false;
+    const ga = (surgery.grupo_agendas || '').toUpperCase();
+    const desc = (surgery.descripcion || '').toUpperCase();
+    const mod = (surgery.modulo || '').toUpperCase();
+    const cir = (surgery.cirugia || '').toUpperCase();
+    const textToCheck = `${ga} ${desc} ${mod} ${cir}`;
+
+    return REPRODUCCION_PATTERNS.some(pattern => textToCheck.includes(pattern));
+}
+
 const URGENCY_THRESHOLDS = {
     critical: 24,   // < 24hs → ROJO
     warning: 72,    // 24-72hs → AMARILLO
@@ -204,7 +246,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const [loading, setLoading] = useState(true);
     const [initialLoadDone, setInitialLoadDone] = useState(false);
     const [filter, setFilter] = useState('all');
-    const [agendaFilter, setAgendaFilter] = useState('all'); // 'all' | 'quirofano' | 'hemodinamia'
+    const [agendaFilter, setAgendaFilter] = useState('all'); // 'all' | 'quirofano' | 'hemodinamia' | 'reproduccion'
     const [searchTerm, setSearchTerm] = useState('');
     const [showUpload, setShowUpload] = useState(false);
     const [showAddForm, setShowAddForm] = useState(false);
@@ -401,11 +443,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const filtered = useMemo(() => {
         let list = surgeries;
 
-        // Agenda filter (Quirófanos vs Hemodinamia)
+        // Agenda filter (Quirófanos vs Hemodinamia vs Reproducción Asistida)
         if (agendaFilter === 'hemodinamia') {
             list = list.filter(s => isHemodinamia(s));
+        } else if (agendaFilter === 'reproduccion') {
+            list = list.filter(s => isReproduccionAsistida(s));
         } else if (agendaFilter === 'quirofano') {
-            list = list.filter(s => !isHemodinamia(s));
+            list = list.filter(s => !isHemodinamia(s) && !isReproduccionAsistida(s));
         }
 
         // Text search
@@ -982,13 +1026,13 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {/* Group select-all checkbox */}
+                            {/* Group select-all checkbox (excluye suspendidas y reproducción asistida) */}
                             <input
                                 type="checkbox"
-                                checked={group.items.filter(s => s.ausente !== '0' && s.ausente !== '1').length > 0 && group.items.filter(s => s.ausente !== '0' && s.ausente !== '1').every(s => selectedSurgeryIds.has(s.id))}
+                                checked={group.items.filter(s => s.ausente !== '0' && s.ausente !== '1' && !isReproduccionAsistida(s)).length > 0 && group.items.filter(s => s.ausente !== '0' && s.ausente !== '1' && !isReproduccionAsistida(s)).every(s => selectedSurgeryIds.has(s.id))}
                                 onChange={(e) => {
                                     e.stopPropagation();
-                                    const activeIds = group.items.filter(s => s.ausente !== '0' && s.ausente !== '1').map(s => s.id);
+                                    const activeIds = group.items.filter(s => s.ausente !== '0' && s.ausente !== '1' && !isReproduccionAsistida(s)).map(s => s.id);
                                     setSelectedSurgeryIds(prev => {
                                         const next = new Set(prev);
                                         if (e.target.checked) {
@@ -1035,6 +1079,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const renderSurgeryRows = (surgery, effectiveStatus, cfg, cd, isExpanded) => {
         const isSuspended = surgery.ausente === '1';
         const isHemo = isHemodinamia(surgery);
+        const isRepro = isReproduccionAsistida(surgery);
         const rows = [
             <tr key={surgery.id} className="cart__row"
                 onClick={() => {
@@ -1049,25 +1094,27 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     ...(isSuspended ? {
                         background: '#FEF2F2',
                         opacity: 0.75,
+                    } : isRepro ? {
+                        background: isExpanded ? '#F3E8FF' : '#FAF5FF',
                     } : isHemo ? {
                         background: isExpanded ? '#E0F2FE' : '#F0F9FF',
                     } : {}),
                 }}
                 onMouseOver={e => {
                     if (!isExpanded) {
-                        e.currentTarget.style.background = isSuspended ? '#FEE2E2' : isHemo ? '#E0F2FE' : 'var(--neutral-50)';
+                        e.currentTarget.style.background = isSuspended ? '#FEE2E2' : isRepro ? '#F3E8FF' : isHemo ? '#E0F2FE' : 'var(--neutral-50)';
                     }
                 }}
                 onMouseOut={e => {
                     if (!isExpanded) {
-                        e.currentTarget.style.background = isSuspended ? '#FEF2F2' : isHemo ? '#F0F9FF' : '';
+                        e.currentTarget.style.background = isSuspended ? '#FEF2F2' : isRepro ? '#FAF5FF' : isHemo ? '#F0F9FF' : '';
                     }
                 }}
             >
                 {/* Row Checkbox */}
                 <td className="cart__td" style={{
                     textAlign: 'center', padding: '4px',
-                    borderLeft: isHemo ? '4px solid #0284C7' : isSuspended ? '4px solid #EF4444' : '4px solid transparent',
+                    borderLeft: isRepro ? '4px solid #9333EA' : isHemo ? '4px solid #0284C7' : isSuspended ? '4px solid #EF4444' : '4px solid transparent',
                 }}>
                     {surgery.ausente !== '0' && surgery.ausente !== '1' && (
                         <input
@@ -1083,7 +1130,11 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 });
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: '#3B82F6' }}
+                            title={isRepro ? "Reproducción Asistida: no requiere envío de mensaje" : undefined}
+                            style={{
+                                cursor: 'pointer', width: '14px', height: '14px',
+                                accentColor: isRepro ? '#9333EA' : '#3B82F6'
+                            }}
                         />
                     )}
                 </td>
@@ -1190,6 +1241,35 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <span>{surgery.nombre}</span>
+                        {isRepro && (
+                            <>
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                    padding: '1px 7px', borderRadius: '4px',
+                                    background: '#F3E8FF', color: '#7E22CE',
+                                    fontSize: '0.62rem', fontWeight: 700,
+                                    border: '1px solid #E9D5FF',
+                                    textDecoration: 'none',
+                                    letterSpacing: '0.3px',
+                                    whiteSpace: 'nowrap',
+                                }}>
+                                    🧬 REPRODUCCIÓN ASISTIDA
+                                </span>
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                    padding: '1px 6px', borderRadius: '4px',
+                                    background: '#FEF2F2', color: '#DC2626',
+                                    fontSize: '0.6rem', fontWeight: 700,
+                                    border: '1px solid #FECACA',
+                                    textDecoration: 'none',
+                                    whiteSpace: 'nowrap',
+                                }}
+                                title="Procedimiento coordinado directamente por Fertilidad / CEMERA. No requiere mensaje desde Admisión."
+                                >
+                                    🚫 NO ENVIAR MENSAJE
+                                </span>
+                            </>
+                        )}
                         {isHemo && (
                             <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '3px',
@@ -1221,8 +1301,8 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                     {surgery.descripcion && (
                         <div style={{
                             fontSize: '0.72rem',
-                            color: isHemo ? '#0284C7' : 'var(--neutral-500)',
-                            fontWeight: isHemo ? 600 : 400,
+                            color: isRepro ? '#7E22CE' : isHemo ? '#0284C7' : 'var(--neutral-500)',
+                            fontWeight: (isRepro || isHemo) ? 600 : 400,
                             marginTop: '2px',
                             whiteSpace: 'normal',
                             lineHeight: 1.25,
@@ -1328,9 +1408,29 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 <tr key={`${surgery.id}-detail`}>
                     <td colSpan={11} style={{
                         padding: 0, background: 'var(--neutral-50)',
-                        borderLeft: `4px solid ${cfg.color}`,
+                        borderLeft: `4px solid ${isRepro ? '#9333EA' : isHemo ? '#0284C7' : cfg.color}`,
                         animation: 'fadeIn 0.2s ease-out',
                     }}>
+                        {isRepro && (
+                            <div style={{
+                                margin: 'var(--space-3) var(--space-5) 0',
+                                padding: '10px 14px',
+                                borderRadius: 'var(--radius-md)',
+                                background: '#FAF5FF',
+                                border: '1px solid #E9D5FF',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                            }}>
+                                <span style={{ fontSize: '1.3rem' }}>🧬</span>
+                                <div style={{ fontSize: '0.78rem', lineHeight: 1.4 }}>
+                                    <strong style={{ color: '#7E22CE' }}>Procedimiento de Reproducción Asistida / Fertilidad — No enviar mensaje de admisión</strong><br />
+                                    <span style={{ color: '#6B21A8' }}>
+                                        La preparación, horarios de ayuno y citación de la paciente son gestionados exclusivamente por el equipo de Fertilidad / CEMERA. No requiere envío de mensaje desde Admisión de Quirófano.
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                         <div style={{
                             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
                             gap: 'var(--space-4)', padding: 'var(--space-4) var(--space-5)',
@@ -1427,7 +1527,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     fontSize: '0.78rem',
                                 }}>
                                     {[
-                                        { label: 'Servicio / Agenda', value: isHemo ? '🫀 HEMODINAMIA' : (surgery.grupo_agendas || 'QUIRÓFANOS') },
+                                        { label: 'Servicio / Agenda', value: isRepro ? '🧬 REPRODUCCIÓN ASISTIDA' : isHemo ? '🫀 HEMODINAMIA' : (surgery.grupo_agendas || 'QUIRÓFANOS') },
                                         { label: 'Procedimiento', value: surgery.descripcion || surgery.modulo },
                                         { label: 'ID Paciente', value: surgery.id_paciente },
                                         { label: 'DNI', value: patientDataMap[surgery.id_paciente]?.dni || surgery.dni },
@@ -2180,7 +2280,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 </button>
                             </div>
 
-                            {/* Agenda Filter (Todas / Quirófanos / Hemodinamia) */}
+                            {/* Agenda Filter (Todas / Quirófanos / Hemodinamia / Repr. Asistida) */}
                             <div style={{ display: 'flex', gap: '2px', background: 'var(--neutral-100)', borderRadius: 'var(--radius-md)', padding: '3px' }}>
                                 <button
                                     onClick={() => {
@@ -2226,6 +2326,21 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     }}
                                 >
                                     🫀 Hemodinamia
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAgendaFilter('reproduccion');
+                                    }}
+                                    style={{
+                                        padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                                        fontSize: '0.76rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                                        background: agendaFilter === 'reproduccion' ? '#9333EA' : 'transparent',
+                                        color: agendaFilter === 'reproduccion' ? '#fff' : '#7E22CE',
+                                        boxShadow: agendaFilter === 'reproduccion' ? 'var(--shadow-sm)' : 'none',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    🧬 Repr. Asistida
                                 </button>
                             </div>
                         </div>
@@ -2291,6 +2406,18 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 <Clock size={14} /> Ver historial de Hemodinamia ({surgeries.filter(isHemodinamia).length} cirugías)
                             </button>
                         )}
+                        {agendaFilter === 'reproduccion' && viewMode === 'upcoming' && (
+                            <button
+                                onClick={() => setViewMode('history')}
+                                className="btn"
+                                style={{
+                                    marginTop: '12px', fontSize: '0.8rem', display: 'inline-flex',
+                                    alignItems: 'center', gap: '6px', background: '#9333EA', color: '#fff', border: 'none'
+                                }}
+                            >
+                                <Clock size={14} /> Ver historial de Repr. Asistida ({surgeries.filter(isReproduccionAsistida).length} cirugías)
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="cart__table-wrapper">
@@ -2300,16 +2427,16 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '36px', textAlign: 'center', padding: '4px' }}>
                                         <input
                                             type="checkbox"
-                                            checked={filtered.length > 0 && selectedSurgeryIds.size > 0 && filtered.every(s => selectedSurgeryIds.has(s.id))}
+                                            checked={filtered.filter(s => s.ausente !== '0' && s.ausente !== '1' && !isReproduccionAsistida(s)).length > 0 && selectedSurgeryIds.size > 0 && filtered.filter(s => s.ausente !== '0' && s.ausente !== '1' && !isReproduccionAsistida(s)).every(s => selectedSurgeryIds.has(s.id))}
                                             onChange={(e) => {
                                                 e.stopPropagation();
                                                 if (e.target.checked) {
-                                                    setSelectedSurgeryIds(new Set(filtered.filter(s => s.ausente !== '0' && s.ausente !== '1').map(s => s.id)));
+                                                    setSelectedSurgeryIds(new Set(filtered.filter(s => s.ausente !== '0' && s.ausente !== '1' && !isReproduccionAsistida(s)).map(s => s.id)));
                                                 } else {
                                                     setSelectedSurgeryIds(new Set());
                                                 }
                                             }}
-                                            title="Seleccionar todo"
+                                            title="Seleccionar todo (excluye suspendidas y reproducción asistida)"
                                             style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#3B82F6' }}
                                         />
                                     </th>

@@ -1251,13 +1251,13 @@ export default function QuirofanoDashboard({
                 overflowX: 'auto'
             }}>
                 {[
-                    { id: 'resumen', label: '📊 Tablero Principal (Tableau Plus)', icon: BarChart3 },
-                    { id: 'demografia', label: '👶 Demografía & Procedimientos', icon: Stethoscope },
-                    { id: 'urgencias', label: '🚨 Urgencias vs Electivas', icon: Flame },
-                    { id: 'suspensiones', label: '🚫 Detalle de Suspendidas (Causales 1..13)', icon: AlertTriangle },
-                    { id: 'bloques', label: '⏱️ Bloques Quirúrgicos & Alertas 7d', icon: Clock },
-                    { id: 'equipos', label: '👥 Equipos & Colaboradores', icon: Users },
-                    { id: 'interanual', label: '📈 Evolución Interanual (2022-2026)', icon: TrendingUp }
+                    { id: 'resumen', label: 'Tablero Principal (Tableau Plus)', icon: BarChart3 },
+                    { id: 'demografia', label: 'Demografía & Procedimientos', icon: Stethoscope },
+                    { id: 'urgencias', label: 'Urgencias vs Electivas', icon: Flame },
+                    { id: 'suspensiones', label: 'Detalle de Suspendidas (Causales 1..13)', icon: AlertTriangle },
+                    { id: 'bloques', label: 'Bloques Quirúrgicos & Alertas 7d', icon: Clock },
+                    { id: 'equipos', label: 'Equipos & Colaboradores', icon: Users },
+                    { id: 'interanual', label: 'Evolución Interanual (2022-2026)', icon: TrendingUp }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;

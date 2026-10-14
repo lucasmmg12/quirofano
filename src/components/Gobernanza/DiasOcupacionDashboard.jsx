@@ -5,7 +5,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList 
 } from 'recharts';
 import { 
-    BookOpen, Filter, Calendar, Bed, Activity, Users, 
+    HeartPulse, BarChart3, FlaskConical, BookOpen, Filter, Calendar, Bed, Activity, Users, 
     AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
     Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
@@ -220,7 +220,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(false); // Colapsado por defecto a solicitud
     const [sectorId, setSectorId] = useState('UCI');
-    const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO'); // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
+    const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO');
+    const [uciActiveTab, setUciActiveTab] = useState('censo'); // 'censo' | 'camas' | 'demografia' | 'mortalidad' | 'diagnostico' // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
     const [isUciOpen, setIsUciOpen] = useState(() => {
         if (isUciOnly) return true;
         return localStorage.getItem('telar_uci_expanded') === 'true';
@@ -2504,7 +2505,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '1.2rem' }}>{activeSectorConfig.icon}</span>
+                                <div style={{ width: 34, height: 34, borderRadius: 8, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1E40AF' }}>
+                                    {sectorId === 'UCI' ? <HeartPulse size={18} /> : sectorId === 'QUIROFANO' ? <Activity size={18} /> : sectorId === 'GUARDIA' ? <Activity size={18} /> : <Bed size={18} />}
+                                </div>
                                 <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
                                     {activeSectorConfig.label}
                                 </h2>
@@ -2539,7 +2542,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         transition: 'all 0.15s ease'
                                     }}
                                 >
-                                    <span>⚡</span>
+                                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: uciSubNivel === 'CONSOLIDADO' ? '#FFFFFF' : '#2563EB', display: 'inline-block' }} />
                                     <span>UCI Total (16 camas)</span>
                                 </button>
                                 <button
@@ -2559,7 +2562,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         transition: 'all 0.15s ease'
                                     }}
                                 >
-                                    <span>🔴</span>
+                                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: uciSubNivel === 'INTENSIVA' ? '#FFFFFF' : '#DC2626', display: 'inline-block' }} />
                                     <span>Terapia Intensiva (8)</span>
                                 </button>
                                 <button
@@ -2579,7 +2582,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         transition: 'all 0.15s ease'
                                     }}
                                 >
-                                    <span>🟡</span>
+                                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: uciSubNivel === 'INTERMEDIA' ? '#FFFFFF' : '#D97706', display: 'inline-block' }} />
                                     <span>Terapia Intermedia (8)</span>
                                 </button>
                             </div>
@@ -2692,7 +2695,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         {/* Botón Gantt Camas UCI */}
                         {sectorId === 'UCI' && (
                             <button
-                                onClick={() => setViewMode('gantt')}
+                                onClick={() => { setUciActiveTab('camas'); setViewMode('gantt'); }}
                                 style={{
                                     background: viewMode === 'gantt' ? '#1E40AF' : '#F8FAFC',
                                     color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
@@ -3164,7 +3167,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     onMouseLeave={e => { if (!isUciOpen) e.currentTarget.style.background = isUciOpen ? '#EFF6FF' : '#F8FAFC'; }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ fontSize: '1.25rem' }}>🏥</span>
+                                        <div style={{ width: 28, height: 28, borderRadius: 6, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1E40AF' }}><HeartPulse size={16} /></div>
                                         <div>
                                             <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>UCI</div>
                                             <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>16 camas operativas</div>
@@ -3717,26 +3720,448 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 Cargando indicadores del sector {activeSectorConfig.label}...
                             </span>
                         </div>
-                    ) : viewMode === 'gantt' && sectorId === 'UCI' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <UciGanttChart 
-                                rawData={rows}
-                                historialCamas={camasHistorialRows}
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                onDatePresetChange={handleSetDatePreset}
-                                onCustomDateChange={(d, h) => {
-                                    setFechaDesde(d);
-                                    setFechaHasta(h);
-                                    setDatePresetMode('personalizado');
-                                }}
-                                onOpenMortalidadAudit={(patient) => {
-                                    setMortalidadAuditTargetPatient(patient);
-                                    setIsMortalidadAuditOpen(true);
-                                }}
-                                onClose={() => setViewMode('dashboard')}
-                            />
+                    
+                    ) : sectorId === 'UCI' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* ─── PESTAÑAS DE NAVEGACIÓN TÉCNICA (UCI / TERAPIA INTENSIVA) ─── */}
+                            <div style={{
+                                display: 'flex',
+                                background: '#F1F5F9',
+                                padding: '4px',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0',
+                                gap: '4px',
+                                overflowX: 'auto'
+                            }}>
+                                {[
+                                    { id: 'censo', label: 'Tablero General (Censo & Ocupación)', icon: BarChart3 },
+                                    { id: 'camas', label: 'Mapa de Camas & Cronograma (Gantt)', icon: Bed },
+                                    { id: 'demografia', label: 'Demografía, Especialidades & Financiadores', icon: Users },
+                                    { id: 'mortalidad', label: 'Seguridad Clínica & Auditoría de Mortalidad', icon: HeartPulse },
+                                    { id: 'diagnostico', label: 'Soporte Diagnóstico & Trazabilidad', icon: Layers }
+                                ].map(tab => {
+                                    const Icon = tab.icon;
+                                    const isActive = uciActiveTab === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setUciActiveTab(tab.id);
+                                                if (tab.id === 'camas') {
+                                                    setViewMode('gantt');
+                                                } else {
+                                                    setViewMode('dashboard');
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: '9px',
+                                                border: 'none',
+                                                background: isActive ? '#FFFFFF' : 'transparent',
+                                                color: isActive ? '#0F172A' : '#64748B',
+                                                fontWeight: isActive ? 800 : 600,
+                                                fontSize: '0.82rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                                whiteSpace: 'nowrap',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <Icon size={15} color={isActive ? '#0284C7' : '#94A3B8'} />
+                                            {tab.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* ─── PESTAÑA 1: CENSO & OCUPACIÓN (TABLERO GENERAL) ─── */}
+                            {uciActiveTab === 'censo' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    {/* ─── BLOQUE 1: SCORECARDS EJECUTIVOS ─── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                                
+                                {/* 1. Días Camas Ocupados */}
+                                {isIndicatorActive('kpi_dias_ocupados') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)', position: 'relative'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Días Camas Ocupados
+                                            </span>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'kpi_dias_ocupados', label: 'Días Camas Ocupados', sector: activeSectorConfig.label })}
+                                                title="Ver datos tabulados"
+                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
+                                            {Number(metrics.diasOcupados || 0).toLocaleString('es-AR')}
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 600 }}>
+                                            ✓ Total pernoctadas / camas consumidas
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 2. Días Camas Disponibles */}
+                                {isIndicatorActive('kpi_dias_disponibles') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Días Camas Disponibles
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{camasTotales} camas</span>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
+                                            {Number(metrics.camasDisponibles || 0).toLocaleString('es-AR')}
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            Capacidad instalada del sector
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 3. % de Ocupación */}
+                                {isIndicatorActive('kpi_porc_ocupacion') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                % de Ocupación
+                                            </span>
+                                            <span style={{
+                                                width: '10px', height: '10px', borderRadius: '50%',
+                                                background: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#F59E0B' : '#10B981'
+                                            }} />
+                                        </div>
+                                        <div style={{
+                                            fontSize: '2.2rem', fontWeight: 800, margin: '8px 0',
+                                            color: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#D97706' : '#10B981'
+                                        }}>
+                                            {metrics.porcOcupacion}%
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            {Number(metrics.porcOcupacion) > 95 ? '⚠️ Alta Saturación' : 'Normal operativa'}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 4. % de Defunción */}
+                                {isIndicatorActive('kpi_porc_defuncion') && (
+                                    <div 
+                                        onClick={() => setIsMortalidadAuditOpen(true)}
+                                        title="Ver Auditoría Clínica de Mortalidad y Motivos de Defunción"
+                                        style={{
+                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)', cursor: 'pointer', transition: 'border-color 0.15s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                % de Defunción
+                                            </span>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setIsMortalidadAuditOpen(true); }}
+                                                title="Auditoría Clínica de Mortalidad"
+                                                style={{ 
+                                                    background: '#FEE2E2', border: 'none', cursor: 'pointer', color: '#DC2626', 
+                                                    padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', 
+                                                    gap: '4px', fontSize: '0.72rem', fontWeight: 700 
+                                                }}
+                                            >
+                                                <Eye size={13} />
+                                                Auditar
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#EF4444', margin: '8px 0' }}>
+                                            {metrics.porcDefuncion}%
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                                {metrics.defunciones} de {metrics.totalAdmisiones} admisiones
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', color: '#DC2626', fontWeight: 700 }}>
+                                                Ver motivos →
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 5. Promedio de Estancia (ALOS) - Activado o desde catálogo */}
+                                {isIndicatorActive('kpi_alos') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Promedio de Estancia
+                                            </span>
+                                            <Clock size={16} color="#2563EB" />
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#2563EB', margin: '8px 0' }}>
+                                            {metrics.alos} <span style={{ fontSize: '1rem', fontWeight: 600 }}>días</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            Rotación media por paciente
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 6. Intensidad Diagnóstica (Estudios / Cama-Día) */}
+                                {isIndicatorActive('kpi_intensidad_diagnostica') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Intensidad Diagnóstica
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+                                                padding: '2px 6px', borderRadius: '6px'
+                                            }}>
+                                                VLISE
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#0F172A', margin: '8px 0' }}>
+                                            {metrics.intensidadCamaDia} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>estudios/cama-día</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            {Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} estudios en {activeSectorConfig.shortLabel} (~{metrics.estudiosPorAdmision || 0}/paciente)
+                                        </span>
+                                    </div>
+                                )}
+
+                            </div>
+
+                            
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_admisiones_totales', 0)}
+                                        {renderChartCard('chart_estancias', 1)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 2: CRONOGRAMA GANTT DE CAMAS ─── */}
+                            {uciActiveTab === 'camas' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <UciGanttChart 
+                                        rawData={rows}
+                                        historialCamas={camasHistorialRows}
+                                        fechaDesde={fechaDesde}
+                                        fechaHasta={fechaHasta}
+                                        datePresetMode={datePresetMode}
+                                        onDatePresetChange={handleSetDatePreset}
+                                        onCustomDateChange={(d, h) => {
+                                            setFechaDesde(d);
+                                            setFechaHasta(h);
+                                            setDatePresetMode('personalizado');
+                                        }}
+                                        onOpenMortalidadAudit={(patient) => {
+                                            setMortalidadAuditTargetPatient(patient);
+                                            setIsMortalidadAuditOpen(true);
+                                        }}
+                                        onClose={() => setUciActiveTab('censo')}
+                                    />
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 3: DEMOGRAFÍA & ESPECIALIDADES ─── */}
+                            {uciActiveTab === 'demografia' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_especialidades', 0)}
+                                        {renderChartCard('chart_sexo_demografia', 1)}
+                                        {renderChartCard('chart_rango_etario', 2)}
+                                        {renderChartCard('chart_procedencia', 3)}
+                                        {renderChartCard('chart_clientes', 4)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 4: SEGURIDAD CLÍNICA & AUDITORÍA DE MORTALIDAD ─── */}
+                            {uciActiveTab === 'mortalidad' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{
+                                        background: '#FFFFFF',
+                                        border: '1.5px solid #FEE2E2',
+                                        borderRadius: '12px',
+                                        padding: '18px 24px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        flexWrap: 'wrap',
+                                        gap: '16px',
+                                        boxShadow: '0 2px 8px -2px rgba(239, 68, 68, 0.08)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                            <div style={{
+                                                width: '46px',
+                                                height: '46px',
+                                                borderRadius: '10px',
+                                                background: '#FEE2E2',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#DC2626'
+                                            }}>
+                                                <HeartPulse size={24} />
+                                            </div>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Auditoría Médica de Cuidados Críticos
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DC2626', color: '#FFFFFF', padding: '1px 6px', borderRadius: '4px' }}>
+                                                        SEGURIDAD PACIENTE
+                                                    </span>
+                                                </div>
+                                                <h3 style={{ margin: '3px 0 2px 0', fontSize: '1.25rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Tasa de Defunción en UCI: <span style={{ color: '#DC2626' }}>{metrics.porcDefuncion}%</span>
+                                                </h3>
+                                                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                                                    {metrics.defunciones} fallecimientos registrados de un total de {metrics.totalAdmisiones} admisiones en el período seleccionado
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsMortalidadAuditOpen(true)}
+                                            style={{
+                                                background: '#DC2626',
+                                                color: '#FFFFFF',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                padding: '10px 18px',
+                                                fontSize: '0.85rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <Eye size={16} />
+                                            <span>Abrir Auditoría Nominal Completa</span>
+                                        </button>
+                                    </div>
+
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_motivos_alta', 0)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 5: SOPORTE DIAGNÓSTICO & TRAZABILIDAD (VLISE) ─── */}
+                            {uciActiveTab === 'diagnostico' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '10px 16px',
+                                        background: '#FFFFFF',
+                                        border: '1px solid #E2E8F0',
+                                        borderRadius: '10px',
+                                        flexWrap: 'wrap',
+                                        gap: '10px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ background: '#EFF6FF', color: '#1E40AF', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Layers size={15} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Soporte Diagnóstico VLISE (Laboratorio & Radiología)
+                                                </div>
+                                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                                    Intensidad diagnóstica: <strong>{metrics.intensidadCamaDia}</strong> estudios/cama-día ({Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} estudios totales)
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', padding: '3px 6px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>Modalidad:</span>
+                                            {[
+                                                { id: 'TODAS', label: 'Todas' },
+                                                { id: 'Laboratorio', label: 'Laboratorio' },
+                                                { id: 'Imágenes', label: 'Radiología (RX)' }
+                                            ].map(m => (
+                                                <button
+                                                    key={m.id}
+                                                    type="button"
+                                                    onClick={() => setModalidadFiltro(m.id)}
+                                                    style={{
+                                                        background: modalidadFiltro === m.id ? '#EFF6FF' : 'transparent',
+                                                        border: modalidadFiltro === m.id ? '1px solid #2563EB' : '1px solid transparent',
+                                                        color: modalidadFiltro === m.id ? '#1E40AF' : '#475569',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: modalidadFiltro === m.id ? 800 : 500,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    {m.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_produccion_origen', 0)}
+                                        {renderChartCard('chart_estudios_por_box', 1)}
+                                        {renderChartCard('chart_top_estudios_uci', 2)}
+                                        {renderChartCard('chart_solicitantes_uci', 3)}
+                                        {renderChartCard('table_peticiones_detalle', 4)}
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -4002,8 +4427,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>VLISE:</span>
                                         {[
                                             { id: 'TODAS', label: 'Todas' },
-                                            { id: 'Laboratorio', label: '🔬 Lab' },
-                                            { id: 'Imágenes', label: '🩻 RX' }
+                                            { id: 'Laboratorio', label: 'Laboratorio' },
+                                            { id: 'Imágenes', label: 'Radiología (RX)' }
                                         ].map(m => (
                                             <button
                                                 key={m.id}
