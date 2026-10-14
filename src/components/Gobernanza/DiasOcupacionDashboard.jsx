@@ -874,6 +874,36 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         return list;
     }, [rows, fechaDesde, fechaHasta, sectorId, uciSubNivel, boxFiltro, selectedEspecialidades]);
 
+    // Filas para Auditoría Clínica, Mortalidad y Seguridad:
+    // Incluye tanto las pernoctadas censales del mes como cualquier egreso/deceso ocurrido en el mes
+    const auditNominalRows = useMemo(() => {
+        let list = rows;
+        if (fechaDesde && fechaHasta) {
+            list = list.filter(r => {
+                const enCenso = r.fecha_ocupacion >= fechaDesde && r.fecha_ocupacion <= fechaHasta;
+                const fAlta = r.fecha_alta ? r.fecha_alta.substring(0, 10) : '';
+                const enAlta = fAlta >= fechaDesde && fAlta <= fechaHasta;
+                return enCenso || enAlta;
+            });
+        }
+        if (sectorId === 'UCI') {
+            if (uciSubNivel === 'INTENSIVA') {
+                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'UCI');
+            } else if (uciSubNivel === 'INTERMEDIA') {
+                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'TERAPIA INTERMEDIA');
+            }
+        } else if (sectorId && sectorId !== 'TODOS') {
+            list = list.filter(r => (r.servicio || '').trim().toUpperCase() === sectorId.toUpperCase());
+        }
+        if (boxFiltro && boxFiltro !== 'TODOS') {
+            list = list.filter(r => normalizeHab(r.habitacion) === boxFiltro);
+        }
+        if (selectedEspecialidades !== null) {
+            list = list.filter(r => r.especialidad && selectedEspecialidades.includes(r.especialidad.trim()));
+        }
+        return list;
+    }, [rows, fechaDesde, fechaHasta, sectorId, uciSubNivel, boxFiltro, selectedEspecialidades]);
+
     // === CÁLCULO DE KPIS E INDICADORES ===
     const metrics = useMemo(() => {
         const diasOcupados = filteredRows.length;
@@ -889,9 +919,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             ? ((diasOcupados / camasDisponibles) * 100).toFixed(1) 
             : '0.0';
 
-        // Admisiones únicas en el período filtrado
+        // Admisiones únicas en el período filtrado (censadas o dadas de alta/deceso en el período)
         const admisionesMap = new Map();
-        filteredRows.forEach(r => {
+        auditNominalRows.forEach(r => {
             const key = r.id_admision || r.numero_admision;
             if (!admisionesMap.has(key)) {
                 admisionesMap.set(key, r);
@@ -4524,7 +4554,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     setMortalidadAuditTargetPatient(null);
                 }}
                 targetPatient={mortalidadAuditTargetPatient}
-                rawData={filteredRows}
+                rawData={auditNominalRows}
                 totalAdmisionesCount={metrics.totalAdmisiones}
                 sectorLabel={activeSectorConfig.label}
                 dateFilter={{ fechaDesde, fechaHasta }}
