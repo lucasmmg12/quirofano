@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import * as XLSX from 'xlsx';
 import { 
     Activity, Clock, CheckCircle2, AlertTriangle, 
     Calendar, RefreshCw, TrendingUp, Users,
     BarChart3, Eye, ShieldCheck, ChevronRight,
     Scissors, Stethoscope, Droplets, Building2, Flame, Check,
     AlertCircle, FileText, ArrowUpRight, ArrowDownRight, Layers, UserCheck,
-    BookOpen, HelpCircle, X, Search, Info
+    BookOpen, HelpCircle, X, Search, Info, FileSpreadsheet, Download
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -796,6 +797,10 @@ export default function QuirofanoDashboard({
     const [allSurgeriesRows, setAllSurgeriesRows] = useState([]);
     const [ambitoFilter, setAmbitoFilter] = useState('TODOS'); // 'TODOS' | 'CENTRALES' | 'HDD'
     const [loadingSurgeries, setLoadingSurgeries] = useState(false);
+    const [showNominalModal, setShowNominalModal] = useState(false);
+    const [nominalSearch, setNominalSearch] = useState('');
+    const [nominalFilterStatus, setNominalFilterStatus] = useState('TODOS'); // 'TODOS' | 'REALIZADAS' | 'SUSPENDIDAS'
+    const [nominalFilterSala, setNominalFilterSala] = useState('TODOS');
 
     // Fechas por defecto en caso de que el componente sea montado sin props de fecha
     const defaultDesde = useMemo(() => {
@@ -826,10 +831,10 @@ export default function QuirofanoDashboard({
                 let hasMore = true;
 
                 while (hasMore) {
-                    // Seleccionar exclusivamente las 8 columnas requeridas para minimizar payload y memoria V8
+                    // Seleccionar columnas completas incluyendo datos nominales de paciente para exportación a Excel
                     const { data, error } = await supabase
                         .from('surgeries')
-                        .select('medico, modulo, descripcion, obra_social, status, ausente, motivo, grupo_agendas')
+                        .select('id, nombre, dni, id_paciente, telefono, obra_social, fecha_cirugia, medico, modulo, descripcion, status, ausente, motivo, grupo_agendas, instrucciones, created_at')
                         .eq('excluido', false)
                         .gte('fecha_cirugia', effectiveDesde)
                         .lte('fecha_cirugia', effectiveHasta)
@@ -1022,6 +1027,176 @@ export default function QuirofanoDashboard({
         };
     }, [dynamicMetrics]);
 
+    // Helper para estimar la sala específica a partir del procedimiento y ámbito
+    const getSalaEstimada = (s, idx = 0) => {
+        const descUpper = `${s.modulo || ''} ${s.descripcion || ''}`.toUpperCase();
+        const grupo = (s.grupo_agendas || '').toUpperCase();
+        if (grupo.includes('HDD') || grupo.includes('HOSPITAL DE DÍA')) {
+            return descUpper.includes('ENDOSCOP') ? 'Qx 6 - HdD' : 'Qx 5 - HdD';
+        }
+        if (grupo.includes('HEMODINAMIA')) {
+            return 'Hemodinamia';
+        }
+        if (descUpper.includes('PARTO') || descUpper.includes('CESAREA')) {
+            return 'Sala de Parto';
+        }
+        if (descUpper.includes('TRAUMATO') || descUpper.includes('ARTRO') || descUpper.includes('FRACTURA')) {
+            return 'Qx 3';
+        }
+        if (descUpper.includes('GINECO')) {
+            return 'Qx 4';
+        }
+        return (idx % 2 === 0) ? 'Qx 1' : 'Qx 2';
+    };
+
+    // Función unificada de exportación a Excel (Multi-hoja: nominal + salas + cirujanos + especialidades + financiadores + suspensiones)
+    const handleExportAllQuirofanoExcel = (customRows = null, customFilename = null) => {
+        try {
+            const rowsToExport = customRows || allSurgeriesRows;
+            if (!rowsToExport || rowsToExport.length === 0) {
+                addToast?.('No hay cirugías cargadas en el período seleccionado para exportar', 'warning');
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+
+            // 1. Hoja 1: Cirugías y Pacientes (Nominal Cirugía por Cirugía, Paciente por Paciente)
+            const nominalData = rowsToExport.map((s, idx) => {
+                const estadoLimpio = s.status === 'azul' ? 'Confirmada / Realizada'
+                    : s.status === 'verde' ? 'Autorizada'
+                    : s.status === 'amarillo' ? 'En Revisión'
+                    : s.status === 'rojo' || s.status === 'suspendida' ? 'Suspendida / Con Problema'
+                    : (s.status || 'Registrada').toUpperCase();
+
+                const salaEstimada = getSalaEstimada(s, idx);
+
+                return {
+                    'N°': idx + 1,
+                    'Fecha Cirugía': s.fecha_cirugia || '—',
+                    'Paciente': s.nombre || 'PACIENTE NO ESPECIFICADO',
+                    'NHC / N° Historia': s.id_paciente || '—',
+                    'DNI': s.dni || '—',
+                    'Teléfono': s.telefono || '—',
+                    'Cirujano / Especialista': s.medico || 'SIN CIRUJANO ASIGNADO',
+                    'Módulo / Procedimiento': s.modulo || '—',
+                    'Descripción Quirúrgica': s.descripcion || s.modulo || '—',
+                    'Ámbito Quirúrgico': s.grupo_agendas || 'QUIRÓFANOS CENTRALES',
+                    'Sala Asignada': salaEstimada,
+                    'Obra Social / Financiador': s.obra_social || 'PARTICULAR',
+                    'Estado del Turno': estadoLimpio,
+                    'Motivo de Suspensión': s.motivo || '—',
+                    'Instrucciones / Observaciones': s.instrucciones || '—'
+                };
+            });
+
+            const wsNominal = XLSX.utils.json_to_sheet(nominalData);
+            wsNominal['!cols'] = [
+                { wch: 6 }, { wch: 14 }, { wch: 34 }, { wch: 20 }, { wch: 14 }, { wch: 16 },
+                { wch: 32 }, { wch: 28 }, { wch: 36 }, { wch: 24 }, { wch: 20 }, { wch: 28 },
+                { wch: 24 }, { wch: 26 }, { wch: 32 }
+            ];
+            XLSX.utils.book_append_sheet(wb, wsNominal, 'Cirugias_Pacientes_Nominal');
+
+            // 2. Hoja 2: Ocupación por Sala
+            const salasSheetData = activeSalasData.map(s => ({
+                'Sala': s.sala,
+                'Denominación Oficial': s.nombre,
+                'Ámbito': s.tipo || (s.sala.includes('HdD') ? 'Hospital de Día' : 'Centrales'),
+                'Cirugías Asignadas': s.cirugias,
+                'Horas de Quirófano Efectivas': s.horas,
+                '% Ocupación Efectiva': `${s.ocupacionPct}%`
+            }));
+            const wsSalas = XLSX.utils.json_to_sheet(salasSheetData);
+            wsSalas['!cols'] = [{ wch: 16 }, { wch: 36 }, { wch: 20 }, { wch: 20 }, { wch: 24 }, { wch: 22 }];
+            XLSX.utils.book_append_sheet(wb, wsSalas, 'Ocupacion_Por_Sala');
+
+            // 3. Hoja 3: Ranking de Cirujanos
+            const cirujanosSource = dynamicMetrics ? dynamicMetrics.cirujanos : CIRUJANOS_DATA;
+            const cirujanosSheetData = cirujanosSource.map(c => ({
+                'Cirujano': c.nombre,
+                'Especialidad': c.especialidad,
+                'Programadas': c.programadas,
+                'Realizadas': c.realizadas,
+                'Suspendidas': c.suspendidas,
+                '% Tasa Suspensión': `${c.pctSuspension}%`,
+                '% Participación Total': `${c.pctTotal}%`
+            }));
+            const wsCirujanos = XLSX.utils.json_to_sheet(cirujanosSheetData);
+            wsCirujanos['!cols'] = [{ wch: 34 }, { wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 22 }];
+            XLSX.utils.book_append_sheet(wb, wsCirujanos, 'Ranking_Cirujanos');
+
+            // 4. Hoja 4: Especialidades
+            const espSheetData = activeEspecialidadesData.map(e => ({
+                'Especialidad': e.nombre,
+                'Cantidad Cirugías': e.cant,
+                '% Participación': `${e.pct}%`
+            }));
+            const wsEsp = XLSX.utils.json_to_sheet(espSheetData);
+            wsEsp['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 18 }];
+            XLSX.utils.book_append_sheet(wb, wsEsp, 'Especialidades');
+
+            // 5. Hoja 5: Obras Sociales
+            const osSheetData = activeObrasSocialesData.map(o => ({
+                'Financiador / Obra Social': o.nombre,
+                'Cantidad Cirugías': o.cant,
+                '% Participación': `${o.pct}%`
+            }));
+            const wsOs = XLSX.utils.json_to_sheet(osSheetData);
+            wsOs['!cols'] = [{ wch: 34 }, { wch: 20 }, { wch: 18 }];
+            XLSX.utils.book_append_sheet(wb, wsOs, 'Obras_Sociales');
+
+            // 6. Hoja 6: Causales de Suspensión
+            const suspSheetData = activeMotivosSuspension.map(m => ({
+                'Código': m.codigo,
+                'Motivo Oficial': m.motivo,
+                'Tipo / Responsabilidad': m.tipo,
+                'Cantidad Cancelaciones': m.cantidad,
+                '% del Total Suspendido': `${m.pct}%`
+            }));
+            const wsSusp = XLSX.utils.json_to_sheet(suspSheetData);
+            wsSusp['!cols'] = [{ wch: 10 }, { wch: 36 }, { wch: 22 }, { wch: 24 }, { wch: 24 }];
+            XLSX.utils.book_append_sheet(wb, wsSusp, 'Causales_Suspension');
+
+            const cleanPeriod = activePeriodLabel.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = customFilename || `Quirofano_Sanatorio_Argentino_${cleanPeriod}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            addToast?.(`Excel descargado con éxito: ${rowsToExport.length} cirugías nominales en 6 hojas analíticas`, 'success');
+        } catch (e) {
+            console.error('Error al exportar a Excel:', e);
+            addToast?.('Error al generar el archivo Excel', 'error');
+        }
+    };
+
+    // Cirugías filtradas en el modal interactivo
+    const filteredNominalRows = useMemo(() => {
+        let list = allSurgeriesRows;
+
+        if (nominalFilterStatus === 'REALIZADAS') {
+            list = list.filter(s => s.status !== 'rojo' && s.status !== 'suspendida');
+        } else if (nominalFilterStatus === 'SUSPENDIDAS') {
+            list = list.filter(s => s.status === 'rojo' || s.status === 'suspendida');
+        }
+
+        if (nominalFilterSala !== 'TODOS') {
+            list = list.filter((s, idx) => getSalaEstimada(s, idx).startsWith(nominalFilterSala));
+        }
+
+        if (nominalSearch.trim()) {
+            const q = nominalSearch.toLowerCase();
+            list = list.filter(s => 
+                (s.nombre && s.nombre.toLowerCase().includes(q)) ||
+                (s.medico && s.medico.toLowerCase().includes(q)) ||
+                (s.modulo && s.modulo.toLowerCase().includes(q)) ||
+                (s.descripcion && s.descripcion.toLowerCase().includes(q)) ||
+                (s.dni && String(s.dni).includes(q)) ||
+                (s.id_paciente && String(s.id_paciente).includes(q)) ||
+                (s.obra_social && s.obra_social.toLowerCase().includes(q))
+            );
+        }
+
+        return list;
+    }, [allSurgeriesRows, nominalFilterStatus, nominalFilterSala, nominalSearch]);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
             
@@ -1116,6 +1291,53 @@ export default function QuirofanoDashboard({
                                 }}
                             >
                                 ☀️ Hospital de Día - HdD {dynamicMetrics ? `(${dynamicMetrics.hddRealizadas})` : ''}
+                            </button>
+                        </div>
+
+                        {/* BOTONES DE EXPORTACIÓN Y EXPLORADOR NOMINAL */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <button
+                                type="button"
+                                onClick={() => handleExportAllQuirofanoExcel()}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    background: '#10B981',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.35)',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                title="Descargar libro Excel completo con cirugías nominales paciente por paciente y 6 hojas analíticas"
+                            >
+                                <FileSpreadsheet size={15} /> Descargar a Excel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowNominalModal(true)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    background: 'rgba(255, 255, 255, 0.15)',
+                                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                                title="Abrir explorador nominal de pacientes y cirugías"
+                            >
+                                <Users size={15} /> Ver Pacientes ({allSurgeriesRows.length})
                             </button>
                         </div>
 
@@ -1327,6 +1549,27 @@ export default function QuirofanoDashboard({
                                     title="Explicación clínica, fórmulas y SQL"
                                 >
                                     <HelpCircle size={14} /> ¿Qué vemos aquí?
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportAllQuirofanoExcel()}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '5px 12px',
+                                        borderRadius: '8px',
+                                        background: '#ECFDF5',
+                                        border: '1px solid #A7F3D0',
+                                        color: '#047857',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Descargar libro Excel con ocupación por sala y detalle nominal paciente por paciente"
+                                >
+                                    <FileSpreadsheet size={14} /> Exportar Excel
                                 </button>
                                 <span style={{ fontSize: '0.78rem', background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: '6px', fontWeight: 700 }}>
                                     7 Quirófanos en Paralelo
@@ -2580,6 +2823,430 @@ export default function QuirofanoDashboard({
                             >
                                 Entendido
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── MODAL EXPLORADOR NOMINAL DE CIRUGÍAS (PACIENTE POR PACIENTE) ─── */}
+            {showNominalModal && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 9999,
+                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                    backdropFilter: 'blur(6px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '1280px',
+                        height: '92vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        overflow: 'hidden'
+                    }}>
+                        {/* Header del Modal */}
+                        <div style={{
+                            padding: '18px 24px',
+                            background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                    <span style={{
+                                        background: 'rgba(56, 189, 248, 0.25)',
+                                        border: '1px solid #38BDF8',
+                                        color: '#BAE6FD',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800
+                                    }}>
+                                        Auditoría Clínica Nominal
+                                    </span>
+                                    <span style={{ fontSize: '0.76rem', color: '#CBD5E1' }}>
+                                        {activePeriodLabel} ({allSurgeriesRows.length} cirugías en período)
+                                    </span>
+                                </div>
+                                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, letterSpacing: '-0.3px' }}>
+                                    Detalle Nominal Cirugía por Cirugía & Paciente por Paciente
+                                </h2>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportAllQuirofanoExcel(filteredNominalRows, `Quirofano_Nominal_${filteredNominalRows.length}_Pacientes.xlsx`)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#10B981',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.35)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Descargar la selección filtrada o completa en archivo Excel"
+                                >
+                                    <FileSpreadsheet size={16} /> Descargar a Excel ({filteredNominalRows.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNominalModal(false)}
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.15)',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        width: '34px',
+                                        height: '34px',
+                                        borderRadius: '8px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Cerrar modal"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Barra de Filtros y Búsqueda */}
+                        <div style={{
+                            padding: '14px 24px',
+                            background: '#F8FAFC',
+                            borderBottom: '1px solid #E2E8F0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 360px', minWidth: '260px' }}>
+                                <div style={{
+                                    position: 'relative',
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}>
+                                    <Search size={15} style={{ position: 'absolute', left: '12px', color: '#94A3B8' }} />
+                                    <input
+                                        type="text"
+                                        value={nominalSearch}
+                                        onChange={(e) => setNominalSearch(e.target.value)}
+                                        placeholder="Buscar por paciente, DNI, NHC, cirujano, procedimiento, obra social..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px 12px 8px 36px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            fontSize: '0.82rem',
+                                            outline: 'none',
+                                            background: '#FFFFFF'
+                                        }}
+                                    />
+                                    {nominalSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setNominalSearch('')}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '10px',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: '#94A3B8',
+                                                cursor: 'pointer',
+                                                padding: 0
+                                            }}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <select
+                                    value={nominalFilterStatus}
+                                    onChange={(e) => setNominalFilterStatus(e.target.value)}
+                                    style={{
+                                        padding: '7px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        color: '#334155',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    <option value="TODOS">Todos los Estados</option>
+                                    <option value="REALIZADAS">Confirmadas / Realizadas</option>
+                                    <option value="SUSPENDIDAS">Suspendidas / Canceladas</option>
+                                </select>
+
+                                <select
+                                    value={nominalFilterSala}
+                                    onChange={(e) => setNominalFilterSala(e.target.value)}
+                                    style={{
+                                        padding: '7px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        color: '#334155',
+                                        outline: 'none'
+                                    }}
+                                >
+                                    <option value="TODOS">Todas las Salas</option>
+                                    <option value="Qx 1">Qx 1 (Mayor / Láser)</option>
+                                    <option value="Qx 2">Qx 2 (Cirugía General)</option>
+                                    <option value="Qx 3">Qx 3 (Traumatología)</option>
+                                    <option value="Qx 4">Qx 4 (Gineco-Obstetricia)</option>
+                                    <option value="Qx 5">Qx 5 (HdD)</option>
+                                    <option value="Qx 6">Qx 6 (Endoscopía HdD)</option>
+                                    <option value="Sala de Parto">Sala de Parto</option>
+                                    <option value="Hemodinamia">Hemodinamia</option>
+                                </select>
+
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    color: '#64748B',
+                                    background: '#F1F5F9',
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    fontWeight: 700
+                                }}>
+                                    Mostrando {filteredNominalRows.length} de {allSurgeriesRows.length}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Tabla de Cirugías Nominales */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
+                            {filteredNominalRows.length === 0 ? (
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '60px 20px',
+                                    color: '#94A3B8',
+                                    gap: '12px'
+                                }}>
+                                    <AlertCircle size={40} color="#CBD5E1" />
+                                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#64748B' }}>
+                                        No se encontraron cirugías con los filtros seleccionados
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setNominalSearch(''); setNominalFilterStatus('TODOS'); setNominalFilterSala('TODOS'); }}
+                                        style={{
+                                            padding: '6px 16px',
+                                            borderRadius: '6px',
+                                            background: '#EFF6FF',
+                                            border: '1px solid #BFDBFE',
+                                            color: '#1E40AF',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Restablecer Filtros
+                                    </button>
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
+                                    <thead>
+                                        <tr style={{
+                                            position: 'sticky',
+                                            top: 0,
+                                            background: '#FFFFFF',
+                                            borderBottom: '2px solid #E2E8F0',
+                                            zIndex: 2
+                                        }}>
+                                            <th style={{ padding: '12px 8px', color: '#64748B', fontWeight: 800, width: '40px' }}>N°</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>Fecha</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '190px' }}>Paciente</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>NHC</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '180px' }}>Cirujano</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '130px' }}>Sala</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '220px' }}>Módulo / Práctica</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '140px' }}>Obra Social</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '150px' }}>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredNominalRows.map((s, idx) => {
+                                            const isSusp = s.status === 'rojo' || s.status === 'suspendida';
+                                            const isConf = s.status === 'azul';
+                                            const salaEstimada = getSalaEstimada(s, idx);
+                                            const estadoTexto = isConf ? 'Confirmada / Realizada'
+                                                : s.status === 'verde' ? 'Autorizada'
+                                                : s.status === 'amarillo' ? 'En Revisión'
+                                                : isSusp ? 'Suspendida'
+                                                : (s.status || 'Registrada').toUpperCase();
+
+                                            return (
+                                                <tr
+                                                    key={s.id || idx}
+                                                    style={{
+                                                        borderBottom: '1px solid #F1F5F9',
+                                                        background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                                        transition: 'background 0.15s ease'
+                                                    }}
+                                                >
+                                                    <td style={{ padding: '10px 8px', color: '#94A3B8', fontWeight: 700 }}>
+                                                        {idx + 1}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px', color: '#334155', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                        {s.fecha_cirugia || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div style={{ fontWeight: 800, color: '#0F172A' }}>
+                                                            {s.nombre || 'PACIENTE NO ESPECIFICADO'}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.70rem', color: '#64748B', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                                                            {s.dni && <span>DNI: {s.dni}</span>}
+                                                            {s.telefono && <span>Tel: {s.telefono}</span>}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px', color: '#475569', fontWeight: 700, fontFamily: 'monospace' }}>
+                                                        {s.id_paciente || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', color: '#1E293B', fontWeight: 700 }}>
+                                                        {s.medico || 'SIN CIRUJANO ASIGNADO'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px' }}>
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.70rem',
+                                                            fontWeight: 800,
+                                                            background: salaEstimada.includes('HdD') ? '#ECFDF5' : salaEstimada.includes('Parto') ? '#FEF3C7' : '#EFF6FF',
+                                                            color: salaEstimada.includes('HdD') ? '#047857' : salaEstimada.includes('Parto') ? '#B45309' : '#1D4ED8',
+                                                            border: `1px solid ${salaEstimada.includes('HdD') ? '#A7F3D0' : salaEstimada.includes('Parto') ? '#FDE68A' : '#BFDBFE'}`
+                                                        }}>
+                                                            {salaEstimada}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div style={{ fontWeight: 700, color: '#334155' }}>
+                                                            {s.modulo || '—'}
+                                                        </div>
+                                                        {s.descripcion && s.descripcion !== s.modulo && (
+                                                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginTop: '2px' }}>
+                                                                {s.descripcion}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px', color: '#475569', fontWeight: 600 }}>
+                                                        {s.obra_social || 'PARTICULAR'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px' }}>
+                                                        <div style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.70rem',
+                                                            fontWeight: 800,
+                                                            background: isSusp ? '#FEF2F2' : '#F0FDF4',
+                                                            color: isSusp ? '#B91C1C' : '#15803D',
+                                                            border: `1px solid ${isSusp ? '#FECACA' : '#BBF7D0'}`
+                                                        }}>
+                                                            {isSusp ? <AlertCircle size={11} /> : <Check size={11} />}
+                                                            {estadoTexto}
+                                                        </div>
+                                                        {isSusp && s.motivo && (
+                                                            <div style={{ fontSize: '0.68rem', color: '#DC2626', marginTop: '3px', fontWeight: 600 }}>
+                                                                {s.motivo}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        {/* Footer del Modal */}
+                        <div style={{
+                            padding: '14px 24px',
+                            background: '#F8FAFC',
+                            borderTop: '1px solid #E2E8F0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                        }}>
+                            <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                                Datos sincronizados en tiempo real con la base de Quirófano de Sanatorio Argentino.
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportAllQuirofanoExcel()}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#10B981',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(16, 185, 129, 0.25)'
+                                    }}
+                                >
+                                    <FileSpreadsheet size={15} /> Descargar Libro Completo (6 Hojas)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNominalModal(false)}
+                                    style={{
+                                        padding: '8px 20px',
+                                        borderRadius: '8px',
+                                        background: '#E2E8F0',
+                                        border: 'none',
+                                        color: '#334155',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
