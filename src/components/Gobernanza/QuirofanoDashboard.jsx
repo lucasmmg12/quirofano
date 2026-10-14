@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { exportSuspensionesPdf } from '../../utils/quirofanoSuspensionesPdf';
+import { exportQuirofanoExcelStyled } from '../../utils/quirofanoExcelExporter';
 import { 
     Activity, Clock, CheckCircle2, AlertTriangle, 
     Calendar, RefreshCw, TrendingUp, Users,
@@ -1052,8 +1053,8 @@ export default function QuirofanoDashboard({
         return (idx % 2 === 0) ? 'Qx 1' : 'Qx 2';
     };
 
-    // Función unificada de exportación a Excel (Multi-hoja: nominal + salas + cirujanos + especialidades + financiadores + suspensiones)
-    const handleExportAllQuirofanoExcel = (customRows = null, customFilename = null) => {
+    // Función unificada de exportación a Excel con diseño visual estilizado, colores institucionales y período analizado destacado
+    const handleExportAllQuirofanoExcel = async (customRows = null, customFilename = null) => {
         try {
             const rowsToExport = customRows || allSurgeriesRows;
             if (!rowsToExport || rowsToExport.length === 0) {
@@ -1061,111 +1062,26 @@ export default function QuirofanoDashboard({
                 return;
             }
 
-            const wb = XLSX.utils.book_new();
+            const cirujanosSource = dynamicMetrics ? dynamicMetrics.cirujanos : CIRUJANOS_DATA;
 
-            // 1. Hoja 1: Cirugías y Pacientes (Nominal Cirugía por Cirugía, Paciente por Paciente)
-            const nominalData = rowsToExport.map((s, idx) => {
-                const estadoLimpio = s.status === 'azul' ? 'Confirmada / Realizada'
-                    : s.status === 'verde' ? 'Autorizada'
-                    : s.status === 'amarillo' ? 'En Revisión'
-                    : s.status === 'rojo' || s.status === 'suspendida' ? 'Suspendida / Con Problema'
-                    : (s.status || 'Registrada').toUpperCase();
-
-                const salaEstimada = getSalaEstimada(s, idx);
-
-                return {
-                    'N°': idx + 1,
-                    'Fecha Cirugía': s.fecha_cirugia || '—',
-                    'Paciente': s.nombre || 'PACIENTE NO ESPECIFICADO',
-                    'NHC / N° Historia': s.id_paciente || '—',
-                    'DNI': s.dni || '—',
-                    'Teléfono': s.telefono || '—',
-                    'Cirujano / Especialista': s.medico || 'SIN CIRUJANO ASIGNADO',
-                    'Módulo / Procedimiento': s.modulo || '—',
-                    'Descripción Quirúrgica': s.descripcion || s.modulo || '—',
-                    'Ámbito Quirúrgico': s.grupo_agendas || 'QUIRÓFANOS CENTRALES',
-                    'Sala Asignada': salaEstimada,
-                    'Obra Social / Financiador': s.obra_social || 'PARTICULAR',
-                    'Estado del Turno': estadoLimpio,
-                    'Motivo de Suspensión': s.motivo || '—',
-                    'Instrucciones / Observaciones': s.instrucciones || '—'
-                };
+            await exportQuirofanoExcelStyled({
+                rowsToExport,
+                activeSalasData,
+                activeEspecialidadesData,
+                activeObrasSocialesData,
+                activeMotivosSuspension,
+                cirujanosSource,
+                activePeriodLabel,
+                effectiveDesde,
+                effectiveHasta,
+                ambitoFilter,
+                customFilename,
+                getSalaEstimada
             });
 
-            const wsNominal = XLSX.utils.json_to_sheet(nominalData);
-            wsNominal['!cols'] = [
-                { wch: 6 }, { wch: 14 }, { wch: 34 }, { wch: 20 }, { wch: 14 }, { wch: 16 },
-                { wch: 32 }, { wch: 28 }, { wch: 36 }, { wch: 24 }, { wch: 20 }, { wch: 28 },
-                { wch: 24 }, { wch: 26 }, { wch: 32 }
-            ];
-            XLSX.utils.book_append_sheet(wb, wsNominal, 'Cirugias_Pacientes_Nominal');
-
-            // 2. Hoja 2: Ocupación por Sala
-            const salasSheetData = activeSalasData.map(s => ({
-                'Sala': s.sala,
-                'Denominación Oficial': s.nombre,
-                'Ámbito': s.tipo || (s.sala.includes('HdD') ? 'Hospital de Día' : 'Centrales'),
-                'Cirugías Asignadas': s.cirugias,
-                'Horas de Quirófano Efectivas': s.horas,
-                '% Ocupación Efectiva': `${s.ocupacionPct}%`
-            }));
-            const wsSalas = XLSX.utils.json_to_sheet(salasSheetData);
-            wsSalas['!cols'] = [{ wch: 16 }, { wch: 36 }, { wch: 20 }, { wch: 20 }, { wch: 24 }, { wch: 22 }];
-            XLSX.utils.book_append_sheet(wb, wsSalas, 'Ocupacion_Por_Sala');
-
-            // 3. Hoja 3: Ranking de Cirujanos
-            const cirujanosSource = dynamicMetrics ? dynamicMetrics.cirujanos : CIRUJANOS_DATA;
-            const cirujanosSheetData = cirujanosSource.map(c => ({
-                'Cirujano': c.nombre,
-                'Especialidad': c.especialidad,
-                'Programadas': c.programadas,
-                'Realizadas': c.realizadas,
-                'Suspendidas': c.suspendidas,
-                '% Tasa Suspensión': `${c.pctSuspension}%`,
-                '% Participación Total': `${c.pctTotal}%`
-            }));
-            const wsCirujanos = XLSX.utils.json_to_sheet(cirujanosSheetData);
-            wsCirujanos['!cols'] = [{ wch: 34 }, { wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 22 }];
-            XLSX.utils.book_append_sheet(wb, wsCirujanos, 'Ranking_Cirujanos');
-
-            // 4. Hoja 4: Especialidades
-            const espSheetData = activeEspecialidadesData.map(e => ({
-                'Especialidad': e.nombre,
-                'Cantidad Cirugías': e.cant,
-                '% Participación': `${e.pct}%`
-            }));
-            const wsEsp = XLSX.utils.json_to_sheet(espSheetData);
-            wsEsp['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 18 }];
-            XLSX.utils.book_append_sheet(wb, wsEsp, 'Especialidades');
-
-            // 5. Hoja 5: Obras Sociales
-            const osSheetData = activeObrasSocialesData.map(o => ({
-                'Financiador / Obra Social': o.nombre,
-                'Cantidad Cirugías': o.cant,
-                '% Participación': `${o.pct}%`
-            }));
-            const wsOs = XLSX.utils.json_to_sheet(osSheetData);
-            wsOs['!cols'] = [{ wch: 34 }, { wch: 20 }, { wch: 18 }];
-            XLSX.utils.book_append_sheet(wb, wsOs, 'Obras_Sociales');
-
-            // 6. Hoja 6: Causales de Suspensión
-            const suspSheetData = activeMotivosSuspension.map(m => ({
-                'Código': m.codigo,
-                'Motivo Oficial': m.motivo,
-                'Tipo / Responsabilidad': m.tipo,
-                'Cantidad Cancelaciones': m.cantidad,
-                '% del Total Suspendido': `${m.pct}%`
-            }));
-            const wsSusp = XLSX.utils.json_to_sheet(suspSheetData);
-            wsSusp['!cols'] = [{ wch: 10 }, { wch: 36 }, { wch: 22 }, { wch: 24 }, { wch: 24 }];
-            XLSX.utils.book_append_sheet(wb, wsSusp, 'Causales_Suspension');
-
-            const cleanPeriod = activePeriodLabel.replace(/[^a-zA-Z0-9]/g, '_');
-            const fileName = customFilename || `Quirofano_Sanatorio_Argentino_${cleanPeriod}.xlsx`;
-            XLSX.writeFile(wb, fileName);
-            addToast?.(`Excel descargado con éxito: ${rowsToExport.length} cirugías nominales en 6 hojas analíticas`, 'success');
+            addToast?.(`Excel descargado con éxito: ${rowsToExport.length} cirugías nominales en 6 hojas analíticas con formato institucional`, 'success');
         } catch (e) {
-            console.error('Error al exportar a Excel:', e);
+            console.error('Error al exportar a Excel estilizado:', e);
             addToast?.('Error al generar el archivo Excel', 'error');
         }
     };
