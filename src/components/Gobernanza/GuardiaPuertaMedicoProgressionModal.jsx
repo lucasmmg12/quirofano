@@ -49,6 +49,7 @@ export default function GuardiaPuertaMedicoProgressionModal({
 
     const [granularidad, setGranularidad] = useState(defaultGranularidad);
     const [filtroTabla, setFiltroTabla] = useState('');
+    const [viewLayout, setViewLayout] = useState('completo'); // 'completo' | 'solo_tabla'
     const [visibleSeries, setVisibleSeries] = useState({
         global: true,
         diurna: true,
@@ -570,6 +571,51 @@ export default function GuardiaPuertaMedicoProgressionModal({
                             </div>
                         </div>
 
+                        {/* TOGGLE VISTA COMPLETA VS SOLO TABLA */}
+                        <div style={{
+                            display: 'inline-flex',
+                            background: '#F1F5F9',
+                            padding: '3px',
+                            borderRadius: '8px',
+                            border: '1px solid #E2E8F0',
+                            gap: '3px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setViewLayout('completo')}
+                                style={{
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    fontSize: '0.74rem',
+                                    fontWeight: viewLayout === 'completo' ? 800 : 600,
+                                    background: viewLayout === 'completo' ? '#1E293B' : 'transparent',
+                                    color: viewLayout === 'completo' ? '#FFFFFF' : '#475569',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                📊 Gráfico + Tabla
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewLayout('solo_tabla')}
+                                style={{
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    fontSize: '0.74rem',
+                                    fontWeight: viewLayout === 'solo_tabla' ? 800 : 600,
+                                    background: viewLayout === 'solo_tabla' ? '#1E293B' : 'transparent',
+                                    color: viewLayout === 'solo_tabla' ? '#FFFFFF' : '#475569',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                📋 Solo Tabla (Ampliada)
+                            </button>
+                        </div>
+
                         {/* TOGGLES DE SERIES ACTIVAS */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>Series:</span>
@@ -690,6 +736,7 @@ export default function GuardiaPuertaMedicoProgressionModal({
                     )}
 
                     {/* ─── GRÁFICO RECHARTS INTERACTIVO ─── */}
+                    {viewLayout !== 'solo_tabla' && (
                     <div style={{
                         background: '#FFFFFF',
                         borderRadius: '12px',
@@ -845,6 +892,7 @@ export default function GuardiaPuertaMedicoProgressionModal({
                             </ResponsiveContainer>
                         </div>
                     </div>
+                    )}
 
                     {/* ─── TABLA DE DATOS DESGLOSADA ─── */}
                     <div style={{
@@ -870,7 +918,27 @@ export default function GuardiaPuertaMedicoProgressionModal({
                                 </span>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewLayout(v => v === 'solo_tabla' ? 'completo' : 'solo_tabla')}
+                                    style={{
+                                        background: viewLayout === 'solo_tabla' ? '#EFF6FF' : '#FFFFFF',
+                                        border: '1px solid #CBD5E1',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: viewLayout === 'solo_tabla' ? '#2563EB' : '#475569',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    {viewLayout === 'solo_tabla' ? '📊 Ver Gráfico' : '🔍 Ampliar Tabla Completa'}
+                                </button>
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -901,7 +969,8 @@ export default function GuardiaPuertaMedicoProgressionModal({
                             </div>
                         </div>
 
-                        <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                        {/* Contenedor de tabla: sin maxHeight restrictivo para que fluya sin bloqueo de scroll */}
+                        <div style={{ overflowX: 'auto', width: '100%' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', textAlign: 'left' }}>
                                 <thead style={{ background: '#F1F5F9', position: 'sticky', top: 0, zIndex: 10 }}>
                                     <tr>
