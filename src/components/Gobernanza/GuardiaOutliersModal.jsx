@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
+import { exportGuardiaConversionCirugiasPdf } from '../../utils/guardiaConversionCirugiasPdf';
+import { exportGuardiaConversionCirugiasExcel } from '../../utils/guardiaConversionCirugiasExcel';
 
 /**
  * GuardiaOutliersModal
@@ -465,64 +467,19 @@ export default function GuardiaOutliersModal({
     }, [records, searchTerm, activeFilter, sortBy, isTriage, isEpicrisis, isConversionCirugia]);
 
     // ── Exportación a Excel ──
-    const handleExportExcel = () => {
-        const wb = XLSX.utils.book_new();
-
+    const handleExportExcel = async () => {
         if (isConversionCirugia) {
-            // Hoja 1: Resumen Ejecutivo de Cirugías
-            const summaryData = [
-                ['SANATORIO ARGENTINO — AUDITORÍA DE CALIDAD & GOBERNANZA'],
-                ['INFORME DE CIRUGÍAS DERIVADAS DESDE GUARDIA CLÍNICA (≤ 48 HORAS)'],
-                [`Período Auditado: ${periodoNombre} (${periodo})`],
-                [`Fecha de Extracción: ${new Date().toLocaleString('es-AR')}`],
-                [`Filtro Activo en Reporte: ${activeFilter.toUpperCase()} | Total Registros: ${filteredRecords.length}`],
-                [],
-                ['MÉTRICA QUIRÚRGICA DE GUARDIA', 'CANTIDAD AUDITADA', 'DISTRIBUCIÓN %', 'ESTÁNDAR INSTITUCIONAL'],
-                ['Total Cirugías Derivadas (≤ 48 hs)', cirugiasStats.total, '100.0%', 'TABLEAU_Cirugias con ingreso en Guardia'],
-                ['Pacientes Únicos Operados', cirugiasStats.pacientesUnicos, `${((cirugiasStats.pacientesUnicos / (cirugiasStats.total || 1)) * 100).toFixed(1)}%`, 'Historias Clínicas distintas'],
-                ['Tiempo Promedio Guardia -> Quirófano', `${cirugiasStats.avgHoras} horas`, '-', 'Desde ingreso a guardia a incisión quirúrgica'],
-                ['Emergencias Inmediatas (≤ 6 hs)', cirugiasStats.menos6h, `${cirugiasStats.menos6hPct}%`, 'Resolución de máxima urgencia'],
-                ['Urgencias Quirúrgicas (6 a 12 hs)', cirugiasStats.de6a12h, `${cirugiasStats.de6a12hPct}%`, 'Resolución en turno de guardia'],
-                ['Resolución 12 a 24 hs', cirugiasStats.de12a24h, `${cirugiasStats.de12a24hPct}%`, 'Resolución en primer día de internación'],
-                ['Ventana 24 a 48 hs', cirugiasStats.de24a48h, `${cirugiasStats.de24a48hPct}%`, 'Estabilización clínica previa'],
-                ['Urgencias y No Programadas', cirugiasStats.urgenciasNoProg, `${((cirugiasStats.urgenciasNoProg / (cirugiasStats.total || 1)) * 100).toFixed(1)}%`, 'Estado formal en SALUS'],
-                [],
-                ['TOP PROCEDIMIENTOS QUIRÚRGICOS MÁS FRECUENTES', 'CANTIDAD', 'PARTICIPACIÓN %']
-            ];
-
-            (cirugiasStats.topProcedimientos || []).slice(0, 10).forEach(p => {
-                summaryData.push([p.nombre, p.cantidad, `${p.pct}%`]);
+            await exportGuardiaConversionCirugiasExcel({
+                records: filteredRecords,
+                cirugiasStats,
+                periodo,
+                periodoNombre,
+                activeFilter
             });
-
-            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Quirúrgico');
-
-            // Hoja 2: Detalle Nominal
-            const detailRows = filteredRecords.map((r, idx) => ({
-                'N°': idx + 1,
-                'Paciente': r.paciente,
-                'NHC': r.nhc || '-',
-                'DNI': r.dni || '-',
-                'Obra Social': r.obra_social || '-',
-                'Llegada a Guardia (Fecha)': r.fecha_guardia || '',
-                'Llegada a Guardia (Hora)': r.hora_guardia || '',
-                'Cirugía / Procedimiento': r.cirugia_procedimiento || '',
-                'Especialidad Quirúrgica': r.especialidad || 'CIRUGIA',
-                'Cirujano': r.cirujano || 'Sin Asignar',
-                'Fecha Quirófano': r.fecha_cirugia || '',
-                'Hora Inicio Quirófano': r.hora_cirugia || '',
-                'Horas de Espera a Qx': r.horas_espera_qx != null ? Number(r.horas_espera_qx) : '',
-                'Rango de Espera': r.rango_espera || '',
-                'Estado Cirugía': r.estado_cirugia || 'Programada',
-                'Duración (min)': r.duracion_minutos || ''
-            }));
-            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
-            XLSX.utils.book_append_sheet(wb, wsDetail, 'Cirugías Detalladas');
-
-            const fileName = `Guardia_Cirugias_Conversion_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`;
-            XLSX.writeFile(wb, fileName);
             return;
         }
+
+        const wb = XLSX.utils.book_new();
 
         if (isEpicrisis) {
             // Hoja 1: Resumen Epicrisis
@@ -660,98 +617,21 @@ export default function GuardiaOutliersModal({
 
     // ── Exportación a PDF ──
     const handleExportPdf = async () => {
+        if (isConversionCirugia) {
+            await exportGuardiaConversionCirugiasPdf({
+                records: filteredRecords,
+                cirugiasStats,
+                periodo,
+                periodoNombre,
+                activeFilter
+            });
+            return;
+        }
+
         const { default: jsPDF } = await import('jspdf');
         const { default: autoTable } = await import('jspdf-autotable');
 
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-
-        // Membrete Institucional
-        doc.setFillColor(37, 99, 235); // #2563EB Azul Institucional
-        doc.rect(0, 0, 297, 18, 'F');
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(13);
-        doc.setTextColor(255, 255, 255);
-        doc.text('SANATORIO ARGENTINO — AUDITORÍA DE CALIDAD & GOBERNANZA CLÍNICA', 14, 11);
-
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Período Auditado: ${periodoNombre} (${periodo}) | Emitido: ${new Date().toLocaleDateString('es-AR')}`, 297 - 14, 11, { align: 'right' });
-
-        if (isConversionCirugia) {
-            // Título de Cirugías de Guardia
-            doc.setTextColor(15, 23, 42);
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text('AUDITORÍA QUIRÚRGICA: CIRUGÍAS DERIVADAS DE GUARDIA CLÍNICA (≤ 48 HS)', 14, 26);
-
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(100, 116, 139);
-            doc.text(`Pacientes que ingresaron por Guardia y pasaron a Quirófano. Filtro: ${activeFilter.toUpperCase()} (${filteredRecords.length} cirugías).`, 14, 31);
-
-            // Tabla Resumen KPIs Cirugías
-            autoTable(doc, {
-                startY: 35,
-                theme: 'grid',
-                head: [['Total Cirugías Derivadas', 'Pacientes Únicos', 'Promedio Espera Qx', 'Emergencias <=6hs', 'Urgencias 6-12hs', 'Resolución 12-24hs', 'Ventana 24-48hs', 'Cirugía #1 Más Frecuente']],
-                body: [[
-                    `${cirugiasStats.total}`,
-                    `${cirugiasStats.pacientesUnicos}`,
-                    `${cirugiasStats.avgHoras} hs`,
-                    `${cirugiasStats.menos6h} (${cirugiasStats.menos6hPct}%)`,
-                    `${cirugiasStats.de6a12h} (${cirugiasStats.de6a12hPct}%)`,
-                    `${cirugiasStats.de12a24h} (${cirugiasStats.de12a24hPct}%)`,
-                    `${cirugiasStats.de24a48h} (${cirugiasStats.de24a48hPct}%)`,
-                    (cirugiasStats.topProcedimientos?.[0]?.nombre || '-').substring(0, 32)
-                ]],
-                headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 7.5 },
-                bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59], fontStyle: 'bold' },
-                styles: { halign: 'center', cellPadding: 2 }
-            });
-
-            // Tabla Nominal Top 100 Cirugías
-            const tableRows = filteredRecords.slice(0, 100).map((r, i) => [
-                i + 1,
-                r.paciente,
-                r.nhc || '-',
-                (r.obra_social || '').substring(0, 18),
-                r.fecha_guardia ? `${r.fecha_guardia} ${r.hora_guardia ? r.hora_guardia.substring(0, 5) : ''}` : '-',
-                (r.cirugia_procedimiento || '').substring(0, 36),
-                (r.especialidad || 'CIRUGIA').substring(0, 18),
-                (r.cirujano || 'Sin Asignar').substring(0, 20),
-                r.fecha_cirugia ? `${r.fecha_cirugia} ${r.hora_cirugia ? r.hora_cirugia.substring(0, 5) : ''}` : '-',
-                r.horas_espera_qx != null ? `${r.horas_espera_qx}h` : '-',
-                (r.estado_cirugia || 'Programada').substring(0, 14)
-            ]);
-
-            autoTable(doc, {
-                startY: doc.lastAutoTable.finalY + 5,
-                theme: 'striped',
-                head: [['N°', 'Paciente', 'NHC', 'Obra Social', 'Llegada Guardia', 'Procedimiento Quirúrgico', 'Especialidad', 'Cirujano', 'Cirugía', 'Espera', 'Estado']],
-                body: tableRows,
-                headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
-                bodyStyles: { fontSize: 6.5, textColor: [15, 23, 42] },
-                columnStyles: {
-                    0: { cellWidth: 8, halign: 'center' },
-                    1: { cellWidth: 42, fontStyle: 'bold' },
-                    2: { cellWidth: 14, halign: 'center' },
-                    3: { cellWidth: 28 },
-                    4: { cellWidth: 24, halign: 'center' },
-                    5: { cellWidth: 50 },
-                    6: { cellWidth: 26 },
-                    7: { cellWidth: 32 },
-                    8: { cellWidth: 24, halign: 'center' },
-                    9: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-                    10: { cellWidth: 20, halign: 'center' }
-                },
-                styles: { overflow: 'ellipsize', cellPadding: 1.5 }
-            });
-
-            const fileName = `Informe_Cirugias_Guardia_${periodo}_${new Date().toISOString().split('T')[0]}.pdf`;
-            doc.save(fileName);
-            return;
-        }
 
         if (isEpicrisis) {
             // Título de Epicrisis
