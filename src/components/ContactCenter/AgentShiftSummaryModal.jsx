@@ -8,6 +8,7 @@ import {
 import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText } from '../../services/agentShiftService';
 import { CONTACT_CENTER_AGENTS } from '../../services/contactCenterService';
 import AgentTurnosMappingModal from './AgentTurnosMappingModal';
+import AgentConsultasCategoriaModal from './AgentConsultasCategoriaModal';
 import { generateAgentShiftPdf } from '../../utils/agentShiftReportPdf';
 
 export const ALL_AGENTS_OPTION = {
@@ -34,6 +35,7 @@ export default function AgentShiftSummaryModal({
     const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [showTurnosModal, setShowTurnosModal] = useState(false);
+    const [selectedCategoriaModal, setSelectedCategoriaModal] = useState(null);
 
     // Actualizar agente seleccionado si cambia la prop
     useEffect(() => {
@@ -726,7 +728,7 @@ export default function AgentShiftSummaryModal({
                                 </div>
                             </div>
 
-                            {/* ── TIPOS DE CONSULTAS RECIBIDAS (DISTRIBUCIÓN Y DESGLOSE) ── */}
+                            {/* ── TIPOS DE CONSULTAS RECIBIDAS (DISTRIBUCIÓN Y DESGLOSE INTERACTIVO) ── */}
                             <div style={{
                                 background: '#FFFFFF',
                                 borderRadius: '12px',
@@ -734,11 +736,24 @@ export default function AgentShiftSummaryModal({
                                 border: '1px solid #E2E8F0',
                                 boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                                     <div>
-                                        <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                                            Tipos de Consultas Gestionadas
-                                        </h3>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Tipos de Consultas Gestionadas
+                                            </h3>
+                                            <span style={{
+                                                fontSize: '0.66rem',
+                                                fontWeight: 700,
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                background: '#EFF6FF',
+                                                color: '#1D4ED8',
+                                                border: '1px solid #BFDBFE'
+                                            }}>
+                                                Toca una card para ver pacientes 💬
+                                            </span>
+                                        </div>
                                         <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
                                             Clasificación automática por intención del paciente atendida en la jornada
                                         </span>
@@ -748,7 +763,7 @@ export default function AgentShiftSummaryModal({
                                     </span>
                                 </div>
 
-                                {/* Barra Segmentada */}
+                                {/* Barra Segmentada Clicable */}
                                 {totalConsultas > 0 ? (
                                     <>
                                         <div style={{
@@ -757,7 +772,8 @@ export default function AgentShiftSummaryModal({
                                             borderRadius: '6px',
                                             overflow: 'hidden',
                                             background: '#F1F5F9',
-                                            marginBottom: '14px'
+                                            marginBottom: '14px',
+                                            cursor: 'pointer'
                                         }}>
                                             {Object.entries(categorias).map(([key, cat]) => {
                                                 if (cat.count === 0) return null;
@@ -765,18 +781,20 @@ export default function AgentShiftSummaryModal({
                                                 return (
                                                     <div 
                                                         key={key}
-                                                        title={`${cat.label}: ${cat.count} (${pct.toFixed(0)}%)`}
+                                                        onClick={() => setSelectedCategoriaModal(key)}
+                                                        title={`Click para ver pacientes de ${cat.label}: ${cat.count} (${pct.toFixed(0)}%)`}
                                                         style={{
                                                             width: `${pct}%`,
                                                             background: cat.color,
-                                                            transition: 'width 0.3s ease'
+                                                            transition: 'all 0.2s ease',
+                                                            cursor: 'pointer'
                                                         }}
                                                     />
                                                 );
                                             })}
                                         </div>
 
-                                        {/* Grid de Cards de Categorías */}
+                                        {/* Grid de Cards de Categorías (Botones interactivos) */}
                                         <div style={{
                                             display: 'grid',
                                             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -784,17 +802,42 @@ export default function AgentShiftSummaryModal({
                                         }}>
                                             {Object.entries(categorias).map(([key, cat]) => {
                                                 const pct = totalConsultas > 0 ? ((cat.count / totalConsultas) * 100).toFixed(0) : '0';
+                                                const count = cat.count || (cat.conversaciones || []).length;
                                                 return (
-                                                    <div key={key} style={{
-                                                        padding: '10px 12px',
-                                                        borderRadius: '8px',
-                                                        border: '1px solid #E2E8F0',
-                                                        background: '#F8FAFC',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'space-between',
-                                                        gap: '8px'
-                                                    }}>
+                                                    <div 
+                                                        key={key} 
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={() => setSelectedCategoriaModal(key)}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedCategoriaModal(key); }}
+                                                        title={`Click para ver el listado de ${count} paciente(s) y acceder a sus chats`}
+                                                        style={{
+                                                            padding: '10px 12px',
+                                                            borderRadius: '8px',
+                                                            border: '1px solid #E2E8F0',
+                                                            background: '#F8FAFC',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            gap: '8px',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.15s ease',
+                                                            position: 'relative',
+                                                            userSelect: 'none'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.borderColor = cat.color;
+                                                            e.currentTarget.style.background = '#FFFFFF';
+                                                            e.currentTarget.style.boxShadow = `0 3px 8px -2px ${cat.color}25`;
+                                                            e.currentTarget.style.transform = 'translateY(-1px)';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.borderColor = '#E2E8F0';
+                                                            e.currentTarget.style.background = '#F8FAFC';
+                                                            e.currentTarget.style.boxShadow = 'none';
+                                                            e.currentTarget.style.transform = 'none';
+                                                        }}
+                                                    >
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                                                             <div style={{
                                                                 width: '10px',
@@ -816,10 +859,18 @@ export default function AgentShiftSummaryModal({
                                                         </div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                                                             <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                                                                {cat.count}
+                                                                {count}
                                                             </span>
                                                             <span style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
                                                                 ({pct}%)
+                                                            </span>
+                                                            <span style={{
+                                                                fontSize: '0.64rem',
+                                                                color: cat.color,
+                                                                fontWeight: 800,
+                                                                marginLeft: '2px'
+                                                            }}>
+                                                                💬
                                                             </span>
                                                         </div>
                                                     </div>
@@ -1025,6 +1076,25 @@ export default function AgentShiftSummaryModal({
                     onRefresh={() => loadMetrics(selectedAgent, selectedDate)}
                     onOpenChatWithPhone={(phone) => {
                         setShowTurnosModal(false);
+                        onClose();
+                        if (onOpenChatWithPhone) {
+                            onOpenChatWithPhone(phone);
+                        }
+                    }}
+                />
+            )}
+
+            {/* Modal de Pacientes por Categoría de Consulta con acceso a Chat */}
+            {selectedCategoriaModal && (
+                <AgentConsultasCategoriaModal
+                    isOpen={!!selectedCategoriaModal}
+                    onClose={() => setSelectedCategoriaModal(null)}
+                    categorias={categorias}
+                    initialCategoriaKey={selectedCategoriaModal}
+                    selectedDate={selectedDate}
+                    agent={selectedAgent}
+                    onOpenChatWithPhone={(phone) => {
+                        setSelectedCategoriaModal(null);
                         onClose();
                         if (onOpenChatWithPhone) {
                             onOpenChatWithPhone(phone);

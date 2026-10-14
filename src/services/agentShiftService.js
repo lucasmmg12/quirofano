@@ -122,14 +122,14 @@ export async function getAgentDailyShiftMetrics({
         // 2. Conversaciones cerradas/finalizadas hoy por la agente
         supabase
             .from('contact_center_conversations')
-            .select('phone, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, motivo_consulta, ai_summary, tags')
+            .select('phone, contact_name, dni, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, motivo_consulta, ai_summary, tags, created_at, updated_at')
             .gte('closed_at', startIso)
             .lte('closed_at', endIso),
 
         // 3. Conversaciones asignadas o actualizadas donde intervino la agente hoy
         supabase
             .from('contact_center_conversations')
-            .select('phone, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, resolution_reason')
+            .select('phone, contact_name, dni, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, created_at, resolution_reason')
             .gte('updated_at', startIso)
             .lte('updated_at', endIso)
     ]);
@@ -227,13 +227,14 @@ export async function getAgentDailyShiftMetrics({
     }
 
     // Categorización de tipos de consultas recibidas
+    // Categorización de tipos de consultas recibidas (con detalle nominal de pacientes)
     const categorias = {
-        turnosNuevos: { label: 'Turnos Nuevos y Citas Médicas', count: 0, color: '#0284C7', icon: 'Calendar' },
-        estudiosAutorizaciones: { label: 'Estudios y Autorizaciones', count: 0, color: '#8B5CF6', icon: 'FileText' },
-        reprogramacionesCancelaciones: { label: 'Reprogramación y Cancelación', count: 0, color: '#F59E0B', icon: 'RotateCcw' },
-        consultasInformativas: { label: 'Consultas Generales y Asesoría', count: 0, color: '#10B981', icon: 'HelpCircle' },
-        guardiaUrgencias: { label: 'Guardia y Urgencias', count: 0, color: '#EF4444', icon: 'AlertTriangle' },
-        otros: { label: 'Otras Gestiones', count: 0, color: '#64748B', icon: 'MoreHorizontal' }
+        turnosNuevos: { label: 'Turnos Nuevos y Citas Médicas', count: 0, color: '#0284C7', icon: 'Calendar', conversaciones: [] },
+        estudiosAutorizaciones: { label: 'Estudios y Autorizaciones', count: 0, color: '#8B5CF6', icon: 'FileText', conversaciones: [] },
+        reprogramacionesCancelaciones: { label: 'Reprogramación y Cancelación', count: 0, color: '#F59E0B', icon: 'RotateCcw', conversaciones: [] },
+        consultasInformativas: { label: 'Consultas Generales y Asesoría', count: 0, color: '#10B981', icon: 'HelpCircle', conversaciones: [] },
+        guardiaUrgencias: { label: 'Guardia y Urgencias', count: 0, color: '#EF4444', icon: 'AlertTriangle', conversaciones: [] },
+        otros: { label: 'Otras Gestiones', count: 0, color: '#64748B', icon: 'MoreHorizontal', conversaciones: [] }
     };
 
     // Analizar consultas entre las gestionadas y finalizadas
@@ -244,21 +245,66 @@ export async function getAgentDailyShiftMetrics({
         }
     });
 
+    // Resolver remitentes/nombres desde mensajes salientes/entrantes si faltan en conversaciones
+    const phoneToSenderMap = {};
+    (outgoingMessagesRes.data || []).forEach(m => {
+        if (m.phone && m.sender_name && !phoneToSenderMap[m.phone]) {
+            const sn = m.sender_name.trim();
+            if (!sn.toLowerCase().includes('bot') && sn !== 'Sanatorio Argentino') {
+                phoneToSenderMap[m.phone] = sn;
+            }
+        }
+    });
+
     uniqueConsultasMap.forEach(conv => {
         const text = `${conv.motivo_consulta || ''} ${conv.ai_summary?.tipo_tramite || ''} ${(conv.tags || []).join(' ')}`.toLowerCase();
 
+        // Resolver el mejor nombre del paciente
+        const aiName = conv.ai_summary?.paciente || conv.ai_summary?.nombre_paciente || conv.ai_summary?.titular?.nombre;
+        let pacienteNombre = conv.contact_name?.trim();
+        if (!pacienteNombre && aiName && typeof aiName === 'string' && aiName.trim().length > 1) {
+            pacienteNombre = aiName.trim();
+        }
+        if (!pacienteNombre && phoneToSenderMap[conv.phone]) {
+            pacienteNombre = phoneToSenderMap[conv.phone];
+        }
+        if (!pacienteNombre) {
+            pacienteNombre = 'Paciente WhatsApp';
+        }
+
+        const consultaItem = {
+            id: conv.id || conv.phone,
+            phone: conv.phone,
+            paciente: pacienteNombre,
+            dni: conv.dni || conv.ai_summary?.dni || null,
+            motivo: conv.motivo_consulta || conv.ai_summary?.tipo_tramite || conv.ai_summary?.motivo || 'Consulta general recibida por WhatsApp',
+            resumen: conv.ai_summary?.resumen || conv.ai_summary?.motivo || conv.motivo_consulta || 'Sin detalle adicional',
+            status: conv.status || (conv.closed_at ? 'cerrado' : 'abierto'),
+            resolution_reason: conv.resolution_reason || null,
+            closed_at: conv.closed_at || null,
+            updated_at: conv.updated_at || conv.created_at || null,
+            agente: conv.assigned_agent_name || conv.closed_by_agent_name || null,
+            tags: Array.isArray(conv.tags) ? conv.tags : []
+        };
+
         if (text.includes('reprogram') || text.includes('cancel')) {
             categorias.reprogramacionesCancelaciones.count++;
+            categorias.reprogramacionesCancelaciones.conversaciones.push(consultaItem);
         } else if (text.includes('guardia') || text.includes('urgenc') || text.includes('mord')) {
             categorias.guardiaUrgencias.count++;
+            categorias.guardiaUrgencias.conversaciones.push(consultaItem);
         } else if (text.includes('autoriz') || text.includes('estudio') || text.includes('ecograf') || text.includes('radiograf') || text.includes('laboratorio') || text.includes('orden')) {
             categorias.estudiosAutorizaciones.count++;
+            categorias.estudiosAutorizaciones.conversaciones.push(consultaItem);
         } else if (text.includes('turno') || text.includes('cita') || text.includes('solicitud') || text.includes('medico') || text.includes('doctor')) {
             categorias.turnosNuevos.count++;
+            categorias.turnosNuevos.conversaciones.push(consultaItem);
         } else if (text.includes('consulta') || text.includes('asesor') || text.includes('inform') || text.includes('horario') || text.includes('precio')) {
             categorias.consultasInformativas.count++;
+            categorias.consultasInformativas.conversaciones.push(consultaItem);
         } else {
             categorias.otros.count++;
+            categorias.otros.conversaciones.push(consultaItem);
         }
     });
 
