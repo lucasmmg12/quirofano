@@ -1093,6 +1093,7 @@ export default function AgentShiftSummaryModal({
                     initialCategoriaKey={selectedCategoriaModal}
                     selectedDate={selectedDate}
                     agent={selectedAgent}
+                    turnosSalusDetalle={metrics?.turnosSalusDetalle || []}
                     onOpenChatWithPhone={(phone) => {
                         setSelectedCategoriaModal(null);
                         onClose();

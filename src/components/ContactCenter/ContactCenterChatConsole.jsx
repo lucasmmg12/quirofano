@@ -173,6 +173,7 @@ import { getStoredTheme } from '../../services/contactCenterThemeService';
 import ContactCenterThemeModal from './ContactCenterThemeModal';
 import AgentShiftSummaryModal from './AgentShiftSummaryModal';
 import SweepInactiveChatsModal from './SweepInactiveChatsModal';
+import { fetchTurnosSalusHoy } from '../../services/agentShiftService';
 
 // =========================================================================
 // 🧪 [MODO PRUEBA TEMPORAL] INDICADOR DE AUTO-REINICIO CADA 3 MINUTOS
@@ -548,6 +549,92 @@ export default function ContactCenterChatConsole({
     // Personalización de Temas y Ergonomía Visual (Presets, Fondos, Nano Banana, Sidebars)
     const [ccTheme, setCcTheme] = useState(getStoredTheme);
     const [themeModalOpen, setThemeModalOpen] = useState(false);
+
+    // === AUDITORÍA SALUS EN TIEMPO REAL ===
+    const [salusTurnosList, setSalusTurnosList] = useState([]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const loadSalus = async () => {
+            try {
+                const data = await fetchTurnosSalusHoy();
+                if (!isMounted) return;
+                let list = [];
+                (data?.agentes || []).forEach(a => {
+                    if (Array.isArray(a.turnosDetalle)) list.push(...a.turnosDetalle);
+                });
+                setSalusTurnosList(list);
+            } catch (err) {
+                console.warn('[ContactCenterChatConsole] Error cargando turnos SALUS para auditoría:', err);
+            }
+        };
+        loadSalus();
+        const interval = setInterval(loadSalus, 120000);
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
+    }, []);
+
+    const salusAuditIndex = useMemo(() => {
+        const dniMap = new Map();
+        const phoneMap = new Map();
+        (salusTurnosList || []).forEach(t => {
+            const cleanD = String(t.dni || '').replace(/\D/g, '');
+            if (cleanD && cleanD.length >= 6) dniMap.set(cleanD, t);
+            const p1 = String(t.telefono1 || '').replace(/\D/g, '').slice(-8);
+            if (p1 && p1.length >= 7) phoneMap.set(p1, t);
+            const p2 = String(t.telefono2 || '').replace(/\D/g, '').slice(-8);
+            if (p2 && p2.length >= 7) phoneMap.set(p2, t);
+        });
+        return { dniMap, phoneMap };
+    }, [salusTurnosList]);
+
+    const getChatSalusAudit = (chat) => {
+        if (!chat) return null;
+        const chatDni = String(chat.customFields?.dni || chat.dni || '').replace(/\D/g, '');
+        const chatPhone8 = String(chat.phone || '').replace(/\D/g, '').slice(-8);
+
+        const inSalus = (chatDni && salusAuditIndex.dniMap.get(chatDni)) || 
+                        (chatPhone8 && salusAuditIndex.phoneMap.get(chatPhone8)) || null;
+
+        const textToAudit = `${chat.customFields?.motivoConsulta || ''} ${chat.motivoConsulta || ''} ${chat.aiSummary?.tipo_tramite || ''} ${chat.lastMessage || ''} ${(chat.tags || []).join(' ')}`.toLowerCase();
+        const isTurnoRequest = textToAudit.includes('turno') || textToAudit.includes('cita') || textToAudit.includes('agendar') || textToAudit.includes('solicitud de turno');
+
+        if (!isTurnoRequest && !inSalus) return null;
+
+        if (inSalus) {
+            return {
+                status: 'EN_SALUS',
+                label: `SALUS: ${inSalus.especialidad?.split(' ')[0] || 'OK'}`,
+                turno: inSalus,
+                color: '#10B981',
+                bg: '#ECFDF5',
+                border: '#A7F3D0'
+            };
+        }
+
+        const isClosed = isClosedOrArchived(chat.status) || chat.status === 'finalizado';
+        if (isClosed) {
+            return {
+                status: 'NO_REGISTRADO',
+                label: 'Sin turno en SALUS',
+                color: '#DC2626',
+                bg: '#FEF2F2',
+                border: '#FCA5A5',
+                isAlert: true
+            };
+        }
+
+        return {
+            status: 'PENDIENTE',
+            label: 'Pendiente SALUS',
+            color: '#D97706',
+            bg: '#FFFBEB',
+            border: '#FDE68A',
+            isPending: true
+        };
+    };
 
     // Colores adaptativos de tarjetas para sidebars (soporte para modo pastel y oscuro con contraste garantizado)
     const themeCardBg = ccTheme.cardBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF');
@@ -4326,14 +4413,22 @@ export default function ContactCenterChatConsole({
                                                 ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
                                                 : isChatUnread
                                                     ? (ccTheme.isDark ? '#172554' : '#DBEAFE')
-                                                    : themeCardBg,
+                                                    : (getChatSalusAudit(chat)?.isAlert)
+                                                        ? (ccTheme.isDark ? '#3B0A0A' : '#FEF2F2')
+                                                        : (getChatSalusAudit(chat)?.isPending)
+                                                            ? (ccTheme.isDark ? '#3B1F0A' : '#FFFDF5')
+                                                            : themeCardBg,
                                         borderLeft: isSelected 
                                             ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
                                             : isChecked 
                                                 ? '4px solid #16A34A' 
                                                 : isChatUnread
                                                     ? '4px solid #2563EB'
-                                                    : '4px solid transparent',
+                                                    : (getChatSalusAudit(chat)?.isAlert)
+                                                        ? '4px solid #DC2626'
+                                                        : (getChatSalusAudit(chat)?.isPending)
+                                                            ? '4px solid #F59E0B'
+                                                            : '4px solid transparent',
                                         transition: 'background 0.15s',
                                         position: 'relative'
                                     }}
@@ -4488,6 +4583,44 @@ export default function ContactCenterChatConsole({
 
                                         {/* ETIQUETAS GENERADAS POR EL BOT (Autorización, Cancelación, Reprogramación) */}
                                         {renderBotTags(chat, ccTheme)}
+
+                                        {/* TAG AUDITORÍA SALUS (Detección de Turnos Creados o Pendientes) */}
+                                        {(() => {
+                                            const salusAudit = getChatSalusAudit(chat);
+                                            if (!salusAudit) return null;
+                                            return (
+                                                <span 
+                                                    title={salusAudit.status === 'EN_SALUS' ? `Turno en SALUS: ${salusAudit.turno?.fechaVisita} ${salusAudit.turno?.horaVisita} (${salusAudit.turno?.especialidad})` : salusAudit.label}
+                                                    style={{
+                                                        fontSize: '0.64rem',
+                                                        fontWeight: 800,
+                                                        padding: '1px 6px',
+                                                        borderRadius: '6px',
+                                                        background: ccTheme.isDark 
+                                                            ? (salusAudit.status === 'EN_SALUS' ? '#064E3B' : salusAudit.status === 'NO_REGISTRADO' ? '#450A0A' : '#451A03')
+                                                            : salusAudit.bg,
+                                                        color: ccTheme.isDark 
+                                                            ? (salusAudit.status === 'EN_SALUS' ? '#6EE7B7' : salusAudit.status === 'NO_REGISTRADO' ? '#FCA5A5' : '#FDE68A')
+                                                            : salusAudit.color,
+                                                        border: `1px solid ${ccTheme.isDark 
+                                                            ? (salusAudit.status === 'EN_SALUS' ? '#047857' : salusAudit.status === 'NO_REGISTRADO' ? '#7F1D1D' : '#78350F')
+                                                            : salusAudit.border}`,
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px'
+                                                    }}
+                                                >
+                                                    {salusAudit.status === 'EN_SALUS' ? (
+                                                        <CheckCircle2 size={10} color={ccTheme.isDark ? '#6EE7B7' : '#059669'} />
+                                                    ) : salusAudit.status === 'NO_REGISTRADO' ? (
+                                                        <AlertTriangle size={10} color={ccTheme.isDark ? '#FCA5A5' : '#DC2626'} />
+                                                    ) : (
+                                                        <Clock size={10} color={ccTheme.isDark ? '#FDE68A' : '#D97706'} />
+                                                    )}
+                                                    {salusAudit.label}
+                                                </span>
+                                            );
+                                        })()}
 
                                         {/* Tag de Bloqueo Exclusivo */}
                                         {chatIsLocked && !isClosed && (

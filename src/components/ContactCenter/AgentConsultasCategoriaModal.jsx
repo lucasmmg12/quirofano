@@ -38,13 +38,37 @@ export default function AgentConsultasCategoriaModal({
     initialCategoriaKey = 'turnosNuevos',
     selectedDate,
     agent,
+    turnosSalusDetalle = [],
     onOpenChatWithPhone
 }) {
     const [selectedKey, setSelectedKey] = useState(initialCategoriaKey);
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('todos'); // 'todos' | 'abierto' | 'cerrado'
+    const [statusFilter, setStatusFilter] = useState('todos'); // 'todos' | 'abierto' | 'cerrado' | 'con_salus' | 'sin_salus'
     const [copiedPhone, setCopiedPhone] = useState(null);
     const [copiedDni, setCopiedDni] = useState(null);
+
+    // Mapeo indexado de turnos de SALUS por DNI y Teléfono
+    const salusMap = useMemo(() => {
+        const byDni = new Map();
+        const byPhone = new Map();
+        (turnosSalusDetalle || []).forEach(t => {
+            const cleanD = String(t.dni || '').replace(/\D/g, '');
+            if (cleanD && cleanD.length >= 6) {
+                byDni.set(cleanD, t);
+            }
+            const p1 = String(t.telefono1 || '').replace(/\D/g, '').slice(-8);
+            if (p1 && p1.length >= 7) byPhone.set(p1, t);
+            const p2 = String(t.telefono2 || '').replace(/\D/g, '').slice(-8);
+            if (p2 && p2.length >= 7) byPhone.set(p2, t);
+        });
+        return { byDni, byPhone };
+    }, [turnosSalusDetalle]);
+
+    const getItemSalusMatch = (item) => {
+        const cleanDni = String(item.dni || '').replace(/\D/g, '');
+        const cleanPhone = String(item.phone || '').replace(/\D/g, '').slice(-8);
+        return (cleanDni && salusMap.byDni.get(cleanDni)) || (cleanPhone && salusMap.byPhone.get(cleanPhone)) || null;
+    };
 
     // Sincronizar clave inicial cuando se abre
     React.useEffect(() => {
@@ -92,13 +116,29 @@ export default function AgentConsultasCategoriaModal({
         }
     };
 
+    // Estadísticas de SALUS en la categoría activa
+    const salusStats = useMemo(() => {
+        const list = currentCat.conversaciones || [];
+        let conSalus = 0;
+        let sinSalus = 0;
+        list.forEach(item => {
+            if (getItemSalusMatch(item)) conSalus++;
+            else sinSalus++;
+        });
+        return { conSalus, sinSalus, total: list.length };
+    }, [currentCat, salusMap]);
+
     // Filtrar conversaciones de la categoría activa
     const filteredConversaciones = useMemo(() => {
         const list = currentCat.conversaciones || [];
         return list.filter(item => {
-            // Filtro de estado
+            const hasSalus = !!getItemSalusMatch(item);
+
+            // Filtro de estado / SALUS
             if (statusFilter === 'abierto' && item.status === 'cerrado') return false;
             if (statusFilter === 'cerrado' && item.status !== 'cerrado') return false;
+            if (statusFilter === 'con_salus' && !hasSalus) return false;
+            if (statusFilter === 'sin_salus' && hasSalus) return false;
 
             // Filtro por texto
             if (!searchQuery.trim()) return true;
@@ -111,7 +151,7 @@ export default function AgentConsultasCategoriaModal({
 
             return pac.includes(q) || tel.includes(q) || dni.includes(q) || mot.includes(q) || res.includes(q);
         });
-    }, [currentCat, searchQuery, statusFilter]);
+    }, [currentCat, searchQuery, statusFilter, salusMap]);
 
     return (
         <div style={{
@@ -313,12 +353,12 @@ export default function AgentConsultasCategoriaModal({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: '8px', padding: '2px', border: '1px solid #E2E8F0' }}>
+                        <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: '8px', padding: '2px', border: '1px solid #E2E8F0', flexWrap: 'wrap', gap: '2px' }}>
                             <button
                                 onClick={() => setStatusFilter('todos')}
                                 style={{
                                     border: 'none',
-                                    padding: '4px 10px',
+                                    padding: '4px 9px',
                                     borderRadius: '6px',
                                     fontSize: '0.72rem',
                                     fontWeight: statusFilter === 'todos' ? 800 : 600,
@@ -330,11 +370,55 @@ export default function AgentConsultasCategoriaModal({
                             >
                                 Todos ({currentCat.conversaciones?.length || 0})
                             </button>
+                            {selectedKey === 'turnosNuevos' && (
+                                <>
+                                    <button
+                                        onClick={() => setStatusFilter('con_salus')}
+                                        style={{
+                                            border: 'none',
+                                            padding: '4px 9px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: statusFilter === 'con_salus' ? 800 : 600,
+                                            background: statusFilter === 'con_salus' ? '#FFFFFF' : 'transparent',
+                                            color: statusFilter === 'con_salus' ? '#059669' : '#64748B',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            boxShadow: statusFilter === 'con_salus' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'
+                                        }}
+                                    >
+                                        <CheckCircle2 size={11} color="#059669" />
+                                        <span>En SALUS ({salusStats.conSalus})</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setStatusFilter('sin_salus')}
+                                        style={{
+                                            border: 'none',
+                                            padding: '4px 9px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: statusFilter === 'sin_salus' ? 800 : 600,
+                                            background: statusFilter === 'sin_salus' ? '#FFFFFF' : 'transparent',
+                                            color: statusFilter === 'sin_salus' ? '#DC2626' : '#64748B',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            boxShadow: statusFilter === 'sin_salus' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'
+                                        }}
+                                    >
+                                        <AlertTriangle size={11} color="#DC2626" />
+                                        <span>Sin Carga en SALUS ({salusStats.sinSalus})</span>
+                                    </button>
+                                </>
+                            )}
                             <button
                                 onClick={() => setStatusFilter('abierto')}
                                 style={{
                                     border: 'none',
-                                    padding: '4px 10px',
+                                    padding: '4px 9px',
                                     borderRadius: '6px',
                                     fontSize: '0.72rem',
                                     fontWeight: statusFilter === 'abierto' ? 800 : 600,
@@ -350,7 +434,7 @@ export default function AgentConsultasCategoriaModal({
                                 onClick={() => setStatusFilter('cerrado')}
                                 style={{
                                     border: 'none',
-                                    padding: '4px 10px',
+                                    padding: '4px 9px',
                                     borderRadius: '6px',
                                     fontSize: '0.72rem',
                                     fontWeight: statusFilter === 'cerrado' ? 800 : 600,
@@ -384,13 +468,38 @@ export default function AgentConsultasCategoriaModal({
                                     .join('')
                                     .toUpperCase() || 'P';
 
+                                const isTurnoCat = selectedKey === 'turnosNuevos' || (item.motivo || '').toLowerCase().includes('turno');
+                                const salusMatch = getItemSalusMatch(item);
+
+                                // Estilo dinámico de la card según alerta de SALUS
+                                let cardBorder = '1px solid #E2E8F0';
+                                let cardBorderLeft = '1px solid #E2E8F0';
+                                let cardBg = '#FFFFFF';
+
+                                if (isTurnoCat) {
+                                    if (salusMatch) {
+                                        cardBorder = '1px solid #A7F3D0';
+                                        cardBorderLeft = '4px solid #10B981';
+                                        cardBg = '#FFFFFF';
+                                    } else if (isClosed) {
+                                        cardBorder = '1.5px solid #FCA5A5';
+                                        cardBorderLeft = '4px solid #EF4444';
+                                        cardBg = '#FEF2F2';
+                                    } else {
+                                        cardBorder = '1px solid #FDE68A';
+                                        cardBorderLeft = '4px solid #F59E0B';
+                                        cardBg = '#FFFDF5';
+                                    }
+                                }
+
                                 return (
                                     <div
                                         key={item.id || item.phone || idx}
                                         style={{
-                                            background: '#FFFFFF',
+                                            background: cardBg,
                                             borderRadius: '10px',
-                                            border: '1px solid #E2E8F0',
+                                            border: cardBorder,
+                                            borderLeft: cardBorderLeft,
                                             padding: '12px 16px',
                                             display: 'flex',
                                             alignItems: 'center',
@@ -496,7 +605,7 @@ export default function AgentConsultasCategoriaModal({
                                                 </div>
 
                                                 {/* Detalle secundario / Resolución */}
-                                                <div style={{ marginTop: '2px', fontSize: '0.68rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ marginTop: '2px', fontSize: '0.68rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                     {item.agente && (
                                                         <span>Atendió: <strong style={{ color: '#64748B' }}>{item.agente}</strong></span>
                                                     )}
@@ -504,6 +613,63 @@ export default function AgentConsultasCategoriaModal({
                                                         <span>· Cierre: <em>{item.resolution_reason}</em></span>
                                                     )}
                                                 </div>
+
+                                                {/* TRAZABILIDAD CON SALUS (Para solicitudes de turnos) */}
+                                                {isTurnoCat && (
+                                                    <div style={{ marginTop: '6px' }}>
+                                                        {salusMatch ? (
+                                                            <div style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                background: '#ECFDF5',
+                                                                color: '#065F46',
+                                                                border: '1px solid #A7F3D0',
+                                                                borderRadius: '6px',
+                                                                padding: '3px 8px',
+                                                                fontSize: '0.70rem',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                <CheckCircle2 size={12} color="#10B981" />
+                                                                <span>
+                                                                    Cargado en SALUS: <strong>{salusMatch.fechaVisita} {salusMatch.horaVisita?.slice(0, 5)} hs</strong> · {salusMatch.especialidad} ({salusMatch.medico?.split(' ')[0]}) · {salusMatch.obraSocial || 'Sin obra social'}
+                                                                </span>
+                                                            </div>
+                                                        ) : isClosed ? (
+                                                            <div style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                background: '#FEE2E2',
+                                                                color: '#991B1B',
+                                                                border: '1px solid #F87171',
+                                                                borderRadius: '6px',
+                                                                padding: '3px 8px',
+                                                                fontSize: '0.70rem',
+                                                                fontWeight: 800
+                                                            }}>
+                                                                <AlertTriangle size={12} color="#DC2626" />
+                                                                <span>ALERTA: Paciente solicitó turno y la conversación cerró pero NO figura turno registrado en SALUS</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                background: '#FEF3C7',
+                                                                color: '#92400E',
+                                                                border: '1px solid #FCD34D',
+                                                                borderRadius: '6px',
+                                                                padding: '3px 8px',
+                                                                fontSize: '0.70rem',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                <Clock size={12} color="#D97706" />
+                                                                <span>Turno solicitado · Pendiente de cargar en agenda SALUS</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
