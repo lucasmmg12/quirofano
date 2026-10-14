@@ -74,16 +74,50 @@ export default function GuardiaPuertaMedicoProgressionModal({
     const baseEspera = Number(currentData?.espera_medico_min_promedio) || 30.0;
     const totalConsultas = Number(currentData?.total_consultas) || 1200;
 
+    // Detectar si el período seleccionado es el mes en curso o futuro
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentDay = now.getDate();
+
+    let selectedYear = 2026, selectedMonth = 9;
+    if (selectedPeriodo && !selectedPeriodo.includes('ANUAL')) {
+        const parts = selectedPeriodo.split('-');
+        selectedYear = parseInt(parts[0], 10) || 2026;
+        selectedMonth = parseInt(parts[1], 10) || 9;
+    }
+    const isCurrentMonth = (selectedYear === currentYear && selectedMonth === currentMonth);
+    const isFutureMonth = (selectedYear > currentYear || (selectedYear === currentYear && selectedMonth > currentMonth));
+
     // ─── 1. SERIE DIARIA (DÍA TRAS DÍA) ───
     const dailyData = useMemo(() => {
-        let year = 2026, month = 9;
-        if (selectedPeriodo && !selectedPeriodo.includes('ANUAL')) {
-            const parts = selectedPeriodo.split('-');
-            year = parseInt(parts[0], 10) || 2026;
-            month = parseInt(parts[1], 10) || 9;
+        const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
+        // REGLA DE GOBERNANZA TEMPORAL CLÍNICA:
+        // No generar datos para días futuros que aún no han ocurrido.
+        let maxDay = daysInMonth;
+        if (isFutureMonth) {
+            maxDay = 0; // Mes futuro sin registros
+        } else if (isCurrentMonth) {
+            // Si el mes está en curso, el tope estricto es el día de hoy (o fechaHasta si el usuario filtró un rango menor)
+            maxDay = currentDay;
+            if (fechaHasta) {
+                const partsH = fechaHasta.split('-').map(Number);
+                if (partsH[0] === selectedYear && partsH[1] === selectedMonth && partsH[2] < maxDay) {
+                    maxDay = partsH[2];
+                }
+            }
+        } else if (fechaHasta) {
+            const partsH = fechaHasta.split('-').map(Number);
+            if (partsH[0] === selectedYear && partsH[1] === selectedMonth && partsH[2] < daysInMonth) {
+                maxDay = partsH[2];
+            }
         }
-        const daysInMonth = new Date(year, month, 0).getDate();
-        const avgDailyConsultas = Math.round(totalConsultas / daysInMonth);
+
+        if (maxDay <= 0) return [];
+
+        // Consultas diarias promedio ajustadas a los días reales transcurridos
+        const avgDailyConsultas = Math.round(totalConsultas / (isCurrentMonth ? Math.max(maxDay, 1) : daysInMonth));
         const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
         // Triage nominal si existe para este mes
@@ -91,15 +125,15 @@ export default function GuardiaPuertaMedicoProgressionModal({
         triagePacientesAll.forEach(t => {
             if (t.periodo === selectedPeriodo && t.fecha_visita) {
                 const dayNum = parseInt(t.fecha_visita.split('-')[2], 10);
-                if (dayNum) {
+                if (dayNum && dayNum <= maxDay) {
                     triagesByDay[dayNum] = (triagesByDay[dayNum] || 0) + 1;
                 }
             }
         });
 
         const rawList = [];
-        for (let d = 1; d <= daysInMonth; d++) {
-            const dateObj = new Date(year, month - 1, d);
+        for (let d = 1; d <= maxDay; d++) {
+            const dateObj = new Date(selectedYear, selectedMonth - 1, d);
             const dayOfWeek = dateObj.getDay();
             const dayName = daysOfWeek[dayOfWeek];
 
@@ -113,17 +147,17 @@ export default function GuardiaPuertaMedicoProgressionModal({
 
             // Ciclo armónico y microvariación pseudo-determinística
             const wave = Math.sin((d / daysInMonth) * Math.PI * 3) * 0.10;
-            const microVar = (((d * 17 + month * 31) % 19) - 9) * 0.012;
+            const microVar = (((d * 17 + selectedMonth * 31) % 19) - 9) * 0.012;
             const factor = Math.max(0.70, dayFactor + wave + microVar);
 
             const dStr = String(d).padStart(2, '0');
-            const mStr = String(month).padStart(2, '0');
+            const mStr = String(selectedMonth).padStart(2, '0');
 
             rawList.push({
                 rawFactor: factor,
                 diaNum: d,
-                fecha: `${dStr}/${mStr}/${year}`,
-                fechaCorta: `${dStr} ${month === 9 ? 'Sep' : month === 8 ? 'Ago' : month === 7 ? 'Jul' : month === 10 ? 'Oct' : mStr}`,
+                fecha: `${dStr}/${mStr}/${selectedYear}`,
+                fechaCorta: `${dStr} ${selectedMonth === 9 ? 'Sep' : selectedMonth === 8 ? 'Ago' : selectedMonth === 7 ? 'Jul' : selectedMonth === 10 ? 'Oct' : mStr}`,
                 diaSemana: dayName,
                 label: `${dayName} ${dStr}`,
                 consultasTriage: triagesByDay[d] || null
@@ -153,7 +187,7 @@ export default function GuardiaPuertaMedicoProgressionModal({
                 desvioMeta: Number((esperaGlobal - 30).toFixed(1))
             };
         });
-    }, [selectedPeriodo, baseEspera, totalConsultas, triagePacientesAll]);
+    }, [selectedYear, selectedMonth, selectedPeriodo, baseEspera, totalConsultas, triagePacientesAll, isCurrentMonth, isFutureMonth, currentDay, fechaHasta]);
 
     // ─── 2. SERIE SEMANAL (SEMANA POR SEMANA) ───
     const weeklyData = useMemo(() => {
@@ -297,6 +331,9 @@ export default function GuardiaPuertaMedicoProgressionModal({
         const parts = selectedPeriodo.split('-');
         const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const mIdx = parseInt(parts[1], 10) - 1;
+        if (isCurrentMonth) {
+            return `${meses[mIdx] || parts[1]} de ${parts[0]} (01 al ${String(currentDay).padStart(2, '0')}/${parts[1]} · Período en Curso)`;
+        }
         return `${meses[mIdx] || parts[1]} de ${parts[0]}`;
     };
 
@@ -352,7 +389,7 @@ export default function GuardiaPuertaMedicoProgressionModal({
                             <Clock size={22} />
                         </div>
                         <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, letterSpacing: '-0.3px' }}>
                                     Progresión Temporal: Tiempo Puerta – Médico
                                 </h3>
@@ -366,6 +403,18 @@ export default function GuardiaPuertaMedicoProgressionModal({
                                 }}>
                                     Meta &lt; 30 min
                                 </span>
+                                {isCurrentMonth && (
+                                    <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        background: '#0284C7',
+                                        color: '#FFFFFF'
+                                    }}>
+                                        Corte al día de hoy ({String(currentDay).padStart(2, '0')}/{String(currentMonth).padStart(2, '0')})
+                                    </span>
+                                )}
                             </div>
                             <span style={{ fontSize: '0.78rem', color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
                                 <span>🗓️ {formatHeaderPeriodo()}</span>

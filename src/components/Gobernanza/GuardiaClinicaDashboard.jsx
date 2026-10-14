@@ -526,6 +526,11 @@ export default function GuardiaClinicaDashboard({
         ];
         const mIdx = parseInt(month, 10) - 1;
         if (isNaN(mIdx) || mIdx < 0 || mIdx > 11) return periodoStr;
+        const now = new Date();
+        const isCurrent = (parseInt(year, 10) === now.getFullYear() && (mIdx + 1) === (now.getMonth() + 1));
+        if (isCurrent) {
+            return `${meses[mIdx]} ${year} (al ${String(now.getDate()).padStart(2, '0')}/${month} · En Curso)`;
+        }
         return `${meses[mIdx]} ${year}`;
     };
 
