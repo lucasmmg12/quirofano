@@ -16,7 +16,7 @@ import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from 
 import { getCurrentUser, logout as authLogout } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor } from 'lucide-react';
 import SnowBackground from './components/SnowBackground';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
@@ -225,6 +225,8 @@ function App({ currentUser, onLogout }) {
 
     // Dark mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
+    // UI Scale for Laptops vs 27" monitors ('auto' | 'compact' | 'normal')
+    const [uiScale, setUiScale] = useState(() => localStorage.getItem('ui_scale_preference') || 'auto');
     // View transition key — bumps on view change to trigger CSS animation
     const [viewKey, setViewKey] = useState(0);
     // Mobile sidebar
@@ -239,6 +241,23 @@ function App({ currentUser, onLogout }) {
         document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
         localStorage.setItem('dark_mode', darkMode);
     }, [darkMode]);
+
+    useEffect(() => {
+        if (uiScale === 'auto') {
+            document.body.removeAttribute('data-ui-scale');
+        } else {
+            document.body.setAttribute('data-ui-scale', uiScale);
+        }
+        localStorage.setItem('ui_scale_preference', uiScale);
+    }, [uiScale]);
+
+    const cycleUiScale = () => {
+        setUiScale(prev => {
+            if (prev === 'auto') return 'compact';
+            if (prev === 'compact') return 'normal';
+            return 'auto';
+        });
+    };
 
     // Start activity tracking + fetch module preferences on mount
     useEffect(() => {
@@ -802,6 +821,35 @@ function App({ currentUser, onLogout }) {
                             }}
                         >
                             {darkMode ? <Sun size={13} /> : <Moon size={13} />}
+                        </button>
+                        {/* Selector de Escala Adaptativa (Notebook 85% vs Monitor 27" 100%) */}
+                        <button
+                            onClick={cycleUiScale}
+                            title={`Escala visual: ${uiScale === 'auto' ? 'Automática (Notebook 85% / Monitor 27" 100%)' : uiScale === 'compact' ? 'Forzado Compacto (85% para notebooks)' : 'Forzado Normal (100% para monitores grandes)'}`}
+                            style={{
+                                height: '26px',
+                                padding: '0 7px',
+                                borderRadius: '6px',
+                                background: uiScale !== 'auto' 
+                                    ? (darkMode ? '#1E3A8A' : '#EFF6FF') 
+                                    : (darkMode ? '#1E293B' : 'var(--neutral-50)'),
+                                border: `1px solid ${uiScale !== 'auto' ? '#3B82F6' : (darkMode ? '#334155' : 'var(--neutral-200)')}`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                cursor: 'pointer',
+                                color: uiScale !== 'auto' 
+                                    ? (darkMode ? '#93C5FD' : '#2563EB') 
+                                    : (darkMode ? '#94A3B8' : 'var(--neutral-500)'),
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                transition: 'all 0.2s',
+                            }}
+                        >
+                            {uiScale === 'compact' ? <Laptop size={13} /> : <Monitor size={13} />}
+                            <span style={{ fontSize: '0.67rem' }}>
+                                {uiScale === 'auto' ? 'Auto' : uiScale === 'compact' ? '85%' : '100%'}
+                            </span>
                         </button>
                         <span className="topbar__date">
                             {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}

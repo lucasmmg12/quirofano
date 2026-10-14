@@ -252,6 +252,57 @@
   to { transform: scaleX(0); }
 }
 
+/* ==========================================================================
+   ESCALADO ADAPTATIVO: NOTEBOOKS (14"-15") vs MONITORES GRANDES (27"+)
+   ========================================================================== */
+
+/* 1. Monitores Grandes (>= 1600px, p.ej. 27" Full HD al 100% DPI, 2K, 4K): 100% INTACTO */
+@media screen and (min-width: 1600px) {
+  :root {
+    --sidebar-width: 260px;
+    --app-ui-scale: 1;
+  }
+}
+
+/* 2. Notebooks estándar 14"-15" (1200px a 1599px, o FHD 1080p con 125% DPI): Escala Compacta 85% */
+@media screen and (max-width: 1599px) and (min-width: 1025px) {
+  :root {
+    --sidebar-width: 224px;
+    --app-ui-scale: 0.85;
+  }
+  html {
+    font-size: 14.5px;
+  }
+  body:not([data-ui-scale="normal"]) {
+    zoom: 0.85;
+  }
+}
+
+/* 3. Pantallas compactas / Notebooks 1366x768 nativo o con 150% DPI (769px a 1024px): Escala 80% */
+@media screen and (max-width: 1024px) and (min-width: 769px) {
+  :root {
+    --sidebar-width: 72px;
+    --app-ui-scale: 0.80;
+  }
+  html {
+    font-size: 13.5px;
+  }
+  body:not([data-ui-scale="normal"]) {
+    zoom: 0.80;
+  }
+}
+
+/* Forzado manual desde Switch de Topbar */
+body[data-ui-scale="normal"] {
+  zoom: 1 !important;
+}
+body[data-ui-scale="compact"] {
+  zoom: 0.85 !important;
+}
+body[data-ui-scale="ultra-compact"] {
+  zoom: 0.76 !important;
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
   :root {
