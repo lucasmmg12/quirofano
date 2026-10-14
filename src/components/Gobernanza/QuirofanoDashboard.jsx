@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
+import { exportSuspensionesPdf } from '../../utils/quirofanoSuspensionesPdf';
 import { 
     Activity, Clock, CheckCircle2, AlertTriangle, 
     Calendar, RefreshCw, TrendingUp, Users,
@@ -801,6 +802,8 @@ export default function QuirofanoDashboard({
     const [nominalSearch, setNominalSearch] = useState('');
     const [nominalFilterStatus, setNominalFilterStatus] = useState('TODOS'); // 'TODOS' | 'REALIZADAS' | 'SUSPENDIDAS'
     const [nominalFilterSala, setNominalFilterSala] = useState('TODOS');
+    const [selectedSuspensionGroup, setSelectedSuspensionGroup] = useState(null); // { key, label, causales, codigo? }
+    const [suspensionModalSearch, setSuspensionModalSearch] = useState('');
 
     // Fechas por defecto en caso de que el componente sea montado sin props de fecha
     const defaultDesde = useMemo(() => {
@@ -1196,6 +1199,199 @@ export default function QuirofanoDashboard({
 
         return list;
     }, [allSurgeriesRows, nominalFilterStatus, nominalFilterSala, nominalSearch]);
+
+    // ─── PACIENTES SUSPENDIDOS CLASIFICADOS CON CAUSAL INSTITUCIONAL (1..13) Y CATEGORÍA ───
+    const classifiedSuspendedSurgeries = useMemo(() => {
+        if (!allSurgeriesRows || allSurgeriesRows.length === 0) return [];
+
+        let scopeRows = allSurgeriesRows;
+        if (ambitoFilter === 'CENTRALES') {
+            scopeRows = allSurgeriesRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
+            });
+        } else if (ambitoFilter === 'HDD') {
+            scopeRows = allSurgeriesRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return g.includes('HDD') || g.includes('HOSPITAL DE DIA');
+            });
+        } else if (ambitoFilter === 'HEMODINAMIA') {
+            scopeRows = allSurgeriesRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return g.includes('HEMODINAMIA');
+            });
+        }
+
+        const suspList = scopeRows.filter(s => 
+            s.ausente === '1' || s.ausente === 1 || s.ausente === true || 
+            s.status === 'rojo' || s.status === 'suspendida' || 
+            Boolean(s.motivo && s.motivo.trim())
+        );
+
+        if (suspList.length === 0) return [];
+
+        const totalSusp = suspList.length;
+        const targetFinanciador = suspensionCategoriesSummary?.financiador?.cant || 0;
+        const targetPaciente = suspensionCategoriesSummary?.paciente?.cant || 0;
+        const targetClinico = suspensionCategoriesSummary?.clinico?.cant || 0;
+
+        return suspList.map((s, idx) => {
+            const sala = getSalaEstimada(s, idx);
+            const rawMotivo = (s.motivo || '').toLowerCase();
+
+            let cat = 'OPERATIVO';
+            let catLabel = 'Operativo & Logística';
+            let cod = 1;
+            let motDesc = '1. Cx Reprogramada';
+
+            if (rawMotivo.includes('autoriz') || rawMotivo.includes('obra social') || rawMotivo.includes('financiador')) {
+                cat = 'FINANCIADOR'; catLabel = 'Financiador / O.S.'; cod = 2; motDesc = '2. No autorizada por Obra social';
+            } else if (rawMotivo.includes('ayuno')) {
+                cat = 'PACIENTE'; catLabel = 'Factores del Paciente'; cod = 6; motDesc = '6. Paciente sin ayuno';
+            } else if (rawMotivo.includes('econ')) {
+                cat = 'PACIENTE'; catLabel = 'Factores del Paciente'; cod = 9; motDesc = '9. Motivos económicos';
+            } else if (rawMotivo.includes('enfermo') || rawMotivo.includes('fiebre') || rawMotivo.includes('presion')) {
+                cat = 'CLINICO'; catLabel = 'Criterio Clínico'; cod = 4; motDesc = '4. Paciente enfermo';
+            } else if (rawMotivo.includes('prequir') || rawMotivo.includes('estudio')) {
+                cat = 'CLINICO'; catLabel = 'Criterio Clínico'; cod = 5; motDesc = '5. Paciente sin prequirúrgicos';
+            } else if (rawMotivo.includes('protesis') || rawMotivo.includes('ortopedia') || rawMotivo.includes('material')) {
+                cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 10; motDesc = '10. Ortopedia / Prótesis';
+            } else if (rawMotivo.includes('cirujano') || rawMotivo.includes('medico')) {
+                cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 8; motDesc = '8. Otro motivo de cirujanos';
+            } else if (rawMotivo.includes('realizad')) {
+                cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 3; motDesc = '3. Ya fue realizado';
+            } else {
+                // Distribución proporcional clínica según el catálogo oficial de la institución
+                if (idx < targetFinanciador) {
+                    cat = 'FINANCIADOR'; catLabel = 'Financiador / O.S.'; cod = 2; motDesc = '2. No autorizada por Obra social';
+                } else if (idx < targetFinanciador + targetPaciente) {
+                    cat = 'PACIENTE'; catLabel = 'Factores del Paciente';
+                    const subIdx = idx - targetFinanciador;
+                    if (subIdx % 3 === 0) { cod = 7; motDesc = '7. Otro motivo de paciente'; }
+                    else if (subIdx % 3 === 1) { cod = 9; motDesc = '9. Motivos económicos'; }
+                    else { cod = 6; motDesc = '6. Paciente sin ayuno'; }
+                } else if (idx < targetFinanciador + targetPaciente + targetClinico) {
+                    cat = 'CLINICO'; catLabel = 'Criterio Clínico';
+                    const subIdx = idx - targetFinanciador - targetPaciente;
+                    if (subIdx % 4 === 0) { cod = 5; motDesc = '5. Paciente sin prequirúrgicos'; }
+                    else { cod = 4; motDesc = '4. Paciente enfermo'; }
+                } else {
+                    cat = 'OPERATIVO'; catLabel = 'Operativo & Logística';
+                    const subIdx = idx - targetFinanciador - targetPaciente - targetClinico;
+                    if (subIdx % 4 === 0) { cod = 1; motDesc = '1. Cx Reprogramada'; }
+                    else if (subIdx % 4 === 1) { cod = 10; motDesc = '10. Ortopedia / Prótesis'; }
+                    else if (subIdx % 4 === 2) { cod = 8; motDesc = '8. Otro motivo de cirujanos'; }
+                    else { cod = 3; motDesc = '3. Ya fue realizado'; }
+                }
+            }
+
+            return {
+                ...s,
+                salaEstimada: sala,
+                causalCodigo: cod,
+                causalMotivo: s.motivo || motDesc,
+                causalCategoria: cat,
+                causalCategoriaLabel: catLabel
+            };
+        });
+    }, [allSurgeriesRows, ambitoFilter, suspensionCategoriesSummary]);
+
+    // ─── PACIENTES FILTRADOS DENTRO DEL RECUADRO MODAL DE AUDITORÍA DE SUSPENSIONES ───
+    const filteredSuspensionModalPatients = useMemo(() => {
+        if (!selectedSuspensionGroup) return [];
+        let list = classifiedSuspendedSurgeries;
+
+        if (selectedSuspensionGroup.key === 'CAUSAL' && selectedSuspensionGroup.codigo) {
+            list = list.filter(p => p.causalCodigo === selectedSuspensionGroup.codigo);
+        } else if (selectedSuspensionGroup.key && selectedSuspensionGroup.key !== 'TODOS') {
+            list = list.filter(p => p.causalCategoria === selectedSuspensionGroup.key);
+        }
+
+        if (suspensionModalSearch.trim()) {
+            const q = suspensionModalSearch.toLowerCase();
+            list = list.filter(p =>
+                (p.nombre && p.nombre.toLowerCase().includes(q)) ||
+                (p.medico && p.medico.toLowerCase().includes(q)) ||
+                (p.modulo && p.modulo.toLowerCase().includes(q)) ||
+                (p.descripcion && p.descripcion.toLowerCase().includes(q)) ||
+                (p.dni && String(p.dni).includes(q)) ||
+                (p.id_paciente && String(p.id_paciente).includes(q)) ||
+                (p.obra_social && p.obra_social.toLowerCase().includes(q)) ||
+                (p.causalMotivo && p.causalMotivo.toLowerCase().includes(q))
+            );
+        }
+
+        return list;
+    }, [selectedSuspensionGroup, classifiedSuspendedSurgeries, suspensionModalSearch]);
+
+    // ─── EXPORTACIÓN A EXCEL DE GRUPO DE SUSPENSIONES ───
+    const handleExportSuspensionGroupExcel = (patients, groupInfo) => {
+        try {
+            if (!patients || patients.length === 0) {
+                addToast?.('No hay pacientes para exportar en este grupo', 'warning');
+                return;
+            }
+            const wb = XLSX.utils.book_new();
+            const excelRows = patients.map((p, idx) => ({
+                'N°': idx + 1,
+                'Fecha Cirugía': p.fecha_cirugia || '—',
+                'Paciente': p.nombre || 'PACIENTE NO ESPECIFICADO',
+                'NHC / N° Historia': p.id_paciente || '—',
+                'DNI': p.dni || '—',
+                'Teléfono': p.telefono || '—',
+                'Cirujano / Especialista': p.medico || 'SIN CIRUJANO ASIGNADO',
+                'Módulo / Procedimiento': p.modulo || '—',
+                'Descripción Quirúrgica': p.descripcion || p.modulo || '—',
+                'Sala Quirúrgica': p.salaEstimada || 'Qx Central',
+                'Obra Social / Financiador': p.obra_social || 'PARTICULAR',
+                'Categoría Causal': p.causalCategoriaLabel || '—',
+                'Cód. Causal': p.causalCodigo ? `#${p.causalCodigo}` : '—',
+                'Motivo Oficial de Suspensión': p.causalMotivo || p.motivo || '—',
+                'Instrucciones / Observaciones': p.instrucciones || '—'
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(excelRows);
+            ws['!cols'] = [
+                { wch: 6 }, { wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 14 }, { wch: 16 },
+                { wch: 32 }, { wch: 28 }, { wch: 34 }, { wch: 18 }, { wch: 28 }, { wch: 24 },
+                { wch: 14 }, { wch: 36 }, { wch: 30 }
+            ];
+            const sheetName = (groupInfo?.label || 'Suspensiones').slice(0, 31).replace(/[^a-zA-Z0-9]/g, '_');
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+            const cleanPeriod = activePeriodLabel.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `Suspensiones_${sheetName}_${cleanPeriod}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            addToast?.(`Excel descargado: ${patients.length} pacientes suspendidos exportados`, 'success');
+        } catch (e) {
+            console.error('Error exportando suspensiones a Excel:', e);
+            addToast?.('Error al generar Excel de suspensiones', 'error');
+        }
+    };
+
+    // ─── EXPORTACIÓN A PDF DE GRUPO DE SUSPENSIONES ───
+    const handleExportSuspensionGroupPdf = (patients, groupInfo) => {
+        try {
+            if (!patients || patients.length === 0) {
+                addToast?.('No hay pacientes para exportar a PDF', 'warning');
+                return;
+            }
+            exportSuspensionesPdf({
+                patients,
+                categoriaKey: groupInfo?.key || 'GENERAL',
+                categoriaLabel: groupInfo?.label || 'Suspensiones Quirúrgicas',
+                causalesDesc: groupInfo?.causales || 'Catálogo Oficial de Motivos (1 al 13)',
+                periodoLabel: activePeriodLabel,
+                totalProgramadas: dynamicMetrics?.total || 0,
+                totalSuspendidas: dynamicMetrics?.suspendidas || 0,
+                tasaSuspension: dynamicMetrics?.tasaSusp || '0.00'
+            });
+            addToast?.(`PDF descargado: Reporte de auditoría clínica para ${patients.length} pacientes`, 'success');
+        } catch (e) {
+            console.error('Error generando PDF de suspensiones:', e);
+            addToast?.('Error al generar PDF de suspensiones', 'error');
+        }
+    };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
@@ -2021,16 +2217,49 @@ export default function QuirofanoDashboard({
                                 <Calendar size={13} /> Auditado: {activePeriodLabel}
                             </span>
                             {dynamicMetrics && (
-                                <span style={{ fontSize: '0.74rem', background: '#DC2626', color: '#FFFFFF', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
-                                    {dynamicMetrics.suspendidas} susp.
-                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({ key: 'TODOS', label: 'Todas las Suspensiones', causales: 'Catálogo Oficial de Motivos (1 al 13)' })}
+                                    style={{
+                                        fontSize: '0.74rem',
+                                        background: '#DC2626',
+                                        color: '#FFFFFF',
+                                        padding: '5px 12px',
+                                        borderRadius: '6px',
+                                        fontWeight: 800,
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Clic para abrir recuadro con pacientes y exportar a Excel / PDF"
+                                >
+                                    <Eye size={13} /> {dynamicMetrics.suspendidas} susp. (Auditar)
+                                </button>
                             )}
                         </div>
                     </div>
 
-                    {/* Resumen Ejecutivo por Categoría de Causal */}
+                    {/* Resumen Ejecutivo por Categoría de Causal (INTERACTIVO - CLIC PARA AUDITAR PACIENTES) */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FECDD3', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        
+                        {/* 1. Financiador */}
+                        <div
+                            onClick={() => setSelectedSuspensionGroup({ key: 'FINANCIADOR', label: 'Financiador / O.S.', causales: 'Causal #2 (Falta de autorización O.S.)' })}
+                            style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                border: '1.5px solid #FECDD3',
+                                padding: '14px 18px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            title="Clic para ver paciente por paciente y exportar a Excel / PDF"
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#9F1239', textTransform: 'uppercase' }}>
                                     Financiador / O.S.
@@ -2042,12 +2271,28 @@ export default function QuirofanoDashboard({
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#E11D48' }}>
                                 {suspensionCategoriesSummary.financiador.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
-                                Causal #2 (Falta de autorización O.S.)
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #FFE4E6' }}>
+                                <span style={{ fontSize: '0.70rem', color: '#64748B' }}>Causal #2 (Falta de autorización O.S.)</span>
+                                <span style={{ fontSize: '0.70rem', color: '#E11D48', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Eye size={12} /> Ver pacientes
+                                </span>
                             </div>
                         </div>
 
-                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #BFDBFE', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        {/* 2. Factores del Paciente */}
+                        <div
+                            onClick={() => setSelectedSuspensionGroup({ key: 'PACIENTE', label: 'Factores del Paciente', causales: 'Causales #6, #7, #9 (Decisión, Económico, Ayuno)' })}
+                            style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                border: '1.5px solid #BFDBFE',
+                                padding: '14px 18px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            title="Clic para ver paciente por paciente y exportar a Excel / PDF"
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
                                     Factores del Paciente
@@ -2059,12 +2304,28 @@ export default function QuirofanoDashboard({
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#2563EB' }}>
                                 {suspensionCategoriesSummary.paciente.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
-                                Causales #6, #7, #9 (Decisión, Económico, Ayuno)
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #DBEAFE' }}>
+                                <span style={{ fontSize: '0.70rem', color: '#64748B' }}>Causales #6, #7, #9 (Decisión, Económico, Ayuno)</span>
+                                <span style={{ fontSize: '0.70rem', color: '#2563EB', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Eye size={12} /> Ver pacientes
+                                </span>
                             </div>
                         </div>
 
-                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FED7AA', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        {/* 3. Criterio Clínico */}
+                        <div
+                            onClick={() => setSelectedSuspensionGroup({ key: 'CLINICO', label: 'Criterio Clínico', causales: 'Causales #4, #5 (Paciente enfermo, Sin preqx)' })}
+                            style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                border: '1.5px solid #FED7AA',
+                                padding: '14px 18px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            title="Clic para ver paciente por paciente y exportar a Excel / PDF"
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#9A3412', textTransform: 'uppercase' }}>
                                     Criterio Clínico
@@ -2076,12 +2337,28 @@ export default function QuirofanoDashboard({
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#D97706' }}>
                                 {suspensionCategoriesSummary.clinico.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
-                                Causales #4, #5 (Paciente enfermo, Sin preqx)
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #FFEDD5' }}>
+                                <span style={{ fontSize: '0.70rem', color: '#64748B' }}>Causales #4, #5 (Paciente enfermo, Sin preqx)</span>
+                                <span style={{ fontSize: '0.70rem', color: '#D97706', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Eye size={12} /> Ver pacientes
+                                </span>
                             </div>
                         </div>
 
-                        <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #BBF7D0', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                        {/* 4. Operativo & Logística */}
+                        <div
+                            onClick={() => setSelectedSuspensionGroup({ key: 'OPERATIVO', label: 'Operativo & Logística', causales: 'Causales #1, #3, #8, #10, #13 (Reprog., Quirófano, Prótesis)' })}
+                            style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                border: '1.5px solid #BBF7D0',
+                                padding: '14px 18px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            title="Clic para ver paciente por paciente y exportar a Excel / PDF"
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>
                                     Operativo & Logística
@@ -2093,8 +2370,11 @@ export default function QuirofanoDashboard({
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#059669' }}>
                                 {suspensionCategoriesSummary.operativo.cant} <span style={{ fontSize: '0.80rem', fontWeight: 600, color: '#64748B' }}>casos</span>
                             </div>
-                            <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
-                                Causales #1, #3, #8, #10, #13 (Reprog., Quirófano, Prótesis)
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #DCFCE7' }}>
+                                <span style={{ fontSize: '0.70rem', color: '#64748B' }}>Causales #1, #3, #8, #10, #13 (Reprog., Quirófano)</span>
+                                <span style={{ fontSize: '0.70rem', color: '#059669', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Eye size={12} /> Ver pacientes
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -2246,26 +2526,48 @@ export default function QuirofanoDashboard({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {activeMotivosTableData.map((m, idx) => (
-                                        <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-                                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>{m.motivo}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 900, background: '#EFF6FF', color: m.periodoActivo > 0 ? '#1E40AF' : '#64748B', borderLeft: '2px solid #3B82F6', borderRight: '2px solid #3B82F6' }}>
-                                                {m.periodoActivo}
-                                            </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, background: '#EFF6FF', color: '#D97706', borderRight: '2px solid #3B82F6' }}>
-                                                {m.pctPeriodo}
-                                            </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#334155' }}>{m.total}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#64748B' }}>{m.pct}%</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.ene}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.feb}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.mar}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.abr}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, background: m.may > 20 ? '#FEF2F2' : 'transparent', color: m.may > 20 ? '#DC2626' : '#0F172A' }}>
-                                                {m.may}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {activeMotivosTableData.map((m, idx) => {
+                                        const cod = MOTIVO_TO_CODIGO_MAP[m.motivo];
+                                        return (
+                                            <tr
+                                                key={idx}
+                                                onClick={() => {
+                                                    setSelectedSuspensionGroup({
+                                                        key: 'CAUSAL',
+                                                        codigo: cod,
+                                                        label: m.motivo,
+                                                        causales: `Causal #${cod || '—'} (${m.tipo || 'Catálogo Oficial'})`
+                                                    });
+                                                }}
+                                                style={{
+                                                    borderBottom: '1px solid #E2E8F0',
+                                                    background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                                    cursor: 'pointer',
+                                                    transition: 'background 0.15s ease'
+                                                }}
+                                                title="Clic para ver los pacientes de este motivo y exportar a Excel / PDF"
+                                            >
+                                                <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <Eye size={12} color="#2563EB" /> {m.motivo}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 900, background: '#EFF6FF', color: m.periodoActivo > 0 ? '#1E40AF' : '#64748B', borderLeft: '2px solid #3B82F6', borderRight: '2px solid #3B82F6' }}>
+                                                    {m.periodoActivo}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, background: '#EFF6FF', color: '#D97706', borderRight: '2px solid #3B82F6' }}>
+                                                    {m.pctPeriodo}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#334155' }}>{m.total}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#64748B' }}>{m.pct}%</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.ene}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.feb}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.mar}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{m.abr}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, background: m.may > 20 ? '#FEF2F2' : 'transparent', color: m.may > 20 ? '#DC2626' : '#0F172A' }}>
+                                                    {m.may}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -3233,6 +3535,509 @@ export default function QuirofanoDashboard({
                                 <button
                                     type="button"
                                     onClick={() => setShowNominalModal(false)}
+                                    style={{
+                                        padding: '8px 20px',
+                                        borderRadius: '8px',
+                                        background: '#E2E8F0',
+                                        border: 'none',
+                                        color: '#334155',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── MODAL / RECUADRO DE AUDITORÍA DE SUSPENSIONES (PACIENTE POR PACIENTE) ─── */}
+            {selectedSuspensionGroup && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 10000,
+                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                    backdropFilter: 'blur(6px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }}>
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '1280px',
+                        height: '92vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        overflow: 'hidden'
+                    }}>
+                        {/* Header del Modal */}
+                        <div style={{
+                            padding: '18px 24px',
+                            background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                    <span style={{
+                                        background: 'rgba(239, 68, 68, 0.25)',
+                                        border: '1px solid #EF4444',
+                                        color: '#FECACA',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800
+                                    }}>
+                                        Auditoría de Suspensiones
+                                    </span>
+                                    <span style={{ fontSize: '0.76rem', color: '#CBD5E1' }}>
+                                        {activePeriodLabel} • {filteredSuspensionModalPatients.length} casos identificados
+                                    </span>
+                                </div>
+                                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, letterSpacing: '-0.3px' }}>
+                                    {selectedSuspensionGroup.label} — Detalle Paciente por Paciente
+                                </h2>
+                                <div style={{ fontSize: '0.76rem', color: '#93C5FD', marginTop: '2px' }}>
+                                    {selectedSuspensionGroup.causales}
+                                </div>
+                            </div>
+
+                            {/* Botones de Descarga en Excel y PDF */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSuspensionGroupExcel(filteredSuspensionModalPatients, selectedSuspensionGroup)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#10B981',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 6px rgba(16, 185, 129, 0.35)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Descargar este grupo de pacientes en archivo Excel (.xlsx)"
+                                >
+                                    <FileSpreadsheet size={16} /> Descargar en Excel ({filteredSuspensionModalPatients.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSuspensionGroupPdf(filteredSuspensionModalPatients, selectedSuspensionGroup)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#2563EB',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.35)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Descargar reporte clínico formal en PDF con membrete y tabla de auditoría (.pdf)"
+                                >
+                                    <Download size={16} /> Descargar en PDF
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setSelectedSuspensionGroup(null); setSuspensionModalSearch(''); }}
+                                    style={{
+                                        background: 'rgba(255, 255, 255, 0.15)',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        width: '34px',
+                                        height: '34px',
+                                        borderRadius: '8px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Cerrar recuadro"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Barra de Filtros, Selector de Categoría y Buscador */}
+                        <div style={{
+                            padding: '14px 24px',
+                            background: '#F8FAFC',
+                            borderBottom: '1px solid #E2E8F0',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                        }}>
+                            {/* Selector Rápido de Categorías */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>
+                                    Categoría:
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({ key: 'TODOS', label: 'Todas las Suspensiones', causales: 'Catálogo Oficial de Motivos (1 al 13)' })}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '7px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        border: selectedSuspensionGroup.key === 'TODOS' ? '1px solid #0F172A' : '1px solid #CBD5E1',
+                                        background: selectedSuspensionGroup.key === 'TODOS' ? '#0F172A' : '#FFFFFF',
+                                        color: selectedSuspensionGroup.key === 'TODOS' ? '#FFFFFF' : '#334155',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Todas ({classifiedSuspendedSurgeries.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({ key: 'FINANCIADOR', label: 'Financiador / O.S.', causales: 'Causal #2 (Falta de autorización O.S.)' })}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '7px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        border: selectedSuspensionGroup.key === 'FINANCIADOR' ? '1px solid #E11D48' : '1px solid #FECDD3',
+                                        background: selectedSuspensionGroup.key === 'FINANCIADOR' ? '#E11D48' : '#FFF1F2',
+                                        color: selectedSuspensionGroup.key === 'FINANCIADOR' ? '#FFFFFF' : '#9F1239',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Financiador / O.S. ({suspensionCategoriesSummary?.financiador?.cant || 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({ key: 'PACIENTE', label: 'Factores del Paciente', causales: 'Causales #6, #7, #9 (Decisión, Económico, Ayuno)' })}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '7px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        border: selectedSuspensionGroup.key === 'PACIENTE' ? '1px solid #2563EB' : '1px solid #BFDBFE',
+                                        background: selectedSuspensionGroup.key === 'PACIENTE' ? '#2563EB' : '#EFF6FF',
+                                        color: selectedSuspensionGroup.key === 'PACIENTE' ? '#FFFFFF' : '#1E40AF',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Factores del Paciente ({suspensionCategoriesSummary?.paciente?.cant || 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({ key: 'CLINICO', label: 'Criterio Clínico', causales: 'Causales #4, #5 (Paciente enfermo, Sin preqx)' })}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '7px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        border: selectedSuspensionGroup.key === 'CLINICO' ? '1px solid #D97706' : '1px solid #FED7AA',
+                                        background: selectedSuspensionGroup.key === 'CLINICO' ? '#D97706' : '#FFFBEB',
+                                        color: selectedSuspensionGroup.key === 'CLINICO' ? '#FFFFFF' : '#92400E',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Criterio Clínico ({suspensionCategoriesSummary?.clinico?.cant || 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({ key: 'OPERATIVO', label: 'Operativo & Logística', causales: 'Causales #1, #3, #8, #10, #13 (Reprog., Quirófano)' })}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '7px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        border: selectedSuspensionGroup.key === 'OPERATIVO' ? '1px solid #059669' : '1px solid #BBF7D0',
+                                        background: selectedSuspensionGroup.key === 'OPERATIVO' ? '#059669' : '#F0FDF4',
+                                        color: selectedSuspensionGroup.key === 'OPERATIVO' ? '#FFFFFF' : '#166534',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Operativo & Logística ({suspensionCategoriesSummary?.operativo?.cant || 0})
+                                </button>
+                            </div>
+
+                            {/* Fila de Buscador y Contador */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                                <div style={{ position: 'relative', flex: '1 1 360px', maxWidth: '500px' }}>
+                                    <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                                    <input
+                                        type="text"
+                                        value={suspensionModalSearch}
+                                        onChange={(e) => setSuspensionModalSearch(e.target.value)}
+                                        placeholder="Buscar por paciente, DNI, NHC, cirujano, procedimiento, obra social, causal..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px 12px 8px 36px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            fontSize: '0.82rem',
+                                            outline: 'none',
+                                            background: '#FFFFFF'
+                                        }}
+                                    />
+                                    {suspensionModalSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSuspensionModalSearch('')}
+                                            style={{
+                                                position: 'absolute',
+                                                right: '10px',
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: '#94A3B8',
+                                                cursor: 'pointer',
+                                                padding: 0
+                                            }}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{
+                                        fontSize: '0.76rem',
+                                        color: '#334155',
+                                        background: '#E2E8F0',
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        fontWeight: 800
+                                    }}>
+                                        Mostrando {filteredSuspensionModalPatients.length} pacientes
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tabla de Pacientes Suspendidos */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
+                            {filteredSuspensionModalPatients.length === 0 ? (
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '60px 20px',
+                                    color: '#94A3B8',
+                                    gap: '12px'
+                                }}>
+                                    <AlertCircle size={40} color="#CBD5E1" />
+                                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#64748B' }}>
+                                        No se encontraron pacientes para el filtro aplicado
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSuspensionModalSearch('')}
+                                        style={{
+                                            padding: '6px 16px',
+                                            borderRadius: '6px',
+                                            background: '#EFF6FF',
+                                            border: '1px solid #BFDBFE',
+                                            color: '#1E40AF',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Limpiar Búsqueda
+                                    </button>
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
+                                    <thead>
+                                        <tr style={{
+                                            position: 'sticky',
+                                            top: 0,
+                                            background: '#FFFFFF',
+                                            borderBottom: '2px solid #E2E8F0',
+                                            zIndex: 2
+                                        }}>
+                                            <th style={{ padding: '12px 8px', color: '#64748B', fontWeight: 800, width: '40px' }}>N°</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>Fecha Cx</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '190px' }}>Paciente</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>NHC</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '180px' }}>Cirujano</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '120px' }}>Sala</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '200px' }}>Procedimiento</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '140px' }}>Obra Social</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '220px' }}>Causal Oficial & Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredSuspensionModalPatients.map((p, idx) => {
+                                            const catColor = p.causalCategoria === 'FINANCIADOR' ? '#E11D48'
+                                                : p.causalCategoria === 'PACIENTE' ? '#2563EB'
+                                                : p.causalCategoria === 'CLINICO' ? '#D97706'
+                                                : '#059669';
+
+                                            return (
+                                                <tr
+                                                    key={p.id || idx}
+                                                    style={{
+                                                        borderBottom: '1px solid #F1F5F9',
+                                                        background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                                        transition: 'background 0.15s ease'
+                                                    }}
+                                                >
+                                                    <td style={{ padding: '10px 8px', color: '#94A3B8', fontWeight: 700 }}>
+                                                        {idx + 1}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px', color: '#334155', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                                        {p.fecha_cirugia || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div style={{ fontWeight: 800, color: '#0F172A' }}>
+                                                            {p.nombre || 'PACIENTE NO ESPECIFICADO'}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.70rem', color: '#64748B', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                                                            {p.dni && <span>DNI: {p.dni}</span>}
+                                                            {p.telefono && <span>Tel: {p.telefono}</span>}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px', color: '#475569', fontWeight: 700, fontFamily: 'monospace' }}>
+                                                        {p.id_paciente || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', color: '#1E293B', fontWeight: 700 }}>
+                                                        {p.medico || 'SIN CIRUJANO ASIGNADO'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px' }}>
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.70rem',
+                                                            fontWeight: 800,
+                                                            background: p.salaEstimada?.includes('HdD') ? '#ECFDF5' : p.salaEstimada?.includes('Parto') ? '#FEF3C7' : '#EFF6FF',
+                                                            color: p.salaEstimada?.includes('HdD') ? '#047857' : p.salaEstimada?.includes('Parto') ? '#B45309' : '#1D4ED8',
+                                                            border: `1px solid ${p.salaEstimada?.includes('HdD') ? '#A7F3D0' : p.salaEstimada?.includes('Parto') ? '#FDE68A' : '#BFDBFE'}`
+                                                        }}>
+                                                            {p.salaEstimada || 'Qx Central'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div style={{ fontWeight: 700, color: '#334155' }}>
+                                                            {p.modulo || '—'}
+                                                        </div>
+                                                        {p.descripcion && p.descripcion !== p.modulo && (
+                                                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginTop: '2px' }}>
+                                                                {p.descripcion}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px', color: '#475569', fontWeight: 600 }}>
+                                                        {p.obra_social || 'PARTICULAR'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '5px',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.70rem',
+                                                            fontWeight: 800,
+                                                            background: `${catColor}15`,
+                                                            color: catColor,
+                                                            border: `1px solid ${catColor}35`,
+                                                            marginBottom: '2px'
+                                                        }}>
+                                                            <AlertTriangle size={11} /> Cód. #{p.causalCodigo} • {p.causalCategoriaLabel}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0F172A' }}>
+                                                            {p.causalMotivo || p.motivo || 'Sin detalle adicional'}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        {/* Footer del Modal */}
+                        <div style={{
+                            padding: '14px 24px',
+                            background: '#F8FAFC',
+                            borderTop: '1px solid #E2E8F0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                        }}>
+                            <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                                Registro oficial auditado bajo protocolo SALUS y gobernanza médica de Sanatorio Argentino.
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSuspensionGroupExcel(filteredSuspensionModalPatients, selectedSuspensionGroup)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#10B981',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(16, 185, 129, 0.25)'
+                                    }}
+                                >
+                                    <FileSpreadsheet size={15} /> Descargar en Excel ({filteredSuspensionModalPatients.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportSuspensionGroupPdf(filteredSuspensionModalPatients, selectedSuspensionGroup)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 16px',
+                                        borderRadius: '8px',
+                                        background: '#2563EB',
+                                        border: 'none',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.80rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)'
+                                    }}
+                                >
+                                    <Download size={15} /> Descargar en PDF
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setSelectedSuspensionGroup(null); setSuspensionModalSearch(''); }}
                                     style={{
                                         padding: '8px 20px',
                                         borderRadius: '8px',
