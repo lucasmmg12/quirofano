@@ -3165,10 +3165,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <div style={{ width: 28, height: 28, borderRadius: 6, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1E40AF' }}><HeartPulse size={16} /></div>
-                                        <div>
-                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>UCI</div>
-                                            <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>16 camas operativas</div>
-                                        </div>
+                                        <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>UCI</div>
                                     </div>
                                     
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3421,13 +3418,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.25rem' }}>🚑</span>
-                                            <div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
-                                                    Guardia Clínica
-                                                </div>
-                                                <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>
-                                                    Urgencias & Shockroom
-                                                </div>
+                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                Guardia Clínica
                                             </div>
                                         </div>
                                         
@@ -3561,13 +3553,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.25rem' }}>🔪</span>
-                                            <div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
-                                                    Quirófano & HdD
-                                                </div>
-                                                <div style={{ fontSize: '0.68rem', color: '#3B82F6' }}>
-                                                    Cirugía Central & Ambulatoria
-                                                </div>
+                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                Quirófano & HdD
                                             </div>
                                         </div>
                                         
