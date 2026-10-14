@@ -361,6 +361,18 @@ function formatWhatsAppText(text) {
 }
 
 /**
+ * Extrae DNI de un texto si existe (formato explícito o número de 7 u 8 dígitos típico de Argentina)
+ */
+function extractDniFromText(text) {
+    if (!text || typeof text !== 'string') return null;
+    const explicit = text.match(/(?:dni|documento|doc\.?|d\.n\.i\.?)[\s:]*([0-9]{1,2}\.?[0-9]{3}\.?[0-9]{3}|[0-9]{7,8})\b/i);
+    if (explicit) return explicit[1].replace(/\./g, '');
+    const standalone = text.match(/(?:^|[^\d])([1-5][0-9]{7})(?:[^\d]|$)/);
+    if (standalone) return standalone[1];
+    return null;
+}
+
+/**
  * Ilustración SVG para estado de chat cerrado con estilo Sanatorio Argentino
  */
 function ChatFinalizadoIllustration({ isDark }) {
@@ -828,6 +840,8 @@ export default function ContactCenterChatConsole({
     const [analyzingMsgId, setAnalyzingMsgId] = useState(null);
     const [transcribingMsgId, setTranscribingMsgId] = useState(null);
     const [copiedAudioMsgId, setCopiedAudioMsgId] = useState(null);
+    const [copiedMsgId, setCopiedMsgId] = useState(null);
+    const [copiedDniMsgId, setCopiedDniMsgId] = useState(null);
     // Orden de mensajes: Cronológico clásico estándar de WhatsApp (más recientes abajo)
     const [messageSortOrder] = useState('chronological');
     useEffect(() => {
@@ -5750,22 +5764,25 @@ export default function ContactCenterChatConsole({
                                                     display: 'flex',
                                                     flexDirection: 'column',
                                                     alignItems: isPatient ? 'flex-start' : 'flex-end',
-                                                    maxWidth: '78%',
+                                                    maxWidth: '96%',
                                                     width: 'fit-content',
                                                     alignSelf: isPatient ? 'flex-start' : 'flex-end',
                                                     minWidth: 0,
                                                     boxSizing: 'border-box'
                                                 }}
                                             >
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'flex-start',
-                                    gap: '8px',
-                                    flexDirection: isPatient ? 'row' : 'row-reverse',
-                                    maxWidth: '100%',
-                                    minWidth: 0,
-                                    boxSizing: 'border-box'
-                                }}>
+                                <div 
+                                    onMouseEnter={() => setHoveredMsgId(msg.id)}
+                                    onMouseLeave={() => setHoveredMsgId(null)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        flexDirection: isPatient ? 'row' : 'row-reverse',
+                                        maxWidth: '100%',
+                                        minWidth: 0,
+                                        boxSizing: 'border-box'
+                                    }}>
                                     {/* Avatar circular con color de la agente o del paciente */}
                                     <div style={{
                                         width: '28px', height: '28px', borderRadius: '50%',
@@ -5780,8 +5797,6 @@ export default function ContactCenterChatConsole({
 
                                     {/* Burbuja de Mensaje con Tag de Autoría */}
                                     <div 
-                                        onMouseEnter={() => setHoveredMsgId(msg.id)}
-                                        onMouseLeave={() => setHoveredMsgId(null)}
                                         style={{
                                             position: 'relative',
                                             background: isNote ? '#FFF7ED' : (isPatient ? '#DCFCE7' : '#FFFFFF'),
@@ -5792,84 +5807,13 @@ export default function ContactCenterChatConsole({
                                             color: '#1E293B',
                                             fontSize: '0.86rem',
                                             lineHeight: 1.45,
-                                            maxWidth: '100%',
+                                            maxWidth: '680px',
                                             minWidth: 0,
                                             boxSizing: 'border-box',
                                             wordBreak: 'break-word',
-                                            overflowWrap: 'anywhere'
+                                            overflowWrap: 'anywhere',
+                                            userSelect: 'text'
                                         }}>
-                                        {/* Micro-Barra Flotante de Acciones al pasar el mouse: Emojis Rápidos y Botón Responder */}
-                                        {hoveredMsgId === msg.id && (
-                                            <div style={{
-                                                position: 'absolute',
-                                                top: '-16px',
-                                                [isPatient ? 'right' : 'left']: '8px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '2px',
-                                                background: '#FFFFFF',
-                                                border: '1px solid #CBD5E1',
-                                                borderRadius: '20px',
-                                                padding: '2px 6px',
-                                                boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
-                                                zIndex: 15
-                                            }}>
-                                                {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
-                                                    <button
-                                                        key={emoji}
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onToggleReaction?.(msg, emoji);
-                                                        }}
-                                                        style={{
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            cursor: 'pointer',
-                                                            fontSize: '0.85rem',
-                                                            padding: '1px 3px',
-                                                            borderRadius: '4px',
-                                                            lineHeight: 1
-                                                        }}
-                                                        title={`Reaccionar con ${emoji}`}
-                                                    >
-                                                        {emoji}
-                                                    </button>
-                                                ))}
-                                                <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 3px' }} />
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setReplyingToMessage({
-                                                            id: msg.id,
-                                                            senderName: msg.senderName,
-                                                            text: msg.text || msg.caption || (msg.type === 'audio' ? 'Nota de voz' : msg.type === 'image' ? 'Foto médica' : msg.type === 'sticker' ? 'Sticker' : 'Adjunto'),
-                                                            type: msg.type,
-                                                            isPatient
-                                                        });
-                                                        inputRef.current?.focus();
-                                                    }}
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '3px',
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        color: '#0284C7',
-                                                        fontSize: '0.72rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        padding: '2px 5px',
-                                                        borderRadius: '4px'
-                                                    }}
-                                                    title="Responder citando este mensaje"
-                                                >
-                                                    <Reply size={12} />
-                                                    <span>Responder</span>
-                                                </button>
-                                            </div>
-                                        )}
 
                                         {/* AVISO DE AUDITORÍA: MENSAJE ELIMINADO POR EL REMITENTE EN WHATSAPP */}
                                         {(msg.isDeleted || msg.rawPayload?.is_deleted || msg.rawPayload?.revoked || msg.text === '[Mensaje eliminado]') && (
@@ -6584,7 +6528,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0 }}>
+                                                <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0, userSelect: 'text', cursor: 'text' }}>
                                                     {formatWhatsAppText(msg.text)}
                                                 </div>
                                             )
@@ -6648,6 +6592,151 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                             )}
                                         </div>
                                     </div>
+
+                                        {/* Micro-Barra Flotante de Acciones FUERA de la burbuja (renderizada a su lado en el espacio libre para no tapar el texto ni el DNI) */}
+                                        {hoveredMsgId === msg.id && (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                background: '#FFFFFF',
+                                                border: '1px solid #CBD5E1',
+                                                borderRadius: '20px',
+                                                padding: '3px 8px',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                                                zIndex: 20,
+                                                flexShrink: 0,
+                                                alignSelf: 'center',
+                                                userSelect: 'none',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                {/* Emojis Rápidos */}
+                                                {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+                                                    <button
+                                                        key={emoji}
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onToggleReaction?.(msg, emoji);
+                                                        }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.85rem',
+                                                            padding: '1px 3px',
+                                                            borderRadius: '4px',
+                                                            lineHeight: 1
+                                                        }}
+                                                        title={`Reaccionar con ${emoji}`}
+                                                    >
+                                                        {emoji}
+                                                    </button>
+                                                ))}
+                                                
+                                                <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 2px' }} />
+
+                                                {/* Si se detectó DNI en el mensaje: Botón de copiado directo de DNI */}
+                                                {(() => {
+                                                    const detectedDni = extractDniFromText(msg.text);
+                                                    if (!detectedDni) return null;
+                                                    const isCopied = copiedDniMsgId === msg.id;
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                navigator.clipboard.writeText(detectedDni);
+                                                                setCopiedDniMsgId(msg.id);
+                                                                setTimeout(() => setCopiedDniMsgId(null), 2000);
+                                                            }}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '3px',
+                                                                background: isCopied ? '#DCFCE7' : '#EFF6FF',
+                                                                border: `1px solid ${isCopied ? '#86EFAC' : '#BFDBFE'}`,
+                                                                color: isCopied ? '#15803D' : '#1D4ED8',
+                                                                fontSize: '0.70rem',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer',
+                                                                padding: '2px 7px',
+                                                                borderRadius: '12px'
+                                                            }}
+                                                            title={`Copiar DNI detectado: ${detectedDni}`}
+                                                        >
+                                                            {isCopied ? <Check size={11} color="#15803D" /> : <Copy size={11} />}
+                                                            <span>{isCopied ? '¡DNI Copiado!' : `DNI: ${detectedDni}`}</span>
+                                                        </button>
+                                                    );
+                                                })()}
+
+                                                {/* Botón Copiar Texto Completo del Mensaje */}
+                                                {msg.text && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            navigator.clipboard.writeText(msg.text);
+                                                            setCopiedMsgId(msg.id);
+                                                            setTimeout(() => setCopiedMsgId(null), 2000);
+                                                        }}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '3px',
+                                                            background: copiedMsgId === msg.id ? '#DCFCE7' : 'none',
+                                                            border: 'none',
+                                                            color: copiedMsgId === msg.id ? '#15803D' : '#475569',
+                                                            fontSize: '0.70rem',
+                                                            fontWeight: 700,
+                                                            cursor: 'pointer',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px'
+                                                        }}
+                                                        title="Copiar texto del mensaje"
+                                                    >
+                                                        {copiedMsgId === msg.id ? <Check size={11} color="#15803D" /> : <Copy size={11} />}
+                                                        <span>{copiedMsgId === msg.id ? 'Copiado' : 'Copiar'}</span>
+                                                    </button>
+                                                )}
+
+                                                <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 2px' }} />
+
+                                                {/* Botón Responder */}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setReplyingToMessage({
+                                                            id: msg.id,
+                                                            senderName: msg.senderName,
+                                                            text: msg.text || msg.caption || (msg.type === 'audio' ? 'Nota de voz' : msg.type === 'image' ? 'Foto médica' : msg.type === 'sticker' ? 'Sticker' : 'Adjunto'),
+                                                            type: msg.type,
+                                                            isPatient
+                                                        });
+                                                        inputRef.current?.focus();
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: '#0284C7',
+                                                        fontSize: '0.70rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px'
+                                                    }}
+                                                    title="Responder citando este mensaje"
+                                                >
+                                                    <Reply size={12} />
+                                                    <span>Responder</span>
+                                                </button>
+                                            </div>
+                                        )}
                                 </div>
                             </div>
                         </React.Fragment>
