@@ -416,6 +416,19 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                                 sql={SQL_QX_SUSPENSIONES_CAUSALES}
                             />
 
+                            {/* 3.4.B Auditoría de Trazabilidad: Motivo 3 ('Ya fue realizado') y Cesáreas Anticipadas */}
+                            <QueryCard
+                                id="qx_motivo3_trazabilidad"
+                                title="4.B Trazabilidad de Motivo 3 ('Ya fue realizado') y Anticipaciones Obstétricas (Cesáreas)"
+                                desc="Resuelve la paradoja del Causal 3 realizando autocruce (Self-Join) entre turnos de agenda y protocolos en ventana +/-30 días. Distingue cesáreas que nacen por urgencia antes del turno electivo y reprogramaciones diferidas que sí se efectuaron, calculando la Tasa Neta Real de Pérdida Quirúrgica."
+                                origin="dbo.TurnosQuirurgicos OUTER APPLY dbo.ProtocolosQuirurgicos (SALUS)"
+                                target="quirofano_trazabilidad_efectivizadas (Supabase)"
+                                frequency="Semanal / Auditoría de Calidad QOAG"
+                                copied={copiedIndex === 'qx_motivo3'}
+                                onCopy={() => handleCopy(SQL_QX_MOTIVO3_TRAZABILIDAD, 'qx_motivo3')}
+                                sql={SQL_QX_MOTIVO3_TRAZABILIDAD}
+                            />
+
                             {/* 3.5 Ranking y Rendimiento de Cirujanos */}
                             <QueryCard
                                 id="qx_cirujanos"
@@ -1283,6 +1296,71 @@ GROUP BY
         ELSE '13. Otros (edilicios/técnicos)'
     END
 ORDER BY CantidadSuspensiones DESC;`;
+
+const SQL_QX_MOTIVO3_TRAZABILIDAD = `-- 4.B TRAZABILIDAD Y AUDITORÍA DE CALIDAD: PARADOJA DEL MOTIVO 3 ("YA FUE REALIZADO") Y CESÁREAS
+-- Identifica turnos dados de baja en agenda que efectivamente se realizaron con antelación (urgencias/cesáreas) o posterioridad (reprogramación).
+DECLARE @FechaInicio DATE = '2026-10-01';
+DECLARE @FechaFin    DATE = '2026-10-31';
+
+SELECT 
+    tq.IdTurno,
+    tq.IdPaciente,
+    pac.NombreCompleto AS Paciente,
+    pac.NumeroDocumento AS DNI,
+    tq.FechaProgramada AS FechaTurnoCancelado,
+    tq.HoraProgramada,
+    med.NombreCompleto AS CirujanoTurno,
+    esp.Nombre AS Especialidad,
+    ms.CodigoMotivo,
+    ms.Descripcion AS MotivoRegistrado,
+    tq.MotivoSuspension AS ObservacionMotivo,
+    
+    -- Trazabilidad con la cirugía que efectivamente se realizó en el Sanatorio
+    pq.IdProtocolo AS IdProtocoloRealizado,
+    pq.FechaCirugia AS FechaCirugiaRealizada,
+    pq.HoraEntradaSala AS HoraEntradaReal,
+    sqReal.NombreSala AS SalaEfectiva,
+    medReal.NombreCompleto AS CirujanoReal,
+    
+    -- Tipificación clínica de auditoría de calidad
+    CASE 
+        WHEN pq.IdProtocolo IS NOT NULL AND pq.FechaCirugia < tq.FechaProgramada 
+            THEN 'ANTICIPACION_OBSTETRICA_O_URGENCIA'
+        WHEN pq.IdProtocolo IS NOT NULL AND pq.FechaCirugia > tq.FechaProgramada 
+            THEN 'REPROGRAMACION_DIFERIDA_EFECTIVIZADA'
+        WHEN pq.IdProtocolo IS NOT NULL AND pq.FechaCirugia = tq.FechaProgramada 
+            THEN 'REASIGNACION_SALA_MISMO_DIA'
+        ELSE 'SUSPENSION_SIN_EFECTIVIZACION_DETECTADA'
+    END AS TipoTrazabilidadAuditoria,
+    
+    DATEDIFF(DAY, tq.FechaProgramada, pq.FechaCirugia) AS DiasDiferencia
+FROM dbo.TurnosQuirurgicos tq
+LEFT JOIN dbo.MotivosSuspension ms ON tq.IdMotivoSuspension = ms.IdMotivo
+INNER JOIN dbo.Pacientes pac ON tq.IdPaciente = pac.IdPaciente
+LEFT JOIN dbo.Medicos med ON tq.IdMedicoCirujano = med.IdMedico
+LEFT JOIN dbo.Especialidades esp ON tq.IdEspecialidad = esp.IdEspecialidad
+
+-- Autocruce con Protocolos Quirúrgicos en ventana de +/- 30 días
+OUTER APPLY (
+    SELECT TOP 1 
+        pqInner.IdProtocolo,
+        pqInner.FechaCirugia,
+        pqInner.HoraEntradaSala,
+        pqInner.IdSala,
+        pqInner.IdMedicoCirujano
+    FROM dbo.ProtocolosQuirurgicos pqInner
+    WHERE pqInner.IdPaciente = tq.IdPaciente
+      AND pqInner.EstadoCirugia = 'Realizada'
+      AND pqInner.FechaCirugia BETWEEN DATEADD(DAY, -30, tq.FechaProgramada) AND DATEADD(DAY, 30, tq.FechaProgramada)
+    ORDER BY ABS(DATEDIFF(MINUTE, CAST(pqInner.FechaCirugia AS DATETIME), CAST(tq.FechaProgramada AS DATETIME))) ASC
+) pq
+LEFT JOIN dbo.SalasQuirurgicas sqReal ON pq.IdSala = sqReal.IdSala
+LEFT JOIN dbo.Medicos medReal ON pq.IdMedicoCirujano = medReal.IdMedico
+
+WHERE tq.Estado IN ('Suspendido', 'Cancelado')
+  AND (ms.CodigoMotivo IN (1, 3) OR tq.MotivoSuspension LIKE '%ya fue real%' OR tq.MotivoSuspension LIKE '%reprogram%')
+  AND tq.FechaProgramada BETWEEN @FechaInicio AND @FechaFin
+ORDER BY tq.FechaProgramada DESC;`;
 
 const SQL_QX_CIRUJANOS_RANKING = `-- 5. RANKING Y RENDIMIENTO DE CIRUJANOS (VOLUMEN Y SUSPENSIONES)
 SELECT 

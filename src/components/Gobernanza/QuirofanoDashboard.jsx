@@ -703,13 +703,29 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
             suspendidas: Math.round(suspendidas * (p.suspendidas / 306))
         }));
 
+    // Cálculo de Tasa Neta Real (Gobernanza QOAG - Ajuste Causal 3 'Ya fue realizado' y anticipaciones)
+    const motivo3Item = (motivosSuspension || []).find(m => m.codigo === 3);
+    const motivo1Item = (motivosSuspension || []).find(m => m.codigo === 1);
+    const motivo3Count = motivo3Item ? motivo3Item.cantidad : 0;
+    const motivo1Count = motivo1Item ? motivo1Item.cantidad : 0;
+    const suspendidasNetas = Math.max(0, suspendidas - motivo3Count);
+    const tasaSuspBruta = tasaSusp;
+    const tasaSuspNeta = total > 0 ? ((suspendidasNetas / total) * 100).toFixed(2) : '0.00';
+    const impactoPuntosPct = (Number(tasaSuspBruta) - Number(tasaSuspNeta)).toFixed(2);
+
     return {
         dynamicMetrics: {
             ambitoFilter,
             total,
             realizadas,
             suspendidas,
+            suspendidasNetas,
             tasaSusp,
+            tasaSuspBruta,
+            tasaSuspNeta,
+            motivo3Count,
+            motivo1Count,
+            impactoPuntosPct,
             centrales,
             centralesRealizadas,
             centralesSuspendidas,
@@ -1263,7 +1279,7 @@ export default function QuirofanoDashboard({
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 10; motDesc = '10. Ortopedia / Prótesis';
             } else if (rawMotivo.includes('cirujano') || rawMotivo.includes('medico')) {
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 8; motDesc = '8. Otro motivo de cirujanos';
-            } else if (rawMotivo.includes('realizad')) {
+            } else if (rawMotivo.includes('realizad') || rawMotivo.includes('ya fue') || rawMotivo.includes('nacio') || rawMotivo.includes('nacimiento') || rawMotivo.includes('parto') || rawMotivo.includes('anticip')) {
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 3; motDesc = '3. Ya fue realizado';
             } else {
                 // Distribución proporcional clínica según el catálogo oficial de la institución
@@ -1696,18 +1712,29 @@ export default function QuirofanoDashboard({
                     </div>
 
                     <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                            {ambitoFilter === 'CENTRALES' 
-                                ? 'Tasa Suspensión (Centrales)' 
-                                : ambitoFilter === 'HDD' 
-                                    ? 'Tasa Suspensión (HdD)' 
-                                    : 'Tasa de Suspensión Neta'}
+                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                                {ambitoFilter === 'CENTRALES' 
+                                    ? 'Tasa Suspensión (Centrales)' 
+                                    : ambitoFilter === 'HDD' 
+                                        ? 'Tasa Suspensión (HdD)' 
+                                        : 'Tasa Neta Real (QOAG)'}
+                            </span>
+                            {dynamicMetrics && dynamicMetrics.motivo3Count > 0 && (
+                                <span style={{ fontSize: '0.62rem', background: '#059669', color: '#FFFFFF', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }} title="Impacto del ajuste por cirugías ya realizadas y cesáreas anticipadas">
+                                    -{dynamicMetrics.impactoPuntosPct} p.p.
+                                </span>
+                            )}
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#FCD34D' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSusp}%` : '0%'}
+                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSuspNeta}%` : '0%'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '2px' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.suspendidas} cancelaciones netas s/ ${dynamicMetrics.total} turnos` : '0 cancelaciones'}
+                        <div style={{ fontSize: '0.74rem', opacity: 0.90, marginTop: '2px', lineHeight: 1.35 }}>
+                            {loadingSurgeries ? '...' : dynamicMetrics ? (
+                                <>
+                                    <strong>{dynamicMetrics.suspendidasNetas}</strong> netas s/ {dynamicMetrics.total} turnos • Bruta: <strong>{dynamicMetrics.tasaSuspBruta}%</strong> ({dynamicMetrics.motivo3Count} ya realizadas)
+                                </>
+                            ) : '0 cancelaciones'}
                         </div>
                     </div>
 
@@ -2656,6 +2683,159 @@ export default function QuirofanoDashboard({
                                     <Eye size={13} /> {dynamicMetrics.suspendidas} susp. (Auditar)
                                 </button>
                             )}
+                        </div>
+                    </div>
+
+                    {/* MÓDULO ESPECIAL DE GOBERNANZA CLÍNICA: CAUSAL 3 ('YA FUE REALIZADO') Y CESÁREAS ANTICIPADAS */}
+                    <div style={{
+                        background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                        borderRadius: '16px',
+                        padding: '22px 24px',
+                        color: '#FFFFFF',
+                        border: '1.5px solid #334155',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', maxWidth: '820px' }}>
+                                <div style={{
+                                    width: '44px',
+                                    height: '44px',
+                                    borderRadius: '12px',
+                                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)'
+                                }}>
+                                    <ShieldCheck size={24} color="#FFFFFF" />
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#F8FAFC' }}>
+                                            Auditoría Clínica de Gobernanza: Paradoja del Causal 3 ("Ya fue realizado")
+                                        </h3>
+                                        <span style={{ fontSize: '0.68rem', background: '#0284C7', color: '#FFFFFF', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
+                                            Estándar QOAG / SALUS
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.5 }}>
+                                        <strong>Regla de Gobernanza Institucional:</strong> En el sistema SALUS los turnos de quirófano <em>nunca se borran</em> para preservar la trazabilidad legal y la reserva de bloque. Cuando una paciente obstétrica se opera de urgencia antes de la fecha programada (ej. cesárea en semana 38 con turno agendado para semana 39) o cuando una cirugía se reprograma y se efectiviza en otra fecha, el turno remanente se clasifica como <strong>"3. Ya fue realizado"</strong>. No representa una cirugía perdida ni un fallo asistencial.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSuspensionGroup({
+                                        key: 'CAUSAL',
+                                        codigo: 3,
+                                        label: '3. Ya fue realizado',
+                                        causales: 'Causal #3 (Anticipaciones obstétricas por urgencia y reprogramadas efectivizadas)'
+                                    })}
+                                    style={{
+                                        background: '#0284C7',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        padding: '8px 14px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.4)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Ver detalle nominal de pacientes con Causal 3"
+                                >
+                                    <Eye size={14} /> Auditar Pacientes Causal 3 ({dynamicMetrics ? dynamicMetrics.motivo3Count : 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSqlModal(true)}
+                                    style={{
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: '#E2E8F0',
+                                        border: '1px solid rgba(255,255,255,0.2)',
+                                        borderRadius: '8px',
+                                        padding: '8px 14px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                    title="Ver query SQL canónica 4.B de autocruce y trazabilidad en el manual institucional"
+                                >
+                                    <BookOpen size={14} /> Ver Query SQL 4.B
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Comparativa Matemática de Tasas: Bruta vs Neta */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                            gap: '12px',
+                            background: 'rgba(15, 23, 42, 0.6)',
+                            borderRadius: '12px',
+                            padding: '14px 18px',
+                            border: '1px solid #334155'
+                        }}>
+                            <div>
+                                <div style={{ fontSize: '0.70rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', marginBottom: '3px' }}>
+                                    1. Tasa Administrativa (Bruta)
+                                </div>
+                                <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#FCD34D' }}>
+                                    {dynamicMetrics ? `${dynamicMetrics.tasaSuspBruta}%` : '0%'}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#CBD5E1', marginTop: '2px' }}>
+                                    {dynamicMetrics ? `${dynamicMetrics.suspendidas} turnos cancelados en agenda` : '0'}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style={{ fontSize: '0.70rem', color: '#38BDF8', fontWeight: 700, textTransform: 'uppercase', marginBottom: '3px' }}>
+                                    2. Efectivizadas / Anticipadas (Causal 3)
+                                </div>
+                                <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#38BDF8' }}>
+                                    {dynamicMetrics ? dynamicMetrics.motivo3Count : 0} <span style={{ fontSize: '0.80rem', fontWeight: 600 }}>cirugías</span>
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#BAE6FD', marginTop: '2px' }}>
+                                    Reducción de distorsión: <strong>-{dynamicMetrics ? dynamicMetrics.impactoPuntosPct : '0.00'} p.p.</strong>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style={{ fontSize: '0.70rem', color: '#34D399', fontWeight: 700, textTransform: 'uppercase', marginBottom: '3px' }}>
+                                    3. Tasa Neta Real (Calidad QOAG)
+                                </div>
+                                <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#34D399' }}>
+                                    {dynamicMetrics ? `${dynamicMetrics.tasaSuspNeta}%` : '0%'}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#A7F3D0', marginTop: '2px' }}>
+                                    {dynamicMetrics ? `${dynamicMetrics.suspendidasNetas} cancelaciones reales efectivas` : '0'}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div style={{ fontSize: '0.70rem', color: '#E2E8F0', fontWeight: 700, textTransform: 'uppercase', marginBottom: '3px' }}>
+                                    4. Trazabilidad SALUS
+                                </div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#F1F5F9', marginTop: '6px' }}>
+                                    Inalterabilidad del Dato
+                                </div>
+                                <div style={{ fontSize: '0.70rem', color: '#94A3B8', marginTop: '2px' }}>
+                                    Ningún turno se borra; auditoría cruza turnos vs protocolos reales.
+                                </div>
+                            </div>
                         </div>
                     </div>
 
