@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-    Home, Stethoscope, MessageCircle, DollarSign, AlertTriangle,
+    Home, Stethoscope, DollarSign, AlertTriangle,
     Clock, TrendingUp, ArrowRight, RefreshCw, Loader2,
     Calendar, Phone, Users, Activity, ChevronRight,
     Zap, Shield, BookOpen, ClipboardCheck, Brain,
@@ -159,7 +159,7 @@ export default function HomePanel({ onNavigate }) {
             {/* ═══════ KPI GRID ═══════ */}
             {loading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-                    {Array.from({ length: 4 }).map((_, i) => <SkeletonKPI key={i} />)}
+                    {Array.from({ length: 3 }).map((_, i) => <SkeletonKPI key={i} />)}
                 </div>
             ) : kpis && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
@@ -175,13 +175,6 @@ export default function HomePanel({ onNavigate }) {
                         color={kpis.cirugias_sin_confirmar > 0 ? '#F59E0B' : '#10B981'}
                         bg={kpis.cirugias_sin_confirmar > 0 ? '#FFFBEB' : '#ECFDF5'}
                         onClick={onNavigate ? () => onNavigate('cirugias') : undefined}
-                    />
-                    <KPICard
-                        icon={MessageCircle} label="Mensajes sin leer" value={kpis.mensajes_sin_leer}
-                        subtext={kpis.mensajes_sin_leer > 0 ? 'Pendientes de respuesta' : 'Inbox limpio'}
-                        color={kpis.mensajes_sin_leer > 0 ? '#3B82F6' : '#10B981'}
-                        bg={kpis.mensajes_sin_leer > 0 ? '#EFF6FF' : '#ECFDF5'}
-                        onClick={onNavigate ? () => onNavigate('mensajeria') : undefined}
                     />
                     <KPICard
                         icon={DollarSign} label="Deuda activa" value={formatCurrency(kpis.deuda_total)}
