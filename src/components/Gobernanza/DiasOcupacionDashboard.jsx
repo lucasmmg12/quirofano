@@ -2722,39 +2722,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                         {/* Botones Fórmulas & SQL e Indicadores - Ocultados a solicitud */}
 
-                        {/* Botón Gantt Camas UCI */}
-                        {sectorId === 'UCI' && (
-                            <button
-                                onClick={() => { setUciActiveTab('camas'); setViewMode('gantt'); }}
-                                style={{
-                                    background: viewMode === 'gantt' ? '#1E40AF' : '#F8FAFC',
-                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
-                                    border: viewMode === 'gantt' ? 'none' : '1px solid #CBD5E1',
-                                    borderRadius: '8px',
-                                    padding: '6px 12px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 700,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer'
-                                }}
-                                title="Abrir cronograma Gantt de ocupación por cama"
-                            >
-                                <Bed size={15} />
-                                Gantt Camas UCI
-                                <span style={{
-                                    fontSize: '0.65rem',
-                                    background: viewMode === 'gantt' ? '#3B82F6' : '#DBEAFE',
-                                    color: viewMode === 'gantt' ? '#FFFFFF' : '#1E40AF',
-                                    padding: '1px 5px',
-                                    borderRadius: '4px',
-                                    fontWeight: 700
-                                }}>
-                                    16 Camas
-                                </span>
-                            </button>
-                        )}
 
                         {/* Selector Especialidad Multi-Select para UCI */}
                         {sectorId === 'UCI' && (
