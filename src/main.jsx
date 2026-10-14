@@ -67,7 +67,16 @@ class ErrorBoundary extends React.Component {
                         }, this.state.errorInfo.componentStack?.slice(0, 500))
                     ),
                     React.createElement('button', {
-                        onClick: () => window.location.reload(),
+                        onClick: () => {
+                            try {
+                                if ('caches' in window) {
+                                    caches.keys().then(names => {
+                                        names.forEach(name => caches.delete(name));
+                                    });
+                                }
+                            } catch (_) {}
+                            window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+                        },
                         style: {
                             width: '100%', padding: 14, borderRadius: 10, border: 'none',
                             background: '#1E4078', color: '#fff', fontSize: '0.9rem',
