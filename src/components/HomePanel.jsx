@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-    Home, Stethoscope, DollarSign, AlertTriangle,
+    Home, Stethoscope, MessageCircle, DollarSign, AlertTriangle,
     Clock, TrendingUp, ArrowRight, RefreshCw, Loader2,
     Calendar, Phone, Users, Activity, ChevronRight,
     Zap, Shield, BookOpen, ClipboardCheck, Brain,
