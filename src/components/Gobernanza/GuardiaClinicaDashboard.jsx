@@ -325,68 +325,7 @@ export default function GuardiaClinicaDashboard({
         const [, month] = periodoStr.split('-');
         const mesesCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
         const mIdx = parseInt(month, 10) - 1;
-        
-    // ─── MÉTRICAS ENRIQUECIDAS DEL TABLERO NUCLEAR (GOBERNANZA DE DATOS) ───
-    const enrichedMetrics = useMemo(() => {
-        // Cirugías del período
-        const cirugiasPeriodo = cirugiasConversionAll.filter(c => c.periodo === selectedPeriodo);
-        const urgenciasReales = cirugiasPeriodo.filter(c => {
-            const t = (c.tipo_cirugia || '').toLowerCase();
-            return !t.includes('programad') && !t.includes('especialista');
-        });
-        const programadasExcluidas = cirugiasPeriodo.filter(c => {
-            const t = (c.tipo_cirugia || '').toLowerCase();
-            return t.includes('programad') || t.includes('especialista');
-        });
-
-        // Triage del período y mapa horario 24 horas
-        const triagesPeriodo = triagePacientesAll.filter(t => t.periodo === selectedPeriodo);
-        const hourlyTriage = Array.from({ length: 24 }, (_, hour) => {
-            const hStr = String(hour).padStart(2, '0');
-            const triagesAtHour = triagesPeriodo.filter(t => t.hora_llegada && t.hora_llegada.startsWith(hStr));
-            return {
-                hora: `${hStr}:00`,
-                horaNum: hour,
-                triages: triagesAtHour.length,
-                isBajaCobertura: hour < 7 || (hour >= 13 && hour <= 14) || hour >= 22
-            };
-        });
-
-        // Destinos de internación y UCI del resumen
-        const destinos = currentData.destinos_distribucion || [];
-        const internacionPisoRow = destinos.find(d => d.destino?.toLowerCase().includes('piso') || d.destino?.toLowerCase().includes('internaci'));
-        const uciRow = destinos.find(d => d.destino?.toLowerCase().includes('uci') || d.destino?.toLowerCase().includes('terapia'));
-
-        const cantInternacionPiso = internacionPisoRow ? internacionPisoRow.cantidad : 0;
-        const pctInternacionPiso = internacionPisoRow ? internacionPisoRow.porcentaje : 0;
-
-        const cantUCI = uciRow ? uciRow.cantidad : 0;
-        const pctUCI = uciRow ? uciRow.porcentaje : 0;
-
-        // Tiempos Puerta-Médico calculados:
-        const esperaBase = currentData.espera_medico_min_promedio || 30;
-        const esperaDiurna = Math.round(esperaBase * 1.08 * 10) / 10;
-        const esperaNocturna = Math.max(10, Math.round(esperaBase * 0.72 * 10) / 10);
-
-        return {
-            totalCirugias: cirugiasPeriodo.length,
-            urgenciasRealesCount: urgenciasReales.length,
-            urgenciasRealesPct: currentData.total_consultas > 0 
-                ? Number(((urgenciasReales.length / currentData.total_consultas) * 100).toFixed(2)) 
-                : 0,
-            programadasExcluidasCount: programadasExcluidas.length,
-            hourlyTriage,
-            cantInternacionPiso,
-            pctInternacionPiso,
-            cantUCI,
-            pctUCI,
-            esperaDiurna,
-            esperaNocturna,
-            esperaPuertaTriage: 12.4 // min promedio normado
-        };
-    }, [cirugiasConversionAll, triagePacientesAll, selectedPeriodo, currentData]);
-
-    return (mIdx >= 0 && mIdx < 12) ? mesesCortos[mIdx] : periodoStr;
+        return (mIdx >= 0 && mIdx < 12) ? mesesCortos[mIdx] : periodoStr;
     };
 
     // Serie temporal cronológica (Ene -> Sep 2026) para los gráficos de evolución continua
@@ -468,6 +407,68 @@ export default function GuardiaClinicaDashboard({
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
     }, [currentData]);
+
+    // ─── MÉTRICAS ENRIQUECIDAS DEL TABLERO NUCLEAR (GOBERNANZA DE DATOS) ───
+    const enrichedMetrics = useMemo(() => {
+        // Cirugías del período
+        const cirugiasPeriodo = cirugiasConversionAll.filter(c => c.periodo === selectedPeriodo);
+        const urgenciasReales = cirugiasPeriodo.filter(c => {
+            const t = (c.tipo_cirugia || '').toLowerCase();
+            return !t.includes('programad') && !t.includes('especialista');
+        });
+        const programadasExcluidas = cirugiasPeriodo.filter(c => {
+            const t = (c.tipo_cirugia || '').toLowerCase();
+            return t.includes('programad') || t.includes('especialista');
+        });
+
+        // Triage del período y mapa horario 24 horas
+        const triagesPeriodo = triagePacientesAll.filter(t => t.periodo === selectedPeriodo);
+        const hourlyTriage = Array.from({ length: 24 }, (_, hour) => {
+            const hStr = String(hour).padStart(2, '0');
+            const triagesAtHour = triagesPeriodo.filter(t => t.hora_llegada && t.hora_llegada.startsWith(hStr));
+            return {
+                hora: `${hStr}:00`,
+                horaNum: hour,
+                triages: triagesAtHour.length,
+                isBajaCobertura: hour < 7 || (hour >= 13 && hour <= 14) || hour >= 22
+            };
+        });
+
+        // Destinos de internación y UCI del resumen
+        const destinos = currentData?.destinos_distribucion || [];
+        const internacionPisoRow = destinos.find(d => d.destino?.toLowerCase().includes('piso') || d.destino?.toLowerCase().includes('internaci'));
+        const uciRow = destinos.find(d => d.destino?.toLowerCase().includes('uci') || d.destino?.toLowerCase().includes('terapia'));
+
+        const cantInternacionPiso = internacionPisoRow ? internacionPisoRow.cantidad : 0;
+        const pctInternacionPiso = internacionPisoRow ? internacionPisoRow.porcentaje : 0;
+
+        const cantUCI = uciRow ? uciRow.cantidad : 0;
+        const pctUCI = uciRow ? uciRow.porcentaje : 0;
+
+        // Tiempos Puerta-Médico calculados:
+        const esperaBase = currentData?.espera_medico_min_promedio || 30;
+        const esperaDiurna = Math.round(esperaBase * 1.08 * 10) / 10;
+        const esperaNocturna = Math.max(10, Math.round(esperaBase * 0.72 * 10) / 10);
+
+        const totalConsultas = currentData?.total_consultas || 0;
+
+        return {
+            totalCirugias: cirugiasPeriodo.length,
+            urgenciasRealesCount: urgenciasReales.length,
+            urgenciasRealesPct: totalConsultas > 0 
+                ? Number(((urgenciasReales.length / totalConsultas) * 100).toFixed(2)) 
+                : 0,
+            programadasExcluidasCount: programadasExcluidas.length,
+            hourlyTriage,
+            cantInternacionPiso,
+            pctInternacionPiso,
+            cantUCI,
+            pctUCI,
+            esperaDiurna,
+            esperaNocturna,
+            esperaPuertaTriage: 12.4 // min promedio normado
+        };
+    }, [cirugiasConversionAll, triagePacientesAll, selectedPeriodo, currentData]);
 
     // Copiar query al portapapeles
     const handleCopySql = (sql) => {
