@@ -9,7 +9,8 @@ import {
     BarChart3, Eye, ShieldCheck, ChevronRight,
     Scissors, Stethoscope, Droplets, Building2, Flame, Check,
     AlertCircle, FileText, ArrowUpRight, ArrowDownRight, Layers, UserCheck,
-    BookOpen, HelpCircle, X, Search, Info, FileSpreadsheet, Download
+    BookOpen, HelpCircle, X, Search, Info, FileSpreadsheet, Download,
+    Lock, Unlock, Filter
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -798,6 +799,7 @@ export default function QuirofanoDashboard({
     const [sortMotivosBy, setSortMotivosBy] = useState('codigo'); // 'codigo' | 'cantidad'
     const [allSurgeriesRows, setAllSurgeriesRows] = useState([]);
     const [ambitoFilter, setAmbitoFilter] = useState('TODOS'); // 'TODOS' | 'CENTRALES' | 'HDD'
+    const [selectedCrossFilter, setSelectedCrossFilter] = useState(null); // { type: 'OBRA_SOCIAL'|'CIRUJANO'|'ESPECIALIDAD', value: string, label: string }
     const [loadingSurgeries, setLoadingSurgeries] = useState(false);
     const [showNominalModal, setShowNominalModal] = useState(false);
     const [nominalSearch, setNominalSearch] = useState('');
@@ -871,28 +873,115 @@ export default function QuirofanoDashboard({
         return () => { isCancelled = true; };
     }, [effectiveDesde, effectiveHasta]);
 
-    const compiledData = useMemo(() => {
+    // Resetear filtro cruzado cuando cambia el período seleccionado
+    useEffect(() => {
+        setSelectedCrossFilter(null);
+    }, [effectiveDesde, effectiveHasta]);
+
+    // Función para activar o desactivar (toggle) un filtro cruzado en Cirujanos, Especialidad u Obra Social
+    const handleToggleCrossFilter = (type, value) => {
+        if (!value) return;
+        if (
+            selectedCrossFilter && 
+            selectedCrossFilter.type === type && 
+            selectedCrossFilter.value.trim().toUpperCase() === value.trim().toUpperCase()
+        ) {
+            setSelectedCrossFilter(null);
+        } else {
+            setSelectedCrossFilter({
+                type,
+                value: value.trim(),
+                label: value.trim()
+            });
+        }
+    };
+
+    const handleClearCrossFilter = () => {
+        setSelectedCrossFilter(null);
+    };
+
+    // Filas supeditadas al filtro cruzado activo (si lo hubiere)
+    const scopedSurgeriesRows = useMemo(() => {
+        if (!selectedCrossFilter || !allSurgeriesRows || allSurgeriesRows.length === 0) {
+            return allSurgeriesRows;
+        }
+        const filterVal = selectedCrossFilter.value.trim().toUpperCase();
+
+        if (selectedCrossFilter.type === 'OBRA_SOCIAL') {
+            return allSurgeriesRows.filter(s => (s.obra_social || '').trim().toUpperCase() === filterVal);
+        }
+        if (selectedCrossFilter.type === 'CIRUJANO') {
+            return allSurgeriesRows.filter(s => (s.medico || '').trim().toUpperCase() === filterVal);
+        }
+        if (selectedCrossFilter.type === 'ESPECIALIDAD') {
+            return allSurgeriesRows.filter(s => {
+                const esp = s.modulo ? s.modulo.replace(/^\(CX\)\s*/i, '').trim().toUpperCase() : 'CIRUGIA GENERAL';
+                return esp === filterVal;
+            });
+        }
+        return allSurgeriesRows;
+    }, [allSurgeriesRows, selectedCrossFilter]);
+
+    // Métricas globales sin filtros cruzados (para mantener opciones visibles en las tarjetas)
+    const unfilteredCompiledData = useMemo(() => {
         if (!allSurgeriesRows || allSurgeriesRows.length === 0) return null;
         return compileQuirofanoMetrics(allSurgeriesRows, ambitoFilter);
     }, [allSurgeriesRows, ambitoFilter]);
 
+    // Métricas supeditadas al filtro cruzado (recalcula KPIs, salas, procedimientos, suspensiones)
+    const compiledData = useMemo(() => {
+        if (!scopedSurgeriesRows || scopedSurgeriesRows.length === 0) return null;
+        return compileQuirofanoMetrics(scopedSurgeriesRows, ambitoFilter);
+    }, [scopedSurgeriesRows, ambitoFilter]);
+
     const dynamicMetrics = compiledData ? compiledData.dynamicMetrics : null;
     const activeSalasData = dynamicMetrics ? dynamicMetrics.salasData : SALAS_DATA;
-    const activeEspecialidadesData = dynamicMetrics ? dynamicMetrics.especialidades : ESPECIALIDADES_DATA;
-    const activeObrasSocialesData = dynamicMetrics ? dynamicMetrics.obrasSociales : OBRAS_SOCIALES_DATA;
     const activeMotivosSuspension = compiledData ? compiledData.motivosSuspension : MOTIVOS_SUSPENSION_OFICIAL;
     const activeProcedimientosRealizados = compiledData ? compiledData.procedimientosRealizados : TOP_PROCEDIMIENTOS_REALIZADOS;
     const activeProcedimientosSuspendidos = compiledData ? compiledData.procedimientosSuspendidos : TOP_PROCEDIMIENTOS_SUSPENDIDOS;
 
-    const filteredCirujanos = useMemo(() => {
-        const source = dynamicMetrics ? dynamicMetrics.cirujanos : CIRUJANOS_DATA;
+    // Tarjeta Ranking Cirujanos:
+    // Si el filtro activo es CIRUJANO, mantenemos la lista global para poder cambiar de cirujano con 1 clic.
+    // Si el filtro activo es OBRA_SOCIAL o ESPECIALIDAD, mostramos los cirujanos supeditados a ese filtro.
+    const displayCirujanos = useMemo(() => {
+        let source = [];
+        if (selectedCrossFilter && selectedCrossFilter.type === 'CIRUJANO') {
+            source = unfilteredCompiledData?.dynamicMetrics?.cirujanos || CIRUJANOS_DATA;
+        } else {
+            source = dynamicMetrics ? dynamicMetrics.cirujanos : CIRUJANOS_DATA;
+        }
         if (!searchCirujano.trim()) return source;
         const q = searchCirujano.toLowerCase();
         return source.filter(c => 
             c.nombre.toLowerCase().includes(q) ||
             c.especialidad.toLowerCase().includes(q)
         );
-    }, [searchCirujano, dynamicMetrics]);
+    }, [selectedCrossFilter, unfilteredCompiledData, dynamicMetrics, searchCirujano]);
+
+    // Tarjeta Cirugías por Especialidad:
+    // Si el filtro activo es ESPECIALIDAD, mantenemos la lista global para poder cambiar de especialidad con 1 clic.
+    // Si el filtro activo es OBRA_SOCIAL o CIRUJANO, mostramos las especialidades supeditadas.
+    const displayEspecialidades = useMemo(() => {
+        if (selectedCrossFilter && selectedCrossFilter.type === 'ESPECIALIDAD') {
+            return unfilteredCompiledData?.dynamicMetrics?.especialidades || ESPECIALIDADES_DATA;
+        }
+        return dynamicMetrics ? dynamicMetrics.especialidades : ESPECIALIDADES_DATA;
+    }, [selectedCrossFilter, unfilteredCompiledData, dynamicMetrics]);
+
+    // Tarjeta Demanda por Obra Social:
+    // Si el filtro activo es OBRA_SOCIAL, mantenemos la lista global para poder cambiar de obra social con 1 clic.
+    // Si el filtro activo es CIRUJANO o ESPECIALIDAD, mostramos las obras sociales supeditadas.
+    const displayObrasSociales = useMemo(() => {
+        if (selectedCrossFilter && selectedCrossFilter.type === 'OBRA_SOCIAL') {
+            return unfilteredCompiledData?.dynamicMetrics?.obrasSociales || OBRAS_SOCIALES_DATA;
+        }
+        return dynamicMetrics ? dynamicMetrics.obrasSociales : OBRAS_SOCIALES_DATA;
+    }, [selectedCrossFilter, unfilteredCompiledData, dynamicMetrics]);
+
+    // Referencias para retrocompatibilidad
+    const filteredCirujanos = displayCirujanos;
+    const activeEspecialidadesData = displayEspecialidades;
+    const activeObrasSocialesData = displayObrasSociales;
 
     const formattedPeriodo = useMemo(() => {
         if (!effectiveDesde || !effectiveHasta) return 'Histórico Institucional';
@@ -1056,7 +1145,7 @@ export default function QuirofanoDashboard({
     // Función unificada de exportación a Excel con diseño visual estilizado, colores institucionales y período analizado destacado
     const handleExportAllQuirofanoExcel = async (customRows = null, customFilename = null) => {
         try {
-            const rowsToExport = customRows || allSurgeriesRows;
+            const rowsToExport = customRows || scopedSurgeriesRows;
             if (!rowsToExport || rowsToExport.length === 0) {
                 addToast?.('No hay cirugías cargadas en el período seleccionado para exportar', 'warning');
                 return;
@@ -1088,7 +1177,7 @@ export default function QuirofanoDashboard({
 
     // Cirugías filtradas en el modal interactivo
     const filteredNominalRows = useMemo(() => {
-        let list = allSurgeriesRows;
+        let list = scopedSurgeriesRows;
 
         if (nominalFilterStatus === 'REALIZADAS') {
             list = list.filter(s => s.status !== 'rojo' && s.status !== 'suspendida');
@@ -1114,13 +1203,13 @@ export default function QuirofanoDashboard({
         }
 
         return list;
-    }, [allSurgeriesRows, nominalFilterStatus, nominalFilterSala, nominalSearch]);
+    }, [scopedSurgeriesRows, nominalFilterStatus, nominalFilterSala, nominalSearch]);
 
     // ─── PACIENTES SUSPENDIDOS CLASIFICADOS CON CAUSAL INSTITUCIONAL (1..13) Y CATEGORÍA ───
     const classifiedSuspendedSurgeries = useMemo(() => {
-        if (!allSurgeriesRows || allSurgeriesRows.length === 0) return [];
+        if (!scopedSurgeriesRows || scopedSurgeriesRows.length === 0) return [];
 
-        let scopeRows = allSurgeriesRows;
+        let scopeRows = scopedSurgeriesRows;
         if (ambitoFilter === 'CENTRALES') {
             scopeRows = allSurgeriesRows.filter(s => {
                 const g = (s.grupo_agendas || '').toUpperCase();
@@ -1497,7 +1586,7 @@ export default function QuirofanoDashboard({
                                 }}
                                 title="Abrir explorador nominal de pacientes y cirugías"
                             >
-                                <Users size={15} /> Ver Pacientes ({allSurgeriesRows.length})
+                                <Users size={15} /> Ver Pacientes ({selectedCrossFilter ? scopedSurgeriesRows.length : allSurgeriesRows.length})
                             </button>
                         </div>
 
@@ -1523,17 +1612,80 @@ export default function QuirofanoDashboard({
                             </button>
                         )}
                     </div>
+
+                    {/* AVISO INSTITUCIONAL DE VISTA BLOQUEADA Y SUPEDITADA EN ENCABEZADO GENERAL */}
+                    {selectedCrossFilter && (
+                        <div style={{
+                            marginTop: '12px',
+                            background: 'rgba(254, 243, 199, 0.16)',
+                            border: '1px solid #FCD34D',
+                            borderRadius: '10px',
+                            padding: '10px 16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '10px',
+                            color: '#FFFFFF'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                    background: '#F59E0B',
+                                    color: '#0F172A',
+                                    borderRadius: '6px',
+                                    width: '28px',
+                                    height: '28px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0
+                                }}>
+                                    <Lock size={16} strokeWidth={2.5} />
+                                </div>
+                                <div style={{ fontSize: '0.80rem' }}>
+                                    <span style={{ fontWeight: 800, color: '#FDE68A', textTransform: 'uppercase', letterSpacing: '0.4px', marginRight: '6px' }}>
+                                        🔒 Panel Bloqueado:
+                                    </span>
+                                    <span>
+                                        {selectedCrossFilter.type === 'OBRA_SOCIAL' ? 'Obra Social' : selectedCrossFilter.type === 'CIRUJANO' ? 'Cirujano' : 'Especialidad'}: <strong>{selectedCrossFilter.value}</strong> para el período <strong>{activePeriodLabel}</strong> ({scopedSurgeriesRows.length} cirugías supeditadas).
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleClearCrossFilter}
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: 'none',
+                                    color: '#DC2626',
+                                    borderRadius: '6px',
+                                    padding: '5px 12px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                }}
+                            >
+                                <X size={13} strokeWidth={3} /> Quitar Bloqueo / Ver Todo
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* KPI CARDS ENCABEZADO REACTIVOS AL PERÍODO Y AL ÁMBITO */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
                     <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                            {ambitoFilter === 'CENTRALES' 
-                                ? 'Cirugías Realizadas (Centrales)' 
-                                : ambitoFilter === 'HDD' 
-                                    ? 'Cirugías Realizadas (Hospital de Día)' 
-                                    : 'Cirugías Realizadas (Período)'}
+                            {selectedCrossFilter
+                                ? `Cirugías Realizadas (Supeditado)`
+                                : (ambitoFilter === 'CENTRALES' 
+                                    ? 'Cirugías Realizadas (Centrales)' 
+                                    : ambitoFilter === 'HDD' 
+                                        ? 'Cirugías Realizadas (Hospital de Día)' 
+                                        : 'Cirugías Realizadas (Período)')}
                         </div>
                         <div style={{ fontSize: '1.85rem', fontWeight: 900 }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? dynamicMetrics.realizadas.toLocaleString('es-AR') : '0'}
@@ -1678,15 +1830,142 @@ export default function QuirofanoDashboard({
             {activeTab === 'resumen' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
+                    {/* AVISO DESTACADO DE VISTA BLOQUEADA & SUPEDITADA */}
+                    {selectedCrossFilter && (
+                        <div style={{
+                            background: 'linear-gradient(135deg, #1E3A8A 0%, #1E40AF 50%, #2563EB 100%)',
+                            color: '#FFFFFF',
+                            borderRadius: '14px',
+                            padding: '16px 22px',
+                            boxShadow: '0 8px 20px -4px rgba(37, 99, 235, 0.35)',
+                            border: '1.5px solid #60A5FA',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '14px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                <div style={{
+                                    background: '#FFFFFF',
+                                    color: '#1E40AF',
+                                    borderRadius: '12px',
+                                    width: '44px',
+                                    height: '44px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                                    flexShrink: 0
+                                }}>
+                                    <Lock size={24} strokeWidth={2.5} />
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <span style={{
+                                            background: '#FEF3C7',
+                                            color: '#92400E',
+                                            fontSize: '0.68rem',
+                                            fontWeight: 900,
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            letterSpacing: '0.6px',
+                                            textTransform: 'uppercase'
+                                        }}>
+                                            🔒 VISTA SUPEDITADA & BLOQUEADA
+                                        </span>
+                                        <span style={{ fontSize: '0.90rem', fontWeight: 700, opacity: 0.95 }}>
+                                            {selectedCrossFilter.type === 'OBRA_SOCIAL' 
+                                                ? 'Obra Social' 
+                                                : selectedCrossFilter.type === 'CIRUJANO' 
+                                                    ? 'Cirujano' 
+                                                    : 'Especialidad Quirúrgica'}:
+                                        </span>
+                                        <span style={{
+                                            background: '#FFFFFF',
+                                            color: '#1E40AF',
+                                            padding: '3px 12px',
+                                            borderRadius: '7px',
+                                            fontSize: '0.96rem',
+                                            fontWeight: 900,
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.12)'
+                                        }}>
+                                            {selectedCrossFilter.value}
+                                        </span>
+                                        <span style={{ fontSize: '0.84rem', opacity: 0.95 }}>
+                                            para el período <strong>{activePeriodLabel}</strong>
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', opacity: 0.92, marginTop: '4px' }}>
+                                        Todos los gráficos, ocupación de quirófanos, cirugías realizadas, suspensiones y rankings de este sector quedan supeditados a este filtro ({scopedSurgeriesRows.length} {scopedSurgeriesRows.length === 1 ? 'cirugía' : 'cirugías'} · {allSurgeriesRows.length > 0 ? ((scopedSurgeriesRows.length / allSurgeriesRows.length) * 100).toFixed(1) : 0}% del volumen del período).
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNominalModal(true)}
+                                    style={{
+                                        background: 'rgba(255,255,255,0.18)',
+                                        border: '1px solid rgba(255,255,255,0.35)',
+                                        color: '#FFFFFF',
+                                        borderRadius: '8px',
+                                        padding: '7px 14px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <Users size={14} /> Ver {scopedSurgeriesRows.length} Pacientes
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleClearCrossFilter}
+                                    style={{
+                                        background: '#FFFFFF',
+                                        border: 'none',
+                                        color: '#DC2626',
+                                        borderRadius: '8px',
+                                        padding: '7px 16px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 900,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <X size={15} strokeWidth={3} /> Quitar Bloqueo / Ver Todo
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Gráfico 1: Ocupación por Sala */}
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Ocupación Quirúrgica por Sala ({activePeriodLabel})
-                                </h3>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Ocupación Quirúrgica por Sala ({activePeriodLabel})
+                                    </h3>
+                                    {selectedCrossFilter && (
+                                        <span style={{ fontSize: '0.68rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                            <Lock size={11} /> Supeditado a {selectedCrossFilter.value}
+                                        </span>
+                                    )}
+                                </div>
                                 <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                    Capacidad instalada, volumen de partes quirúrgicos y porcentaje de ocupación en {activePeriodLabel}.
+                                    {selectedCrossFilter
+                                        ? `Capacidad y volumen de partes quirúrgicos supeditados a ${selectedCrossFilter.value} (${scopedSurgeriesRows.length} cirugías en ${activePeriodLabel}).`
+                                        : `Capacidad instalada, volumen de partes quirúrgicos y porcentaje de ocupación en ${activePeriodLabel}.`}
                                 </p>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1759,16 +2038,32 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
-                    {/* Rankings Triples: Cirujanos, Especialidad y Financiador */}
+                    {/* Rankings Triples: Cirujanos, Especialidad y Financiador (Cross-filtering Interactivo) */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
                         
                         {/* Ranking Cirujanos con Tasa de Suspensión */}
-                        <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ 
+                            background: '#FFFFFF', 
+                            borderRadius: '14px', 
+                            border: selectedCrossFilter?.type === 'CIRUJANO' ? '1.5px solid #3B82F6' : '1px solid #E2E8F0', 
+                            padding: '20px', 
+                            boxShadow: selectedCrossFilter?.type === 'CIRUJANO' ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)' 
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
                                         Ranking Cirujanos ({activePeriodLabel})
                                     </h3>
+                                    {selectedCrossFilter && selectedCrossFilter.type === 'CIRUJANO' && (
+                                        <span style={{ fontSize: '0.65rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                                            🔒 Filtro Activo
+                                        </span>
+                                    )}
+                                    {selectedCrossFilter && selectedCrossFilter.type !== 'CIRUJANO' && (
+                                        <span style={{ fontSize: '0.65rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                                            Supeditado
+                                        </span>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.ranking_cirujanos)}
@@ -1805,6 +2100,9 @@ export default function QuirofanoDashboard({
                                     }}
                                 />
                             </div>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
+                                💡 Haz clic en una fila para bloquear y supeditar los gráficos a ese cirujano.
+                            </div>
 
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
@@ -1817,28 +2115,64 @@ export default function QuirofanoDashboard({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredCirujanos.slice(0, 35).map((c, idx) => (
-                                            <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                                <td style={{ padding: '8px', fontWeight: 700, color: '#0F172A' }}>
-                                                    <div>{c.nombre}</div>
-                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 400 }}>{c.especialidad}</div>
-                                                </td>
-                                                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: '#1E40AF' }}>{c.realizadas}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right' }}>{c.pctTotal}%</td>
-                                                <td style={{ padding: '8px', textAlign: 'right' }}>
-                                                    <span style={{
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px',
-                                                        fontWeight: 800,
-                                                        fontSize: '0.70rem',
-                                                        background: c.pctSuspension > 12 ? '#FEE2E2' : c.pctSuspension > 7 ? '#FEF3C7' : '#DCFCE7',
-                                                        color: c.pctSuspension > 12 ? '#DC2626' : c.pctSuspension > 7 ? '#D97706' : '#15803D'
-                                                    }}>
-                                                        {c.pctSuspension}%
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {filteredCirujanos.slice(0, 35).map((c, idx) => {
+                                            const isSelected = selectedCrossFilter?.type === 'CIRUJANO' && 
+                                                selectedCrossFilter.value.trim().toUpperCase() === c.nombre.trim().toUpperCase();
+                                            return (
+                                                <tr 
+                                                    key={idx} 
+                                                    onClick={() => handleToggleCrossFilter('CIRUJANO', c.nombre)}
+                                                    title={isSelected ? "Haz clic para quitar el bloqueo" : `Haz clic para bloquear y supeditar todo a ${c.nombre}`}
+                                                    style={{ 
+                                                        borderBottom: '1px solid #F1F5F9',
+                                                        cursor: 'pointer',
+                                                        background: isSelected ? '#EFF6FF' : 'transparent',
+                                                        borderLeft: isSelected ? '4px solid #2563EB' : '4px solid transparent',
+                                                        transition: 'background 0.15s ease'
+                                                    }}
+                                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8FAFC'; }}
+                                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                                >
+                                                    <td style={{ padding: '8px', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                {isSelected && <Lock size={12} color="#2563EB" strokeWidth={2.5} />}
+                                                                <span>{c.nombre}</span>
+                                                            </div>
+                                                            {isSelected && (
+                                                                <span style={{ 
+                                                                    fontSize: '0.60rem', 
+                                                                    background: '#2563EB', 
+                                                                    color: '#FFFFFF', 
+                                                                    padding: '1px 5px', 
+                                                                    borderRadius: '4px', 
+                                                                    fontWeight: 800,
+                                                                    letterSpacing: '0.3px',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    BLOQUEADO
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.68rem', color: isSelected ? '#3B82F6' : '#64748B', fontWeight: 400 }}>{c.especialidad}</div>
+                                                    </td>
+                                                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: '#1E40AF' }}>{c.realizadas}</td>
+                                                    <td style={{ padding: '8px', textAlign: 'right' }}>{c.pctTotal}%</td>
+                                                    <td style={{ padding: '8px', textAlign: 'right' }}>
+                                                        <span style={{
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            fontWeight: 800,
+                                                            fontSize: '0.70rem',
+                                                            background: c.pctSuspension > 12 ? '#FEE2E2' : c.pctSuspension > 7 ? '#FEF3C7' : '#DCFCE7',
+                                                            color: c.pctSuspension > 12 ? '#DC2626' : c.pctSuspension > 7 ? '#D97706' : '#15803D'
+                                                        }}>
+                                                            {c.pctSuspension}%
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                                 {filteredCirujanos.length > 35 && (
@@ -1850,11 +2184,29 @@ export default function QuirofanoDashboard({
                         </div>
 
                         {/* Ranking Especialidades */}
-                        <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Cirugías por Especialidad ({activePeriodLabel})
-                                </h3>
+                        <div style={{ 
+                            background: '#FFFFFF', 
+                            borderRadius: '14px', 
+                            border: selectedCrossFilter?.type === 'ESPECIALIDAD' ? '1.5px solid #3B82F6' : '1px solid #E2E8F0', 
+                            padding: '20px', 
+                            boxShadow: selectedCrossFilter?.type === 'ESPECIALIDAD' ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)' 
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Cirugías por Especialidad ({activePeriodLabel})
+                                    </h3>
+                                    {selectedCrossFilter && selectedCrossFilter.type === 'ESPECIALIDAD' && (
+                                        <span style={{ fontSize: '0.65rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                                            🔒 Filtro Activo
+                                        </span>
+                                    )}
+                                    {selectedCrossFilter && selectedCrossFilter.type !== 'ESPECIALIDAD' && (
+                                        <span style={{ fontSize: '0.65rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                                            Supeditado
+                                        </span>
+                                    )}
+                                </div>
                                 <button
                                     type="button"
                                     onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.especialidades)}
@@ -1876,6 +2228,9 @@ export default function QuirofanoDashboard({
                                     <HelpCircle size={12} /> Explicación
                                 </button>
                             </div>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
+                                💡 Haz clic en una fila para bloquear y supeditar los gráficos a esa especialidad.
+                            </div>
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                     <thead>
@@ -1886,24 +2241,80 @@ export default function QuirofanoDashboard({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {activeEspecialidadesData.map((e, idx) => (
-                                            <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                                <td style={{ padding: '8px', fontWeight: 700, color: '#0F172A' }}>{e.nombre}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{e.cant}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right', color: '#2563EB', fontWeight: 800 }}>{e.pct}%</td>
-                                            </tr>
-                                        ))}
+                                        {activeEspecialidadesData.map((e, idx) => {
+                                            const isSelected = selectedCrossFilter?.type === 'ESPECIALIDAD' && 
+                                                selectedCrossFilter.value.trim().toUpperCase() === e.nombre.trim().toUpperCase();
+                                            return (
+                                                <tr 
+                                                    key={idx} 
+                                                    onClick={() => handleToggleCrossFilter('ESPECIALIDAD', e.nombre)}
+                                                    title={isSelected ? "Haz clic para quitar el bloqueo" : `Haz clic para bloquear y supeditar todo a ${e.nombre}`}
+                                                    style={{ 
+                                                        borderBottom: '1px solid #F1F5F9',
+                                                        cursor: 'pointer',
+                                                        background: isSelected ? '#EFF6FF' : 'transparent',
+                                                        borderLeft: isSelected ? '4px solid #2563EB' : '4px solid transparent',
+                                                        transition: 'background 0.15s ease'
+                                                    }}
+                                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8FAFC'; }}
+                                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                                >
+                                                    <td style={{ padding: '8px', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                {isSelected && <Lock size={12} color="#2563EB" strokeWidth={2.5} />}
+                                                                <span>{e.nombre}</span>
+                                                            </div>
+                                                            {isSelected && (
+                                                                <span style={{ 
+                                                                    fontSize: '0.60rem', 
+                                                                    background: '#2563EB', 
+                                                                    color: '#FFFFFF', 
+                                                                    padding: '1px 5px', 
+                                                                    borderRadius: '4px', 
+                                                                    fontWeight: 800,
+                                                                    letterSpacing: '0.3px',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    BLOQUEADO
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{e.cant}</td>
+                                                    <td style={{ padding: '8px', textAlign: 'right', color: '#2563EB', fontWeight: 800 }}>{e.pct}%</td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
 
                         {/* Ranking Financiador (Obra Social) */}
-                        <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Demanda por Obra Social ({activePeriodLabel})
-                                </h3>
+                        <div style={{ 
+                            background: '#FFFFFF', 
+                            borderRadius: '14px', 
+                            border: selectedCrossFilter?.type === 'OBRA_SOCIAL' ? '1.5px solid #3B82F6' : '1px solid #E2E8F0', 
+                            padding: '20px', 
+                            boxShadow: selectedCrossFilter?.type === 'OBRA_SOCIAL' ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)' 
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Demanda por Obra Social ({activePeriodLabel})
+                                    </h3>
+                                    {selectedCrossFilter && selectedCrossFilter.type === 'OBRA_SOCIAL' && (
+                                        <span style={{ fontSize: '0.65rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                                            🔒 Filtro Activo
+                                        </span>
+                                    )}
+                                    {selectedCrossFilter && selectedCrossFilter.type !== 'OBRA_SOCIAL' && (
+                                        <span style={{ fontSize: '0.65rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                                            Supeditado
+                                        </span>
+                                    )}
+                                </div>
                                 <button
                                     type="button"
                                     onClick={() => setSelectedChartHelp(CHART_HELP_CATALOGO.obras_sociales)}
@@ -1925,6 +2336,9 @@ export default function QuirofanoDashboard({
                                     <HelpCircle size={12} /> Explicación
                                 </button>
                             </div>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
+                                💡 Haz clic en una fila para bloquear y supeditar los gráficos a esa obra social.
+                            </div>
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                     <thead>
@@ -1935,13 +2349,51 @@ export default function QuirofanoDashboard({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {activeObrasSocialesData.map((o, idx) => (
-                                            <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                                <td style={{ padding: '8px', fontWeight: 700, color: '#0F172A' }}>{o.nombre}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{o.cant}</td>
-                                                <td style={{ padding: '8px', textAlign: 'right', color: '#059669', fontWeight: 800 }}>{o.pct}%</td>
-                                            </tr>
-                                        ))}
+                                        {activeObrasSocialesData.map((o, idx) => {
+                                            const isSelected = selectedCrossFilter?.type === 'OBRA_SOCIAL' && 
+                                                selectedCrossFilter.value.trim().toUpperCase() === o.nombre.trim().toUpperCase();
+                                            return (
+                                                <tr 
+                                                    key={idx} 
+                                                    onClick={() => handleToggleCrossFilter('OBRA_SOCIAL', o.nombre)}
+                                                    title={isSelected ? "Haz clic para quitar el bloqueo" : `Haz clic para bloquear y supeditar todo a ${o.nombre}`}
+                                                    style={{ 
+                                                        borderBottom: '1px solid #F1F5F9',
+                                                        cursor: 'pointer',
+                                                        background: isSelected ? '#EFF6FF' : 'transparent',
+                                                        borderLeft: isSelected ? '4px solid #2563EB' : '4px solid transparent',
+                                                        transition: 'background 0.15s ease'
+                                                    }}
+                                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8FAFC'; }}
+                                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                                >
+                                                    <td style={{ padding: '8px', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                {isSelected && <Lock size={12} color="#2563EB" strokeWidth={2.5} />}
+                                                                <span>{o.nombre}</span>
+                                                            </div>
+                                                            {isSelected && (
+                                                                <span style={{ 
+                                                                    fontSize: '0.60rem', 
+                                                                    background: '#2563EB', 
+                                                                    color: '#FFFFFF', 
+                                                                    padding: '1px 5px', 
+                                                                    borderRadius: '4px', 
+                                                                    fontWeight: 800,
+                                                                    letterSpacing: '0.3px',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    BLOQUEADO
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{o.cant}</td>
+                                                    <td style={{ padding: '8px', textAlign: 'right', color: '#059669', fontWeight: 800 }}>{o.pct}%</td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -3144,7 +3596,7 @@ export default function QuirofanoDashboard({
                                         Auditoría Clínica Nominal
                                     </span>
                                     <span style={{ fontSize: '0.76rem', color: '#CBD5E1' }}>
-                                        {activePeriodLabel} ({allSurgeriesRows.length} cirugías en período)
+                                        {activePeriodLabel} · {selectedCrossFilter ? `🔒 Bloqueado en ${selectedCrossFilter.value} (${scopedSurgeriesRows.length} de ${allSurgeriesRows.length} cirugías)` : `${allSurgeriesRows.length} cirugías en período`}
                                     </span>
                                 </div>
                                 <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, letterSpacing: '-0.3px' }}>
@@ -3153,6 +3605,30 @@ export default function QuirofanoDashboard({
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                {selectedCrossFilter && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearCrossFilter}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            padding: '8px 14px',
+                                            borderRadius: '8px',
+                                            background: '#EF4444',
+                                            border: 'none',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            boxShadow: '0 2px 6px rgba(239, 68, 68, 0.35)',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title="Quitar bloqueo y ver todas las cirugías del período"
+                                    >
+                                        <X size={14} strokeWidth={2.5} /> Quitar Bloqueo
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => handleExportAllQuirofanoExcel(filteredNominalRows, `Quirofano_Nominal_${filteredNominalRows.length}_Pacientes.xlsx`)}
@@ -3304,7 +3780,7 @@ export default function QuirofanoDashboard({
                                     borderRadius: '8px',
                                     fontWeight: 700
                                 }}>
-                                    Mostrando {filteredNominalRows.length} de {allSurgeriesRows.length}
+                                    Mostrando {filteredNominalRows.length} de {selectedCrossFilter ? `${scopedSurgeriesRows.length} (${selectedCrossFilter.value})` : allSurgeriesRows.length}
                                 </span>
                             </div>
                         </div>
