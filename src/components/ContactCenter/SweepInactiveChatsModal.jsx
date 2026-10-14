@@ -93,12 +93,31 @@ export default function SweepInactiveChatsModal({
         setIsSweeping(true);
         setErrorMsg(null);
         try {
+            const now = Date.now();
+            const cutoffMs = hoursThreshold * 3600 * 1000;
+            const openChats = (chats || []).filter(c => {
+                const st = (c.status || '').toLowerCase();
+                return !['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st);
+            });
+
+            const targetChats = openChats.filter(c => {
+                if (scope === 'mine' && c.assignedTo !== activeAgent?.id && c.assigned_agent_id !== activeAgent?.id) {
+                    return false;
+                }
+                const time = c.lastMessageTimestamp || (c.updated_at ? new Date(c.updated_at).getTime() : 0);
+                return (now - time) >= cutoffMs;
+            });
+
+            const targetChatIds = targetChats.map(c => c.id).filter(Boolean);
+            const targetPhones = targetChats.map(c => c.phone).filter(Boolean);
+
             const result = await sweepInactiveConversations({
                 hoursThreshold,
                 assignedAgentId: scope === 'mine' ? activeAgent?.id : null,
                 closedByAgentId: 'lmarinero',
                 closedByAgentName: 'Lucas Marinero (Supervisor)',
-                resolutionReason: resolutionReason.trim()
+                resolutionReason: resolutionReason.trim(),
+                targetPhones
             });
 
             if (!result.success && result.error) {
@@ -107,7 +126,11 @@ export default function SweepInactiveChatsModal({
 
             setSweepResult(result);
             if (onSweepSuccess) {
-                onSweepSuccess(result);
+                onSweepSuccess({
+                    ...result,
+                    targetChatIds,
+                    resolutionReason: resolutionReason.trim()
+                });
             }
         } catch (err) {
             console.error('[SweepModal] Error ejecutando barrido:', err);

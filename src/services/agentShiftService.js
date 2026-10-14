@@ -122,14 +122,14 @@ export async function getAgentDailyShiftMetrics({
         // 2. Conversaciones cerradas/finalizadas hoy por la agente
         supabase
             .from('contact_center_conversations')
-            .select('phone, contact_name, dni, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, motivo_consulta, ai_summary, tags, created_at, updated_at')
+            .select('phone, nombre_completo, dni, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, motivo_consulta, ai_summary, tags, created_at, updated_at')
             .gte('closed_at', startIso)
             .lte('closed_at', endIso),
 
         // 3. Conversaciones asignadas o actualizadas donde intervino la agente hoy
         supabase
             .from('contact_center_conversations')
-            .select('phone, contact_name, dni, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, created_at, resolution_reason')
+            .select('phone, nombre_completo, dni, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, created_at, resolution_reason')
             .gte('updated_at', startIso)
             .lte('updated_at', endIso)
     ]);
@@ -147,6 +147,10 @@ export async function getAgentDailyShiftMetrics({
             (normalizedAgentName && sender.includes(normalizedAgentName))
         );
     });
+
+    const agentOutgoingPhonesSet = new Set(
+        agentOutgoingMessages.map(m => m.phone).filter(Boolean)
+    );
 
     // Desglose de mensajes por hora (para ritmo y curva de actividad)
     const hourlyDistribution = {};
@@ -174,16 +178,20 @@ export async function getAgentDailyShiftMetrics({
         if (isTeamOverview) return true;
         const closerName = normalizeAgentName(conv.closed_by_agent_name);
         const closerId = (conv.closed_by_agent_id || '').toLowerCase();
-        return (
+        const isClosedByAgent = (
             (cleanFirstName && closerName.includes(normalizeAgentName(cleanFirstName))) ||
             (agentId && closerId === agentId.toLowerCase()) ||
             (normalizedAgentName && closerName.includes(normalizedAgentName))
         );
+        if (isClosedByAgent) return true;
+        if (agentOutgoingPhonesSet.has(conv.phone)) return true;
+        return false;
     });
 
     // Filtrar conversaciones gestionadas/atendidas hoy
     const agentAttendedConversations = (attendedConversationsRes.data || []).filter(conv => {
         if (isTeamOverview) return true;
+        if (agentOutgoingPhonesSet.has(conv.phone)) return true;
         const assignedName = normalizeAgentName(conv.assigned_agent_name);
         const assignedId = (conv.assigned_agent_id || '').toLowerCase();
         const closerName = normalizeAgentName(conv.closed_by_agent_name);
@@ -261,7 +269,7 @@ export async function getAgentDailyShiftMetrics({
 
         // Resolver el mejor nombre del paciente
         const aiName = conv.ai_summary?.paciente || conv.ai_summary?.nombre_paciente || conv.ai_summary?.titular?.nombre;
-        let pacienteNombre = conv.contact_name?.trim();
+        let pacienteNombre = conv.nombre_completo?.trim();
         if (!pacienteNombre && aiName && typeof aiName === 'string' && aiName.trim().length > 1) {
             pacienteNombre = aiName.trim();
         }
@@ -363,7 +371,7 @@ export async function getAgentDailyShiftMetrics({
     ];
 
     // Chats actualmente asignados sin cerrar (para verificar si la bandeja queda limpia)
-    const chatsActivosSinCerrar = agentAttendedConversations.filter(c => c.status !== 'cerrado' && c.status !== 'archivado');
+    const chatsActivosSinCerrar = agentAttendedConversations.filter(c => !['cerrado', 'archivado', 'finalizado', 'resuelto'].includes(c.status));
 
     // === GENERACIÓN DE SMART INSIGHTS ===
     const totalMensajes = agentOutgoingMessages.length;

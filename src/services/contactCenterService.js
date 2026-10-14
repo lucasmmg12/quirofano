@@ -3375,38 +3375,51 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
 export async function sweepInactiveConversations({
     hoursThreshold = 24,
     assignedAgentId = null,
-    closedByAgentId = 'system',
-    closedByAgentName = 'Barrido Inactividad',
-    resolutionReason = null
+    closedByAgentId = 'lmarinero',
+    closedByAgentName = 'Lucas Marinero (Supervisor)',
+    resolutionReason = null,
+    targetPhones = null
 } = {}) {
     try {
         const cutoff = new Date(Date.now() - hoursThreshold * 3600 * 1000).toISOString();
         const reason = resolutionReason || `Cierre automático por inactividad (+${hoursThreshold}h)`;
-
-        let query = supabase
-            .from('contact_center_conversations')
-            .select('phone, updated_at, assigned_agent_id')
-            .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","archived","closed")')
-            .lt('updated_at', cutoff);
-
-        if (assignedAgentId) {
-            query = query.eq('assigned_agent_id', assignedAgentId);
-        }
-
-        const { data: convsToClose, error: fetchErr } = await query;
-        if (fetchErr) throw fetchErr;
-
-        if (!convsToClose || convsToClose.length === 0) {
-            return { success: true, count: 0, phones: [] };
-        }
-
-        const phones = convsToClose.map(c => c.phone).filter(Boolean);
         const nowIso = new Date().toISOString();
+
+        let phones = [];
+
+        if (Array.isArray(targetPhones) && targetPhones.length > 0) {
+            phones = Array.from(new Set(targetPhones.map(p => normalizeArgentinePhone(p)).filter(Boolean)));
+        } else {
+            let query = supabase
+                .from('contact_center_conversations')
+                .select('phone, updated_at, last_message_at, created_at, assigned_agent_id')
+                .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","archived","closed")');
+
+            if (assignedAgentId) {
+                query = query.eq('assigned_agent_id', assignedAgentId);
+            }
+
+            // Inactividad: filtrar por last_message_at si existe, o created_at
+            query = query.or(`last_message_at.lt.${cutoff},and(last_message_at.is.null,created_at.lt.${cutoff})`);
+
+            const { data: convsToClose, error: fetchErr } = await query;
+            if (fetchErr) throw fetchErr;
+
+            if (convsToClose && convsToClose.length > 0) {
+                phones = Array.from(new Set(convsToClose.map(c => normalizeArgentinePhone(c.phone)).filter(Boolean)));
+            }
+        }
+
+        if (phones.length === 0) {
+            return { success: true, count: 0, phones: [], reason };
+        }
 
         let updatedCount = 0;
         for (let i = 0; i < phones.length; i += 50) {
             const batch = phones.slice(i, i + 50);
-            const { error: updateErr } = await supabase
+
+            // 1. Intentar actualizar registros existentes
+            const { data: updatedRows, error: updateErr } = await supabase
                 .from('contact_center_conversations')
                 .update({
                     status: 'finalizado',
@@ -3414,21 +3427,50 @@ export async function sweepInactiveConversations({
                     closed_by_agent_id: closedByAgentId,
                     closed_by_agent_name: closedByAgentName,
                     resolution_reason: reason,
-                    bot_active: false
+                    bot_active: false,
+                    updated_at: nowIso
                 })
-                .in('phone', batch);
+                .in('phone', batch)
+                .select('phone');
 
             if (updateErr) {
                 console.error('[contact-center] Error actualizando lote de barrido:', updateErr);
-            } else {
-                updatedCount += batch.length;
             }
+
+            // 2. Si había teléfonos de WhatsApp sin fila previa en contact_center_conversations,
+            // crearlas vía upsert para que queden registradas como 'finalizado' y no resuciten
+            const updatedPhonesSet = new Set((updatedRows || []).map(r => normalizeArgentinePhone(r.phone)));
+            const missingToUpsert = batch.filter(p => !updatedPhonesSet.has(p));
+
+            if (missingToUpsert.length > 0) {
+                const upsertRows = missingToUpsert.map(p => ({
+                    phone: p,
+                    status: 'finalizado',
+                    closed_at: nowIso,
+                    closed_by_agent_id: closedByAgentId,
+                    closed_by_agent_name: closedByAgentName,
+                    resolution_reason: reason,
+                    bot_active: false,
+                    updated_at: nowIso
+                }));
+
+                const { error: upsertErr } = await supabase
+                    .from('contact_center_conversations')
+                    .upsert(upsertRows, { onConflict: 'phone' });
+
+                if (upsertErr) {
+                    console.error('[contact-center] Error en upsert complementario de barrido:', upsertErr);
+                }
+            }
+
+            updatedCount += batch.length;
         }
 
         return {
             success: true,
             count: updatedCount,
-            phones
+            phones,
+            reason
         };
     } catch (err) {
         console.error('[contact-center] Error en sweepInactiveConversations:', err);

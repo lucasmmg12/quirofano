@@ -11481,8 +11481,13 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                     currentUser={currentUser}
                     chats={chats}
                     onSweepSuccess={(result) => {
+                        if (typeof onBulkCloseChats === 'function' && Array.isArray(result?.targetChatIds) && result.targetChatIds.length > 0) {
+                            onBulkCloseChats(result.targetChatIds, result.resolutionReason || 'Cierre automático por inactividad');
+                        }
                         if (onReloadChats) {
-                            onReloadChats();
+                            setTimeout(() => {
+                                onReloadChats();
+                            }, 350);
                         }
                     }}
                 />
