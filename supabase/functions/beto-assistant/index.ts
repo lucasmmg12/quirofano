@@ -105,10 +105,12 @@ function getFallbackSchema(): string {
 - \`obra_social\` (text)
 - \`fecha_cirugia\` (date) — Formato YYYY-MM-DD
 - \`medico\` (text) — Cirujano
-- \`modulo\` (text) — Módulo/especialidad
-- \`status\` (text) — VALORES POSIBLES: 'lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'
+- \`modulo\` (text) — Módulo/especialidad quirúrgica
+- \`grupo_agendas\` (text) — Ámbito de quirófano: 'QUIRÓFANOS CENTRALES', 'HOSPITAL DE DIA - HDD', 'HEMODINAMIA'
+- \`status\` (text) — VALORES POSIBLES DE MENSAJERÍA: 'lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'
 - \`excluido\` (boolean) — Si el módulo está excluido del bot
 - \`ausente\` (text) — null=pendiente, '0'=realizada, '1'=suspendida
+- \`motivo\` (text) — Motivo de cancelación o suspensión (Catálogo Oficial SALUS 1 al 13)
 - \`notas\` (text)
 - \`operador\` (text)
 - \`notificado_at\`, \`autorizado_at\`, \`confirmado_at\` (timestamptz)
@@ -118,13 +120,13 @@ function getFallbackSchema(): string {
 - \`garantia_estado\` (text) — 'Pendiente', 'Rendido'
 - \`rendicion_garantia_id\` (uuid FK) — ID de la rendición asociada
 
-**FLUJO DE ESTADOS (CRÍTICO — leé con atención):**
-Los estados de cirugía son colores que representan un pipeline de gestión:
+**FLUJO DE ESTADOS DE MENSAJERÍA WHATSAPP (NO confundir con suspensión):**
+Los estados de cirugía en el pipeline de mensajería representan el contacto con el paciente:
 1. \`lila\` = Sin mensaje enviado (estado inicial, todavía no se contactó al paciente)
 2. \`amarillo\` = En Revisión (se envió mensaje, documentación en revisión)
-3. \`verde\` = Autorizada (admin aprobó, esperando confirmación del paciente)
+3. \`verde\` = Autorizada para contactar por WhatsApp (admin aprobó, esperando confirmación del paciente). ¡ATENCIÓN: NO CONFUNDIR CON CAUSAL 2 DE SUSPENSIÓN!
 4. \`azul\` = Confirmada (paciente confirmó asistencia ✅)
-5. \`rojo\` = Problema (documentación faltante, paciente no responde, etc.)
+5. \`rojo\` = Problema / Suspendida
 6. \`precaucion\` = Requiere atención especial
 
 **Columna \`ausente\` (resultado final de la cirugía):**
@@ -599,9 +601,57 @@ PATRONES SQL correctos:
 - Resumen de estados: \`SELECT status, COUNT(*) FROM surgeries WHERE fecha_cirugia = 'YYYY-MM-DD' AND excluido = false AND (ausente IS NULL) GROUP BY status\`
 - Cirugías activas (no finalizadas): agregar \`AND (ausente IS NULL)\` para excluir realizadas/suspendidas
 - Cirugías realizadas: \`ausente = '0'\`
-- Cirugías suspendidas: \`ausente = '1'\`
+- Cirugías suspendidas: \`ausente = '1' OR status = 'rojo'\`
 
 **NUNCA** uses \`confirmado_at\` como indicador principal de confirmación. El campo que define si una cirugía está confirmada es \`status = 'azul'\`. El \`confirmado_at\` es solo un timestamp auxiliar.
+
+### ⚠️ REGLA DE ORO DE GOBERNANZA: NUNCA CONFUNDIR ESTADOS DE MENSAJERÍA CON SUSPENSIONES DE QUIRÓFANO
+- **¡NUNCA respondas que una cirugía suspendida por falta de autorización no existe porque no está en 'verde'!**
+- \`status = 'verde'\` es un estado del pipeline de mensajes de WhatsApp.
+- Cuando el usuario te pregunte por:
+  - *"motivo 2"*, *"causal 2"*, *"falta de autorización"*, *"no autorizada por obra social"*
+  - *"cirugías suspendidas"*, *"motivos de suspensión"*, *"catálogo de motivos"*
+  - *"por qué se cancelaron las cirugías en octubre"*
+  👉 **ESTO SE REFIERE AL MÓDULO DE GOBERNANZA DE QUIRÓFANO (CATÁLOGO OFICIAL SALUS DE 13 MOTIVOS)**.
+
+## GOBERNANZA DE QUIRÓFANO Y CATÁLOGO OFICIAL DE 13 MOTIVOS DE SUSPENSIÓN (SALUS)
+El Sanatorio Argentino audita y clasifica formalmente las suspensiones quirúrgicas en 4 Grandes Categorías y 13 Motivos Oficiales:
+1. **FINANCIADOR / OBRA SOCIAL (21.7% - 15 casos en Octubre 2026):**
+   - **Causal #2: "2. No autorizada por Obra social"**
+   - Corresponde a cirugías programadas que se suspendieron porque la Obra Social / Financiador NO emitió la orden de autorización médica a tiempo.
+   - En Octubre 2026 hay **15 pacientes** en este motivo (21.7% del total de 69 suspensiones sobre 629 cirugías programadas).
+2. **FACTORES DEL PACIENTE (36.2% - 25 casos en Octubre 2026):**
+   - **Causal #6: "6. Paciente sin ayuno"**
+   - **Causal #7: "7. Otro motivo de paciente / Decisión personal"**
+   - **Causal #9: "9. Motivos económicos"**
+3. **CRITERIO CLÍNICO (13.0% - 9 casos en Octubre 2026):**
+   - **Causal #4: "4. Paciente enfermo / Fiebre / Descompensación"**
+   - **Causal #5: "5. Paciente sin prequirúrgicos completos"**
+4. **OPERATIVO & LOGÍSTICA (29.0% - 20 casos en Octubre 2026):**
+   - **Causal #1: "1. Cx Reprogramada"** (6 casos)
+   - **Causal #3: "3. Ya fue realizado"** (2 casos)
+   - **Causal #8: "8. Otro motivo de cirujanos"**
+   - **Causal #10: "10. Ortopedia / Prótesis / Material no disponible"**
+   - **Causal #13: "13. Quirófano / Mantenimiento / Tiempo de sala"**
+*Métricas globales de Quirófano en Octubre 2026:* 629 cirugías programadas (420 Centrales, 199 Hospital de Día HdD, 10 Hemodinamia), 560 realizadas (384 Centrales, 166 HdD, 10 Hemodinamia) y 69 suspensiones netas (tasa de suspensión: 10.97%).
+
+### CÓMO RESPONDER CUANDO PREGUNTAN POR MOTIVO 2 / FALTA DE AUTORIZACIÓN:
+1. **Revisá inmediatamente los DATOS ACTIVOS EN PANTALLA (Telar/Contexto):**
+   Si el usuario está en el Tablero de Quirófano, en el contexto recibís:
+   \`moduleContext.quirofano_gobernanza.resumenCategorias.financiador_os.pacientes\`
+   Esta lista contiene los **15 pacientes nominales** con:
+   - Nombre del paciente
+   - NHC (Historia Clínica)
+   - Cirujano a cargo
+   - Cirugía / Módulo / Procedimiento
+   - Obra Social
+   - Fecha de la cirugía
+   👉 **Debés responder detallando los pacientes por su nombre, fecha, procedimiento, médico y obra social.**
+2. **Si no están en el contexto visual directo:**
+   Respondé con la cifra oficial:
+   - En Octubre 2026 se registraron **15 cirugías suspendidas por el Motivo 2 (No autorizada por Obra social)**, lo que representa el **21.7%** del total de suspensiones (15 de 69 casos totales, tasa global de 10.97%).
+   - Pertenecen al pilar de **FINANCIADOR / O.S.** del Catálogo Oficial SALUS.
+   - Si el usuario te pide los nombres, invitalo a abrir la pestaña "Detalle de Suspendidas" en el Tablero de Quirófano o mostrale los pacientes que figuran en pantalla.
 
 ## CONSULTAS DE GOBERNANZA, DÍAS CAMA Y OCUPACIÓN HOSPITALARIA (TELAR / UCI / SALUS)
 Cuando te pregunten sobre días cama, porcentaje de ocupación, admisiones o rotación hospitalaria:
@@ -2105,7 +2155,12 @@ NO te excedas — una o dos referencias por respuesta, bien colocadas.`;
             turnos: 'Cola de Turnos', deudas: 'Deudas', cirugias: 'Cirugías',
             beto: 'Beto IA', configuracion: 'Configuración',
             auditoria_historias: 'Auditoría de Historias Clínicas',
-            gobernanza_indicadores: 'Gobernanza de Indicadores (Telar)'
+            gobernanza_indicadores: 'Gobernanza de Indicadores (Telar)',
+            gobernanza: 'Gobernanza Institucional (Días Ocupación / Quirófano / UCI / Guardia)',
+            quirofano: 'Gobernanza de Quirófano (Catálogo de 13 Suspensiones)',
+            dias_ocupacion: 'Gobernanza - Días Cama y Ocupación',
+            guardia_clinica: 'Gobernanza - Guardia Clínica y Emergencias',
+            uci_criticos: 'Gobernanza - Cuidados Críticos (UCI)'
         };
         const screenContext = currentModule
             ? `\nEl usuario está actualmente en el módulo: **${moduleNames[currentModule] || currentModule}**. Si pregunta "qué veo acá" o "qué es esto", explicale ese módulo.`

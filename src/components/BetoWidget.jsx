@@ -396,6 +396,20 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
             const { data: { session } } = await supabase.auth.getSession();
             const authToken = session?.access_token || supabaseKey;
 
+            const quirofanoActiveCtx = (typeof window !== 'undefined' && window.__quirofano_active_context)
+                ? window.__quirofano_active_context
+                : null;
+
+            let computedModuleContext = null;
+            if (quirofanoActiveCtx) {
+                computedModuleContext = {
+                    ...(currentModule === 'gobernanza_indicadores' && activeIndicators ? { indicadores_telar: activeIndicators } : {}),
+                    quirofano_gobernanza: quirofanoActiveCtx
+                };
+            } else if (currentModule === 'gobernanza_indicadores') {
+                computedModuleContext = activeIndicators;
+            }
+
             const response = await fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
                 method: 'POST',
                 headers: {
@@ -407,7 +421,7 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
                     messages: apiMessages,
                     user: effectiveUser ? { nombre: effectiveUser.nombre, usuario: effectiveUser.usuario } : null,
                     currentModule: currentModule || 'inicio',
-                    moduleContext: currentModule === 'gobernanza_indicadores' ? activeIndicators : null,
+                    moduleContext: computedModuleContext,
                     stream: true,
                 }),
             });

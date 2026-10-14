@@ -1393,6 +1393,54 @@ export default function QuirofanoDashboard({
         }
     };
 
+    // Sincronizar contexto activo de Quirófano para que Beto IA tenga conocimiento completo en tiempo real
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const financiadorPatients = classifiedSuspendedSurgeries.filter(p => p.causalCategoria === 'FINANCIADOR');
+            window.__quirofano_active_context = {
+                modulo: 'Gobernanza Quirófano',
+                periodo: activePeriodLabel,
+                programadas: dynamicMetrics?.total || 0,
+                realizadas: dynamicMetrics?.realizadas || 0,
+                suspendidas: dynamicMetrics?.suspendidas || 0,
+                tasaSuspension: dynamicMetrics?.tasaSusp || '0.00',
+                resumenCategorias: {
+                    financiador_os: {
+                        casos: suspensionCategoriesSummary?.financiador?.cant || 0,
+                        porcentaje: `${suspensionCategoriesSummary?.financiador?.pct || 0}%`,
+                        causal: 'Causal #2 (Falta de autorización Obra Social)',
+                        pacientes: financiadorPatients.slice(0, 30).map(p => ({
+                            nhc: p.id_paciente,
+                            paciente: p.nombre,
+                            dni: p.dni,
+                            cirujano: p.medico,
+                            procedimiento: p.modulo || p.descripcion,
+                            obra_social: p.obra_social,
+                            fecha_cirugia: p.fecha_cirugia,
+                            motivo: p.causalMotivo || '2. No autorizada por Obra social'
+                        }))
+                    },
+                    factores_paciente: {
+                        casos: suspensionCategoriesSummary?.paciente?.cant || 0,
+                        porcentaje: `${suspensionCategoriesSummary?.paciente?.pct || 0}%`,
+                        causales: 'Causales #6 (Ayuno), #7 (Decisión), #9 (Económico)'
+                    },
+                    criterio_clinico: {
+                        casos: suspensionCategoriesSummary?.clinico?.cant || 0,
+                        porcentaje: `${suspensionCategoriesSummary?.clinico?.pct || 0}%`,
+                        causales: 'Causales #4 (Enfermo), #5 (Sin preqx)'
+                    },
+                    operativo_logistica: {
+                        casos: suspensionCategoriesSummary?.operativo?.cant || 0,
+                        porcentaje: `${suspensionCategoriesSummary?.operativo?.pct || 0}%`,
+                        causales: 'Causales #1 (Reprog.), #3 (Ya realizada), #8 (Cirujano), #10 (Prótesis), #13 (Quirófano)'
+                    }
+                },
+                motivosOficiales: activeMotivosSuspension
+            };
+        }
+    }, [dynamicMetrics, suspensionCategoriesSummary, activeMotivosSuspension, classifiedSuspendedSurgeries, activePeriodLabel]);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
             
