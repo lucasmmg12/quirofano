@@ -91,7 +91,7 @@ export async function syncCirugiasConversion(targetPeriodo = null) {
             ? [targetPeriodo] 
             : [
                 '2026-01', '2026-02', '2026-03', '2026-04', 
-                '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'
+                '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'
             ];
 
         for (const per of periodos) {
@@ -221,5 +221,6 @@ export async function syncCirugiasConversion(targetPeriodo = null) {
 
 // Si se ejecuta directamente desde terminal
 if (process.argv[1] && process.argv[1].endsWith('sync_guardia_cirugias_conversion.mjs')) {
-    syncCirugiasConversion().then(() => process.exit(0)).catch(() => process.exit(1));
+    const target = process.argv[2] || null;
+    syncCirugiasConversion(target).then(() => process.exit(0)).catch(() => process.exit(1));
 }

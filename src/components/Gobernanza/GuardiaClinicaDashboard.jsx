@@ -149,6 +149,119 @@ const outlierBtnStyle = {
     boxShadow: '0 1px 2px rgba(37, 99, 235, 0.08)'
 };
 
+/**
+ * Función agregadora para períodos que abarcan múltiples meses o rangos personalizados
+ */
+function aggregateResumenData(months, label = 'Período Filtrado') {
+    if (!months || months.length === 0) return null;
+    if (months.length === 1) return months[0];
+
+    const totalConsultas = months.reduce((acc, m) => acc + (m.total_consultas || 0), 0);
+    const consultasConTriage = months.reduce((acc, m) => acc + (m.consultas_con_triage || 0), 0);
+    const pasesCirugia = months.reduce((acc, m) => acc + (m.cantidad_pases_cirugia || 0), 0);
+    const totalAltas = months.reduce((acc, m) => acc + (m.total_altas_clinicas || 0), 0);
+    const altasConEpicrisis = months.reduce((acc, m) => acc + (m.altas_con_epicrisis || 0), 0);
+
+    // Promedios ponderados por volumen de consultas del mes
+    const ponderar = (key) => {
+        if (totalConsultas === 0) return 0;
+        const weightedSum = months.reduce((acc, m) => acc + (Number(m[key] || 0) * (m.total_consultas || 0)), 0);
+        return Number((weightedSum / totalConsultas).toFixed(2));
+    };
+
+    const esperaMedico = ponderar('espera_medico_min_promedio');
+    const permanencia = ponderar('permanencia_guardia_min_promedio');
+    const reconsulta72h = ponderar('reconsulta_72h_pct');
+    const reinternacion72h = ponderar('reinternacion_72h_pct');
+    const mujeresPct = ponderar('mujeres_pct');
+    const hombresPct = ponderar('hombres_pct');
+
+    const coberturaTriagePct = totalConsultas > 0 ? Number(((consultasConTriage / totalConsultas) * 100).toFixed(2)) : 0;
+    const conversionCirugiaPct = totalConsultas > 0 ? Number(((pasesCirugia / totalConsultas) * 100).toFixed(2)) : 0;
+    const adherenciaEpicrisisPct = totalAltas > 0 ? Number(((altasConEpicrisis / totalAltas) * 100).toFixed(2)) : 0;
+
+    // Agregar distribución de Triage
+    const triageMap = {};
+    months.forEach(m => {
+        (m.triage_distribucion || []).forEach(t => {
+            const nivel = t.nivel || 'Sin clasificar';
+            triageMap[nivel] = (triageMap[nivel] || 0) + (t.cantidad || 0);
+        });
+    });
+    const triage_distribucion = Object.entries(triageMap).map(([nivel, cantidad]) => ({
+        nivel,
+        cantidad,
+        porcentaje: consultasConTriage > 0 ? Number(((cantidad / consultasConTriage) * 100).toFixed(2)) : 0
+    }));
+
+    // Agregar destinos
+    const destinosMap = {};
+    months.forEach(m => {
+        (m.destinos_distribucion || []).forEach(d => {
+            const destino = d.destino || 'Sin definir';
+            destinosMap[destino] = (destinosMap[destino] || 0) + (d.cantidad || 0);
+        });
+    });
+    const destinos_distribucion = Object.entries(destinosMap).map(([destino, cantidad]) => ({
+        destino,
+        cantidad,
+        porcentaje: totalConsultas > 0 ? Number(((cantidad / totalConsultas) * 100).toFixed(2)) : 0
+    }));
+
+    // Agregar género
+    const demografiaMap = {};
+    months.forEach(m => {
+        (m.demografia_genero || []).forEach(g => {
+            const genero = g.genero || 'Otro';
+            demografiaMap[genero] = (demografiaMap[genero] || 0) + (g.cantidad || 0);
+        });
+    });
+    const demografia_genero = Object.entries(demografiaMap).map(([genero, cantidad]) => ({
+        genero,
+        cantidad,
+        porcentaje: totalConsultas > 0 ? Number(((cantidad / totalConsultas) * 100).toFixed(2)) : 0
+    }));
+
+    // Agregar diagnósticos frecuentes
+    const diagMap = {};
+    months.forEach(m => {
+        (m.diagnosticos_frecuentes || []).forEach(d => {
+            const diag = d.diagnostico || 'Consulta General';
+            diagMap[diag] = (diagMap[diag] || 0) + (d.cantidad || 0);
+        });
+    });
+    const diagnosticos_frecuentes = Object.entries(diagMap)
+        .map(([diagnostico, cantidad]) => ({
+            diagnostico,
+            cantidad,
+            porcentaje: totalConsultas > 0 ? Number(((cantidad / totalConsultas) * 100).toFixed(2)) : 0
+        }))
+        .sort((a, b) => b.cantidad - a.cantidad)
+        .slice(0, 15);
+
+    return {
+        periodo: label,
+        total_consultas: totalConsultas,
+        consultas_con_triage: consultasConTriage,
+        cobertura_triage_pct: coberturaTriagePct,
+        cantidad_pases_cirugia: pasesCirugia,
+        conversion_cirugia_pct: conversionCirugiaPct,
+        espera_medico_min_promedio: esperaMedico,
+        permanencia_guardia_min_promedio: permanencia,
+        reconsulta_72h_pct: reconsulta72h,
+        reinternacion_72h_pct: reinternacion72h,
+        adherencia_epicrisis_pct: adherenciaEpicrisisPct,
+        total_altas_clinicas: totalAltas,
+        altas_con_epicrisis: altasConEpicrisis,
+        mujeres_pct: mujeresPct,
+        hombres_pct: hombresPct,
+        demografia_genero,
+        triage_distribucion,
+        destinos_distribucion,
+        diagnosticos_frecuentes
+    };
+}
+
 export default function GuardiaClinicaDashboard({ 
     onOpenDocModal, 
     activeIndicatorIds = [], 
@@ -162,7 +275,7 @@ export default function GuardiaClinicaDashboard({
 }) {
     const [loading, setLoading] = useState(true);
     const [historialResumen, setHistorialResumen] = useState([]);
-    const [selectedPeriodo, setSelectedPeriodo] = useState('2026-09');
+    const [selectedPeriodo, setSelectedPeriodo] = useState(() => (fechaDesde ? fechaDesde.slice(0, 7) : '2026-10'));
     const [selectedKpiDetail, setSelectedKpiDetail] = useState(null);
     const [selectedChartHelp, setSelectedChartHelp] = useState(null);
     const [selectedOutlierModal, setSelectedOutlierModal] = useState(null);
@@ -173,7 +286,7 @@ export default function GuardiaClinicaDashboard({
     const [activeDashboardTab, setActiveDashboardTab] = useState('resumen'); // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
     const [cirugiasConversionAll, setCirugiasConversionAll] = useState([]);
     const [triagePacientesAll, setTriagePacientesAll] = useState([]);
-    const [franjaFiltro, setFranjaFiltro] = useState('diurna'); // 'diurna' | 'nocturna' | '24hs' // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
+    const [franjaFiltro, setFranjaFiltro] = useState('diurna'); // 'diurna' | 'nocturna' | '24hs'
 
     // Cargar datos consolidados desde Supabase
     useEffect(() => {
@@ -184,26 +297,40 @@ export default function GuardiaClinicaDashboard({
     useEffect(() => {
         if (!fechaDesde || historialResumen.length === 0) return;
         
+        const yDesde = fechaDesde.slice(0, 4);
+        const yHasta = fechaHasta ? fechaHasta.slice(0, 4) : yDesde;
+        const mDesde = fechaDesde.slice(0, 7);
+        const mHasta = fechaHasta ? fechaHasta.slice(0, 7) : mDesde;
+
         // 1. Rango Anual completo (ej. 2026-01-01 a 2026-12-31)
-        if (fechaDesde.endsWith('-01-01') && fechaHasta && fechaHasta.endsWith('-12-31')) {
-            const yearStr = fechaDesde.slice(0, 4);
-            const anualKey = `${yearStr}-ANUAL`;
+        if (fechaDesde.endsWith('-01-01') && fechaHasta && fechaHasta.endsWith('-12-31') && yDesde === yHasta) {
+            const anualKey = `${yDesde}-ANUAL`;
             if (historialResumen.some(h => h.periodo === anualKey)) {
                 setSelectedPeriodo(anualKey);
                 return;
             }
         }
 
-        // 2. Mes específico según fechaDesde (ej: '2026-08' para 2026-08-01)
-        const targetYearMonth = fechaDesde.slice(0, 7);
-        if (historialResumen.some(h => h.periodo === targetYearMonth)) {
-            setSelectedPeriodo(targetYearMonth);
-        } else {
-            const availableMonthly = historialResumen.filter(h => !h.periodo.includes('ANUAL'));
-            const match = availableMonthly.find(h => h.periodo <= targetYearMonth) || availableMonthly[0];
-            if (match) {
-                setSelectedPeriodo(match.periodo);
+        // 2. Mes específico según fechaDesde y fechaHasta (ej: '2026-10' para Octubre)
+        if (mDesde === mHasta) {
+            if (historialResumen.some(h => h.periodo === mDesde)) {
+                setSelectedPeriodo(mDesde);
+                return;
             }
+        }
+
+        // 3. Rango de meses múltiples o personalizado
+        const monthlyOnly = historialResumen.filter(h => !h.periodo.includes('ANUAL'));
+        const inRange = monthlyOnly.filter(h => h.periodo >= mDesde && h.periodo <= mHasta);
+        if (inRange.length > 0) {
+            setSelectedPeriodo(mHasta || mDesde);
+            return;
+        }
+
+        // 4. Fallback al mes más cercano disponible
+        const match = monthlyOnly.find(h => h.periodo <= mDesde) || monthlyOnly[monthlyOnly.length - 1];
+        if (match) {
+            setSelectedPeriodo(match.periodo);
         }
     }, [fechaDesde, fechaHasta, historialResumen]);
 
@@ -297,11 +424,93 @@ export default function GuardiaClinicaDashboard({
         return historialResumen.find(h => h.periodo.includes('ANUAL'));
     }, [historialResumen]);
 
-    // Registro del período actualmente seleccionado
+    // Rango de fechas legible para el encabezado
+    const formattedDateRange = useMemo(() => {
+        if (!fechaDesde || !fechaHasta) return '';
+        const [yD, mD, dD] = fechaDesde.split('-');
+        const [yH, mH, dH] = fechaHasta.split('-');
+        return `${dD}/${mD}/${yD} al ${dH}/${mH}/${yH}`;
+    }, [fechaDesde, fechaHasta]);
+
+    // Registro del período actualmente seleccionado (con agregación multi-mes en tiempo real)
     const currentData = useMemo(() => {
         if (!historialResumen.length) return null;
+
+        // Si se proveen fechas desde la barra superior del Telar
+        if (fechaDesde && fechaHasta) {
+            const yDesde = fechaDesde.slice(0, 4);
+            const yHasta = fechaHasta.slice(0, 4);
+            const mDesde = fechaDesde.slice(0, 7);
+            const mHasta = fechaHasta.slice(0, 7);
+
+            // 1. Rango anual completo
+            if (fechaDesde.endsWith('-01-01') && fechaHasta.endsWith('-12-31') && yDesde === yHasta) {
+                const anual = historialResumen.find(h => h.periodo === `${yDesde}-ANUAL`);
+                if (anual) return anual;
+            }
+
+            // 2. Mes puntual exacto
+            if (mDesde === mHasta) {
+                const match = historialResumen.find(r => r.periodo === mDesde);
+                if (match) return match;
+            }
+
+            // 3. Rango personalizado o de varios meses
+            const monthlyOnly = historialResumen.filter(h => !h.periodo.includes('ANUAL'));
+            const inRange = monthlyOnly.filter(h => h.periodo >= mDesde && h.periodo <= mHasta);
+            if (inRange.length > 1) {
+                return aggregateResumenData(inRange, `${mDesde} a ${mHasta}`);
+            } else if (inRange.length === 1) {
+                return inRange[0];
+            }
+        }
+
+        // Fallback a selectedPeriodo
         return historialResumen.find(r => r.periodo === selectedPeriodo) || historialResumen[0];
-    }, [historialResumen, selectedPeriodo]);
+    }, [historialResumen, selectedPeriodo, fechaDesde, fechaHasta]);
+
+    // Etiqueta semántica del período activo filtrado
+    const activePeriodLabel = useMemo(() => {
+        if (selectedPeriodo?.includes('ANUAL')) {
+            const y = selectedPeriodo.split('-')[0] || '2026';
+            return `Año Completo ${y}`;
+        }
+        if (!fechaDesde || !fechaHasta) {
+            return formatPeriodoLabel(selectedPeriodo);
+        }
+        const [yD, mD] = fechaDesde.split('-');
+        const [yH, mH] = fechaHasta.split('-');
+        const meses = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+        ];
+        const mIdxD = parseInt(mD, 10) - 1;
+        const mIdxH = parseInt(mH, 10) - 1;
+        if (yD === yH && mD === mH) {
+            return `${meses[mIdxD]} ${yD}`;
+        }
+        if (yD === yH) {
+            return `${meses[mIdxD]} - ${meses[mIdxH]} ${yD}`;
+        }
+        return `${mD}/${yD} al ${mH}/${yH}`;
+    }, [selectedPeriodo, fechaDesde, fechaHasta]);
+
+    // Lista de accesos directos de períodos disponibles para el panel
+    const availablePeriodsList = useMemo(() => {
+        const months = historialResumen
+            .filter(r => !r.periodo.includes('ANUAL'))
+            .sort((a, b) => b.periodo.localeCompare(a.periodo))
+            .slice(0, 5) // Los 5 meses más recientes
+            .map(r => ({
+                id: r.periodo,
+                label: formatMesCorto(r.periodo)
+            }));
+        const anual = historialResumen.find(r => r.periodo.includes('ANUAL'));
+        if (anual) {
+            months.push({ id: anual.periodo, label: 'Anual 26' });
+        }
+        return months;
+    }, [historialResumen]);
 
     // Formateador de nombres de períodos (corrige 'ANUAL' para no producir 'undefined 2026')
     const formatPeriodoLabel = (periodoStr) => {
@@ -412,8 +621,25 @@ export default function GuardiaClinicaDashboard({
 
     // ─── MÉTRICAS ENRIQUECIDAS DEL TABLERO NUCLEAR (GOBERNANZA DE DATOS) ───
     const enrichedMetrics = useMemo(() => {
-        // Cirugías del período
-        const cirugiasPeriodo = cirugiasConversionAll.filter(c => c.periodo === selectedPeriodo);
+        const mDesde = fechaDesde ? fechaDesde.slice(0, 7) : selectedPeriodo;
+        const mHasta = fechaHasta ? fechaHasta.slice(0, 7) : selectedPeriodo;
+        const isAnual = selectedPeriodo?.includes('ANUAL');
+
+        // Cirugías del período o rango filtrado
+        const cirugiasPeriodo = cirugiasConversionAll.filter(c => {
+            if (isAnual) {
+                const year = selectedPeriodo.split('-')[0];
+                return c.periodo?.startsWith(year) || (c.fecha_guardia && c.fecha_guardia.startsWith(year));
+            }
+            if (fechaDesde && fechaHasta && c.fecha_guardia) {
+                return c.fecha_guardia >= fechaDesde && c.fecha_guardia <= fechaHasta;
+            }
+            if (mDesde && mHasta) {
+                return c.periodo >= mDesde && c.periodo <= mHasta;
+            }
+            return c.periodo === selectedPeriodo;
+        });
+
         const urgenciasReales = cirugiasPeriodo.filter(c => {
             const t = (c.tipo_cirugia || '').toLowerCase();
             return !t.includes('programad') && !t.includes('especialista');
@@ -424,7 +650,20 @@ export default function GuardiaClinicaDashboard({
         });
 
         // Triage del período y mapa horario 24 horas
-        const triagesPeriodo = triagePacientesAll.filter(t => t.periodo === selectedPeriodo);
+        const triagesPeriodo = triagePacientesAll.filter(t => {
+            if (isAnual) {
+                const year = selectedPeriodo.split('-')[0];
+                return t.periodo?.startsWith(year) || (t.fecha_visita && t.fecha_visita.startsWith(year));
+            }
+            if (fechaDesde && fechaHasta && t.fecha_visita) {
+                return t.fecha_visita >= fechaDesde && t.fecha_visita <= fechaHasta;
+            }
+            if (mDesde && mHasta) {
+                return t.periodo >= mDesde && t.periodo <= mHasta;
+            }
+            return t.periodo === selectedPeriodo;
+        });
+
         const hourlyTriage = Array.from({ length: 24 }, (_, hour) => {
             const hStr = String(hour).padStart(2, '0');
             const triagesAtHour = triagesPeriodo.filter(t => t.hora_llegada && t.hora_llegada.startsWith(hStr));
@@ -558,6 +797,68 @@ export default function GuardiaClinicaDashboard({
                             Métricas normadas de Oportunidad, Calidad, Resolutividad e Intensidad Diagnóstica
                         </span>
                     </div>
+                </div>
+
+                {/* Badge institucional de Período Activo Filtrado y accesos directos */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: '10px',
+                        padding: '6px 14px'
+                    }}>
+                        <Calendar size={17} color="#1D4ED8" />
+                        <div>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Período Activo
+                            </div>
+                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                {activePeriodLabel} {formattedDateRange ? `(${formattedDateRange})` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Botones de sincronización rápida con la barra superior */}
+                    {availablePeriodsList && availablePeriodsList.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '10px',
+                            padding: '3px 4px'
+                        }}>
+                            {availablePeriodsList.map(p => {
+                                const isCurrent = (p.id === selectedPeriodo) || 
+                                    (!selectedPeriodo?.includes('ANUAL') && fechaDesde?.slice(0, 7) === p.id);
+                                return (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => handleSelectPeriodo(p.id)}
+                                        style={{
+                                            border: 'none',
+                                            background: isCurrent ? '#2563EB' : 'transparent',
+                                            color: isCurrent ? '#FFFFFF' : '#475569',
+                                            padding: '5px 10px',
+                                            borderRadius: '7px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: isCurrent ? 800 : 600,
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title={`Filtrar Guardia por ${p.label}`}
+                                    >
+                                        {p.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -2438,7 +2739,7 @@ export default function GuardiaClinicaDashboard({
                 onClose={() => setSelectedOutlierModal(null)}
                 chartType={selectedOutlierModal || 'tiempos_espera'}
                 periodo={selectedPeriodo}
-                periodoNombre={formatPeriodoLabel(selectedPeriodo)}
+                periodoNombre={activePeriodLabel || formatPeriodoLabel(selectedPeriodo)}
             />
 
             {/* Modal de Tablero Completo de Quirófano (Articulación Guardia - Quirófano) */}
