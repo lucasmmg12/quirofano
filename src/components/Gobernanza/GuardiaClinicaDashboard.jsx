@@ -262,6 +262,38 @@ function aggregateResumenData(months, label = 'Período Filtrado') {
     };
 }
 
+// Formateador de nombres de períodos (corrige 'ANUAL' para no producir 'undefined 2026')
+function formatPeriodoLabel(periodoStr) {
+    if (!periodoStr) return '';
+    if (periodoStr.includes('ANUAL')) {
+        const year = periodoStr.split('-')[0] || '2026';
+        return `Acumulado ${year}`;
+    }
+    const [year, month] = periodoStr.split('-');
+    const meses = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    const mIdx = parseInt(month, 10) - 1;
+    if (isNaN(mIdx) || mIdx < 0 || mIdx > 11) return periodoStr;
+    const now = new Date();
+    const isCurrent = (parseInt(year, 10) === now.getFullYear() && (mIdx + 1) === (now.getMonth() + 1));
+    if (isCurrent) {
+        return `${meses[mIdx]} ${year} (al ${String(now.getDate()).padStart(2, '0')}/${month} · En Curso)`;
+    }
+    return `${meses[mIdx]} ${year}`;
+}
+
+// Formateador abreviado para ejes de gráficos
+function formatMesCorto(periodoStr) {
+    if (!periodoStr) return '';
+    if (periodoStr.includes('ANUAL')) return 'Anual';
+    const [, month] = periodoStr.split('-');
+    const mesesCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const mIdx = parseInt(month, 10) - 1;
+    return (mIdx >= 0 && mIdx < 12) ? mesesCortos[mIdx] : periodoStr;
+}
+
 export default function GuardiaClinicaDashboard({ 
     onOpenDocModal, 
     activeIndicatorIds = [], 
@@ -512,37 +544,6 @@ export default function GuardiaClinicaDashboard({
         return months;
     }, [historialResumen]);
 
-    // Formateador de nombres de períodos (corrige 'ANUAL' para no producir 'undefined 2026')
-    const formatPeriodoLabel = (periodoStr) => {
-        if (!periodoStr) return '';
-        if (periodoStr.includes('ANUAL')) {
-            const year = periodoStr.split('-')[0] || '2026';
-            return `Acumulado ${year}`;
-        }
-        const [year, month] = periodoStr.split('-');
-        const meses = [
-            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-        ];
-        const mIdx = parseInt(month, 10) - 1;
-        if (isNaN(mIdx) || mIdx < 0 || mIdx > 11) return periodoStr;
-        const now = new Date();
-        const isCurrent = (parseInt(year, 10) === now.getFullYear() && (mIdx + 1) === (now.getMonth() + 1));
-        if (isCurrent) {
-            return `${meses[mIdx]} ${year} (al ${String(now.getDate()).padStart(2, '0')}/${month} · En Curso)`;
-        }
-        return `${meses[mIdx]} ${year}`;
-    };
-
-    // Formateador abreviado para ejes de gráficos
-    const formatMesCorto = (periodoStr) => {
-        if (!periodoStr) return '';
-        if (periodoStr.includes('ANUAL')) return 'Anual';
-        const [, month] = periodoStr.split('-');
-        const mesesCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-        const mIdx = parseInt(month, 10) - 1;
-        return (mIdx >= 0 && mIdx < 12) ? mesesCortos[mIdx] : periodoStr;
-    };
 
     // Serie temporal cronológica (Ene -> Sep 2026) para los gráficos de evolución continua
     const evolutionChartData = useMemo(() => {
