@@ -157,6 +157,104 @@ function extractDniFromText(text: string | null | undefined): string | null {
 }
 
 // =============================================
+// VALIDACIÓN Y FILTRADO ESTRICTO DE MOTIVO DE CONSULTA
+// Descarta basura de teclado (ej: "5123asdf1g", "asdf"), saludos aislados y repeticiones de menú.
+// Requiere terminología médica/administrativa o estructura coherente en español.
+// =============================================
+function isValidConsultationMotive(text: string | null | undefined): boolean {
+    if (!text) return false;
+    let clean = String(text).trim();
+    if (!clean) return false;
+
+    // 1. Remover menciones de DNI escritas en el texto
+    clean = clean.replace(/\b(?:dni|documento|doc|mi\s+dni\s+es|nro)\s*[:.\s#]*\d{7,8}\b/gi, ' ');
+    clean = clean.replace(/\b[1-9]\d{6,7}\b/g, ' ');
+    clean = clean.replace(/[^\w\sáéíóúüñÁÉÍÓÚÜÑ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    if (clean.length < 4) return false;
+
+    const lower = clean.toLowerCase();
+
+    // 2. Descartar patrones de selección de menú u opciones numéricas
+    if (/^(?:opci[oó]n\s*)?[0-9]+(?:\s*[a-z])?$/i.test(lower)) return false;
+
+    // 3. Descartar saludos y fórmulas de cortesía vacías
+    const GREETINGS_AND_COURTESIES = /^(?:hola+|buen\s*d[ií]a|buen[ao]s\s*(?:d[ií]as?|tardes?|noches?)|buenas|saludos|que\s*tal|c[oó]mo\s*est[aá]s?|hola\s+buenas?|hey|hi|hello|ok|gracias|muchas\s*gracias|much[ií]simas\s*gracias|por\s*favor|chau|adi[oó]s|hasta\s*luego|dale|bueno|listo|de\s*diez|perfecto|joya)\b/i;
+    if (GREETINGS_AND_COURTESIES.test(lower) && lower.split(/\s+/).length <= 3) {
+        const withoutGreeting = lower.replace(GREETINGS_AND_COURTESIES, '').trim();
+        if (withoutGreeting.length < 4) return false;
+    }
+
+    // 4. Descartar meras solicitudes de hablar con un agente / operador sin explicar el motivo
+    const ONLY_AGENT_REQUEST = /^(?:(?:quiero|quisiera|necesito|deseo|podr[ií]a|favor|solicito|me\s+gustar[ií]a)\s+)?(?:hablar|chatear|comunicarme|contactar|atenci[oó]n|comunicaci[oó]n)?\s*(?:con\s+)?(?:un[ao]?\s+)?(?:agente|asesor[ao]?|operador[ao]?|representante|persona|humano|alguien|recepci[oó]n|secretaria|emplead[ao])(?:\s*(?:humano|real|por\s*favor|urgente|disponible))?\s*$/i;
+    if (ONLY_AGENT_REQUEST.test(lower)) return false;
+
+    // Descartar palabras aisladas vacías
+    if (/^(?:consulta|una\s*consulta|mi\s*consulta|tengo\s*(?:una\s*)?consulta|duda|tengo\s*(?:una\s*)?duda|pregunta|informaci[oó]n|info|tr[aá]mite|asunto|tema|ayuda|atenci[oó]n|necesito\s*ayuda)\s*$/i.test(lower)) {
+        return false;
+    }
+
+    // 5. DETECCIÓN DE BASURA DE TECLADO / GIBBERISH / RANDOM TYPING
+    // 5.1 Tokens que mezclan números y letras dentro de la misma palabra (ej: "5123asdf1g", "asdf1g", "a1b2c3")
+    const words = lower.split(/\s+/).filter(Boolean);
+    const hasAlphanumericMash = words.some((w: string) => /[a-z]+[0-9]+|[0-9]+[a-z]+/i.test(w));
+    if (hasAlphanumericMash && words.length <= 2) return false;
+
+    // 5.2 Caracteres repetidos 4 o más veces (ej: "aaaa", "zzzz", "ssss")
+    if (/(.)\1{3,}/i.test(lower)) return false;
+
+    // 5.3 Stems típicos de teclado (asdf, qwer, zxcv, hjkl, 1234, uiop)
+    if (/(?:asdf|sdfg|dfgh|qwer|werty|zxcv|xcvb|hjkl|jklñ|uiop|1234)/i.test(lower) && words.length <= 3) {
+        return false;
+    }
+
+    // 5.4 Secuencias de 5 o más consonantes consecutivas (imposible en español)
+    if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(lower)) return false;
+
+    // 5.5 Ratio de vocales en el texto completo:
+    const allLetters = lower.replace(/[^a-záéíóúüñ]/g, '');
+    if (allLetters.length >= 4) {
+        const vowels = lower.match(/[aeiouáéíóúü]/g) || [];
+        const vowelRatio = vowels.length / allLetters.length;
+        if (vowelRatio < 0.20 || vowels.length === 0) return false;
+    }
+
+    // 6. VOCABULARIO POSITIVO: Ámbito médico, administrativo o sanitario
+    const MEDICAL_ADMIN_TERMS = /\b(?:turno[s]?|cita[s]?|agendar|sacar|pedir|solicitar|cancelar|reprogramar|confirmar|m[eé]dic[a-z]*|doctor[a-z]*|dr[a]?|profesional[a-z]*|especialidad[a-z]*|ginecolog[a-z]*|obstetr[a-z]*|pediatr[a-z]*|cardiolog[a-z]*|traumatolog[a-z]*|dermatolog[a-z]*|oftalmolog[a-z]*|urolog[a-z]*|neurolog[a-z]*|nutrici[a-z]*|kinesiolog[a-z]*|cirujan[a-z]*|odontolog[a-z]*|bioqu[ií]mic[a-z]*|an[aá]lisis|laboratorio[s]?|estudio[s]?|ecograf[ií]a[s]?|eco|tomograf[ií]a[s]?|tac|resonancia[s]?|rmn|mamograf[ií]a[s]?|radiograf[ií]a[s]?|rx|radiolog[a-z]*|doppler|holter|ergometr[ií]a|electro|papanicolau|pap|colposcop[a-z]*|biopsia[s]?|endoscop[a-z]*|colonoscop[a-z]*|sangre|orina|cultivo[s]?|hisopado[s]?|pedido[s]?|orden[a-z]*|receta[s]?|prescripci[a-z]*|autoriz[a-z]*|obra\s*social|prepaga[s]?|coseguro[s]?|afiliad[a-z]*|carnet|credencial[a-z]*|plan[a-z]*|particular[a-z]*|arancel[a-z]*|precio[s]?|costo[s]?|cu[aá]nto[s]?|valor[a-z]*|presupuesto[s]?|pagar|pago[s]?|factura[a-z]*|cobro|guardia[s]?|urgencia[s]?|emergencia[s]?|internaci[a-z]*|cirug[ií]a[s]?|operaci[a-z]*|quir[oó]fan[a-z]*|alta|cama[s]?|sala[s]?|habitaci[a-z]*|maternidad|parto[s]?|ces[aá]rea[s]?|embaraz[a-z]*|neonato[s]?|bebe[s]?|beb[eé][s]?|hijo[a-z]*|mam[aá]|pap[aá]|padre[s]?|madre[s]?|familiar[a-z]*|dolor[a-z]*|fiebre[a-z]*|sangrado[s]?|molestia[s]?|infecci[a-z]*|s[ií]ntoma[s]?|gripe|tos|presi[oó]n|tensi[oó]n|pecho|cabeza|espalda|est[oó]mago|garganta|o[ií]do|ojo[s]?|muela[s]?|diente[s]?|herida[s]?|fractura[s]?|golpe[s]?|ca[ií]da[s]?|vacuna[s]?|inyecci[a-z]*|medicamento[s]?|remedio[s]?|farmacia|historia\s*cl[ií]nica|informe[s]?|resultado[s]?|retirar|protocolo[s]?|derivaci[a-z]*|atenci[oó]n|atender|sede[s]?|horario[s]?|atraso|demora)\b/i;
+
+    if (MEDICAL_ADMIN_TERMS.test(lower)) {
+        return true;
+    }
+
+    // 7. Frase coherente en español con al menos 2 palabras funcionales y 3 palabras totales
+    const COMMON_SPANISH_WORDS = /\b(?:quiero|quisiera|necesito|deseo|tengo|estoy|saber|preguntar|averiguar|hacer|hacerme|ver|verme|ir|venir|llevar|traer|mandar|enviar|llamar|atenderme|atendiendo|atienden|atiende|reciben|toman|para|porque|cuando|donde|cuanto|como|que|cual|quien|sobre|desde|hasta|hacia|con|sin|entre|este|esta|estos|estas|aquel|aquella|mi|mis|tu|tus|su|sus|un|una|unos|unas|el|la|los|las|al|del|por|favor|gracias|ma[nñ]ana|tarde|noche|hoy|ayer|semana|mes|d[ií]as?|urgente|problema|caso|situaci[oó]n)\b/gi;
+
+    const matchedCommon = lower.match(COMMON_SPANISH_WORDS) || [];
+    if (matchedCommon.length >= 2 && words.length >= 3 && clean.length >= 10) {
+        return true;
+    }
+
+    return false;
+}
+
+function extractCleanConsultationMotive(text: string | null | undefined): string | null {
+    if (!text) return null;
+    let clean = String(text).trim();
+    if (!clean) return null;
+
+    // Remover mención del DNI del motivo registrado
+    clean = clean.replace(/\b(?:dni|documento|doc|mi\s+dni\s+es|nro)\s*[:.\s#]*\d{7,8}\b/gi, ' ');
+    clean = clean.replace(/\b[1-9]\d{6,7}\b/g, ' ');
+    clean = clean.replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '').replace(/\s+/g, ' ').trim();
+
+    if (!isValidConsultationMotive(clean)) {
+        return null;
+    }
+
+    return clean;
+}
+
+// =============================================
 // DETECCIÓN INFALIBLE DE MENÚ / VOLVER ATRÁS (TOLERANTE A TILDES Y RÁFAGAS)
 // =============================================
 export function isNavigationBackOrMenu(text: string | null | undefined): boolean {
@@ -4960,16 +5058,15 @@ async function handleChatbotTriage(
             }
         }
 
-        // 2. Extraer Motivo de consulta (no puede ser solo '5', 'opcion 5', 'agente', 'hola', ni puros números)
+        // 2. Extraer Motivo de consulta estrictamente validado (descarta basura de teclado, saludos y repeticiones de menú)
         const isOnlyOptionOrGreeting = /^(?:5|opci[oó]n\s*5|0|opci[oó]n\s*0|agente|asesor|humano|persona|operador|hola|buen\s*d[ií]a|buenas|buenas\s*tardes|ok|por\s*favor|hablar\s+con\s+(?:un\s+)?(?:agente|asesor|operador|alguien))\s*$/i.test(cleanText.trim());
         const isOnlyDigits = /^\s*(?:dni\s*)?\d{7,8}\s*$/i.test(cleanText.trim());
-        const textWithoutDni = cleanText.replace(/\b\d{7,8}\b/g, '').replace(/\b(?:dni|mi\s+dni\s+es|documento)\b/gi, '').trim();
 
-        const existingMotive = (conv?.motivo_consulta && !conv.motivo_consulta.includes('esperando datos') && !conv.motivo_consulta.includes('esperando motivo') && !conv.motivo_consulta.includes('esperando DNI') && !conv.motivo_consulta.includes('Solicitud de Agente')) 
+        const existingMotive = (conv?.motivo_consulta && isValidConsultationMotive(conv.motivo_consulta)) 
             ? conv.motivo_consulta 
             : null;
         
-        const motiveInMsg = (!isOnlyOptionOrGreeting && !isOnlyDigits && textWithoutDni.length >= 5) ? cleanText.trim() : null;
+        const motiveInMsg = extractCleanConsultationMotive(cleanText);
         const finalMotive = motiveInMsg || existingMotive;
 
         const safeConvName = (conv?.nombre_completo && !isMedicalSpecialty(conv.nombre_completo) && !conv.nombre_completo.startsWith('Paciente')) ? conv.nombre_completo : null;
@@ -5001,7 +5098,7 @@ async function handleChatbotTriage(
             return await finalizeAndSend(replyText, nextStage, updates);
         }
 
-        // ─── VALIDACIÓN ESTRICTA: CASO 2: TIENE DNI PERO FALTA MOTIVO ───
+        // ─── VALIDACIÓN ESTRICTA: CASO 2: TIENE DNI PERO FALTA O ES INVÁLIDO EL MOTIVO ───
         if (!finalMotive) {
             updates.status = 'bot';
             updates.bot_active = true;
@@ -5009,8 +5106,13 @@ async function handleChatbotTriage(
             nextStage = 'esperando_datos_agente';
             updates.motivo_consulta = `Consulta con Agente: ${resolvedName} (DNI ${effectiveDni}) - esperando motivo`;
 
+            const hasGibberishOrInvalidInput = cleanText && !isOnlyOptionOrGreeting && !isOnlyDigits;
+            const detailMsg = hasGibberishOrInvalidInput
+                ? `No pudimos comprender el motivo con el texto ingresado (_"${cleanText.slice(0, 30)}"_).\n\nPor favor, indícanos brevemente en qué podemos asistirte (por ejemplo: _solicitar turno con un especialista, consultar valor o preparación de un estudio, autorizaciones, presupuesto_, etc.):\n\n`
+                : `Para asignarte con el área u operador adecuado, por favor indícanos brevemente el *motivo de tu consulta* (ej: solicitar turno con especialista, consultar estudio, presupuesto, etc.):\n\n`;
+
             replyText = `¡Muchas gracias *${resolvedName}*! Registramos tu DNI *${effectiveDni}*. 🏥\n\n` +
-                `⚠️ *Paso indispensable:* Para asignarte con el área u operador adecuado, por favor indícanos brevemente el *motivo de tu consulta* (ej: solicitar turno con especialista, consultar estudio, presupuesto, etc.):\n\n` +
+                `⚠️ *Paso indispensable:* ${detailMsg}` +
                 `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
 
             return await finalizeAndSend(replyText, nextStage, updates);
@@ -6459,26 +6561,42 @@ async function handleChatbotTriage(
         if (isActionableQuery) {
             const candidateTargetDni = candidateDni || paciente?.dni || updates.dni || conv?.dni || (resolvedDni ? String(resolvedDni) : null);
             const hasValidDni = Boolean(candidateTargetDni && isValidArgentineDni(String(candidateTargetDni)));
+            const motiveFound = extractCleanConsultationMotive(convResult.summary) || extractCleanConsultationMotive(cleanText) || (isValidConsultationMotive(convResult.summary) ? convResult.summary : null);
+            const hasValidMotive = Boolean(motiveFound);
 
-            if (!hasValidDni) {
+            if (!hasValidDni || !hasValidMotive) {
                 const isTurnoReq = convResult.intent === 'turno' || /\b(turno|cita|agendar)\b/i.test(cleanText);
                 updates.status = 'bot';
                 updates.bot_active = true;
                 updates.bot_stage = isTurnoReq ? 'esperando_datos_turno' : 'esperando_datos_agente';
                 nextStage = updates.bot_stage;
-                updates.motivo_consulta = convResult.summary || (cleanText.length > 50 ? `${cleanText.slice(0, 50)}...` : cleanText);
 
-                replyText = (convResult.replyText ? `${convResult.replyText}\n\n` : '') +
-                    `⚠️ *Paso indispensable:* Para poder agendarte en el sistema o asignarte un asesor, es obligatorio ingresar el número de *DNI del paciente* (debe contener 7 u 8 dígitos, sin puntos ni espacios).\n\n` +
-                    `Por favor, escribí el *DNI* para continuar:\n\n` +
-                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                if (!hasValidDni && !hasValidMotive) {
+                    updates.motivo_consulta = 'Consulta con Asesor (esperando DNI y motivo)';
+                    replyText = (convResult.replyText ? `${convResult.replyText}\n\n` : '') +
+                        `⚠️ *Paso indispensable:* Para poder derivarte con el área adecuada de Sanatorio Argentino, es obligatorio ingresar el número de *DNI del paciente* y el *motivo de tu consulta*.\n\n` +
+                        `Por favor, envíanos estos datos para continuar:\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                } else if (!hasValidDni) {
+                    updates.motivo_consulta = `Consulta con Asesor: ${motiveFound?.slice(0, 60)} (esperando DNI)`;
+                    replyText = (convResult.replyText ? `${convResult.replyText}\n\n` : '') +
+                        `⚠️ *Paso indispensable:* Para poder agendarte en el sistema o asignarte un asesor, es obligatorio ingresar el número de *DNI del paciente* (debe contener 7 u 8 dígitos, sin puntos ni espacios).\n\n` +
+                        `Por favor, escribí el *DNI* para continuar:\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                } else {
+                    updates.dni = String(candidateTargetDni);
+                    updates.motivo_consulta = `Consulta con Asesor (DNI ${candidateTargetDni}) - esperando motivo`;
+                    replyText = (convResult.replyText ? `${convResult.replyText}\n\n` : '') +
+                        `⚠️ *Paso indispensable:* Para asignarte con el área u operador adecuado, por favor indícanos brevemente el *motivo de tu consulta* (ej: solicitar turno médico, estudio, presupuesto, etc.):\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                }
             } else {
                 updates.dni = String(candidateTargetDni);
                 updates.status = 'sin_asignar';
                 updates.bot_active = false;
                 nextStage = 'esperando_agente';
                 updates.bot_stage = 'esperando_agente';
-                updates.motivo_consulta = convResult.summary || (cleanText.length > 50 ? `${cleanText.slice(0, 50)}...` : cleanText);
+                updates.motivo_consulta = motiveFound || convResult.summary || cleanText.slice(0, 50);
                 updates.ai_summary = buildTriageSummary(updates, 'derivacion_agente', analysis.doctorRecord, isExistingPatient, paciente?.edad);
             }
         } else {
