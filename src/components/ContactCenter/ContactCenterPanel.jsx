@@ -82,12 +82,21 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     const [pendingCancelacionesCount, setPendingCancelacionesCount] = useState(0);
 
     useEffect(() => {
-        getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c));
-        const unsubCancel = subscribeToCancelaciones(() => {
+        const refreshCount = () => {
             getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c));
+        };
+        refreshCount();
+
+        const unsubCancel = subscribeToCancelaciones(() => {
+            refreshCount();
         });
+
+        // Polling de respaldo cada 30s para sincronización perfecta entre múltiples puestos
+        const cancelTimer = setInterval(refreshCount, 30000);
+
         return () => {
             if (unsubCancel) unsubCancel();
+            clearInterval(cancelTimer);
         };
     }, []);
 
@@ -882,6 +891,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     'success'
                 );
             }
+            // Si el motivo de cierre o el chat correspondió a Cancelación, refrescar conteo de inmediato
+            if (
+                (resolutionReason || '').toLowerCase().includes('cancelaci') || 
+                (resolutionReason || '').toLowerCase().includes('cancelado') ||
+                (targetChat.tags && targetChat.tags.includes('Cancelación'))
+            ) {
+                getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c));
+            }
         } catch (err) {
             if (addToast) addToast(err.message || 'Error al finalizar atención', 'error');
         }
@@ -1164,6 +1181,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     addToast={addToast}
                     onOpenChatWithPhone={handleOpenChatWithPhone}
                     onBackToConsole={() => handleNavigateTab('conversaciones')}
+                    onPendingCountChange={setPendingCancelacionesCount}
+                    onRefreshPendingCount={() => getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c))}
                 />
             )}
 

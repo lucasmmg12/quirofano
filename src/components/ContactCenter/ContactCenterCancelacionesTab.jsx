@@ -19,7 +19,9 @@ export default function ContactCenterCancelacionesTab({
     currentUser, 
     addToast, 
     onOpenChatWithPhone, 
-    onBackToConsole 
+    onBackToConsole,
+    onPendingCountChange,
+    onRefreshPendingCount
 }) {
     const [loading, setLoading] = useState(false);
     const [casos, setCasos] = useState([]);
@@ -137,50 +139,110 @@ export default function ContactCenterCancelacionesTab({
     // Ejecutar acción de marcar o descartar
     const handleConfirmAction = async () => {
         if (!actionModal || !actionModal.caso) return;
-        setActionModal(prev => ({ ...prev, saving: true }));
 
+        const casoTarget = actionModal.caso;
+        const tipoAccion = actionModal.tipo;
+        const notasAccion = actionModal.notas;
         const agenteId = activeAgent?.id || (currentUser?.usuario || 'agente').toLowerCase().trim();
         const agenteNombre = activeAgent?.name || currentUser?.nombre || 'Agente';
+        const nuevoEstado = tipoAccion === 'cancelar' ? 'procesado_salus' : 'descartado';
+        const ahoraIso = new Date().toISOString();
+        const eraPendiente = casoTarget.estado === 'pendiente';
 
+        // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA (Respuesta visual en 0ms)
+        setCasos(prev => prev.map(c => {
+            if (c.id === casoTarget.id) {
+                return {
+                    ...c,
+                    estado: nuevoEstado,
+                    agente_id: agenteId,
+                    agente_nombre: agenteNombre,
+                    procesado_at: ahoraIso,
+                    notas_agente: notasAccion,
+                    updated_at: ahoraIso
+                };
+            }
+            return c;
+        }));
+
+        if (eraPendiente) {
+            setStats(prev => ({
+                ...prev,
+                totalPendientes: Math.max(0, (prev.totalPendientes || 1) - 1),
+                totalProcesados: nuevoEstado === 'procesado_salus' ? (prev.totalProcesados || 0) + 1 : prev.totalProcesados,
+                totalDescartados: nuevoEstado === 'descartado' ? (prev.totalDescartados || 0) + 1 : prev.totalDescartados,
+                procesadosHoy: nuevoEstado === 'procesado_salus' ? (prev.procesadosHoy || 0) + 1 : prev.procesadosHoy
+            }));
+            if (onPendingCountChange) {
+                onPendingCountChange(prev => Math.max(0, (prev || 1) - 1));
+            }
+        }
+
+        // Cerrar modal de inmediato para permitir a la agente seguir trabajando sin bloqueo
+        setActionModal(null);
+
+        if (addToast) {
+            addToast(
+                tipoAccion === 'cancelar'
+                    ? '✅ Turno marcado como Cancelado en SALUS'
+                    : 'Turno descartado de la bolsa',
+                tipoAccion === 'cancelar' ? 'success' : 'info'
+            );
+        }
+
+        // 2. PERSISTENCIA EN SUPABASE EN SEGUNDO PLANO
         try {
             let res;
-            if (actionModal.tipo === 'cancelar') {
+            if (tipoAccion === 'cancelar') {
                 res = await marcarCanceladoEnSalus({
-                    id: actionModal.caso.id,
+                    id: casoTarget.id,
                     agenteId,
                     agenteNombre,
-                    notas: actionModal.notas
+                    notas: notasAccion
                 });
-                if (res.success) {
-                    if (addToast) addToast('✅ Turno marcado como Cancelado en SALUS', 'success');
-                } else {
-                    if (addToast) addToast(res.error || 'Error al actualizar', 'error');
-                }
             } else {
                 res = await descartarCancelacion({
-                    id: actionModal.caso.id,
+                    id: casoTarget.id,
                     agenteId,
                     agenteNombre,
-                    notas: actionModal.notas
+                    notas: notasAccion
                 });
-                if (res.success) {
-                    if (addToast) addToast('Turno descartado de la bolsa', 'info');
-                } else {
-                    if (addToast) addToast(res.error || 'Error al descartar', 'error');
-                }
             }
 
-            if (res.success) {
-                setActionModal(null);
+            if (!res.success) {
+                console.error('[CancelacionesTab] Error en backend al procesar:', res.error);
+                if (addToast) addToast(res.error || 'Error al persistir en base de datos', 'error');
+                // Revertir recargando desde servidor
                 loadData(true);
+                if (onRefreshPendingCount) {
+                    onRefreshPendingCount();
+                }
+            } else {
+                // Sincronizar recuento final desde servidor
+                if (onRefreshPendingCount) {
+                    onRefreshPendingCount();
+                }
             }
         } catch (err) {
             console.error('Error procesando acción:', err);
-            if (addToast) addToast('Ocurrió un error al procesar el caso', 'error');
-        } finally {
-            setActionModal(prev => prev ? ({ ...prev, saving: false }) : null);
+            if (addToast) addToast('Error de conexión al persistir el caso', 'error');
+            loadData(true);
+            if (onRefreshPendingCount) {
+                onRefreshPendingCount();
+            }
         }
     };
+
+    // Conteo de turnos pendientes por DNI para detectar duplicados o pacientes con múltiples turnos
+    const turnosCountByDni = useMemo(() => {
+        const counts = {};
+        (casos || []).forEach(c => {
+            if (c.estado === 'pendiente' && c.dni) {
+                counts[c.dni] = (counts[c.dni] || 0) + 1;
+            }
+        });
+        return counts;
+    }, [casos]);
 
     // Filtrado de casos
     const casosFiltrados = useMemo(() => {
@@ -311,6 +373,34 @@ export default function ContactCenterCancelacionesTab({
                             </p>
                         </div>
                     </div>
+
+                    {/* Botón de Recarga Manual */}
+                    <button
+                        onClick={() => {
+                            loadData(false);
+                            if (onRefreshPendingCount) onRefreshPendingCount();
+                        }}
+                        disabled={loading}
+                        title="Recargar bolsa de cancelaciones en tiempo real"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            background: '#F8FAFC',
+                            color: '#0F2942',
+                            fontSize: '12.5px',
+                            fontWeight: '700',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.15s ease',
+                            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)'
+                        }}
+                    >
+                        <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} color="#0284C7" />
+                        <span>{loading ? 'Actualizando...' : 'Actualizar'}</span>
+                    </button>
                 </div>
             </div>
 
@@ -652,6 +742,22 @@ export default function ContactCenterCancelacionesTab({
                                                 <span style={{ fontSize: '11px', color: '#64748B' }}>
                                                     Tel: +{caso.phone || 'S/D'}
                                                 </span>
+                                                {isPendiente && caso.dni && turnosCountByDni[caso.dni] > 1 && (
+                                                    <span 
+                                                        title="Este paciente tiene más de un turno solicitado para cancelar en la bolsa"
+                                                        style={{
+                                                            fontSize: '10.5px',
+                                                            fontWeight: '700',
+                                                            padding: '1px 6px',
+                                                            borderRadius: '4px',
+                                                            background: '#FEF3C7',
+                                                            color: '#92400E',
+                                                            border: '1px solid #FDE68A'
+                                                        }}
+                                                    >
+                                                        ⚠️ {turnosCountByDni[caso.dni]} turnos
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

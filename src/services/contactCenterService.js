@@ -2333,6 +2333,47 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
         throw error;
     }
 
+    // 3.b Si el motivo de resolución o la conversación corresponde a Cancelación de Turno,
+    // sincronizar y marcar automáticamente como procesada en contact_center_cancelaciones
+    const isCancelacionReason = (resolutionReason || '').toLowerCase().includes('cancelaci') || 
+                                (resolutionReason || '').toLowerCase().includes('cancelado');
+    if (isCancelacionReason || (chat.tags && chat.tags.includes('Cancelación'))) {
+        try {
+            const digits = norm.replace(/\D/g, '');
+            const last10 = digits.slice(-10);
+            const dniChat = chat.customFields?.dni || chat.dni;
+            const agenteId = activeAgent?.id || (currentUser?.usuario || 'agente').toLowerCase().trim();
+            const agenteNombre = activeAgent?.name || currentUser?.nombre || 'Agente';
+
+            let q = supabase
+                .from('contact_center_cancelaciones')
+                .update({
+                    estado: 'procesado_salus',
+                    agente_id: agenteId,
+                    agente_nombre: agenteNombre,
+                    procesado_at: now.toISOString(),
+                    notas_agente: `Gestionado y cerrado desde Chat WhatsApp (${resolutionReason || 'Cancelación confirmada'})`,
+                    updated_at: now.toISOString()
+                })
+                .eq('estado', 'pendiente');
+
+            if (dniChat && String(dniChat).trim()) {
+                q = q.or(`phone.eq.${norm},phone.like.%${last10},dni.eq.${String(dniChat).trim()}`);
+            } else {
+                q = q.or(`phone.eq.${norm},phone.like.%${last10}`);
+            }
+
+            const { data: updatedCancels, error: cancelErr } = await q.select('id');
+            if (cancelErr) {
+                console.warn('[contact-center] Error actualizando cancelaciones vinculadas al cerrar chat:', cancelErr);
+            } else if (updatedCancels && updatedCancels.length > 0) {
+                console.log(`[contact-center] ✅ ${updatedCancels.length} cancelacion(es) vinculada(s) marcada(s) como procesadas en SALUS automáticamente al cerrar chat.`);
+            }
+        } catch (cancErr) {
+            console.warn('[contact-center] Excepción sincronizando cancelaciones al cerrar chat:', cancErr);
+        }
+    }
+
     const newMessages = [...(chat.messages || [])];
     if (!silent) {
         const finalOutMsg = {
