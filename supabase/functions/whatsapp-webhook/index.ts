@@ -1891,6 +1891,22 @@ function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: str
 }
 
 /**
+ * Expande variantes fonéticas y ortográficas frecuentes de nombres y apellidos en San Juan.
+ * Ejemplo: cintia <-> cinthia <-> cynthia <-> cyntia
+ */
+function getDoctorSearchVariants(word: string): string[] {
+    const w = (word || '').toLowerCase().trim();
+    if (!w) return [];
+    if (/^c[yi]n?t?h?i?a$/i.test(w) || w === 'cintia' || w === 'cinthia' || w === 'cynthia' || w === 'cyntia') {
+        return ['cintia', 'cinthia', 'cynthia', 'cyntia'];
+    }
+    if (w === 'matias' || w === 'mathias') return ['matias', 'mathias'];
+    if (w === 'veronica' || w === 'verónica') return ['veronica', 'verónica'];
+    if (w === 'vanesa' || w === 'vanessa') return ['vanesa', 'vanessa'];
+    return [w];
+}
+
+/**
  * Detecta si el texto del paciente consulta por precios, aranceles, valores o condiciones particulares de consulta médica.
  */
 function isArancelOrPriceQuery(text: string): boolean {
@@ -2913,21 +2929,22 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria)\b/i.test(clean);
     const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|web|portal|cartilla|servicios)\b/i.test(clean);
 
-    // Extracción inteligente de nombre de doctor/médico
+    // Extracción inteligente de nombre de doctor/médico (soporta nombre y apellido, ej: "dra Cintia Pons")
     let doctorCandidate: string | null = null;
     const docRegexes = [
-        /(?:doctor|doctora|dr|dra)\.?\s+([a-záéíóúñ]+)/i,
-        /(?:con|para)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)\s+([a-záéíóúñ]{3,})/i,
-        /(?:turno\s+)?(?:con|para)\s+(?:el\s+|la\s+)?([a-záéíóúñ]{3,})/i,
-        /(?:atenderse|atenderme|ver)\s+(?:con|al|a\s+la)\s+([a-záéíóúñ]{3,})/i
+        /(?:doctor|doctora|dr|dra)\.?\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i,
+        /(?:con|para)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)\s+([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i,
+        /(?:turno\s+)?(?:con|para)\s+(?:el\s+|la\s+)?([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i,
+        /(?:atenderse|atenderme|ver)\s+(?:con|al|a\s+la)\s+([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i
     ];
 
     for (const reg of docRegexes) {
         const m = clean.match(reg);
         if (m && m[1]) {
-            const word = m[1].toLowerCase().trim();
-            if (!STOPWORDS_MEDICOS.has(word) && word.length >= 3) {
-                doctorCandidate = word;
+            const rawCand = m[1].toLowerCase().trim();
+            const candParts = rawCand.split(/\s+/).filter(p => !STOPWORDS_MEDICOS.has(p) && p.length >= 3);
+            if (candParts.length > 0) {
+                doctorCandidate = candParts.join(' ');
                 break;
             }
         }
@@ -3006,7 +3023,13 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
             const candWords = doctorCandidate.split(/\s+/).filter(Boolean);
             for (const cw of candWords) {
-                docQuery = docQuery.ilike('profesional_nombre', `%${cw}%`);
+                const variants = getDoctorSearchVariants(cw);
+                if (variants.length > 1) {
+                    const orClause = variants.map(v => `profesional_nombre.ilike.%${v}%`).join(',');
+                    docQuery = docQuery.or(orClause);
+                } else {
+                    docQuery = docQuery.ilike('profesional_nombre', `%${cw}%`);
+                }
             }
 
             const { data: rawDocs } = await docQuery.limit(15);
@@ -4941,26 +4964,29 @@ async function handleChatbotTriage(
             // B) El paciente rechaza las opciones ofrecidas (ej: "ninguno", "no es ninguno", "otro médico", "no figura", etc.)
             const isRechazoOpciones = /\b(ningun[ao]s?|no\s+es\s+ningun[ao]|ninguna\s+de\s+las\s+opciones|ninguna\s+opcion|otro\s+m[eé]dico|otra\s+doctora|otro\s+doctor|busco\s+a\s+otro|no\s+est[aá]|no\s+figura|no\s+aparece|no\s+es\s+ese|no\s+es\s+esa|no\s+es\s+el|no\s+es\s+la|no\s+era\s+ese|no\s+era\s+esa)\b/i.test(trimmed) || /^(no|no\s+se|ninguno|ninguna|otro|otra)$/i.test(trimmed);
 
-            // C) El paciente pide explícitamente un agente o ayuda
+            // C) El paciente pide explícitamente un agente o ayuda, o menciona un sector no médico (ej: farmacia)
             const isPideAgente = /\b(agente|asesor|asesora|operador|operadora|humano|persona|hablar\s+con\s+alguien)\b/i.test(trimmed);
+            const isNonDoctorSector = /\b(farmacia|es\s+para\s+farmacia|laboratorio|guardia|vacunatorio|rayos|ecograf[ií]a|administraci[oó]n|facturaci[oó]n|auditor[ií]a)\b/i.test(trimmed);
 
             // Contador de intentos fallidos en esta etapa
             const previousAttempts = Number(conv?.ai_summary?.intentos_seleccion_medico || 0);
 
-            if (isPideAgente || previousAttempts >= 2) {
-                // Derivación directa a asesor humano tras 2 intentos o pedido explícito
-                replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 👤 Para que puedas coordinar tu turno sin demoras y con el profesional exacto que necesitás, ya mismo te comunico con un asesor de nuestro equipo de atención.\n\n` +
+            if (isPideAgente || isNonDoctorSector || previousAttempts >= 1) {
+                // Derivación directa a asesor humano tras 1 intento fallido o mención de sector/agente
+                const sectorTag = isNonDoctorSector ? ` (${cleanText.substring(0, 30)})` : '';
+                replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 👤 Para que puedas coordinar tu consulta sin demoras y brindarte la orientación exacta que necesitás, ya mismo te comunico con un asesor de nuestro equipo de atención.\n\n` +
                     `${getAgentHandoffNotice()}\n\n` +
                     `🔙 *Volver:* Escribí *"Menú"*`;
                 updates.status = 'sin_asignar';
                 updates.bot_active = false;
                 nextStage = 'esperando_agente';
-                updates.motivo_consulta = `Solicitud de Turno: Derivación tras selección de profesional (${cleanText.substring(0, 50)})`;
+                updates.motivo_consulta = `Consulta con Agente: Selección no resuelta (${cleanText.substring(0, 50)})${sectorTag}`;
                 updates.ai_summary = {
                     ...(conv?.ai_summary || {}),
-                    triage_reason: 'Derivación por profesional no encontrado en opciones de homónimos',
+                    triage_reason: isNonDoctorSector ? 'Derivación por sector especial (farmacia/administración)' : 'Derivación por profesional no encontrado en homónimos',
                     texto_paciente: cleanText
                 };
+                return await finalizeAndSend(replyText, nextStage, updates);
             } else if (isFamiliarOTercero) {
                 // El turno es para otra persona / familiar
                 replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Si el turno es para otra persona o un familiar, por favor indícanos:\n\n` +
@@ -5004,29 +5030,43 @@ async function handleChatbotTriage(
                 updates.bot_stage = 'esperando_foto_autorizacion';
                 updates.motivo_consulta = `Autorización de Orden Médica / Estudio${capDoc ? ` (${capDoc})` : ''}`;
             } else {
-                // Intentar búsqueda abierta de médico con el texto que escribió el paciente (únicamente por apellido)
+                // Intentar búsqueda abierta de médico con variantes fonéticas y sin requerir que empiece por la palabra
                 let newFoundDoc: any = null;
-                const searchWords = trimmed.split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 4 && !STOPWORDS_MEDICOS.has(w));
+                const searchWords = trimmed.split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
                 
                 if (searchWords.length > 0) {
                     try {
-                        for (const sw of searchWords) {
-                            const { data: altDocs } = await supabase
-                                .from('contact_center_doctor_parameters')
-                                .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                                .ilike('profesional_nombre', `${sw} %`)
-                                .limit(5);
+                        let docQuery = supabase
+                            .from('contact_center_doctor_parameters')
+                            .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta');
 
-                            if (altDocs && altDocs.length === 1) {
-                                newFoundDoc = altDocs[0];
-                                break;
+                        for (const sw of searchWords) {
+                            const variants = getDoctorSearchVariants(sw);
+                            if (variants.length > 1) {
+                                const orClause = variants.map(v => `profesional_nombre.ilike.%${v}%`).join(',');
+                                docQuery = docQuery.or(orClause);
+                            } else {
+                                docQuery = docQuery.ilike('profesional_nombre', `%${sw}%`);
                             }
+                        }
+
+                        const { data: altDocs } = await docQuery.limit(5);
+
+                        if (altDocs && altDocs.length === 1) {
+                            newFoundDoc = altDocs[0];
+                        } else if (altDocs && altDocs.length > 1) {
+                            // Encontró múltiples candidatos con la nueva búsqueda, actualizar storedDocs
+                            storedDocs = altDocs.map((d: any) => ({
+                                ...d,
+                                formattedInfo: formatDoctorDisplay(d),
+                                displayName: formatDoctorDisplay(d).displayName
+                            }));
                         }
                     } catch (_) {}
                 }
 
                 if (newFoundDoc) {
-                    // Encontró un nuevo médico
+                    // Encontró el profesional exacto (ej: Cynthia Pons -> PONS CINTHIA)
                     const info = formatDoctorDisplay(newFoundDoc);
                     updates.medico_o_especialidad = `${info.displayName} (${info.specialty})`;
                     updates.motivo_consulta = `Solicitud de Turno: ${info.displayName} (${info.specialty})`;
@@ -5045,19 +5085,39 @@ async function handleChatbotTriage(
                     updates.bot_active = true;
                     nextStage = 'esperando_datos_turno';
                     updates.bot_stage = 'esperando_datos_turno';
-                } else {
+                } else if (storedDocs && storedDocs.length > 1 && searchWords.length > 0) {
                     const letters = ['A', 'B', 'C', 'D', 'E'];
-                    const count = storedDocs.length;
-                    const letterRange = count > 0 ? `*A* o *${letters[count - 1] || 'B'}*` : `*A* o *B*`;
-                    replyText = `Por favor seleccioná una de las opciones respondiendo con la letra (${letterRange}), o escribí el nombre del profesional que buscás.\n\n` +
-                        `💡 _Si el turno es para otra persona o no encontrás el médico, escribí *\"Es para otro\"* o *\"Agente\"*._\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                    let menuDocs = `Encontramos los siguientes profesionales que coinciden con tu búsqueda:\n\n`;
+                    storedDocs.slice(0, 5).forEach((d: any, idx: number) => {
+                        const letter = letters[idx] || `${idx + 1}`;
+                        const info = d.formattedInfo || formatDoctorDisplay(d);
+                        menuDocs += `*${letter}-* ${info.displayName} (${info.specialty})\n`;
+                    });
+                    menuDocs += `\nPodés responder con la letra (*A*, *B*...) o si preferís ayuda directa escribí *"Agente"*.\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"*`;
+                    replyText = menuDocs;
                     updates.status = 'bot';
                     updates.bot_active = true;
                     nextStage = 'esperando_seleccion_medico';
                     updates.ai_summary = {
                         ...(conv?.ai_summary || {}),
+                        candidates_medicos: storedDocs,
                         intentos_seleccion_medico: previousAttempts + 1
+                    };
+                } else {
+                    // Si ya no se encontró médico y no se descifró la intención -> DERIVAR A ASESOR
+                    replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 👤 Para brindarte una respuesta rápida y coordinar con el profesional adecuado, ya mismo te comunico con un asesor de nuestro equipo de atención.\n\n` +
+                        `${getAgentHandoffNotice()}\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"*`;
+                    updates.status = 'sin_asignar';
+                    updates.bot_active = false;
+                    updates.bot_stage = 'esperando_agente';
+                    nextStage = 'esperando_agente';
+                    updates.motivo_consulta = `Consulta con Agente: No se descifró profesional (${cleanText.substring(0, 50)})`;
+                    updates.ai_summary = {
+                        ...(conv?.ai_summary || {}),
+                        triage_reason: 'Derivación por profesional no identificado tras opciones de selección',
+                        texto_paciente: cleanText
                     };
                 }
             }
@@ -6891,19 +6951,20 @@ function getMissingPatientFields(data: Record<string, any>): string[] {
 function isGenericName(name: string | null | undefined): boolean {
     if (!name) return true;
     const norm = String(name).trim().toLowerCase();
-    if (
-        norm === 'unknown' ||
-        norm === 'bot sanatorio' ||
-        norm === 'bot' ||
-        norm === 'sanatorio' ||
-        norm === 'sanatorio argentino' ||
-        norm === 'paciente' ||
-        norm === 'user' ||
-        norm === 'whatsapp user' ||
-        norm.startsWith('paciente (') ||
-        norm === 'recepciones' ||
-        /^\+?\d+$/.test(norm)
-    ) return true;
+    const systemStopPhrases = [
+        'unknown', 'bot sanatorio', 'bot', 'sanatorio', 'sanatorio argentino',
+        'paciente', 'user', 'whatsapp user', 'recepciones',
+        'es para otro', 'es para otra', 'para otro', 'para otra',
+        'es para un familiar', 'para un familiar', 'familiar', 'familiares',
+        'es para mi hijo', 'para mi hijo', 'es para mi hija', 'para mi hija',
+        'es para mi mama', 'para mi mama', 'es para mi papa', 'para mi papa',
+        'es para farmacia', 'farmacia', 'consulta', 'turno', 'agente', 'humano',
+        'persona', 'operador', 'nadie', 'ninguno', 'ninguna', 'chau', 'hola',
+        'pesimo el servicio', 'mal servicio', 'es para'
+    ];
+    if (systemStopPhrases.includes(norm) || systemStopPhrases.some(sp => norm.startsWith(sp)) || /^\+?\d+$/.test(norm)) {
+        return true;
+    }
     return isMedicalSpecialty(name);
 }
 
