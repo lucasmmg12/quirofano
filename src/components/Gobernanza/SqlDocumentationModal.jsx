@@ -85,6 +85,7 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                             {[
                                 { id: 'UCI', label: '🏥 Cuidados Críticos (UCI)' },
                                 { id: 'GUARDIA', label: '🚑 Guardia Clínica (9 Indicadores)' },
+                                { id: 'EPIDEMIOLOGIA', label: '🦠 Epidemiología (Dr. Romano)' },
                                 { id: 'QUIROFANO', label: '🔪 Quirófano & Cirugías' },
                                 { id: 'FACTURACION', label: '💳 Facturación & Cobros' },
                                 { id: 'ARQUITECTURA', label: '⚙️ Arquitectura ETL & Sync' }
@@ -339,6 +340,122 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                                     <li><strong>8. Promedio de Estada Clínica:</strong> Días de hospitalización de pacientes ingresados por guardia. Benchmark: 1.5 - 2.5 días.</li>
                                     <li><strong>9. Adherencia a Epicrisis:</strong> % de altas clínicas de guardia con Protocolo 382 completado. Meta institucional: 100%.</li>
                                 </ol>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ══════════════════════════════════════════════════════ */}
+                    {/* TAB EPIDEMIOLOGÍA: VIGILANCIA EPIDEMIOLÓGICA (DR. ROMANO) */}
+                    {/* ══════════════════════════════════════════════════════ */}
+                    {activeTab === 'EPIDEMIOLOGIA' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '14px 18px', borderRadius: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div>
+                                        <strong style={{ color: '#166534', fontSize: '0.92rem' }}>
+                                            Vigilancia Epidemiológica Obligatoria & SNVS (Dr. Romano)
+                                        </strong>
+                                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#14532D' }}>
+                                            Módulo de auditoría epidemiológica y confección automatizada de <strong>Planilla C2 (SNVS / Ministerio de Salud)</strong>.
+                                            Cubre los 5 grupos de patologías de notificación mandatoria con segregación etaria y validación de historias clínicas de SALUS.
+                                        </p>
+                                    </div>
+                                    <span style={{ background: '#DCFCE7', border: '1px solid #86EFAC', color: '#15803D', padding: '4px 10px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 800 }}>
+                                        5 Indicadores Oficiales
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* EPI 1. Master Consolidado */}
+                            <QueryCard
+                                id="epi_master"
+                                title="1. Query Maestra Consolidada de Vigilancia Epidemiológica (Mensual por Centro y Edad)"
+                                desc="Consolida en una sola pasada de base de datos todos los casos de Bronquiolitis (<2a), ETI, Neumonía, Diarreas Agudas, Varicela y ETS agrupando por mes, centro y grupos etarios (<2a, 2-14a, adultos)."
+                                origin="TABLEAU_Diagnosticos y motivo consulta JOIN VLISE_DatosPaciente (SALUS)"
+                                target="gobernanza_indicadores / epidemiologia_casos (Supabase)"
+                                frequency="Cierre Mensual / Generación Planilla C2 SNVS"
+                                copied={copiedIndex === 'epi_master'}
+                                onCopy={() => handleCopy(SQL_EPIDEMIOLOGIA_MASTER, 'epi_master')}
+                                sql={SQL_EPIDEMIOLOGIA_MASTER}
+                            />
+
+                            {/* EPI 2. Bronquiolitis <2 años */}
+                            <QueryCard
+                                id="epi_bronquiolitis"
+                                title="2. Bronquiolitis Aguda en Lactantes y Niños Menores de 2 Años (< 24 Meses)"
+                                desc="Monitoreo crítico de infección por VSR en pediatría. Filtra diagnósticos CIE-10 (466.1 / Bronquiolitis) calculando con exactitud los meses de vida al momento de la consulta (DATEDIFF < 24 meses)."
+                                origin="TABLEAU_Diagnosticos y motivo consulta + VLISE_DatosPaciente (SALUS)"
+                                target="Planilla C2 - Rubro Infecciones Respiratorias Bajas"
+                                frequency="Semanal / Mensual"
+                                copied={copiedIndex === 'epi_bronquiolitis'}
+                                onCopy={() => handleCopy(SQL_EPIDEMIOLOGIA_BRONQUIOLITIS, 'epi_bronquiolitis')}
+                                sql={SQL_EPIDEMIOLOGIA_BRONQUIOLITIS}
+                            />
+
+                            {/* EPI 3. Respiratorias: ETI y Neumonía */}
+                            <QueryCard
+                                id="epi_respiratorias"
+                                title="3. Infecciones Respiratorias Agudas: ETI (Tipo Influenza) y Neumonía"
+                                desc="Vigilancia respiratoria diferenciada: ETI (Gripe/Influenza CIE 487) y Neumonías virales o bacterianas (CIE 480-486) con estratificación etaria."
+                                origin="TABLEAU_Diagnosticos y motivo consulta (SALUS)"
+                                target="Planilla C2 - Rubro ETI y Neumonías"
+                                frequency="Semanal epidemiológica / Mensual"
+                                copied={copiedIndex === 'epi_respiratorias'}
+                                onCopy={() => handleCopy(SQL_EPIDEMIOLOGIA_RESPIRATORIAS, 'epi_respiratorias')}
+                                sql={SQL_EPIDEMIOLOGIA_RESPIRATORIAS}
+                            />
+
+                            {/* EPI 4. Gastroenteritis */}
+                            <QueryCard
+                                id="epi_diarreas"
+                                title="4. Enfermedades Gastroentéricas: Diarreas Agudas e Infecciosas"
+                                desc="Detección de cuadros diarreicos y gastroenteritis agudas (CIE 787.91, 558, 009) para detección temprana de brotes hídricos y alimentarios."
+                                origin="TABLEAU_Diagnosticos y motivo consulta (SALUS)"
+                                target="Planilla C2 - Rubro Patología Digestiva Aguda"
+                                frequency="Mensual"
+                                copied={copiedIndex === 'epi_diarreas'}
+                                onCopy={() => handleCopy(SQL_EPIDEMIOLOGIA_DIARREAS, 'epi_diarreas')}
+                                sql={SQL_EPIDEMIOLOGIA_DIARREAS}
+                            />
+
+                            {/* EPI 5. Varicela */}
+                            <QueryCard
+                                id="epi_varicela"
+                                title="5. Enfermedades Eruptivas Inmunoprevenibles: Varicela"
+                                desc="Control de casos de Varicela (CIE 052) para evaluación de cobertura vacunal y brotes escolares o comunitarios."
+                                origin="TABLEAU_Diagnosticos y motivo consulta (SALUS)"
+                                target="Planilla C2 - Enfermedades Inmunoprevenibles"
+                                frequency="Mensual / Ficha Epidemiológica Nominal"
+                                copied={copiedIndex === 'epi_varicela'}
+                                onCopy={() => handleCopy(SQL_EPIDEMIOLOGIA_VARICELA, 'epi_varicela')}
+                                sql={SQL_EPIDEMIOLOGIA_VARICELA}
+                            />
+
+                            {/* EPI 6. ETS */}
+                            <QueryCard
+                                id="epi_ets"
+                                title="6. Infecciones de Transmisión Sexual (ITS / ETS)"
+                                desc="Registro confidencial y consolidado de diagnósticos de Sífilis, Gonorrea, Clamidia, VIH, Herpes genital y Condilomas HPV según directrices del Programa Nacional de Salud Sexual."
+                                origin="TABLEAU_Diagnosticos y motivo consulta (SALUS)"
+                                target="Planilla C2 - Vigilancia de ITS"
+                                frequency="Mensual"
+                                copied={copiedIndex === 'epi_ets'}
+                                onCopy={() => handleCopy(SQL_EPIDEMIOLOGIA_ETS, 'epi_ets')}
+                                sql={SQL_EPIDEMIOLOGIA_ETS}
+                            />
+
+                            {/* Reglas Epidemiológicas */}
+                            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '16px', borderRadius: '10px' }}>
+                                <h4 style={{ margin: '0 0 10px 0', color: '#166534', fontSize: '0.88rem' }}>
+                                    🔬 Criterios Clínicos y Directrices de Negocio (Dr. Romano)
+                                </h4>
+                                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.8rem', color: '#334155', lineHeight: 1.8 }}>
+                                    <li><strong>Bronquiolitis:</strong> Condición restrictiva estricta de edad <code>&lt; 24 meses</code> (edad calculada en meses exactos contra la fecha de consulta). Pacientes mayores con cuadros obstructivos no se clasifican como bronquiolitis para la Planilla C2.</li>
+                                    <li><strong>ETI vs Neumonía:</strong> Se auditan de forma separada pero complementaria en el bloque respiratorio para monitorear el canal endémico de la temporada invernal.</li>
+                                    <li><strong>Gastroenteritis:</strong> Toda diarrea aguda registrada en guardia o consultorio ambulatorio se imputa como evento de vigilancia.</li>
+                                    <li><strong>Varicela:</strong> Notificación obligatoria individual. En menores de 1 año o mayores de 15 años reviste especial interés por riesgo de complicaciones.</li>
+                                    <li><strong>ETS:</strong> Trazabilidad diagnóstica con preservación del secreto médico y agrupamiento epidemiológico según códigos normados por OMS / SNVS.</li>
+                                </ul>
                             </div>
                         </div>
                     )}
@@ -1578,3 +1695,162 @@ SELECT
 FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
 WHERE (TA.[Fecha alta] >= DATEADD(DAY, -60, CAST(GETDATE() AS DATE)) OR TA.[Fecha alta] IS NULL)
 ORDER BY TA.[Fecha ingreso] DESC;`;
+
+const SQL_EPIDEMIOLOGIA_MASTER = `-- 1. CONSULTA MAESTRA EPIDEMIOLÓGICA CONSOLIDADA (DR. ROMANO)
+SELECT 
+    FORMAT(t.[Fecha visita], 'yyyy-MM') AS [Mes],
+    t.[Centro],
+    CASE 
+        WHEN t.[diagnostico] LIKE '%466.1%' OR t.[diagnostico] LIKE '%BRONQUIOLITIS%' 
+             THEN 'Bronquiolitis (< 2 años)'
+        WHEN t.[diagnostico] LIKE '%487%' OR t.[diagnostico] LIKE '%INFLUENZA%' OR t.[diagnostico] LIKE '%GRIPE%' 
+             THEN 'ETI (Enfermedad Tipo Influenza)'
+        WHEN t.[diagnostico] LIKE '%480%' OR t.[diagnostico] LIKE '%482%' OR t.[diagnostico] LIKE '%486%' OR t.[diagnostico] LIKE '%NEUMON%' 
+             THEN 'Neumonía'
+        WHEN t.[diagnostico] LIKE '%787.91%' OR t.[diagnostico] LIKE '%558%' OR t.[diagnostico] LIKE '%009%' OR t.[diagnostico] LIKE '%DIARREA%' OR t.[diagnostico] LIKE '%GASTROENT%' 
+             THEN 'Gastroentérica: Diarrea Aguda'
+        WHEN t.[diagnostico] LIKE '%052%' OR t.[diagnostico] LIKE '%VARICELA%' 
+             THEN 'Varicela'
+        WHEN t.[diagnostico] LIKE '%090%' OR t.[diagnostico] LIKE '%091%' OR t.[diagnostico] LIKE '%092%' OR t.[diagnostico] LIKE '%093%' OR t.[diagnostico] LIKE '%094%' OR t.[diagnostico] LIKE '%095%' OR t.[diagnostico] LIKE '%096%' OR t.[diagnostico] LIKE '%097%' OR t.[diagnostico] LIKE '%098%' OR t.[diagnostico] LIKE '%054.1%' OR t.[diagnostico] LIKE '%099%' OR t.[diagnostico] LIKE '%SIFILIS%' OR t.[diagnostico] LIKE '%GONOC%' OR t.[diagnostico] LIKE '%CLAMIDIA%' OR t.[diagnostico] LIKE '%VIH%' OR t.[diagnostico] LIKE '%CONDILOM%'
+             THEN 'Enfermedades de Transmisión Sexual (ETS)'
+        ELSE 'Otros'
+    END AS [Grupo_Epidemiologico],
+    COUNT(DISTINCT t.[IdVisita]) AS [Casos_Totales],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(MONTH, p.FechaNacimiento, t.[Fecha visita]) < 24 THEN t.[IdVisita] END) AS [Casos_Menores_2_Anios],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(YEAR, p.FechaNacimiento, t.[Fecha visita]) BETWEEN 2 AND 14 THEN t.[IdVisita] END) AS [Casos_Pediatricos_2_a_14],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(YEAR, p.FechaNacimiento, t.[Fecha visita]) >= 15 THEN t.[IdVisita] END) AS [Casos_Adultos]
+FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] t
+LEFT JOIN [SALUS].[dbo].[VLISE_DatosPaciente] p ON t.[NHC] = p.[NHC]
+WHERE t.[Fecha visita] >= DATEADD(YEAR, -2, GETDATE())
+  AND (
+      ((t.[diagnostico] LIKE '%466.1%' OR t.[diagnostico] LIKE '%BRONQUIOLITIS%') AND DATEDIFF(MONTH, p.FechaNacimiento, t.[Fecha visita]) < 24)
+      OR (t.[diagnostico] LIKE '%487%' OR t.[diagnostico] LIKE '%INFLUENZA%' OR t.[diagnostico] LIKE '%GRIPE%')
+      OR (t.[diagnostico] LIKE '%480%' OR t.[diagnostico] LIKE '%482%' OR t.[diagnostico] LIKE '%486%' OR t.[diagnostico] LIKE '%NEUMON%')
+      OR (t.[diagnostico] LIKE '%787.91%' OR t.[diagnostico] LIKE '%558%' OR t.[diagnostico] LIKE '%009%' OR t.[diagnostico] LIKE '%DIARREA%' OR t.[diagnostico] LIKE '%GASTROENT%')
+      OR (t.[diagnostico] LIKE '%052%' OR t.[diagnostico] LIKE '%VARICELA%')
+      OR (t.[diagnostico] LIKE '%090%' OR t.[diagnostico] LIKE '%091%' OR t.[diagnostico] LIKE '%092%' OR t.[diagnostico] LIKE '%093%' OR t.[diagnostico] LIKE '%094%' OR t.[diagnostico] LIKE '%095%' OR t.[diagnostico] LIKE '%096%' OR t.[diagnostico] LIKE '%097%' OR t.[diagnostico] LIKE '%098%' OR t.[diagnostico] LIKE '%054.1%' OR t.[diagnostico] LIKE '%099%' OR t.[diagnostico] LIKE '%SIFILIS%' OR t.[diagnostico] LIKE '%GONOC%' OR t.[diagnostico] LIKE '%CLAMIDIA%' OR t.[diagnostico] LIKE '%VIH%' OR t.[diagnostico] LIKE '%CONDILOM%')
+  )
+GROUP BY 
+    FORMAT(t.[Fecha visita], 'yyyy-MM'),
+    t.[Centro],
+    CASE 
+        WHEN t.[diagnostico] LIKE '%466.1%' OR t.[diagnostico] LIKE '%BRONQUIOLITIS%' THEN 'Bronquiolitis (< 2 años)'
+        WHEN t.[diagnostico] LIKE '%487%' OR t.[diagnostico] LIKE '%INFLUENZA%' OR t.[diagnostico] LIKE '%GRIPE%' THEN 'ETI (Enfermedad Tipo Influenza)'
+        WHEN t.[diagnostico] LIKE '%480%' OR t.[diagnostico] LIKE '%482%' OR t.[diagnostico] LIKE '%486%' OR t.[diagnostico] LIKE '%NEUMON%' THEN 'Neumonía'
+        WHEN t.[diagnostico] LIKE '%787.91%' OR t.[diagnostico] LIKE '%558%' OR t.[diagnostico] LIKE '%009%' OR t.[diagnostico] LIKE '%DIARREA%' OR t.[diagnostico] LIKE '%GASTROENT%' THEN 'Gastroentérica: Diarrea Aguda'
+        WHEN t.[diagnostico] LIKE '%052%' OR t.[diagnostico] LIKE '%VARICELA%' THEN 'Varicela'
+        WHEN t.[diagnostico] LIKE '%090%' OR t.[diagnostico] LIKE '%091%' OR t.[diagnostico] LIKE '%092%' OR t.[diagnostico] LIKE '%093%' OR t.[diagnostico] LIKE '%094%' OR t.[diagnostico] LIKE '%095%' OR t.[diagnostico] LIKE '%096%' OR t.[diagnostico] LIKE '%097%' OR t.[diagnostico] LIKE '%098%' OR t.[diagnostico] LIKE '%054.1%' OR t.[diagnostico] LIKE '%099%' OR t.[diagnostico] LIKE '%SIFILIS%' OR t.[diagnostico] LIKE '%GONOC%' OR t.[diagnostico] LIKE '%CLAMIDIA%' OR t.[diagnostico] LIKE '%VIH%' OR t.[diagnostico] LIKE '%CONDILOM%' THEN 'Enfermedades de Transmisión Sexual (ETS)'
+        ELSE 'Otros'
+    END
+ORDER BY [Mes] DESC;`;
+
+const SQL_EPIDEMIOLOGIA_BRONQUIOLITIS = `-- 2. BRONQUIOLITIS AGUDA EN MENORES DE 2 AÑOS (< 24 MESES)
+SELECT 
+    FORMAT(t.[Fecha visita], 'yyyy-MM') AS [Mes],
+    t.[Centro],
+    COUNT(DISTINCT t.[IdVisita]) AS [Total_Casos_Bronquiolitis],
+    AVG(DATEDIFF(MONTH, p.FechaNacimiento, t.[Fecha visita])) AS [Promedio_Meses_Vida]
+FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] t
+INNER JOIN [SALUS].[dbo].[VLISE_DatosPaciente] p ON t.[NHC] = p.[NHC]
+WHERE t.[Fecha visita] >= DATEADD(YEAR, -2, GETDATE())
+  AND (t.[diagnostico] LIKE '%466.1%' OR t.[diagnostico] LIKE '%BRONQUIOLITIS%')
+  AND DATEDIFF(MONTH, p.FechaNacimiento, t.[Fecha visita]) < 24
+GROUP BY FORMAT(t.[Fecha visita], 'yyyy-MM'), t.[Centro]
+ORDER BY [Mes] DESC;`;
+
+const SQL_EPIDEMIOLOGIA_RESPIRATORIAS = `-- 3. INFECCIONES RESPIRATORIAS: ETI Y NEUMONÍA
+SELECT 
+    FORMAT(t.[Fecha visita], 'yyyy-MM') AS [Mes],
+    t.[Centro],
+    CASE 
+        WHEN t.[diagnostico] LIKE '%487%' OR t.[diagnostico] LIKE '%INFLUENZA%' OR t.[diagnostico] LIKE '%GRIPE%' THEN 'ETI (Influenza)'
+        ELSE 'Neumonía'
+    END AS [Tipo_Infeccion],
+    COUNT(DISTINCT t.[IdVisita]) AS [Total_Casos],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(YEAR, p.FechaNacimiento, t.[Fecha visita]) < 15 THEN t.[IdVisita] END) AS [Casos_Pediatricos],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(YEAR, p.FechaNacimiento, t.[Fecha visita]) >= 65 THEN t.[IdVisita] END) AS [Casos_Adultos_Mayores]
+FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] t
+LEFT JOIN [SALUS].[dbo].[VLISE_DatosPaciente] p ON t.[NHC] = p.[NHC]
+WHERE t.[Fecha visita] >= DATEADD(YEAR, -2, GETDATE())
+  AND (
+      t.[diagnostico] LIKE '%487%' OR t.[diagnostico] LIKE '%INFLUENZA%' OR t.[diagnostico] LIKE '%GRIPE%'
+      OR t.[diagnostico] LIKE '%480%' OR t.[diagnostico] LIKE '%482%' OR t.[diagnostico] LIKE '%486%' OR t.[diagnostico] LIKE '%NEUMON%'
+  )
+GROUP BY 
+    FORMAT(t.[Fecha visita], 'yyyy-MM'),
+    t.[Centro],
+    CASE 
+        WHEN t.[diagnostico] LIKE '%487%' OR t.[diagnostico] LIKE '%INFLUENZA%' OR t.[diagnostico] LIKE '%GRIPE%' THEN 'ETI (Influenza)'
+        ELSE 'Neumonía'
+    END
+ORDER BY [Mes] DESC;`;
+
+const SQL_EPIDEMIOLOGIA_DIARREAS = `-- 4. ENFERMEDADES GASTROENTÉRICAS: DIARREAS AGUDAS
+SELECT 
+    FORMAT(t.[Fecha visita], 'yyyy-MM') AS [Mes],
+    t.[Centro],
+    COUNT(DISTINCT t.[IdVisita]) AS [Total_Casos_Diarrea],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(YEAR, p.FechaNacimiento, t.[Fecha visita]) < 5 THEN t.[IdVisita] END) AS [Casos_Menores_5_Anios]
+FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] t
+LEFT JOIN [SALUS].[dbo].[VLISE_DatosPaciente] p ON t.[NHC] = p.[NHC]
+WHERE t.[Fecha visita] >= DATEADD(YEAR, -2, GETDATE())
+  AND (
+      t.[diagnostico] LIKE '%787.91%' 
+      OR t.[diagnostico] LIKE '%558%' 
+      OR t.[diagnostico] LIKE '%009%' 
+      OR t.[diagnostico] LIKE '%DIARREA%' 
+      OR t.[diagnostico] LIKE '%GASTROENT%'
+  )
+GROUP BY FORMAT(t.[Fecha visita], 'yyyy-MM'), t.[Centro]
+ORDER BY [Mes] DESC;`;
+
+const SQL_EPIDEMIOLOGIA_VARICELA = `-- 5. ENFERMEDADES ERUPTIVAS: VARICELA
+SELECT 
+    FORMAT(t.[Fecha visita], 'yyyy-MM') AS [Mes],
+    t.[Centro],
+    COUNT(DISTINCT t.[IdVisita]) AS [Total_Casos_Varicela],
+    COUNT(DISTINCT CASE WHEN DATEDIFF(YEAR, p.FechaNacimiento, t.[Fecha visita]) < 15 THEN t.[IdVisita] END) AS [Casos_Pediatricos]
+FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] t
+LEFT JOIN [SALUS].[dbo].[VLISE_DatosPaciente] p ON t.[NHC] = p.[NHC]
+WHERE t.[Fecha visita] >= DATEADD(YEAR, -2, GETDATE())
+  AND (t.[diagnostico] LIKE '%052%' OR t.[diagnostico] LIKE '%VARICELA%')
+GROUP BY FORMAT(t.[Fecha visita], 'yyyy-MM'), t.[Centro]
+ORDER BY [Mes] DESC;`;
+
+const SQL_EPIDEMIOLOGIA_ETS = `-- 6. ENFERMEDADES DE TRANSMISIÓN SEXUAL (ETS / ITS)
+SELECT 
+    FORMAT(t.[Fecha visita], 'yyyy-MM') AS [Mes],
+    t.[Centro],
+    CASE 
+        WHEN t.[diagnostico] LIKE '%090%' OR t.[diagnostico] LIKE '%091%' OR t.[diagnostico] LIKE '%092%' OR t.[diagnostico] LIKE '%093%' OR t.[diagnostico] LIKE '%094%' OR t.[diagnostico] LIKE '%095%' OR t.[diagnostico] LIKE '%096%' OR t.[diagnostico] LIKE '%097%' OR t.[diagnostico] LIKE '%SIFILIS%' THEN 'Sífilis'
+        WHEN t.[diagnostico] LIKE '%098%' OR t.[diagnostico] LIKE '%GONOC%' THEN 'Infección Gonocócica'
+        WHEN t.[diagnostico] LIKE '%CLAMIDIA%' THEN 'Clamidia'
+        WHEN t.[diagnostico] LIKE '%054.1%' OR t.[diagnostico] LIKE '%HERPES%' THEN 'Herpes Genital'
+        WHEN t.[diagnostico] LIKE '%VIH%' THEN 'VIH / SIDA'
+        WHEN t.[diagnostico] LIKE '%CONDILOM%' OR t.[diagnostico] LIKE '%HPV%' THEN 'Condiloma / HPV'
+        ELSE 'Otras ETS'
+    END AS [Tipo_ETS],
+    COUNT(DISTINCT t.[IdVisita]) AS [Total_Casos]
+FROM [SALUS].[dbo].[TABLEAU_Diagnosticos y motivo consulta] t
+WHERE t.[Fecha visita] >= DATEADD(YEAR, -2, GETDATE())
+  AND (
+      t.[diagnostico] LIKE '%090%' OR t.[diagnostico] LIKE '%091%' OR t.[diagnostico] LIKE '%092%' 
+      OR t.[diagnostico] LIKE '%093%' OR t.[diagnostico] LIKE '%094%' OR t.[diagnostico] LIKE '%095%' 
+      OR t.[diagnostico] LIKE '%096%' OR t.[diagnostico] LIKE '%097%' OR t.[diagnostico] LIKE '%098%' 
+      OR t.[diagnostico] LIKE '%054.1%' OR t.[diagnostico] LIKE '%099%' OR t.[diagnostico] LIKE '%SIFILIS%' 
+      OR t.[diagnostico] LIKE '%GONOC%' OR t.[diagnostico] LIKE '%CLAMIDIA%' OR t.[diagnostico] LIKE '%VIH%' 
+      OR t.[diagnostico] LIKE '%CONDILOM%'
+  )
+GROUP BY 
+    FORMAT(t.[Fecha visita], 'yyyy-MM'),
+    t.[Centro],
+    CASE 
+        WHEN t.[diagnostico] LIKE '%090%' OR t.[diagnostico] LIKE '%091%' OR t.[diagnostico] LIKE '%092%' OR t.[diagnostico] LIKE '%093%' OR t.[diagnostico] LIKE '%094%' OR t.[diagnostico] LIKE '%095%' OR t.[diagnostico] LIKE '%096%' OR t.[diagnostico] LIKE '%097%' OR t.[diagnostico] LIKE '%SIFILIS%' THEN 'Sífilis'
+        WHEN t.[diagnostico] LIKE '%098%' OR t.[diagnostico] LIKE '%GONOC%' THEN 'Infección Gonocócica'
+        WHEN t.[diagnostico] LIKE '%CLAMIDIA%' THEN 'Clamidia'
+        WHEN t.[diagnostico] LIKE '%054.1%' OR t.[diagnostico] LIKE '%HERPES%' THEN 'Herpes Genital'
+        WHEN t.[diagnostico] LIKE '%VIH%' THEN 'VIH / SIDA'
+        WHEN t.[diagnostico] LIKE '%CONDILOM%' OR t.[diagnostico] LIKE '%HPV%' THEN 'Condiloma / HPV'
+        ELSE 'Otras ETS'
+    END
+ORDER BY [Mes] DESC;`;

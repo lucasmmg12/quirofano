@@ -25,10 +25,13 @@ import {
     INDICADORES_GUARDIA_CATALOGO,
     DEFAULT_ACTIVE_GUARDIA_IDS,
     INDICADORES_QUIROFANO_CATALOGO,
-    DEFAULT_ACTIVE_QUIROFANO_IDS
+    DEFAULT_ACTIVE_QUIROFANO_IDS,
+    INDICADORES_EPIDEMIOLOGIA_CATALOGO,
+    DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS
 } from './telarConfig';
 import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
 import QuirofanoDashboard from './QuirofanoDashboard';
+import EpidemiologiaDashboard from './EpidemiologiaDashboard';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -313,6 +316,44 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(DEFAULT_ACTIVE_QUIROFANO_IDS)); } catch {}
         addToast?.('Todos los indicadores de Quirófano activados', 'success');
     };
+
+    // === ESTADOS DE VIGILANCIA EPIDEMIOLÓGICA (DR. ROMANO) ===
+    const [isEpidemiologiaOpen, setIsEpidemiologiaOpen] = useState(() => {
+        return localStorage.getItem('telar_epidemiologia_expanded') === 'true';
+    });
+
+    const handleToggleEpidemiologia = () => {
+        if (isUciOnly) return;
+        setIsEpidemiologiaOpen(prev => {
+            const next = !prev;
+            try { localStorage.setItem('telar_epidemiologia_expanded', String(next)); } catch {}
+            return next;
+        });
+    };
+
+    const [activeEpidemiologiaIds, setActiveEpidemiologiaIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_active_epidemiologia_indicators');
+            return saved ? JSON.parse(saved) : DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS;
+        } catch {
+            return DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS;
+        }
+    });
+
+    const handleToggleEpidemiologiaIndicator = (id) => {
+        setActiveEpidemiologiaIds(prev => {
+            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+            try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleSelectAllEpidemiologiaIndicators = () => {
+        setActiveEpidemiologiaIds(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS);
+        try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS)); } catch {}
+        addToast?.('Todos los indicadores de Epidemiología activados', 'success');
+    };
+
     const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
@@ -3653,13 +3694,160 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     )}
                                 </div>
                             )}
+
+                            {/* 🦠 SERVICIO: VIGILANCIA EPIDEMIOLÓGICA (PEDIDO DR. ROMANO) */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '8px',
+                                    border: `1.5px solid ${isEpidemiologiaOpen || sectorId === 'EPIDEMIOLOGIA' ? '#93C5FD' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    boxShadow: isEpidemiologiaOpen || sectorId === 'EPIDEMIOLOGIA' ? '0 4px 12px -2px rgba(2, 132, 199, 0.12)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    overflow: 'hidden',
+                                    transition: 'all 0.2s ease',
+                                    marginTop: '8px'
+                                }}>
+                                    {/* Botón Cabecera Epidemiología */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleToggleEpidemiologia();
+                                            if (sectorId !== 'EPIDEMIOLOGIA') handleSelectSector('EPIDEMIOLOGIA');
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '11px 12px',
+                                            background: sectorId === 'EPIDEMIOLOGIA' ? '#E0F2FE' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'EPIDEMIOLOGIA') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'EPIDEMIOLOGIA') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.25rem' }}>🦠</span>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0369A1' }}>
+                                                    Epidemiología
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
+                                                    Dr. Romano (Planilla C2)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ color: sectorId === 'EPIDEMIOLOGIA' ? '#0284C7' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
+                                                {isEpidemiologiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            </span>
+                                        </div>
+                                    </button>
+
+                                    {/* CONTENIDO DESPLEGABLE DE EPIDEMIOLOGÍA */}
+                                    {isEpidemiologiaOpen && (
+                                        <div style={{
+                                            borderTop: '1px solid #BAE6FD',
+                                            background: '#FFFFFF',
+                                            animation: 'fadeIn 0.2s ease-out'
+                                        }}>
+                                            <div style={{ padding: '10px 12px', background: '#F0F9FF', borderBottom: '1px solid #E0F2FE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                                                    Patologías Notificables ({activeEpidemiologiaIds.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSelectAllEpidemiologiaIndicators}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#0284C7',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '1px 4px'
+                                                    }}
+                                                >
+                                                    Todas
+                                                </button>
+                                            </div>
+
+                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
+                                                {INDICADORES_EPIDEMIOLOGIA_CATALOGO.map(ind => {
+                                                    const isChecked = activeEpidemiologiaIds.includes(ind.id);
+                                                    return (
+                                                        <div
+                                                            key={ind.id}
+                                                            onClick={() => {
+                                                                if (sectorId !== 'EPIDEMIOLOGIA') handleSelectSector('EPIDEMIOLOGIA');
+                                                                handleToggleEpidemiologiaIndicator(ind.id);
+                                                            }}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                background: isChecked && sectorId === 'EPIDEMIOLOGIA' ? '#E0F2FE' : 'transparent',
+                                                                border: isChecked && sectorId === 'EPIDEMIOLOGIA' ? '1px solid #7DD3FC' : '1px solid transparent',
+                                                                transition: 'all 0.12s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                                {isChecked ? (
+                                                                    <CheckSquare size={15} color="#0369A1" />
+                                                                ) : (
+                                                                    <Square size={15} color="#94A3B8" />
+                                                                )}
+                                                                <span style={{
+                                                                    fontSize: '0.74rem',
+                                                                    fontWeight: isChecked ? 700 : 500,
+                                                                    color: isChecked ? '#0C4A6E' : '#475569',
+                                                                    whiteSpace: 'nowrap',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis'
+                                                                }}
+                                                                title={ind.descripcion}
+                                                                >
+                                                                    {ind.label}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 700,
+                                                                padding: '1px 4px',
+                                                                borderRadius: '4px',
+                                                                background: '#E0F2FE',
+                                                                color: '#0369A1',
+                                                                flexShrink: 0
+                                                            }}>
+                                                                C2
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {sectorId === 'GUARDIA' ? (
+                    {sectorId === 'EPIDEMIOLOGIA' ? (
+                        <EpidemiologiaDashboard 
+                            selectedCenter="TODOS"
+                            dateRange={{ fechaDesde, fechaHasta }}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'GUARDIA' ? (
                         <GuardiaClinicaDashboard 
                             onOpenDocModal={() => {
                                 setDocModalTab('GUARDIA');

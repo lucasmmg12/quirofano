@@ -56,6 +56,17 @@ export const SECTORES_CONFIG = [
         serviciosSalus: ['GUARDIA', 'URGENCIAS'],
         descripcion: 'Urgencias Médicas, Triage y Shockroom',
         activo: true
+    },
+    { 
+        id: 'EPIDEMIOLOGIA', 
+        label: 'Vigilancia Epidemiológica (Dr. Romano)', 
+        shortLabel: 'Epidemiología',
+        icon: '🦠', 
+        camasDefault: 0,
+        serviciosSalus: ['GUARDIA', 'CONSULTORIOS', 'PEDIATRIA', 'CLINICA'],
+        descripcion: 'Planilla C2 y Vigilancia Nacional (Bronquiolitis, ETI, Neumonía, Diarreas, Varicela, ETS)',
+        activo: true,
+        badge: 'Romano'
     }
 ];
 
@@ -496,5 +507,61 @@ export const INDICADORES_QUIROFANO_CATALOGO = [
 ];
 
 export const DEFAULT_ACTIVE_QUIROFANO_IDS = INDICADORES_QUIROFANO_CATALOGO.map(i => i.id);
+
+// ─── CATÁLOGO DE INDICADORES DE VIGILANCIA EPIDEMIOLÓGICA (PEDIDO DR. ROMANO) ───
+export const INDICADORES_EPIDEMIOLOGIA_CATALOGO = [
+    {
+        id: 'epi_bronquiolitis',
+        label: 'Bronquiolitis Aguda (< 2 Años)',
+        grupo: 'Patologías Respiratorias Pediátricas',
+        tipo: 'kpi',
+        icon: 'Baby',
+        descripcion: 'Casos nominales de bronquiolitis (CIE-10 J21, J21.0, J21.9) en lactantes menores a 24 meses.',
+        benchmark: 'Notificación C2 Vigilancia VRS',
+        origen: 'TABLEAU_Diagnosticos y motivo consulta cruzada con VLISE_DatosPaciente (FechaNacimiento)'
+    },
+    {
+        id: 'epi_eti_neumonia',
+        label: 'Infecciones Respiratorias: ETI y Neumonía',
+        grupo: 'Infecciones Respiratorias Agudas',
+        tipo: 'kpi',
+        icon: 'Activity',
+        descripcion: 'Enfermedad Tipo Influenza (J10, J11, J09) y Neumonías (J12 a J18) con discriminación pediátricos (<15a) y adultos.',
+        benchmark: 'Canal Endémico Semanal SNVS',
+        origen: 'TABLEAU_Diagnosticos y motivo consulta (Diagnósticos CIE-10 Respiratorios)'
+    },
+    {
+        id: 'epi_diarreas',
+        label: 'Gastroenteritis y Diarreas Agudas',
+        grupo: 'Patologías Gastroentéricas',
+        tipo: 'kpi',
+        icon: 'Bug',
+        descripcion: 'Episodios de diarrea aguda e infecciosa (CIE-10 A09, A08, K52) discriminados por lactantes, niños y adultos.',
+        benchmark: 'Alerta Temprana de Brotes',
+        origen: 'TABLEAU_Diagnosticos y motivo consulta'
+    },
+    {
+        id: 'epi_varicela',
+        label: 'Vigilancia de Varicela (Inmunoprevenible)',
+        grupo: 'Enfermedades Inmunoprevenibles',
+        tipo: 'kpi',
+        icon: 'ShieldAlert',
+        descripcion: 'Casos confirmados de varicela (CIE-10 B01). Enfermedad de notificación obligatoria inmediata.',
+        benchmark: 'Tasa 100% de Notificación',
+        origen: 'TABLEAU_Diagnosticos y motivo consulta (CIE-10 B01)'
+    },
+    {
+        id: 'epi_ets',
+        label: 'Enfermedades de Transmisión Sexual (ETS/ITS)',
+        grupo: 'Salud Sexual y Reproductiva',
+        tipo: 'kpi',
+        icon: 'Shield',
+        descripcion: 'Diagnósticos de Sífilis (A50-A53), Gonorrea (A54), Clamidia (A56), Herpes genital (A60), HPV y VIH.',
+        benchmark: 'Ficha Epidemiológica Específica',
+        origen: 'TABLEAU_Diagnosticos y motivo consulta (CIE-10 A50 a A64)'
+    }
+];
+
+export const DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS = INDICADORES_EPIDEMIOLOGIA_CATALOGO.map(i => i.id);
 
 
