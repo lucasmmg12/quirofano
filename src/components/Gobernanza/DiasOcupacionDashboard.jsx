@@ -3845,6 +3845,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         <EpidemiologiaDashboard 
                             selectedCenter="TODOS"
                             dateRange={{ fechaDesde, fechaHasta }}
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            activeIndicatorIds={activeEpidemiologiaIds}
                             addToast={addToast}
                         />
                     ) : sectorId === 'GUARDIA' ? (
