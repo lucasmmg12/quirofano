@@ -2830,28 +2830,21 @@ export default function ContactCenterChatConsole({
         let base = [];
         const isFinalizadosTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
 
-        if (isFinalizadosTab) {
-            const closedFromChats = chats.filter(c => isClosedOrArchived(c));
-            const seenIds = new Set(closedFromChats.map(c => c.id));
-            const allArchived = [...closedFromChats, ...archivedChats.filter(c => !seenIds.has(c.id))];
-
-            base = isSearching 
-                ? allArchived.map(chat => {
-                    const matchInfo = getSearchMatchInfo(chat, searchTerm);
-                    return matchInfo.isMatch ? { ...chat, _searchMatch: matchInfo } : null;
-                }).filter(Boolean)
-                : allArchived;
-        } else if (isSearching) {
+        if (isSearching) {
             if (searchScope === 'all') {
+                // Alcance Global: Mostrar todas las coincidencias encontradas (activas, archivadas y remotas de Supabase)
                 base = [...searchedChats];
+            } else if (isFinalizadosTab) {
+                // Alcance acotado a Finalizados
+                base = searchedChats.filter(chat => isClosedOrArchived(chat));
             } else {
+                // Alcance acotado a la pestaña activa
                 base = searchedChats.filter(chat => {
                     const chatAssigned = (chat.assignedTo || '').toLowerCase();
                     const isMine = isMineChat(chat);
                     const closed = isClosedOrArchived(chat);
                     const isChatBot = (chat.status === 'bot' || (chat.botActive && chat.status !== 'sin_asignar' && !chat.assignedTo)) && !closed;
                     const isChatUnassigned = !chat.assignedTo && chat.status === 'sin_asignar' && !closed;
-                    // Visibilidad fluida: el chat que la agente acaba de tomar se mantiene visible en "Sin Asignar" mientras lo atiende
                     const isCurrentlyActiveMine = Boolean(
                         chat.id &&
                         (String(chat.id) === String(activeChatId) || String(chat.id) === String(selectedChat?.id)) &&
@@ -2867,6 +2860,10 @@ export default function ContactCenterChatConsole({
                     return !closed;
                 });
             }
+        } else if (isFinalizadosTab) {
+            const closedFromChats = chats.filter(c => isClosedOrArchived(c));
+            const seenIds = new Set(closedFromChats.map(c => c.id));
+            base = [...closedFromChats, ...archivedChats.filter(c => !seenIds.has(c.id))];
         } else {
             base = chats.filter(chat => {
                 const chatAssigned = (chat.assignedTo || '').toLowerCase();
