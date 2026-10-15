@@ -4074,7 +4074,7 @@ export async function syncTurnosDiariosContactCenterToSupabase(fecha = null) {
 app.get('/api/salus/turnos-agentes-hoy', async (req, res) => {
     try {
         const fecha = req.query.fecha || null;
-        const data = await syncTurnosDiariosContactCenterToSupabase(fecha);
+        const data = await syncTurnosContactCenter(fecha);
         res.json({ success: true, data });
     } catch (err) {
         console.error('Error obteniendo turnos diarios de SALUS:', err.message);

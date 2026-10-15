@@ -218,25 +218,43 @@ export async function syncTurnosContactCenter(targetDate = null) {
         agentes: Object.values(agentesMap)
     };
 
-    // Subir a Supabase en app_config (cc_turnos_contact_center_hoy y cc_turnos_hoy)
-    await Promise.all([
+    // Subir a Supabase en app_config: clave histórica cc_turnos_contact_center_${today} y si es hoy actualizar cc_turnos_contact_center_hoy
+    const currentToday = new Date().toISOString().substring(0, 10);
+    const isToday = today === currentToday;
+
+    const upsertPromises = [
         supabase.from('app_config').upsert({
-            key: 'cc_turnos_contact_center_hoy',
+            key: `cc_turnos_contact_center_${today}`,
             value: JSON.stringify(payload),
-            label: 'Turnos y Cancelaciones Contact Center Hoy (SALUS con DNI y Detalles)',
-            category: 'contact_center_diario',
-            updated_at: new Date().toISOString(),
-            updated_by: 'sync_turnos_contact_center'
-        }),
-        supabase.from('app_config').upsert({
-            key: 'cc_turnos_hoy',
-            value: JSON.stringify(payload),
-            label: 'Turnos y Cancelaciones Contact Center Hoy (SALUS con DNI y Detalles)',
+            label: `Turnos y Cancelaciones Contact Center (${today})`,
             category: 'contact_center_diario',
             updated_at: new Date().toISOString(),
             updated_by: 'sync_turnos_contact_center'
         })
-    ]);
+    ];
+
+    if (isToday) {
+        upsertPromises.push(
+            supabase.from('app_config').upsert({
+                key: 'cc_turnos_contact_center_hoy',
+                value: JSON.stringify(payload),
+                label: 'Turnos y Cancelaciones Contact Center Hoy (SALUS con DNI y Detalles)',
+                category: 'contact_center_diario',
+                updated_at: new Date().toISOString(),
+                updated_by: 'sync_turnos_contact_center'
+            }),
+            supabase.from('app_config').upsert({
+                key: 'cc_turnos_hoy',
+                value: JSON.stringify(payload),
+                label: 'Turnos y Cancelaciones Contact Center Hoy (SALUS con DNI y Detalles)',
+                category: 'contact_center_diario',
+                updated_at: new Date().toISOString(),
+                updated_by: 'sync_turnos_contact_center'
+            })
+        );
+    }
+
+    await Promise.all(upsertPromises);
 
     return payload;
 }

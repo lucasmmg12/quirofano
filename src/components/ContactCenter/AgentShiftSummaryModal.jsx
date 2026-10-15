@@ -552,7 +552,7 @@ export default function AgentShiftSummaryModal({
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
                                             <span style={{ fontSize: '0.7rem', color: '#8B5CF6', fontWeight: 600 }}>
-                                                Citas creadas hoy
+                                                {selectedDate === new Date().toISOString().substring(0, 10) ? 'Citas creadas hoy' : 'Citas de la jornada'}
                                             </span>
                                             <span style={{
                                                 fontSize: '0.66rem',
@@ -698,7 +698,7 @@ export default function AgentShiftSummaryModal({
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                                     <div>
                                         <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                                            Histograma de Tiempos de Resolución de Hoy
+                                            {selectedDate === new Date().toISOString().substring(0, 10) ? 'Histograma de Tiempos de Resolución de Hoy' : 'Histograma de Tiempos de Resolución'}
                                         </h3>
                                         <p style={{ margin: '2px 0 0', fontSize: '0.70rem', color: '#64748B' }}>
                                             Velocidad con la que resolviste las consultas en tu turno
