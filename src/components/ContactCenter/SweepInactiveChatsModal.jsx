@@ -74,9 +74,12 @@ export default function SweepInactiveChatsModal({
             over24hMine: getOlderCount(24, true),
             over12hAll: getOlderCount(12, false),
             over12hMine: getOlderCount(12, true),
+            over8hAll: getOlderCount(8, false),
+            over8hMine: getOlderCount(8, true),
             over4hAll: getOlderCount(4, false),
             over4hMine: getOlderCount(4, true),
-            selectedCount: getOlderCount(hoursThreshold, scope === 'mine')
+            selectedCount: getOlderCount(hoursThreshold, scope === 'mine'),
+            getCount: (h) => getOlderCount(h, scope === 'mine')
         };
     }, [chats, activeAgent, hoursThreshold, scope]);
 
@@ -286,19 +289,21 @@ export default function SweepInactiveChatsModal({
                                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
                                     ⏱️ Seleccionar Antigüedad de Inactividad:
                                 </label>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
                                     {[
-                                        { h: 24, label: '+24 Horas', desc: 'Ventana Meta Vencida', badge: 'Recomendado' },
-                                        { h: 12, label: '+12 Horas', desc: 'Turno Anterior', badge: null },
+                                        { h: 24, label: '+24 Horas', desc: 'Meta Vencida', badge: 'Recomendado' },
+                                        { h: 12, label: '+12 Horas', desc: 'Medio Día', badge: null },
+                                        { h: 8, label: '+8 Horas', desc: 'Noche / Turno Ant.', badge: 'Turno Ant.' },
                                         { h: 4, label: '+4 Horas', desc: 'Sin Respuesta Hoy', badge: null }
                                     ].map(opt => {
                                         const isSel = hoursThreshold === opt.h;
+                                        const count = stats?.getCount ? stats.getCount(opt.h) : 0;
                                         return (
                                             <div
                                                 key={opt.h}
                                                 onClick={() => setHoursThreshold(opt.h)}
                                                 style={{
-                                                    padding: '10px 12px',
+                                                    padding: '8px 8px',
                                                     borderRadius: '10px',
                                                     border: `2px solid ${isSel ? '#0284C7' : '#E2E8F0'}`,
                                                     backgroundColor: isSel ? '#F0F9FF' : '#F8FAFC',
@@ -312,27 +317,59 @@ export default function SweepInactiveChatsModal({
                                                     <span style={{
                                                         position: 'absolute',
                                                         top: '-8px',
-                                                        right: '8px',
-                                                        background: '#0284C7',
+                                                        right: '4px',
+                                                        background: opt.badge === 'Recomendado' ? '#0284C7' : '#059669',
                                                         color: '#FFFFFF',
-                                                        fontSize: '0.60rem',
+                                                        fontSize: '0.55rem',
                                                         fontWeight: 800,
-                                                        padding: '1px 6px',
+                                                        padding: '1px 5px',
                                                         borderRadius: '6px',
                                                         textTransform: 'uppercase'
                                                     }}>
                                                         {opt.badge}
                                                     </span>
                                                 )}
-                                                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: isSel ? '#0284C7' : '#1E293B' }}>
+                                                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: isSel ? '#0284C7' : '#1E293B' }}>
                                                     {opt.label}
                                                 </div>
-                                                <div style={{ fontSize: '0.68rem', color: isSel ? '#0369A1' : '#64748B', marginTop: '2px' }}>
+                                                <div style={{ fontSize: '0.64rem', color: isSel ? '#0369A1' : '#64748B', marginTop: '2px', lineHeight: 1.2 }}>
                                                     {opt.desc}
+                                                </div>
+                                                <div style={{ marginTop: '6px' }}>
+                                                    <span style={{
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 800,
+                                                        padding: '1px 6px',
+                                                        borderRadius: '8px',
+                                                        backgroundColor: isSel ? '#0284C7' : (count > 0 ? '#E2E8F0' : '#F1F5F9'),
+                                                        color: isSel ? '#FFFFFF' : (count > 0 ? '#0F172A' : '#94A3B8')
+                                                    }}>
+                                                        {count} {count === 1 ? 'chat' : 'chats'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         );
                                     })}
+                                </div>
+                                <div style={{
+                                    marginTop: '8px',
+                                    padding: '6px 10px',
+                                    borderRadius: '8px',
+                                    backgroundColor: (stats?.selectedCount || 0) > 0 ? '#F0FDF4' : '#FFFBEB',
+                                    border: `1px solid ${(stats?.selectedCount || 0) > 0 ? '#BBF7D0' : '#FDE68A'}`,
+                                    color: (stats?.selectedCount || 0) > 0 ? '#166534' : '#B45309',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <span>
+                                        {(stats?.selectedCount || 0) > 0 
+                                            ? `🎯 Se archivarán ${stats.selectedCount} ${stats.selectedCount === 1 ? 'conversación inactiva' : 'conversaciones inactivas'} (+${hoursThreshold}h).`
+                                            : `ℹ️ No hay conversaciones con más de ${hoursThreshold}h de inactividad (${scope === 'mine' ? 'en tus chats' : 'en la bandeja general'}).`
+                                        }
+                                    </span>
                                 </div>
                             </div>
 
@@ -484,20 +521,21 @@ export default function SweepInactiveChatsModal({
                         <button
                             type="button"
                             onClick={handleExecuteSweep}
-                            disabled={isSweeping}
+                            disabled={isSweeping || (stats?.selectedCount || 0) === 0}
                             style={{
                                 padding: '8px 18px',
                                 borderRadius: '8px',
                                 border: 'none',
-                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                background: (stats?.selectedCount || 0) === 0 ? '#94A3B8' : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
                                 color: '#FFFFFF',
                                 fontSize: '0.82rem',
                                 fontWeight: 700,
-                                cursor: isSweeping ? 'wait' : 'pointer',
+                                cursor: isSweeping ? 'wait' : ((stats?.selectedCount || 0) === 0 ? 'not-allowed' : 'pointer'),
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px',
-                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)'
+                                boxShadow: (stats?.selectedCount || 0) === 0 ? 'none' : '0 2px 6px rgba(2, 132, 199, 0.35)',
+                                opacity: (stats?.selectedCount || 0) === 0 ? 0.75 : 1
                             }}
                         >
                             {isSweeping ? (
@@ -508,7 +546,11 @@ export default function SweepInactiveChatsModal({
                             ) : (
                                 <>
                                     <Brush size={15} />
-                                    <span>Barrer Inactivos (+{hoursThreshold}h)</span>
+                                    <span>
+                                        {(stats?.selectedCount || 0) > 0 
+                                            ? `Barrer Inactivos (+${hoursThreshold}h) · ${stats.selectedCount}`
+                                            : `Sin inactivos (+${hoursThreshold}h)`}
+                                    </span>
                                 </>
                             )}
                         </button>

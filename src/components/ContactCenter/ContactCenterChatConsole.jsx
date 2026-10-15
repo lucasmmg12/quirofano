@@ -2754,7 +2754,7 @@ export default function ContactCenterChatConsole({
                     if (filterTab === 'sin_asignar') return isChatUnassigned || isCurrentlyActiveMine;
                     if (filterTab === 'asignadas_mi') return isMine && !closed;
                     if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
-                    if (filterTab === 'todos') return true;
+                    if (filterTab === 'todos') return !closed;
                     return !closed;
                 });
             }
@@ -2777,7 +2777,7 @@ export default function ContactCenterChatConsole({
                 if (filterTab === 'sin_asignar') return isChatUnassigned || isCurrentlyActiveMine;
                 if (filterTab === 'asignadas_mi') return isMine && !closed;
                 if (filterTab === 'asignadas_otros') return chatAssigned && !isMine && !closed;
-                if (filterTab === 'todos') return true;
+                if (filterTab === 'todos') return !closed;
                 return !closed;
             });
         }
