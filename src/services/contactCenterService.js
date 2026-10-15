@@ -3492,3 +3492,119 @@ export async function sweepInactiveConversations({
         return { success: false, count: 0, phones: [], error: err.message || err };
     }
 }
+
+/**
+ * Búsqueda remota en base de datos (Supabase) para Contact Center.
+ * Permite encontrar cualquier paciente/conversación histórica por nombre, DNI, teléfono o motivo.
+ */
+export async function searchContactCenterConversations(term, limit = 25) {
+    if (!term || typeof term !== 'string' || term.trim().length < 2) return [];
+
+    const raw = term.trim();
+    const cleanDigits = raw.replace(/\D/g, '');
+    const norm = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+    try {
+        let filters = [];
+        // 1. Coincidencia por Nombre
+        filters.push(`nombre_completo.ilike.%${raw}%`);
+        if (norm !== raw.toLowerCase()) {
+            filters.push(`nombre_completo.ilike.%${norm}%`);
+        }
+
+        // 2. Coincidencia por DNI
+        if (cleanDigits.length >= 4) {
+            filters.push(`dni.ilike.%${cleanDigits}%`);
+        }
+
+        // 3. Coincidencia por Teléfono (variantes argentina)
+        if (cleanDigits.length >= 4) {
+            filters.push(`phone.ilike.%${cleanDigits}%`);
+            let localDigits = cleanDigits;
+            if (localDigits.startsWith('549')) localDigits = localDigits.slice(3);
+            if (localDigits.startsWith('54')) localDigits = localDigits.slice(2);
+            if (localDigits.startsWith('0')) localDigits = localDigits.slice(1);
+            if (localDigits.startsWith('15')) localDigits = localDigits.slice(2);
+            if (localDigits.length >= 4 && localDigits !== cleanDigits) {
+                filters.push(`phone.ilike.%${localDigits}%`);
+            }
+        }
+
+        // 4. Motivo de consulta
+        if (raw.length >= 4) {
+            filters.push(`motivo_consulta.ilike.%${raw}%`);
+        }
+
+        const { data: convs, error } = await supabase
+            .from('contact_center_conversations')
+            .select('*')
+            .or(filters.join(','))
+            .order('updated_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            console.warn('[contactCenterService] Error en búsqueda remota:', error);
+            return [];
+        }
+
+        return (convs || []).map(conv => {
+            const phone = normalizeArgentinePhone(conv.phone || '');
+            const resolvedName = (conv.nombre_completo && String(conv.nombre_completo).trim()) || `+${phone.replace(/\D/g, '')}`;
+            const cleanPhone = phone || normalizeArgentinePhone(conv.phone || '') || String(conv.phone || '').replace(/\D/g, '');
+            const effectiveDni = conv.dni || null;
+
+            return {
+                id: 'REAL_' + cleanPhone,
+                contactName: resolvedName,
+                phone: phone,
+                channel: 'WHATSAPP',
+                channelNumber: '5492645825637',
+                status: conv.status || 'finalizado',
+                unread: false,
+                lastMessage: conv.last_message_text || 'Conversación registrada',
+                lastMessageTimestamp: conv.updated_at ? new Date(conv.updated_at).getTime() : 0,
+                timeAgo: formatRelativeTime(conv.updated_at),
+                department: 'Atención al cliente',
+                assignedTo: conv.assigned_agent_id || null,
+                assignedToName: conv.assigned_agent_name || null,
+                assignedAt: conv.assigned_at || null,
+                botActive: conv.bot_active ?? false,
+                aiSummary: conv.ai_summary || null,
+                resolutionReason: conv.resolution_reason || null,
+                closedAt: conv.closed_at || null,
+                closed_at: conv.closed_at || null,
+                closedByAgentId: conv.closed_by_agent_id || null,
+                closedByAgentName: conv.closed_by_agent_name || null,
+                lastResponder: null,
+                lastResponderRole: null,
+                lastResponseAt: null,
+                isWaitingResponse: false,
+                waitingSinceMs: null,
+                waitingMinutes: 0,
+                waitingTimeText: null,
+                badgeTimeText: null,
+                chatbot: '#triage-sanatorio',
+                avatarColor: '#0284C7',
+                tags: resolveConversationTags(conv, []),
+                customFields: {
+                    dni: effectiveDni,
+                    pacienteDni: effectiveDni,
+                    titularNombre: resolvedName,
+                    titularTelefono: phone,
+                    pacienteNombre: resolvedName,
+                    pacienteObraSocial: conv.obra_social || null,
+                    pacienteNhc: conv.nhc || null,
+                    fechaNacimiento: conv.fecha_nacimiento || null,
+                    email: conv.email || null,
+                    departamento: conv.departamento || 'San Juan',
+                    motivoConsulta: conv.motivo_consulta || 'Consulta general'
+                },
+                messages: []
+            };
+        });
+    } catch (err) {
+        console.error('[contactCenterService] Error ejecutando searchContactCenterConversations:', err);
+        return [];
+    }
+}
+

@@ -155,7 +155,8 @@ import {
     fetchArchivedChats,
     getPatientNameForTemplate,
     CONTACT_CENTER_FALLBACK_TEMPLATES,
-    sendContactCenterTemplate
+    sendContactCenterTemplate,
+    searchContactCenterConversations
 } from '../../services/contactCenterService';
 import { fetchMetaTemplates } from '../../services/metaTemplateService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
@@ -770,7 +771,39 @@ export default function ContactCenterChatConsole({
 
     const [searchTerm, setSearchTerm] = useState('');
     const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
+    const [remoteSearchChats, setRemoteSearchChats] = useState([]);
+    const [searchingRemote, setSearchingRemote] = useState(false);
     const searchInputRef = useRef(null);
+
+    // Búsqueda remota complementaria en Supabase (cuando se buscan pacientes históricos o fuera de los 200 en memoria)
+    useEffect(() => {
+        const query = searchTerm ? searchTerm.trim() : '';
+        if (query.length < 3) {
+            setRemoteSearchChats([]);
+            setSearchingRemote(false);
+            return;
+        }
+
+        let isMounted = true;
+        setSearchingRemote(true);
+        const timer = setTimeout(async () => {
+            try {
+                const results = await searchContactCenterConversations(query, 25);
+                if (isMounted) {
+                    setRemoteSearchChats(results || []);
+                }
+            } catch (err) {
+                console.warn('[search] Error en búsqueda remota:', err);
+            } finally {
+                if (isMounted) setSearchingRemote(false);
+            }
+        }, 300);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+        };
+    }, [searchTerm]);
 
 
 
@@ -1437,7 +1470,7 @@ export default function ContactCenterChatConsole({
     };
 
     const isFinalizadosCurrentTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
-    const activeChatFromPool = chats.find(c => matchChat(c, activeChatId)) || archivedChats.find(c => matchChat(c, activeChatId));
+    const activeChatFromPool = chats.find(c => matchChat(c, activeChatId)) || archivedChats.find(c => matchChat(c, activeChatId)) || remoteSearchChats.find(c => matchChat(c, activeChatId));
     const activeChatIsClosed = activeChatFromPool ? isClosedOrArchived(activeChatFromPool) : false;
 
     // Chat fallback según la pestaña activa cuando no hay un chat activo seleccionado en memoria
@@ -2589,6 +2622,8 @@ export default function ContactCenterChatConsole({
             .toLowerCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[,.;:_\-\/\(\)\[\]\{\}]/g, ' ')
+            .replace(/\s+/g, ' ')
             .trim();
     };
 
@@ -2599,32 +2634,79 @@ export default function ContactCenterChatConsole({
         const digits = term.replace(/\D/g, '');
         const tokens = q.split(/\s+/).filter(t => t.length >= 2);
 
-        // 1. DNI (coincidencia con o sin puntos/guiones)
-        const dniRaw = chat.customFields?.dni || '';
-        const dniDigits = dniRaw.replace(/\D/g, '');
-        if (digits && digits.length >= 4 && dniDigits.includes(digits)) {
-            return { isMatch: true, matchType: 'dni', matchText: `DNI: ${dniRaw || digits}` };
-        }
-        if (dniRaw && normalizeSearch(dniRaw).includes(q)) {
-            return { isMatch: true, matchType: 'dni', matchText: `DNI: ${dniRaw}` };
+        // 1. DNI (coincidencia con o sin puntos/guiones en cualquiera de los campos disponibles)
+        const dniCandidates = [
+            chat.customFields?.dni,
+            chat.customFields?.pacienteDni,
+            chat.dni,
+            chat.customFields?.fichaDual?.pacienteDni,
+            chat.aiSummary?.ficha_dual?.paciente?.dni,
+            chat.aiSummary?.paciente?.dni
+        ].filter(Boolean);
+
+        for (const dniRaw of dniCandidates) {
+            const dniStr = String(dniRaw).trim();
+            const dniDigits = dniStr.replace(/\D/g, '');
+            if (digits && digits.length >= 4) {
+                if (dniDigits.includes(digits) || digits.includes(dniDigits)) {
+                    return { isMatch: true, matchType: 'dni', matchText: `DNI: ${dniStr || digits}` };
+                }
+            }
+            if (dniStr && normalizeSearch(dniStr).includes(q)) {
+                return { isMatch: true, matchType: 'dni', matchText: `DNI: ${dniStr}` };
+            }
         }
 
         // 2. Nombre de Paciente / Contacto / Familiar
         const cleanName = getCleanChatName(chat);
-        const normCleanName = normalizeSearch(cleanName);
-        const normPaciente = normalizeSearch(chat.customFields?.pacienteNombre);
-        const normContact = normalizeSearch(chat.contactName);
-        if (normCleanName.includes(q) || normPaciente.includes(q) || normContact.includes(q)) {
+        const nameCandidates = [
+            cleanName,
+            chat.contactName,
+            chat.customFields?.pacienteNombre,
+            chat.customFields?.titularNombre,
+            chat.customFields?.fichaDual?.pacienteNombre,
+            chat.customFields?.fichaDual?.titularNombre,
+            chat.whatsappName,
+            chat.aiSummary?.paciente?.nombre,
+            chat.aiSummary?.titular?.nombre
+        ].filter(Boolean).map(n => normalizeSearch(n));
+
+        // Coincidencia exacta de la frase de búsqueda en cualquiera de los nombres
+        if (nameCandidates.some(n => n.includes(q))) {
             return { isMatch: true, matchType: 'nombre', matchText: cleanName };
         }
-        if (tokens.length > 1 && (tokens.every(t => normCleanName.includes(t)) || tokens.every(t => normPaciente.includes(t)))) {
-            return { isMatch: true, matchType: 'nombre', matchText: cleanName };
+        // Coincidencia de todos los tokens (ej: apellido primero "sanchez florencia" o "florencia sanchez")
+        if (tokens.length > 0) {
+            const combinedNames = nameCandidates.join(' ');
+            if (tokens.every(t => combinedNames.includes(t))) {
+                return { isMatch: true, matchType: 'nombre', matchText: cleanName };
+            }
         }
 
-        // 3. Teléfono
-        const phoneDigits = (chat.phone || '').replace(/\D/g, '');
-        if (digits && digits.length >= 4 && phoneDigits.includes(digits)) {
-            return { isMatch: true, matchType: 'telefono', matchText: `+${chat.phone}` };
+        // 3. Teléfono (soporta formato internacional, local con o sin 15 / 549 / 0)
+        const phoneDigits = String(chat.phone || '').replace(/\D/g, '');
+        if (digits && digits.length >= 4) {
+            if (phoneDigits.includes(digits) || digits.includes(phoneDigits)) {
+                return { isMatch: true, matchType: 'telefono', matchText: `+${chat.phone}` };
+            }
+            // Comparar sufijo (ej: los últimos 7 u 8 dígitos para celulares con o sin '15')
+            let d1 = digits;
+            if (d1.startsWith('549')) d1 = d1.slice(3);
+            else if (d1.startsWith('54')) d1 = d1.slice(2);
+            if (d1.startsWith('0')) d1 = d1.slice(1);
+            if (d1.startsWith('15')) d1 = d1.slice(2);
+
+            let d2 = phoneDigits;
+            if (d2.startsWith('549')) d2 = d2.slice(3);
+            else if (d2.startsWith('54')) d2 = d2.slice(2);
+            if (d2.startsWith('0')) d2 = d2.slice(1);
+            if (d2.startsWith('15')) d2 = d2.slice(2);
+
+            if (d1.length >= 6 && d2.length >= 6) {
+                if (d2.includes(d1) || d1.includes(d2) || d2.endsWith(d1) || d1.endsWith(d2)) {
+                    return { isMatch: true, matchType: 'telefono', matchText: `+${chat.phone}` };
+                }
+            }
         }
 
         // 4. Búsqueda profunda en CADA mensaje del historial
@@ -2706,15 +2788,42 @@ export default function ContactCenterChatConsole({
 
     const isSearching = !!searchTerm.trim();
 
-    // Evaluar todas las conversaciones con el buscador (incluye finalizados cargados)
+    // Evaluar todas las conversaciones con el buscador (incluye activos, archivados y remotos de Supabase)
     const searchedChats = useMemo(() => {
         if (!isSearching) return [];
-        const pool = [...chats, ...archivedChats];
+        const seenPhones = new Set();
+        const pool = [];
+
+        // 1. Activos en memoria
+        (chats || []).forEach(c => {
+            const p = normalizeArgentinePhone(c.phone || '');
+            if (p && !seenPhones.has(p)) {
+                seenPhones.add(p);
+                pool.push(c);
+            }
+        });
+        // 2. Archivados cargados
+        (archivedChats || []).forEach(c => {
+            const p = normalizeArgentinePhone(c.phone || '');
+            if (p && !seenPhones.has(p)) {
+                seenPhones.add(p);
+                pool.push(c);
+            }
+        });
+        // 3. Resultados remotos de Supabase (pacientes históricos)
+        (remoteSearchChats || []).forEach(c => {
+            const p = normalizeArgentinePhone(c.phone || '');
+            if (p && !seenPhones.has(p)) {
+                seenPhones.add(p);
+                pool.push(c);
+            }
+        });
+
         return pool.map(chat => {
             const matchInfo = getSearchMatchInfo(chat, searchTerm);
             return matchInfo.isMatch ? { ...chat, _searchMatch: matchInfo } : null;
         }).filter(Boolean);
-    }, [chats, archivedChats, isSearching, searchTerm]);
+    }, [chats, archivedChats, remoteSearchChats, isSearching, searchTerm]);
 
     // Filtrar chats según pestaña activa o alcance de búsqueda
     const filteredChats = useMemo(() => {
@@ -2783,6 +2892,10 @@ export default function ContactCenterChatConsole({
         }
 
         return base.filter(chat => {
+            if (isSearching) {
+                // Durante la búsqueda activa, no aplicar filtros secundarios restrictivos
+                return true;
+            }
             if (isFinalizadosTab) {
                 // En pestaña finalizados, no filtrar por demoras de respuesta activa
                 if (triageFilter.startsWith('agent_')) {
@@ -3686,7 +3799,11 @@ export default function ContactCenterChatConsole({
                         transition: 'all 0.15s ease',
                         boxShadow: isSearching ? '0 0 0 2px rgba(2, 132, 199, 0.15)' : 'none'
                     }}>
-                        <Search size={15} color={isSearching ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext} style={{ flexShrink: 0 }} />
+                        {searchingRemote ? (
+                            <Loader2 size={15} className="animate-spin" color={ccTheme.accentColor || '#0284C7'} style={{ flexShrink: 0 }} />
+                        ) : (
+                            <Search size={15} color={isSearching ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext} style={{ flexShrink: 0 }} />
+                        )}
                         <input 
                             ref={searchInputRef}
                             type="text"
