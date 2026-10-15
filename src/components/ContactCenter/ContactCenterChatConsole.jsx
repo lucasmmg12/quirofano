@@ -540,6 +540,8 @@ export default function ContactCenterChatConsole({
     const [handoverModalOpen, setHandoverModalOpen] = useState(false);
     // Modal de Final de Turno e Insights Diarios
     const [shiftSummaryModalOpen, setShiftSummaryModalOpen] = useState(false);
+    // Contexto de auditoría para retorno inmediato a "Pacientes por Intención" o "Resumen de Turno"
+    const [shiftAuditReturnContext, setShiftAuditReturnContext] = useState(null);
     // Modal de Barrido Rápido de Conversaciones Inactivas (+24h)
     const [sweepModalOpen, setSweepModalOpen] = useState(false);
     const [handoverTargetAgent, setHandoverTargetAgent] = useState(() => {
@@ -4914,6 +4916,73 @@ export default function ContactCenterChatConsole({
                 overflow: 'hidden', 
                 background: ccTheme.chatBgColor || '#F8FAFC' 
             }}>
+                {/* ═════════════════════════════════════════════════════════════════ */}
+                {/* BANNER DE RETORNO A AUDITORÍA / FINAL DE TURNO                    */}
+                {/* ═════════════════════════════════════════════════════════════════ */}
+                {shiftAuditReturnContext && (
+                    <div style={{
+                        background: 'linear-gradient(90deg, #0F2942 0%, #0369A1 100%)',
+                        color: '#FFFFFF',
+                        padding: '6px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderBottom: '1px solid #0284C7',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                        zIndex: 40,
+                        flexShrink: 0
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.68rem', background: '#38BDF8', color: '#0F172A', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                                Modo Auditoría
+                            </span>
+                            <span style={{ fontSize: '0.76rem', color: '#E0F2FE' }}>
+                                Revisando chat de {shiftAuditReturnContext.patientName ? <strong>{shiftAuditReturnContext.patientName}</strong> : 'paciente'} · ({shiftAuditReturnContext.categoriaLabel || 'Pacientes por Intención'})
+                            </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setShiftSummaryModalOpen(true)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: '#FFFFFF',
+                                    color: '#003B71',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 12px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <ArrowLeft size={13} />
+                                <span>Volver a Pacientes por Intención</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShiftAuditReturnContext(null)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#BAE6FD',
+                                    cursor: 'pointer',
+                                    padding: '3px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    borderRadius: '4px'
+                                }}
+                                title="Cerrar barra de auditoría"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {!selectedChat?.id ? (
                     <div style={{
                         display: 'flex',
@@ -11824,9 +11893,15 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                 isOpen={shiftSummaryModalOpen}
                 onClose={() => setShiftSummaryModalOpen(false)}
                 activeAgent={activeAgent}
+                initialAgent={shiftAuditReturnContext?.agent}
+                initialDate={shiftAuditReturnContext?.date}
+                initialCategoriaModal={shiftAuditReturnContext?.categoriaKey}
                 onOpenHandoverModal={() => setHandoverModalOpen(true)}
                 myAssignedChatsCount={myAssignedChats.length}
-                onOpenChatWithPhone={(phone) => {
+                onOpenChatWithPhone={(phone, auditCtx) => {
+                    if (auditCtx) {
+                        setShiftAuditReturnContext(auditCtx);
+                    }
                     if (!phone) return;
                     const cleanP = String(phone).replace(/\D/g, '').slice(-8);
                     const targetChat = (chats || []).find(c => {

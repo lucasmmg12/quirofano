@@ -26,13 +26,50 @@ function normalizeAgentName(name) {
         .trim();
 }
 
+export const getLocalDateString = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+export const getUtcRangeForLocalDate = (dateStr) => {
+    const cleanStr = dateStr || getLocalDateString();
+    const [y, m, d] = cleanStr.split('-').map(Number);
+    // San Juan / Argentina es UTC-3 (00:00:00 local = 03:00:00 UTC)
+    const startDate = new Date(Date.UTC(y, m - 1, d, 3, 0, 0, 0));
+    const nextD = new Date(Date.UTC(y, m - 1, d + 1, 2, 59, 59, 999));
+    return {
+        startIso: startDate.toISOString(),
+        endIso: nextD.toISOString()
+    };
+};
+
+async function fetchAllRows(buildQueryFn, pageSize = 1000, maxTotal = 6000) {
+    let allRows = [];
+    let from = 0;
+    while (allRows.length < maxTotal) {
+        const query = buildQueryFn().range(from, from + pageSize - 1);
+        const { data, error } = await query;
+        if (error) {
+            console.warn('[agentShiftService] Error en fetchAllRows:', error);
+            break;
+        }
+        if (!data || data.length === 0) break;
+        allRows.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+    }
+    return allRows;
+}
+
 /**
  * Obtiene los turnos creados hoy por agente en SALUS
  * 1. Intenta consulta directa al sync-server local si está disponible
  * 2. Fallback a Supabase app_config (cc_turnos_hoy)
  */
 export async function fetchTurnosSalusHoy(dateStr = null) {
-    const currentToday = new Date().toISOString().substring(0, 10);
+    const currentToday = getLocalDateString();
     const targetDate = dateStr || currentToday;
     const isToday = targetDate === currentToday;
 
@@ -131,48 +168,60 @@ export async function getAgentDailyShiftMetrics({
     agentName,
     dateStr = null
 }) {
-    const targetDate = dateStr || new Date().toISOString().substring(0, 10); // YYYY-MM-DD
-    const startIso = `${targetDate}T00:00:00`;
-    const endIso = `${targetDate}T23:59:59.999`;
+    const targetDate = dateStr || getLocalDateString();
+    const { startIso, endIso } = getUtcRangeForLocalDate(targetDate);
 
     const isTeamOverview = agentId === 'todos' || agentId === 'equipo' || agentId === 'all';
     const cleanFirstName = isTeamOverview ? 'Equipo' : (agentName || '').split(' ')[0].trim();
     const normalizedAgentName = normalizeAgentName(agentName);
 
-    // Ejecución en paralelo de consultas clave
+    // Ejecución en paralelo de consultas clave con paginación para evitar el límite de 1000 filas de PostgREST
     const [
         turnosSalusData,
-        outgoingMessagesRes,
-        closedConversationsRes,
-        attendedConversationsRes
+        outgoingMessages,
+        closedConversations,
+        attendedConversations
     ] = await Promise.all([
         fetchTurnosSalusHoy(targetDate),
 
-        // 1. Mensajes salientes enviados por la agente hoy
-        supabase
-            .from('whatsapp_messages')
-            .select('id, created_at, content, sender_name, phone')
-            .gte('created_at', startIso)
-            .lte('created_at', endIso)
-            .eq('direction', 'outgoing'),
+        // 1. Mensajes salientes enviados por la agente o equipo en la jornada (filtrado en DB + paginado)
+        fetchAllRows(() => {
+            let q = supabase
+                .from('whatsapp_messages')
+                .select('id, created_at, content, sender_name, phone')
+                .gte('created_at', startIso)
+                .lte('created_at', endIso)
+                .eq('direction', 'outgoing');
 
-        // 2. Conversaciones cerradas/finalizadas hoy por la agente
-        supabase
-            .from('contact_center_conversations')
-            .select('phone, nombre_completo, dni, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, motivo_consulta, ai_summary, tags, created_at, updated_at')
-            .gte('closed_at', startIso)
-            .lte('closed_at', endIso),
+            if (!isTeamOverview && cleanFirstName) {
+                q = q.ilike('sender_name', `%${cleanFirstName}%`);
+            } else if (isTeamOverview) {
+                q = q.neq('sender_name', 'Bot Sanatorio');
+            }
+            return q;
+        }),
 
-        // 3. Conversaciones asignadas o actualizadas donde intervino la agente hoy
-        supabase
-            .from('contact_center_conversations')
-            .select('phone, nombre_completo, dni, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, created_at, resolution_reason')
-            .gte('updated_at', startIso)
-            .lte('updated_at', endIso)
+        // 2. Conversaciones cerradas/finalizadas en la jornada
+        fetchAllRows(() => {
+            return supabase
+                .from('contact_center_conversations')
+                .select('phone, nombre_completo, dni, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, motivo_consulta, ai_summary, tags, created_at, updated_at')
+                .gte('closed_at', startIso)
+                .lte('closed_at', endIso);
+        }),
+
+        // 3. Conversaciones asignadas o actualizadas donde intervino en la jornada
+        fetchAllRows(() => {
+            return supabase
+                .from('contact_center_conversations')
+                .select('phone, nombre_completo, dni, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, created_at, resolution_reason')
+                .gte('updated_at', startIso)
+                .lte('updated_at', endIso);
+        })
     ]);
 
     // Filtrar mensajes de esta agente específica (o de todo el equipo si es resumen del día)
-    const agentOutgoingMessages = (outgoingMessagesRes.data || []).filter(msg => {
+    const agentOutgoingMessages = outgoingMessages.filter(msg => {
         if (isTeamOverview) {
             const sName = (msg.sender_name || '').toLowerCase();
             return msg.sender_name && sName !== 'bot sanatorio' && !sName.includes('bot');
@@ -211,7 +260,7 @@ export async function getAgentDailyShiftMetrics({
     });
 
     // Filtrar conversaciones finalizadas por esta agente (o todas si es resumen del día)
-    const agentClosedConversations = (closedConversationsRes.data || []).filter(conv => {
+    const agentClosedConversations = (closedConversations || []).filter(conv => {
         if (isTeamOverview) return true;
         const closerName = normalizeAgentName(conv.closed_by_agent_name);
         const closerId = (conv.closed_by_agent_id || '').toLowerCase();
@@ -226,14 +275,14 @@ export async function getAgentDailyShiftMetrics({
     });
 
     // Filtrar conversaciones gestionadas/atendidas hoy
-    const agentAttendedConversations = (attendedConversationsRes.data || []).filter(conv => {
+    const agentAttendedConversations = (attendedConversations || []).filter(conv => {
         if (isTeamOverview) return true;
         if (agentOutgoingPhonesSet.has(conv.phone)) return true;
         const assignedName = normalizeAgentName(conv.assigned_agent_name);
         const assignedId = (conv.assigned_agent_id || '').toLowerCase();
         const closerName = normalizeAgentName(conv.closed_by_agent_name);
         return (
-            (cleanFirstName && (assignedName.includes(normalizeAgentName(cleanFirstName)) || closerName.includes(normalizeAgentName(cleanFirstName)))) ||
+            (cleanFirstName && (assignedName.includes(normalizeAgentName(cleanFirstName))) || closerName.includes(normalizeAgentName(cleanFirstName))) ||
             (agentId && assignedId === agentId.toLowerCase()) ||
             (normalizedAgentName && (assignedName.includes(normalizedAgentName) || closerName.includes(normalizedAgentName)))
         );
@@ -292,7 +341,7 @@ export async function getAgentDailyShiftMetrics({
 
     // Resolver remitentes/nombres desde mensajes salientes/entrantes si faltan en conversaciones
     const phoneToSenderMap = {};
-    (outgoingMessagesRes.data || []).forEach(m => {
+    (outgoingMessages || []).forEach(m => {
         if (m.phone && m.sender_name && !phoneToSenderMap[m.phone]) {
             const sn = m.sender_name.trim();
             if (!sn.toLowerCase().includes('bot') && sn !== 'Sanatorio Argentino') {

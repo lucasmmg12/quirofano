@@ -5,7 +5,7 @@ import {
     TrendingUp, Award, Zap, Copy, Check, RefreshCw, ArrowRightLeft,
     Sparkles, ShieldCheck, User, BarChart2, Info, FileDown
 } from 'lucide-react';
-import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText } from '../../services/agentShiftService';
+import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText, getLocalDateString } from '../../services/agentShiftService';
 import { CONTACT_CENTER_AGENTS } from '../../services/contactCenterService';
 import AgentTurnosMappingModal from './AgentTurnosMappingModal';
 import AgentConsultasCategoriaModal from './AgentConsultasCategoriaModal';
@@ -23,26 +23,37 @@ export default function AgentShiftSummaryModal({
     isOpen,
     onClose,
     activeAgent = CONTACT_CENTER_AGENTS[0],
+    initialAgent = null,
+    initialDate = null,
+    initialCategoriaModal = null,
     onOpenHandoverModal,
     myAssignedChatsCount = 0,
     onOpenChatWithPhone
 }) {
-    const [selectedAgent, setSelectedAgent] = useState(activeAgent);
-    const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().substring(0, 10));
+    const [selectedAgent, setSelectedAgent] = useState(initialAgent || activeAgent);
+    const [selectedDate, setSelectedDate] = useState(() => initialDate || getLocalDateString());
     const [loading, setLoading] = useState(true);
     const [metrics, setMetrics] = useState(null);
     const [copied, setCopied] = useState(false);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [showTurnosModal, setShowTurnosModal] = useState(false);
-    const [selectedCategoriaModal, setSelectedCategoriaModal] = useState(null);
+    const [selectedCategoriaModal, setSelectedCategoriaModal] = useState(initialCategoriaModal || null);
 
-    // Actualizar agente seleccionado si cambia la prop
+    // Sincronizar agente y contexto inicial cuando se abre
     useEffect(() => {
-        if (activeAgent) {
-            setSelectedAgent(activeAgent);
+        if (isOpen) {
+            if (initialAgent) {
+                setSelectedAgent(initialAgent);
+            }
+            if (initialDate) {
+                setSelectedDate(initialDate);
+            }
+            if (initialCategoriaModal) {
+                setSelectedCategoriaModal(initialCategoriaModal);
+            }
         }
-    }, [activeAgent]);
+    }, [isOpen, initialAgent?.id, initialDate, initialCategoriaModal]);
 
     // Cargar métricas al abrir o cambiar de agente / fecha
     const loadMetrics = async (agent = selectedAgent, date = selectedDate) => {
@@ -242,7 +253,7 @@ export default function AgentShiftSummaryModal({
                             type="date"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            max={new Date().toISOString().substring(0, 10)}
+                            max={getLocalDateString()}
                             style={{
                                 background: 'rgba(255, 255, 255, 0.12)',
                                 border: '1px solid rgba(255, 255, 255, 0.25)',
@@ -258,7 +269,7 @@ export default function AgentShiftSummaryModal({
 
                         <button
                             type="button"
-                            onClick={() => loadMetrics()}
+                            onClick={() => loadMetrics(selectedAgent, selectedDate)}
                             disabled={loading}
                             title="Recargar métricas"
                             style={{
@@ -1074,11 +1085,16 @@ export default function AgentShiftSummaryModal({
                     turnosRawList={metrics?.turnosSalusDetalle || []}
                     canceladosRawList={metrics?.canceladosSalusDetalle || []}
                     onRefresh={() => loadMetrics(selectedAgent, selectedDate)}
-                    onOpenChatWithPhone={(phone) => {
+                    onOpenChatWithPhone={(phone, auditContext) => {
                         setShowTurnosModal(false);
                         onClose();
                         if (onOpenChatWithPhone) {
-                            onOpenChatWithPhone(phone);
+                            onOpenChatWithPhone(phone, auditContext || {
+                                agent: selectedAgent,
+                                date: selectedDate,
+                                isTurnosModal: true,
+                                categoriaLabel: 'Auditoría de Turnos en SALUS'
+                            });
                         }
                     }}
                 />
@@ -1094,11 +1110,15 @@ export default function AgentShiftSummaryModal({
                     selectedDate={selectedDate}
                     agent={selectedAgent}
                     turnosSalusDetalle={metrics?.turnosSalusDetalle || []}
-                    onOpenChatWithPhone={(phone) => {
-                        setSelectedCategoriaModal(null);
+                    onOpenChatWithPhone={(phone, auditContext) => {
                         onClose();
                         if (onOpenChatWithPhone) {
-                            onOpenChatWithPhone(phone);
+                            onOpenChatWithPhone(phone, auditContext || {
+                                agent: selectedAgent,
+                                date: selectedDate,
+                                categoriaKey: selectedCategoriaModal,
+                                categoriaLabel: categorias[selectedCategoriaModal]?.label || 'Pacientes por Intención'
+                            });
                         }
                     }}
                 />

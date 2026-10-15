@@ -106,9 +106,17 @@ export default function AgentConsultasCategoriaModal({
         });
     };
 
-    const handleGoToChat = (phone) => {
+    const handleGoToChat = (item) => {
+        const phone = typeof item === 'object' ? item.phone : item;
+        const patientName = typeof item === 'object' ? item.paciente : null;
         if (onOpenChatWithPhone) {
-            onOpenChatWithPhone(phone);
+            onOpenChatWithPhone(phone, {
+                agent,
+                date: selectedDate,
+                categoriaKey: selectedKey,
+                categoriaLabel: currentCat.label,
+                patientName: patientName
+            });
         } else {
             // Fallback externo a WhatsApp Web
             const clean = (phone || '').replace(/\D/g, '');
@@ -688,7 +696,7 @@ export default function AgentConsultasCategoriaModal({
                                             </span>
 
                                             <button
-                                                onClick={() => handleGoToChat(item.phone)}
+                                                onClick={() => handleGoToChat(item)}
                                                 style={{
                                                     display: 'flex',
                                                     alignItems: 'center',
