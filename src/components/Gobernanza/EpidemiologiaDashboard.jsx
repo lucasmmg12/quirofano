@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { 
     Activity, Calendar, Users, BarChart3, ShieldAlert,
-    Download, RefreshCw, AlertCircle, FileSpreadsheet,
+    Download, RefreshCw, AlertCircle,
     Stethoscope, Clock, CheckCircle2, ChevronRight, Eye,
     Baby, Flame, Bug, Shield, AlertTriangle, Layers, Filter
 } from 'lucide-react';
@@ -12,7 +12,6 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
     Legend
 } from 'recharts';
-import SqlDocumentationModal from './SqlDocumentationModal';
 
 // ─── DATOS OFICIALES DE SALUS PARA VIGILANCIA EPIDEMIOLÓGICA (SANATORIO ARGENTINO) ───
 // Datos mensuales consolidados (2025 - 2026) según CIE-10 en TABLEAU_Diagnosticos y motivo consulta
@@ -63,7 +62,6 @@ export default function EpidemiologiaDashboard({
     const [centro, setCentro] = useState(selectedCenter);
     const [filtroPatologia, setFiltroPatologia] = useState('TODAS'); // 'TODAS' | 'BRONQUIOLITIS' | 'RESPIRATORIAS' | 'DIARREAS' | 'VARICELA' | 'ETS'
     const [filtroGrupoEtario, setFiltroGrupoEtario] = useState('TODOS');
-    const [sqlModalOpen, setSqlModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
     const handleCentroChange = (newCentro) => {
@@ -176,78 +174,14 @@ export default function EpidemiologiaDashboard({
                             🦠
                         </div>
                         <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0F2942', margin: 0, letterSpacing: '-0.02em' }}>
-                                    Vigilancia Epidemiológica y Notificación Obligatoria
-                                </h1>
-                                <span style={{
-                                    background: '#E0F2FE',
-                                    color: '#0369A1',
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    padding: '2px 10px',
-                                    borderRadius: '20px',
-                                    border: '1px solid #BAE6FD',
-                                    textTransform: 'uppercase'
-                                }}>
-                                    Pedido Dr. Romano
-                                </span>
-                            </div>
-                            <p style={{ fontSize: '13px', color: '#64748B', margin: '4px 0 0 0' }}>
-                                Monitoreo nominal y consolidado para Planillas C2 / Fichas Epidemiológicas SNVS (Ministerio de Salud).
-                            </p>
+                            <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0F2942', margin: 0, letterSpacing: '-0.02em' }}>
+                                Vigilancia Epidemiológica y Notificación Obligatoria
+                            </h1>
                         </div>
                     </div>
 
-                    {/* Acciones y Selector de Sede */}
+                    {/* Acciones */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        {/* Selector de Centro */}
-                        <div style={{ display: 'flex', background: '#F1F5F9', padding: '3px', borderRadius: '10px', border: '1px solid #CBD5E1' }}>
-                            {['TODOS', 'SANTA FE', 'MITRE'].map(c => (
-                                <button
-                                    key={c}
-                                    onClick={() => handleCentroChange(c)}
-                                    style={{
-                                        padding: '6px 14px',
-                                        borderRadius: '7px',
-                                        border: 'none',
-                                        fontSize: '12px',
-                                        fontWeight: '700',
-                                        cursor: 'pointer',
-                                        background: centro === c ? '#FFFFFF' : 'transparent',
-                                        color: centro === c ? '#0F2942' : '#64748B',
-                                        boxShadow: centro === c ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    {c === 'TODOS' ? 'Ambas Sedes' : `Sede ${c}`}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Botón Query SQL */}
-                        <button
-                            onClick={() => setSqlModalOpen(true)}
-                            title="Ver Consulta Canónica Transact-SQL para SALUS"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '8px 14px',
-                                borderRadius: '10px',
-                                border: '1px solid #CBD5E1',
-                                background: '#FFFFFF',
-                                color: '#0F2942',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <FileSpreadsheet size={15} color="#0284C7" />
-                            <span>Query SQL</span>
-                        </button>
-
                         {/* Botón Exportar Planilla C2 */}
                         <button
                             onClick={handleExportExcelC2}
@@ -567,7 +501,7 @@ export default function EpidemiologiaDashboard({
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0F2942', margin: 0 }}>
-                                Registro Nominal de Casos Notificados (SALUS Forense)
+                                Registro Nominal de Casos Notificados
                             </h3>
                             <span style={{ fontSize: '11px', background: '#F1F5F9', color: '#475569', padding: '2px 8px', borderRadius: '6px', fontWeight: '700' }}>
                                 {casosFiltrados.length} casos
@@ -701,13 +635,6 @@ export default function EpidemiologiaDashboard({
                     </table>
                 </div>
             </div>
-
-            {/* Modal de Documentación Técnica SQL SALUS */}
-            <SqlDocumentationModal
-                open={sqlModalOpen}
-                onClose={() => setSqlModalOpen(false)}
-                defaultTab="EPIDEMIOLOGIA"
-            />
         </div>
     );
 }
