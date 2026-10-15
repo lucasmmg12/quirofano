@@ -1561,6 +1561,7 @@ interface IntentDetectionResult {
         | 'derivacion_agente'
         | 'saludo_en_flujo'
         | 'seleccion_medico'
+        | 'consulta_arancel'
         | 'general';
     doctorCandidate: string | null;
     doctorRecord: any | null;
@@ -1890,6 +1891,58 @@ function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: str
 }
 
 /**
+ * Detecta si el texto del paciente consulta por precios, aranceles, valores o condiciones particulares de consulta médica.
+ */
+function isArancelOrPriceQuery(text: string): boolean {
+    const clean = (text || '').toLowerCase();
+    return /\b(valor|precio|cuanto\s+(?:cuesta|sale|est[aá]|cobran?|cobra|es|sale\s+la|cuesta\s+la|vale)|arancel|aranceles|costo|costos|tarifa|tarifas|particular|particulares|sin\s+obra\s+social|privad[ao]|abono|cuanto\s+est[aá]\s+la\s+consulta|cuanto\s+cuesta\s+la\s+consulta|cuanto\s+sale\s+la\s+consulta|valor\s+de\s+la\s+consulta|precio\s+de\s+la\s+consulta|consulta\s+particular|adicional|plus)\b/i.test(clean);
+}
+
+/**
+ * Extrae el valor de la consulta médica particular a partir de condiciones_consulta.
+ * Normaliza y formatea a moneda argentina (ej: $45.000, $50.000, $60.000).
+ */
+function extractParticularPrice(condiciones?: string | null): string | null {
+    if (!condiciones) return null;
+    const regexes = [
+        /(?:consulta\s+particular|particular)[^\d$]{0,25}\$?\s*([0-9]{2,3}(?:\.[0-9]{3}|[0-9]{3}))\b/i,
+        /\$?\s*([0-9]{2,3}(?:\.[0-9]{3}|[0-9]{3}))\b[^\n\r]*(?:particular)/i
+    ];
+    for (const r of regexes) {
+        const m = condiciones.match(r);
+        if (m && m[1]) {
+            const numStr = m[1].replace(/\./g, '');
+            const num = parseInt(numStr, 10);
+            if (!isNaN(num) && num >= 1000 && num <= 500000) {
+                return `$${num.toLocaleString('es-AR')}`;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Extrae el valor de adicional / plus por obra social a partir de condiciones_consulta.
+ */
+function extractPlusPrice(condiciones?: string | null): string | null {
+    if (!condiciones) return null;
+    const m = condiciones.match(/(?:adicional|plus)[^\d$]{0,25}\$?\s*([0-9]{2,3}(?:\.[0-9]{3}|[0-9]{3}))\b/i);
+    if (m && m[1]) {
+        const numStr = m[1].replace(/\./g, '');
+        const num = parseInt(numStr, 10);
+        if (!isNaN(num) && num >= 1000 && num <= 500000) {
+            return `$${num.toLocaleString('es-AR')}`;
+        }
+    }
+    return null;
+}
+
+/**
+ * Regla de seguridad institucional: NUNCA enviar alias, CBU, CVU, ni enlaces de pago.
+ * Todo abono se gestiona presencialmente en Recepción.
+ */
+const FINANCIAL_SECURITY_NOTICE = `📌 *Importante:* El abono de la consulta se gestiona presencialmente en el sector de *Recepción* al momento de tu atención en el Sanatorio (por normas de seguridad institucional, no se realizan cobros ni se envían alias o transferencias por este medio).`;
+
 /**
  * Verifica si el Contact Center se encuentra dentro del horario de atención:
  * Lunes a Viernes de 7:00 a 21:00 hs
@@ -3048,8 +3101,11 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         }
     }
 
+    const isPriceQuery = isArancelOrPriceQuery(clean);
     let intent: IntentDetectionResult['intent'] = 'general';
-    if (context?.botStage === 'esperando_datos_turno' || isTurno || doctorRecord) {
+    if (isPriceQuery && (doctorRecord || doctorCandidate || isTurno || specialtyCandidate)) {
+        intent = 'consulta_arancel';
+    } else if (context?.botStage === 'esperando_datos_turno' || isTurno || doctorRecord) {
         intent = 'turno';
     } else if (context?.botStage === 'esperando_dni_turno') {
         intent = 'consultar_turno';
@@ -3092,6 +3148,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 Analiza la intención del último mensaje del paciente considerando el hilo de la conversación previa con el Bot o con el Asesor Humano.
 Intenciones posibles:
 - "turno": solicitud o consulta sobre turnos médicos
+- "consulta_arancel": consulta sobre precio, valor de consulta particular o adicional sin/con obra social
 - "confirmar_turno_online": el paciente confirma su turno
 - "cancelar_turno_online": el paciente cancela su turno
 - "reprogramar_turno_online": el paciente pide cambiar fecha/horario de su turno
@@ -4350,7 +4407,60 @@ async function handleChatbotTriage(
         const capSurname = analysis.doctorCandidate 
             ? (analysis.doctorCandidate.charAt(0).toUpperCase() + analysis.doctorCandidate.slice(1).toLowerCase())
             : '';
-        
+        const isArancelQuery = analysis.intent === 'consulta_arancel' || isArancelOrPriceQuery(cleanText);
+
+        if (isArancelQuery) {
+            const prices = docList.map(d => extractParticularPrice(d.condiciones_consulta));
+            const validPrices = prices.filter(Boolean);
+            const allSamePrice = validPrices.length > 0 && validPrices.every(p => p === validPrices[0]);
+
+            if (allSamePrice && validPrices[0]) {
+                const singlePrice = validPrices[0];
+                const specName = docList[0]?.formattedInfo?.specialty || docList[0]?.especialidad || 'la especialidad';
+                replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 En Sanatorio Argentino contamos con dos profesionales con ese apellido en el servicio de ${specName}:\n\n` +
+                    docList.map((d: any) => {
+                        const info = d.formattedInfo || formatDoctorDisplay(d);
+                        return `• *${info.displayName}* (${info.specialty})`;
+                    }).join('\n') +
+                    `\n\n💵 El valor actual de la *consulta médica particular (sin obra social)* para ambos profesionales es de *${singlePrice}*.\n\n` +
+                    `Para registrar tu consulta o turno correctamente con el profesional exacto, ¿nos confirmarías con cuál de ellos tenés tu turno o deseás atenderte? (podés responder *"Dr. Sergio"* o *"Dr. Hugo"* o con su nombre de pila).\n\n` +
+                    `${FINANCIAL_SECURITY_NOTICE}\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            } else {
+                let menuDocs = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Para confirmarte el valor exacto de la consulta particular, por favor indícanos con cuál de los siguientes profesionales tenés tu turno o deseás consultar:\n\n`;
+                docList.forEach((d: any, idx: number) => {
+                    const letter = letters[idx] || `${idx + 1}`;
+                    const info = d.formattedInfo || formatDoctorDisplay(d);
+                    const dPrice = extractParticularPrice(d.condiciones_consulta);
+                    const priceMsg = dPrice ? ` — *Particular: ${dPrice}*` : '';
+                    menuDocs += `*${letter}-* ${info.displayName} (${info.specialty})${priceMsg}\n`;
+                });
+                menuDocs += `\nPodés responder con la letra (*a*, *b*...) o escribir el nombre del profesional.\n\n` +
+                    `${FINANCIAL_SECURITY_NOTICE}\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                replyText = menuDocs;
+            }
+
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_seleccion_medico';
+            nextStage = 'esperando_seleccion_medico';
+            updates.motivo_consulta = `Consulta Arancel Particular: ${capSurname || 'Homónimos'}`;
+            updates.medico_o_especialidad = `Homónimos: ${capSurname || 'Profesional'}`;
+
+            if (candidateDni) updates.dni = candidateDni;
+            const autoOs = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
+            if (autoOs) updates.obra_social = autoOs;
+
+            updates.ai_summary = {
+                ...(conv?.ai_summary || {}),
+                candidates_medicos: docList,
+                is_price_query: true,
+                pending_os: autoOs || updates.obra_social || conv?.obra_social || null
+            };
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
         let menuDocs = `Por favor, ¿qué doctor/a ${capSurname}?\n\n`;
         
         docList.forEach((d: any, idx: number) => {
@@ -4725,6 +4835,38 @@ async function handleChatbotTriage(
 
         if (selectedDoc) {
             const info = selectedDoc.formattedInfo || formatDoctorDisplay(selectedDoc);
+            const isPriceContext = Boolean((conv?.ai_summary as any)?.is_price_query || conv?.motivo_consulta?.includes('Arancel') || isArancelOrPriceQuery(cleanText));
+
+            if (isPriceContext) {
+                const docPrice = extractParticularPrice(selectedDoc.condiciones_consulta);
+                const plusPrice = extractPlusPrice(selectedDoc.condiciones_consulta);
+                const priceLine = docPrice 
+                    ? `💵 El valor actual de la *consulta médica particular (sin obra social)* es de *${docPrice}*.`
+                    : `Para informarte el valor actualizado exacto de la atención, un asesor de nuestro equipo te responderá a la brevedad.`;
+                const plusLine = plusPrice ? `\n• *Consulta con obra social / adicional:* ${plusPrice}` : '';
+
+                replyText = `¡Excelente${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Registramos tu confirmación con el *${info.displayName}* (${info.specialty}).\n\n` +
+                    `${priceLine}${plusLine}\n\n` +
+                    `${FINANCIAL_SECURITY_NOTICE}\n\n` +
+                    `¿Deseás que te ayudemos a gestionar tu turno, verificar tu cobertura o tenés alguna otra consulta?\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+
+                updates.medico_o_especialidad = `${info.displayName} (${info.specialty})`;
+                updates.motivo_consulta = `Consulta Arancel Particular: ${info.displayName} (${info.specialty}) [Confirmado]`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                updates.bot_stage = 'menu_opciones';
+                nextStage = 'menu_opciones';
+                updates.ai_summary = {
+                    ...(conv?.ai_summary || {}),
+                    doctor_confirmado: info.displayName,
+                    especialidad: info.specialty,
+                    precio_particular: docPrice,
+                    is_price_query: false
+                };
+                return await finalizeAndSend(replyText, nextStage, updates);
+            }
+
             updates.medico_o_especialidad = `${info.displayName} (${info.specialty})`;
             updates.motivo_consulta = `Solicitud de Turno: ${info.displayName} (${info.specialty})`;
             
@@ -6179,6 +6321,60 @@ async function handleChatbotTriage(
         updates.closed_at = new Date().toISOString();
         updates.resolution_reason = 'Cierre cordial / Agradecimiento del paciente';
         nextStage = 'resuelto_bot';
+        return await finalizeAndSend(replyText, nextStage, updates);
+    }
+    // =============================================
+    // FLUJO: CONSULTA DE ARANCEL / PRECIO DE CONSULTA PARTICULAR
+    // =============================================
+    else if (analysis.intent === 'consulta_arancel') {
+        const targetDoc = analysis.doctorRecord;
+        const validDisplay = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : null;
+        
+        if (targetDoc) {
+            const info = targetDoc.formattedInfo || formatDoctorDisplay(targetDoc);
+            const price = extractParticularPrice(targetDoc.condiciones_consulta);
+            const plus = extractPlusPrice(targetDoc.condiciones_consulta);
+            
+            const effDocDisplay = info.displayName || validDisplay || 'el profesional';
+            const effSpec = info.specialty ? ` (${info.specialty})` : '';
+
+            if (price) {
+                const plusMsg = plus ? `\n• *Consulta con obra social / adicional:* ${plus}` : '';
+                replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Te confirmamos que el valor actual de la *consulta médica particular (sin obra social)* con el *${effDocDisplay}*${effSpec} es de *${price}*.${plusMsg}\n\n` +
+                    `${FINANCIAL_SECURITY_NOTICE}\n\n` +
+                    `¿Deseás que te ayudemos a verificar tu turno, consultar sobre obras sociales o necesitás alguna otra información?\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                updates.bot_stage = 'menu_opciones';
+                nextStage = 'menu_opciones';
+                updates.motivo_consulta = `Consulta Arancel Particular: ${effDocDisplay}${effSpec} (${price})`;
+                updates.medico_o_especialidad = `${effDocDisplay}${effSpec}`;
+            } else {
+                replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Registramos tu consulta sobre el valor de la atención con el *${effDocDisplay}*${effSpec}.\n\n` +
+                    `Para brindarte el arancel exacto y verificar convenios según la fecha de tu atención, te comunicamos con un asesor de nuestro equipo.\n\n` +
+                    `📌 *Recordá:* Todo abono de consultas se realiza de forma presencial en el sector de Recepción del Sanatorio (no se realizan cobros ni transferencias por este medio).\n\n` +
+                    `${getAgentHandoffNotice()}\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                updates.status = 'sin_asignar';
+                updates.bot_active = false;
+                updates.bot_stage = 'esperando_agente';
+                nextStage = 'esperando_agente';
+                updates.motivo_consulta = `Consulta Arancel: ${effDocDisplay}${effSpec}`;
+                updates.medico_o_especialidad = `${effDocDisplay}${effSpec}`;
+            }
+        } else {
+            replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Con gusto te brindamos información sobre aranceles y consultas particulares.\n\n` +
+                `Por favor indícanos:\n` +
+                `• ¿Con qué *profesional* o para qué *especialidad médica* tenés tu turno o deseás consultar?\n\n` +
+                `📌 *Recordá:* Todo abono de consultas se efectúa presencialmente en el sector de *Recepción* al momento de tu atención en el Sanatorio.\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_datos_turno';
+            nextStage = 'esperando_datos_turno';
+            updates.motivo_consulta = 'Consulta Arancel Particular (esperando profesional)';
+        }
         return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
