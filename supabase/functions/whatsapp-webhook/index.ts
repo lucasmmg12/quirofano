@@ -2782,7 +2782,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         }
     }
 
-    // Si no se detectó por regex con prefijo "Dr./con/para", buscar si alguna palabra del mensaje coincide directamente con un apellido de médico
+    // Si no se detectó por regex con prefijo "Dr./con/para", buscar si alguna palabra o bigrama del mensaje coincide con la cartilla de médicos
     if (!doctorCandidate) {
         const wordsInText = clean.split(/[\s,.\-_/]+/).map(w => w.trim()).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
         const nonDoctorWords = new Set([
@@ -2790,27 +2790,53 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'mañana', 'tarde', 'siesta', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado',
             'sancor', 'osde', 'osp', 'omint', 'swiss', 'medical', 'particular', 'provincia', 'damsup',
             'hola', 'buen', 'dia', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
-            'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre'
+            'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre',
+            'cualquier', 'horario', 'cuando', 'tiene'
         ]);
 
         const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
 
-        for (const w of wordsInText) {
-            if (!nonDoctorWords.has(w) && !STOPWORDS_MEDICOS.has(w) && w.length >= 4) {
+        // 1. Prioridad: Buscar bigramas consecutivos (ej. "daniela saldivar")
+        for (let i = 0; i < wordsInText.length - 1; i++) {
+            const w1 = wordsInText[i];
+            const w2 = wordsInText[i + 1];
+            if (!nonDoctorWords.has(w1) && !nonDoctorWords.has(w2) && w1.length >= 3 && w2.length >= 3) {
                 try {
-                    const { data: dMatch } = await supabase
+                    const { data: bMatch } = await supabase
                         .from('contact_center_doctor_parameters')
                         .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                        .ilike('profesional_nombre', `${w} %`)
-                        .limit(10);
+                        .ilike('profesional_nombre', `%${w1}%`)
+                        .ilike('profesional_nombre', `%${w2}%`)
+                        .limit(5);
 
-                    const validMatch = (dMatch || []).filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
-
-                    if (validMatch.length > 0) {
-                        doctorCandidate = w;
+                    const validBigram = (bMatch || []).filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
+                    if (validBigram.length > 0) {
+                        doctorCandidate = `${w1} ${w2}`;
                         break;
                     }
                 } catch (_) {}
+            }
+        }
+
+        // 2. Si no hubo match por bigrama, buscar por palabra individual (longitud >= 4)
+        if (!doctorCandidate) {
+            for (const w of wordsInText) {
+                if (!nonDoctorWords.has(w) && !STOPWORDS_MEDICOS.has(w) && w.length >= 4) {
+                    try {
+                        const { data: dMatch } = await supabase
+                            .from('contact_center_doctor_parameters')
+                            .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
+                            .ilike('profesional_nombre', `%${w}%`)
+                            .limit(10);
+
+                        const validMatch = (dMatch || []).filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
+
+                        if (validMatch.length > 0) {
+                            doctorCandidate = w;
+                            break;
+                        }
+                    } catch (_) {}
+                }
             }
         }
     }
@@ -2823,11 +2849,16 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             const isDoctorFemale = /\b(doctora|dra\.?|la\s+doctora)\b/i.test(clean);
             const isDoctorMale = /\b(doctor|dr\.?|el\s+doctor)\b/i.test(clean) && !isDoctorFemale;
 
-            const { data: rawDocs } = await supabase
+            let docQuery = supabase
                 .from('contact_center_doctor_parameters')
-                .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                .ilike('profesional_nombre', `%${doctorCandidate}%`)
-                .limit(15);
+                .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta');
+
+            const candWords = doctorCandidate.split(/\s+/).filter(Boolean);
+            for (const cw of candWords) {
+                docQuery = docQuery.ilike('profesional_nombre', `%${cw}%`);
+            }
+
+            const { data: rawDocs } = await docQuery.limit(15);
 
             const docs = (rawDocs || []).filter((d: any) => !/\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(d.profesional_nombre || ''));
 

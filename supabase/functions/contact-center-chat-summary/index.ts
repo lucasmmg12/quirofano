@@ -130,8 +130,116 @@ Deno.serve(async (req) => {
             return `${role}: ${text}`;
         }).join('\n\n');
 
+        // 2.1 Búsqueda inteligente y optimizada de candidatos a prestadores médicos en el texto del chat
+        // Para nutrir el contexto del prompt con altísima fidelidad y consumo mínimo de tokens (<40 tokens)
+        const STOPWORDS_PRESTADORES = new Set([
+            'hola', 'buen', 'dia', 'dias', 'tarde', 'tardes', 'noche', 'noches',
+            'turno', 'turnos', 'para', 'cuando', 'tiene', 'cualquier', 'horario',
+            'es', 'mi', 'con', 'quien', 'le', 'coordino', 'gracias', 'por', 'favor',
+            'atencion', 'consulta', 'saber', 'necesito', 'quiero', 'pedir', 'sacar',
+            'sanatorio', 'argentino', 'erica', 'leal', 'flor', 'datos', 'dni', 'solicito',
+            'paciente', 'hacer', 'hacerme', 'ver', 'verme', 'atender', 'atenderme'
+        ]);
+
+        const fullIncomingText = messages
+            .filter(m => m.direction === 'incoming' && m.content)
+            .map(m => m.content)
+            .join(' ');
+
+        const cleanIncoming = (fullIncomingText || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+
+        const incomingTokens = cleanIncoming.split(/[\s,.\-_/]+/).filter(Boolean);
+        const bigrams: [string, string][] = [];
+        for (let i = 0; i < incomingTokens.length - 1; i++) {
+            const w1 = incomingTokens[i];
+            const w2 = incomingTokens[i + 1];
+            if (w1.length >= 3 && w2.length >= 3 && !STOPWORDS_PRESTADORES.has(w1) && !STOPWORDS_PRESTADORES.has(w2) && !/^\d+$/.test(w1) && !/^\d+$/.test(w2)) {
+                bigrams.push([w1, w2]);
+            }
+        }
+
+        const candidateDoctorsMap = new Map<string, any>();
+
+        // a) Probar bigramas (máxima prioridad y especificidad: ej. "daniela saldivar")
+        for (const [w1, w2] of bigrams) {
+            try {
+                const { data: bDocs } = await supabase
+                    .from('contact_center_doctor_parameters')
+                    .select('id, profesional_nombre, especialidad, condiciones_consulta, consultorio_actual')
+                    .ilike('profesional_nombre', `%${w1}%`)
+                    .ilike('profesional_nombre', `%${w2}%`)
+                    .limit(3);
+
+                if (bDocs && bDocs.length > 0) {
+                    for (const doc of bDocs) {
+                        candidateDoctorsMap.set(doc.id, {
+                            ...doc,
+                            score: 10,
+                            matchedTerm: `${w1} ${w2}`
+                        });
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // b) Si no hay bigramas encontrados, probar palabras individuales (longitud >= 4)
+        if (candidateDoctorsMap.size === 0) {
+            const candidateWords = Array.from(new Set(
+                cleanIncoming.split(/[^a-z]+/).filter(w => w.length >= 4 && !STOPWORDS_PRESTADORES.has(w))
+            ));
+            for (const w of candidateWords.slice(0, 5)) {
+                try {
+                    const { data: wDocs } = await supabase
+                        .from('contact_center_doctor_parameters')
+                        .select('id, profesional_nombre, especialidad, condiciones_consulta, consultorio_actual')
+                        .ilike('profesional_nombre', `%${w}%`)
+                        .limit(2);
+
+                    if (wDocs && wDocs.length > 0) {
+                        for (const doc of wDocs) {
+                            if (!candidateDoctorsMap.has(doc.id)) {
+                                candidateDoctorsMap.set(doc.id, {
+                                    ...doc,
+                                    score: 3,
+                                    matchedTerm: w
+                                });
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
+        }
+
+        const candidateDoctorsList = Array.from(candidateDoctorsMap.values())
+            .filter((c: any) => !/\b(guardia|vacunatorio|laboratorio|citologia|curaciones)\b/i.test(c.profesional_nombre))
+            .sort((a: any, b: any) => b.score - a.score)
+            .slice(0, 3);
+
+        // Formatear bloque para el prompt
+        let doctorsContextPrompt = '';
+        if (candidateDoctorsList.length > 0) {
+            const doctorsLines = candidateDoctorsList.map((d: any) => {
+                let esp = d.especialidad || 'Consulta Médica';
+                if (d.condiciones_consulta) {
+                    const cUpper = d.condiciones_consulta.toUpperCase();
+                    if (cUpper.includes('GINECOL') || cUpper.includes('OBSTETR')) esp = 'Ginecología / Obstetricia';
+                    else if (cUpper.includes('PEDIATR')) esp = 'Pediatría';
+                    else if (cUpper.includes('CARDIOL')) esp = 'Cardiología';
+                    else if (cUpper.includes('CLINIC')) esp = 'Medicina Clínica';
+                    else if (cUpper.includes('TRAUMAT')) esp = 'Traumatología';
+                    else if (cUpper.includes('DERMAT')) esp = 'Dermatología';
+                }
+                return `• Prestador en Cartilla: ${d.profesional_nombre} | Especialidad: ${esp} (Coincide con texto del paciente: "${d.matchedTerm}")`;
+            }).join('\n');
+
+            doctorsContextPrompt = `\nPRESTADORES MÉDICOS DE SANATORIO ARGENTINO DETECTADOS EN LA CONVERSACIÓN:\n${doctorsLines}\n\nREGLA ESTRICTA SOBRE PRESTADORES DETECTADOS:\nEl paciente ha mencionado a uno de los profesionales médicos arriba listados. DEBES identificarlo sin dudar en "doctor_detectado.nombre_aproximado" (usa el nombre común del médico), asignarle su especialidad correspondiente en "doctor_detectado.especialidad_mencionada", y en "resumen_solicitud" especificar con claridad que solicita turno con dicho profesional (incluso si no dijo la palabra "doctor/a" ni "médico/a").\n`;
+        }
+
         // 3. Ejecutar análisis con OpenAI GPT-4o
-        console.log(`[chat-summary] Analizando conversación para ${phone} con los ${messages.length} mensajes de la sesión activa...`);
+        console.log(`[chat-summary] Analizando conversación para ${phone} con los ${messages.length} mensajes de la sesión activa (${candidateDoctorsList.length} médicos candidatos)...`);
 
         const prompt = `Eres el Asistente Clínico y Administrativo de Inteligencia Artificial del Contact Center de Sanatorio Argentino en San Juan, Argentina.
 Tu misión es asistir al OPERADOR humano (las agentes de atención) resumiendo de forma EXACTA y FIEL qué necesita el paciente en su consulta ACTUAL, qué datos aportó y qué médico o estudio solicita.
@@ -150,14 +258,14 @@ DATOS ACTUALES REGISTRADOS EN FICHA:
 - Teléfono: ${phone}
 - TURNOS ONLINE AGENDADOS EN EL SISTEMA:
 ${turnosOnlineInfo}
-
+${doctorsContextPrompt}
 HISTORIAL DE LA CONSULTA ACTUAL (Cronológico):
 ${chatTranscript || 'Sin mensajes de texto todavía.'}
 
 REGLAS CRÍTICAS DE EXTRACCIÓN:
 1. NUNCA interpretes verbos, pronombres ni palabras comunes como doctores (ej: 'hacerme', 'hacer', 'sacarme', 'sacar', 'pedirme', 'pedir', 'verme', 'ver', 'atenderme').
 2. NUNCA fuerces "Chequeo Preventivo de Salud" a menos que el paciente lo pida con esas palabras exactas ("chequeo preventivo", "circuito preventivo", "chequeo de salud"). Si el paciente solicita un turno médico para una especialidad o profesional, o si solo saluda y aporta datos para un turno sin nombrar el circuito de chequeo, clasifícalo como "Turno nuevo".
-3. Si el paciente pide un turno pero aún no especificó especialidad ni médico, descríbelo con fidelidad: ej. "El paciente solicita un turno médico pero aún no especificó especialidad o profesional."
+3. Si el paciente pide un turno pero no especificó médico ni especialidad, descríbelo con fidelidad. PERO si mencionó a un profesional médico o se listó arriba en los prestadores detectados, DEBES nombrarlo y asignarlo.
 4. Si el paciente menciona explícitamente "chequeo preventivo" o "circuito preventivo":
    - "tipo_tramite": "Chequeo Preventivo de Salud"
    - "doctor_detectado.nombre_aproximado": null
@@ -190,8 +298,8 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
     "es_paciente_existente": true/false/null
   },
   "doctor_detectado": {
-    "nombre_aproximado": "Nombre o apellido del médico mencionado explícitamente por el paciente en el texto del chat (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez') o null si no se menciona ningún doctor",
-    "especialidad_mencionada": "Especialidad médica mencionada (ej: Medicina Familiar, Cardiología, Ecografía, Pediatría) o null",
+    "nombre_aproximado": "Nombre o apellido del médico mencionado explícitamente por el paciente en el texto del chat (ej: 'Correa', 'Correa Gustavo', 'Mariana Godoy', 'Orlando Gomez', 'Daniela Saldivar') o null si no se menciona ningún doctor",
+    "especialidad_mencionada": "Especialidad médica mencionada (ej: Ginecología, Medicina Familiar, Cardiología, Ecografía, Pediatría) o null",
     "estudio_solicitado": "Nombre de la práctica o estudio solicitada (ej: Programa Prevenir, Chequeo Preventivo de Salud, Consulta médica, Ecodoppler, etc.) o null"
   }
 } `;
@@ -268,6 +376,32 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         // Búsqueda automática de parámetros del prestador si se detectó médico
         let matchedDoctor = null;
         let detectedDoctorName = parsed.doctor_detectado?.nombre_aproximado;
+
+        // Salvaguarda determinística: Si OpenAI no asignó doctor_detectado pero el pre-matching detectó con alta confianza a un prestador de cartilla
+        if (!detectedDoctorName && candidateDoctorsList.length > 0) {
+            const topCandidate = candidateDoctorsList[0];
+            const cleanName = topCandidate.profesional_nombre.replace(/\s+SLS.*$/i, '').replace(/^(dr|dra)\.?\s+/i, '').trim();
+            detectedDoctorName = cleanName;
+            if (parsed.doctor_detectado) {
+                parsed.doctor_detectado.nombre_aproximado = cleanName;
+                if (!parsed.doctor_detectado.especialidad_mencionada) {
+                    let esp = topCandidate.especialidad || 'Consulta Médica';
+                    if (topCandidate.condiciones_consulta) {
+                        const cUpper = topCandidate.condiciones_consulta.toUpperCase();
+                        if (cUpper.includes('GINECOL') || cUpper.includes('OBSTETR')) esp = 'Ginecología';
+                        else if (cUpper.includes('PEDIATR')) esp = 'Pediatría';
+                        else if (cUpper.includes('CARDIOL')) esp = 'Cardiología';
+                        else if (cUpper.includes('CLINIC')) esp = 'Medicina Clínica';
+                        else if (cUpper.includes('TRAUMAT')) esp = 'Traumatología';
+                    }
+                    parsed.doctor_detectado.especialidad_mencionada = esp;
+                }
+            }
+            if (parsed.resumen_solicitud && (parsed.resumen_solicitud.includes('no especificó') || parsed.resumen_solicitud.includes('aún no'))) {
+                parsed.resumen_solicitud = `El paciente solicita coordinar un turno médico con la profesional ${cleanName} (${parsed.doctor_detectado?.especialidad_mencionada || 'Especialista'}).`;
+            }
+        }
+
         if (!detectedDoctorName && conv?.medico_o_especialidad && !conv.medico_o_especialidad.includes('Circuito') && !conv.medico_o_especialidad.includes('Programa')) {
             detectedDoctorName = conv.medico_o_especialidad;
         }
