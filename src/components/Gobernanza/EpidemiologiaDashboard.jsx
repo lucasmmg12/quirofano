@@ -156,49 +156,6 @@ export default function EpidemiologiaDashboard({
         });
     }, [casosPeriodo, filtroPatologia, filtroGrupoEtario, searchTerm]);
 
-    // Exportación a Excel por Tarjeta / Patología Específica
-    const handleExportCardExcel = (patologiaKey, cardTitle) => {
-        try {
-            let casosAExportar = casosPeriodo;
-            if (patologiaKey === 'BRONQUIOLITIS') {
-                casosAExportar = casosPeriodo.filter(c => c.patologia.toLowerCase().includes('bronquiolitis'));
-            } else if (patologiaKey === 'RESPIRATORIAS') {
-                casosAExportar = casosPeriodo.filter(c => c.patologia.toLowerCase().includes('influenza') || c.patologia.toLowerCase().includes('gripe') || c.patologia.toLowerCase().includes('neumon'));
-            } else if (patologiaKey === 'DIARREAS') {
-                casosAExportar = casosPeriodo.filter(c => c.patologia.toLowerCase().includes('diarrea') || c.patologia.toLowerCase().includes('gastroent'));
-            } else if (patologiaKey === 'VARICELA') {
-                casosAExportar = casosPeriodo.filter(c => c.patologia.toLowerCase().includes('varicela'));
-            } else if (patologiaKey === 'ETS') {
-                casosAExportar = casosPeriodo.filter(c => c.patologia.toLowerCase().includes('ets') || c.patologia.toLowerCase().includes('sífilis') || c.patologia.toLowerCase().includes('chlamydia') || c.patologia.toLowerCase().includes('gonoc'));
-            }
-
-            const dataRows = casosAExportar.map((c, idx) => ({
-                'N°': idx + 1,
-                'Fecha Consulta': c.fecha,
-                'NHC': c.nhc,
-                'Paciente': c.paciente,
-                'Grupo Etario': c.grupoEtario,
-                'Diagnóstico': c.patologia,
-                'CIE-10': c.cie10,
-                'Médico': c.medico,
-                'Servicio': c.servicio,
-                'Centro': c.centro,
-                'Destino': c.destino
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(dataRows.length > 0 ? dataRows : [{ 'Aviso': `Sin casos registrados en el período (${periodoLabel})` }]);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, cardTitle.substring(0, 31));
-            const cleanTitle = cardTitle.replace(/[^a-zA-Z0-9]/g, '_');
-            const cleanPeriod = periodoLabel.replace(/[^a-zA-Z0-9]/g, '_');
-            XLSX.writeFile(wb, `Casos_${cleanTitle}_${cleanPeriod}.xlsx`);
-
-            if (addToast) addToast(`✅ Excel descargado: ${cardTitle} (${casosAExportar.length} casos)`, 'success');
-        } catch (err) {
-            console.error('Error exportando Excel de tarjeta:', err);
-            if (addToast) addToast('Error al exportar Excel de la tarjeta', 'error');
-        }
-    };
 
     // Exportación a Excel de la Planilla C2 Oficial Completa
     const handleExportExcelC2 = () => {
@@ -355,14 +312,52 @@ export default function EpidemiologiaDashboard({
                 </div>
             </div>
 
-            {/* ─── TARJETAS DE INDICADORES (CON BOTÓN DE EXCEL INDIVIDUAL POR PATOLOGÍA) ─── */}
+            {/* ─── TARJETAS DE INDICADORES (6 INDICADORES EN GRILLA SIMÉTRICA Y LIMPIA) ─── */}
             <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '16px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '14px',
                 marginBottom: '20px'
             }}>
-                {/* 1. BRONQUIOLITIS EN MENORES DE 2 AÑOS */}
+                {/* 1. TOTAL CONSOLIDADO DE VIGILANCIA (PRIMERA TARJETA) */}
+                <div 
+                    onClick={() => setFiltroPatologia('TODAS')}
+                    style={{
+                        background: filtroPatologia === 'TODAS' ? '#0F2942' : '#FFFFFF',
+                        borderRadius: '14px',
+                        padding: '16px 18px',
+                        border: `2px solid ${filtroPatologia === 'TODAS' ? '#0F2942' : '#E2E8F0'}`,
+                        cursor: 'pointer',
+                        boxShadow: filtroPatologia === 'TODAS' ? '0 4px 12px rgba(15, 41, 66, 0.2)' : '0 1px 3px rgba(0,0,0,0.03)',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>📊</span>
+                        <span style={{ 
+                            fontSize: '12px', 
+                            fontWeight: '800', 
+                            color: filtroPatologia === 'TODAS' ? '#FFFFFF' : '#0F2942', 
+                            textTransform: 'uppercase' 
+                        }}>
+                            Total Casos
+                        </span>
+                    </div>
+                    <div style={{ 
+                        fontSize: '28px', 
+                        fontWeight: '900', 
+                        color: filtroPatologia === 'TODAS' ? '#38BDF8' : '#0F2942', 
+                        letterSpacing: '-0.03em' 
+                    }}>
+                        {kpis.totalMes} <span style={{ 
+                            fontSize: '11px', 
+                            fontWeight: '600', 
+                            color: filtroPatologia === 'TODAS' ? '#94A3B8' : '#64748B' 
+                        }}>en el período</span>
+                    </div>
+                </div>
+
+                {/* 2. BRONQUIOLITIS EN MENORES DE 2 AÑOS */}
                 <div 
                     onClick={() => setFiltroPatologia(filtroPatologia === 'BRONQUIOLITIS' ? 'TODAS' : 'BRONQUIOLITIS')}
                     style={{
@@ -372,54 +367,21 @@ export default function EpidemiologiaDashboard({
                         border: `2px solid ${filtroPatologia === 'BRONQUIOLITIS' ? '#0284C7' : '#E2E8F0'}`,
                         cursor: 'pointer',
                         boxShadow: filtroPatologia === 'BRONQUIOLITIS' ? '0 4px 12px rgba(2, 132, 199, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
+                        transition: 'all 0.15s ease'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '20px' }}>👶</span>
-                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                                Bronquiolitis (&lt; 2 años)
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportCardExcel('BRONQUIOLITIS', 'Bronquiolitis');
-                            }}
-                            title="Exportar casos de Bronquiolitis a Excel"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#E0F2FE',
-                                color: '#0369A1',
-                                border: '1px solid #BAE6FD',
-                                borderRadius: '6px',
-                                padding: '2px 7px',
-                                fontSize: '10.5px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <Download size={11} />
-                            <span>Excel</span>
-                        </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>👶</span>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
+                            Bronquiolitis (&lt; 2a)
+                        </span>
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: '900', color: '#0369A1', letterSpacing: '-0.03em' }}>
                         {kpis.bronquiolitisMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-                        Condición estricta: <strong>&lt; 24 meses de vida</strong>
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#0284C7', marginTop: '4px', fontWeight: '600' }}>
-                        CIE-10: J21.0 (VRS), J21.9
-                    </div>
                 </div>
 
-                {/* 2. ETI Y NEUMONÍA */}
+                {/* 3. ETI Y NEUMONÍA */}
                 <div 
                     onClick={() => setFiltroPatologia(filtroPatologia === 'RESPIRATORIAS' ? 'TODAS' : 'RESPIRATORIAS')}
                     style={{
@@ -429,54 +391,21 @@ export default function EpidemiologiaDashboard({
                         border: `2px solid ${filtroPatologia === 'RESPIRATORIAS' ? '#2563EB' : '#E2E8F0'}`,
                         cursor: 'pointer',
                         boxShadow: filtroPatologia === 'RESPIRATORIAS' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
+                        transition: 'all 0.15s ease'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '20px' }}>🌡️</span>
-                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                                ETI y Neumonía
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportCardExcel('RESPIRATORIAS', 'ETI_y_Neumonia');
-                            }}
-                            title="Exportar casos de ETI y Neumonía a Excel"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#EFF6FF',
-                                color: '#1D4ED8',
-                                border: '1px solid #BFDBFE',
-                                borderRadius: '6px',
-                                padding: '2px 7px',
-                                fontSize: '10.5px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <Download size={11} />
-                            <span>Excel</span>
-                        </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>🌡️</span>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
+                            ETI y Neumonía
+                        </span>
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: '900', color: '#1E40AF', letterSpacing: '-0.03em' }}>
                         {kpis.respiratoriasMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-                        ETI (Influenza): <strong>{kpis.etiMes}</strong> | Neumonía: <strong>{kpis.neumoniaMes}</strong>
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#2563EB', marginTop: '4px', fontWeight: '600' }}>
-                        CIE-10: J10-J18, J09
-                    </div>
                 </div>
 
-                {/* 3. GASTROENTÉRICAS: DIARREAS AGUDAS */}
+                {/* 4. GASTROENTÉRICAS: DIARREAS AGUDAS */}
                 <div 
                     onClick={() => setFiltroPatologia(filtroPatologia === 'DIARREAS' ? 'TODAS' : 'DIARREAS')}
                     style={{
@@ -486,54 +415,21 @@ export default function EpidemiologiaDashboard({
                         border: `2px solid ${filtroPatologia === 'DIARREAS' ? '#D97706' : '#E2E8F0'}`,
                         cursor: 'pointer',
                         boxShadow: filtroPatologia === 'DIARREAS' ? '0 4px 12px rgba(217, 119, 6, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
+                        transition: 'all 0.15s ease'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '20px' }}>🦠</span>
-                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                                Diarreas Agudas
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportCardExcel('DIARREAS', 'Diarreas_Agudas');
-                            }}
-                            title="Exportar casos de Diarreas Agudas a Excel"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#FEF3C7',
-                                color: '#B45309',
-                                border: '1px solid #FDE68A',
-                                borderRadius: '6px',
-                                padding: '2px 7px',
-                                fontSize: '10.5px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <Download size={11} />
-                            <span>Excel</span>
-                        </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>🦠</span>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
+                            Diarreas Agudas
+                        </span>
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: '900', color: '#B45309', letterSpacing: '-0.03em' }}>
                         {kpis.diarreasMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-                        Patología digestiva de vigilancia activa
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#D97706', marginTop: '4px', fontWeight: '600' }}>
-                        CIE-10: A09, A08, K52
-                    </div>
                 </div>
 
-                {/* 4. VARICELA */}
+                {/* 5. VARICELA */}
                 <div 
                     onClick={() => setFiltroPatologia(filtroPatologia === 'VARICELA' ? 'TODAS' : 'VARICELA')}
                     style={{
@@ -543,54 +439,21 @@ export default function EpidemiologiaDashboard({
                         border: `2px solid ${filtroPatologia === 'VARICELA' ? '#DC2626' : '#E2E8F0'}`,
                         cursor: 'pointer',
                         boxShadow: filtroPatologia === 'VARICELA' ? '0 4px 12px rgba(220, 38, 38, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
+                        transition: 'all 0.15s ease'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '20px' }}>🩺</span>
-                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                                Varicela
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportCardExcel('VARICELA', 'Varicela');
-                            }}
-                            title="Exportar casos de Varicela a Excel"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#FEE2E2',
-                                color: '#DC2626',
-                                border: '1px solid #FECACA',
-                                borderRadius: '6px',
-                                padding: '2px 7px',
-                                fontSize: '10.5px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <Download size={11} />
-                            <span>Excel</span>
-                        </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>🩺</span>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
+                            Varicela
+                        </span>
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: '900', color: '#DC2626', letterSpacing: '-0.03em' }}>
                         {kpis.varicelaMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-                        Enfermedades Inmunoprevenibles
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#DC2626', marginTop: '4px', fontWeight: '600' }}>
-                        CIE-10: B01.9
-                    </div>
                 </div>
 
-                {/* 5. ENFERMEDADES DE TRANSMISIÓN SEXUAL (ETS) */}
+                {/* 6. ENFERMEDADES DE TRANSMISIÓN SEXUAL (ETS) */}
                 <div 
                     onClick={() => setFiltroPatologia(filtroPatologia === 'ETS' ? 'TODAS' : 'ETS')}
                     style={{
@@ -600,107 +463,17 @@ export default function EpidemiologiaDashboard({
                         border: `2px solid ${filtroPatologia === 'ETS' ? '#7C3AED' : '#E2E8F0'}`,
                         cursor: 'pointer',
                         boxShadow: filtroPatologia === 'ETS' ? '0 4px 12px rgba(124, 58, 237, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
+                        transition: 'all 0.15s ease'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '20px' }}>🛡️</span>
-                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                                ETS / ITS
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportCardExcel('ETS', 'ETS_ITS');
-                            }}
-                            title="Exportar casos de ETS/ITS a Excel"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#EDE9FE',
-                                color: '#6D28D9',
-                                border: '1px solid #DDD6FE',
-                                borderRadius: '6px',
-                                padding: '2px 7px',
-                                fontSize: '10.5px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <Download size={11} />
-                            <span>Excel</span>
-                        </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '20px' }}>🛡️</span>
+                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
+                            ETS / ITS
+                        </span>
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: '900', color: '#6D28D9', letterSpacing: '-0.03em' }}>
                         {kpis.etsMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-                        Sífilis, Gonorrea, Clamidia, VIH, HPV
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#7C3AED', marginTop: '4px', fontWeight: '600' }}>
-                        CIE-10: A50-A56, B20, B07
-                    </div>
-                </div>
-
-                {/* 6. TOTAL CONSOLIDADO DE VIGILANCIA */}
-                <div 
-                    onClick={() => setFiltroPatologia('TODAS')}
-                    style={{
-                        background: '#0F2942',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: '2px solid #0F2942',
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(15, 41, 66, 0.25)',
-                        transition: 'all 0.15s ease',
-                        position: 'relative'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '20px' }}>📊</span>
-                            <span style={{ fontSize: '12px', fontWeight: '800', color: '#FFFFFF', textTransform: 'uppercase' }}>
-                                Total Casos
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportCardExcel('TODAS', 'Total_Casos_Epidemiologia');
-                            }}
-                            title="Exportar todos los casos a Excel"
-                            style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#1E3A5F',
-                                color: '#93C5FD',
-                                border: '1px solid #3B82F6',
-                                borderRadius: '6px',
-                                padding: '2px 7px',
-                                fontSize: '10.5px',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <Download size={11} />
-                            <span>Excel</span>
-                        </button>
-                    </div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#38BDF8', letterSpacing: '-0.03em' }}>
-                        {kpis.totalMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#94A3B8' }}>en el período</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '6px' }}>
-                        5 grupos patológicos normados
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: '#7DD3FC', marginTop: '4px', fontWeight: '600' }}>
-                        Auditoría médica consolidada
                     </div>
                 </div>
             </div>
@@ -742,7 +515,6 @@ export default function EpidemiologiaDashboard({
                                 }}
                             />
                             <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                            <Area type="monotone" dataKey="total" name="Total Notificados" fill="#E0F2FE" stroke="#0284C7" strokeWidth={2} />
                             <Bar dataKey="bronquiolitis" name="Bronquiolitis (<2a)" fill="#0284C7" radius={[4, 4, 0, 0]} />
                             <Bar dataKey="eti" name="ETI (Influenza)" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                             <Bar dataKey="neumonia" name="Neumonía" fill="#1E40AF" radius={[4, 4, 0, 0]} />
