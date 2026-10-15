@@ -5570,7 +5570,41 @@ export default function ContactCenterChatConsole({
                     }}
                 >
                     {(() => {
-                        const rawMsgs = selectedChat.messages || [];
+                        const rawList = selectedChat.messages || [];
+                        // Deduplicación visual preventiva (elimina colisiones entre mensajes optimistas y eventos Realtime)
+                        const rawMsgs = (() => {
+                            if (rawList.length <= 1) return rawList;
+                            const seenRealIds = new Set();
+                            const seenMsgIds = new Set();
+                            const seenOutboxKeys = new Set();
+                            const deduplicated = [];
+
+                            for (const m of rawList) {
+                                // Descartar duplicados exactos por id
+                                if (m.id && seenMsgIds.has(String(m.id))) continue;
+                                if (m.id) seenMsgIds.add(String(m.id));
+
+                                // Descartar duplicados exactos por realId de base de datos
+                                if (m.realId) {
+                                    const rId = String(m.realId);
+                                    if (seenRealIds.has(rId)) continue;
+                                    seenRealIds.add(rId);
+                                }
+
+                                // Descartar mensaje optimista si ya existe el mensaje real saliente con el mismo texto
+                                if (m.sender === 'agent' || m.sender === 'note') {
+                                    const textSnippet = (m.text || '').trim();
+                                    const approxTime = m.created_at ? Math.round(new Date(m.created_at).getTime() / 20000) : 0;
+                                    const key = `${m.sender}_${textSnippet}_${approxTime}`;
+                                    if (seenOutboxKeys.has(key)) continue;
+                                    seenOutboxKeys.add(key);
+                                }
+
+                                deduplicated.push(m);
+                            }
+                            return deduplicated;
+                        })();
+
                         const hasMore = rawMsgs.length > visibleMessageCount;
                         const remainingCount = rawMsgs.length - visibleMessageCount;
 

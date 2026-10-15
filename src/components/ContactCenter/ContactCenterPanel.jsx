@@ -384,12 +384,36 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
                     if (chatIdx >= 0) {
                         const existingChat = prevChats[chatIdx];
-                        const alreadyHasMsg = (existingChat.messages || []).some(m => 
-                            m.id === formattedMsg.id || (m.realId && m.realId === formattedMsg.realId)
+                        const currentMsgs = existingChat.messages || [];
+
+                        // 1. Detectar si el mensaje ya existe o si corresponde a un mensaje optimista saliente pendiente
+                        let matchingIndex = currentMsgs.findIndex(m => 
+                            m.id === formattedMsg.id || 
+                            (m.realId && formattedMsg.realId && String(m.realId) === String(formattedMsg.realId))
                         );
-                        const nextMsgs = alreadyHasMsg 
-                            ? existingChat.messages 
-                            : [...(existingChat.messages || []), formattedMsg];
+
+                        // 2. Si no coincidió por ID y es un mensaje saliente, reconciliar con mensaje optimista temporal
+                        if (matchingIndex < 0 && !isIncoming) {
+                            matchingIndex = currentMsgs.findIndex(m => {
+                                const isOptimistic = String(m.id || '').startsWith('msg_') || !m.realId;
+                                if (!isOptimistic) return false;
+                                const sameText = (m.text || '').trim() === (formattedMsg.text || '').trim();
+                                const msgTime = new Date(m.created_at || 0).getTime();
+                                const realTime = new Date(formattedMsg.created_at || 0).getTime();
+                                const isRecent = isNaN(msgTime) || Math.abs(realTime - msgTime) < 45000;
+                                return sameText && isRecent;
+                            });
+                        }
+
+                        let nextMsgs;
+                        if (matchingIndex >= 0) {
+                            // Reemplazar mensaje optimista por el confirmado con realId
+                            nextMsgs = [...currentMsgs];
+                            nextMsgs[matchingIndex] = formattedMsg;
+                        } else {
+                            // Mensaje nuevo
+                            nextMsgs = [...currentMsgs, formattedMsg];
+                        }
                         
                         // Capping en memoria activa: mantener máximo 80 mensajes por chat
                         const updatedMessages = nextMsgs.length > 80 ? nextMsgs.slice(-80) : nextMsgs;
@@ -547,7 +571,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     assignedAt: existing.assignedAt || updatedChat.assignedAt,
                     status: (existing.status && existing.status !== 'bot' && existing.status !== 'sin_asignar') ? existing.status : updatedChat.status,
                     botActive: existing.botActive === false ? false : updatedChat.botActive,
-                    messages: [...(existing.messages || []).filter(m => m.id !== newMsg.id), newMsg]
+                    messages: [...(existing.messages || []).filter(m => m.id !== newMsg.id && (!newMsg.realId || m.realId !== newMsg.realId)), newMsg]
                 };
                 const remaining = prev.filter(c => c.id !== chatId && String(c.id) !== String(chatId));
                 return [merged, ...remaining].sort((a, b) => {

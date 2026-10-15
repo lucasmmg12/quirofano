@@ -1327,8 +1327,10 @@ export async function sendContactCenterMessage({
     const finalContent = (text && text.trim()) ? text.trim() : defaultContent;
 
     // 1. Guardar en Supabase whatsapp_messages
+    let insertedRecord = null;
+    // 1. Guardar en Supabase whatsapp_messages
     try {
-        const { error: insertError } = await supabase
+        const { data: insertedData, error: insertError } = await supabase
             .from('whatsapp_messages')
             .insert({
                 phone: normalizedPhone,
@@ -1350,10 +1352,14 @@ export async function sendContactCenterMessage({
                     fileName: fileName || null,
                     quoted_message: quotedMessage || null
                 }
-            });
+            })
+            .select('id, created_at')
+            .maybeSingle();
 
         if (insertError) {
             console.warn('Error al insertar en whatsapp_messages:', insertError.message);
+        } else {
+            insertedRecord = insertedData;
         }
     } catch (err) {
         console.warn('Error en persistencia Supabase:', err);
@@ -1396,9 +1402,11 @@ export async function sendContactCenterMessage({
         }
     }
 
-    // 4. Crear mensaje formateado para actualizar estado local
+    // 4. Crear mensaje formateado para actualizar estado local con realId garantizado
+    const realMsgId = insertedRecord?.id || null;
     const newMsg = {
-        id: 'msg_' + Date.now(),
+        id: realMsgId ? ('real_' + realMsgId) : ('msg_' + Date.now()),
+        realId: realMsgId,
         sender: isNote ? 'note' : 'agent',
         senderName: activeAgent.name,
         senderAgentId: activeAgent.id,
@@ -1413,7 +1421,7 @@ export async function sendContactCenterMessage({
         quotedMessage: quotedMessage || null,
         reactions: [],
         isNote: !!isNote,
-        created_at: now.toISOString(),
+        created_at: insertedRecord?.created_at || now.toISOString(),
         timestamp: timeStr
     };
 
@@ -1633,8 +1641,9 @@ export async function sendContactCenterTemplate({
     const displayContent = `📋 [Plantilla Meta: ${templateName}] ${resolvedText}`;
 
     // 1. Guardar en Supabase whatsapp_messages
+    let insertedRecord = null;
     try {
-        const { error: insertError } = await supabase
+        const { data: insertedData, error: insertError } = await supabase
             .from('whatsapp_messages')
             .insert({
                 phone: normalizedPhone,
@@ -1654,10 +1663,14 @@ export async function sendContactCenterTemplate({
                     agentName: activeAgent.name,
                     metaResult: res
                 }
-            });
+            })
+            .select('id, created_at')
+            .maybeSingle();
 
         if (insertError) {
             console.warn('[contact-center] Error guardando plantilla en whatsapp_messages:', insertError.message);
+        } else {
+            insertedRecord = insertedData;
         }
     } catch (err) {
         console.warn('[contact-center] Error en persistencia Supabase:', err);
@@ -1678,9 +1691,11 @@ export async function sendContactCenterTemplate({
         console.warn('[contact-center] Error actualizando contact_center_conversations:', botErr);
     }
 
-    // 3. Crear mensaje formateado local
+    // 3. Crear mensaje formateado local con realId garantizado
+    const realMsgId = insertedRecord?.id || null;
     const newMsg = {
-        id: 'msg_tpl_' + Date.now(),
+        id: realMsgId ? ('real_' + realMsgId) : ('msg_tpl_' + Date.now()),
+        realId: realMsgId,
         sender: 'agent',
         senderName: activeAgent.name,
         senderAgentId: activeAgent.id,
@@ -1693,7 +1708,7 @@ export async function sendContactCenterTemplate({
         templateBody: resolvedText,
         variables,
         isTemplate: true,
-        created_at: now.toISOString(),
+        created_at: insertedRecord?.created_at || now.toISOString(),
         timestamp: timeStr
     };
 
