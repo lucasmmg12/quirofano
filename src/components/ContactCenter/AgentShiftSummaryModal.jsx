@@ -3,7 +3,7 @@ import {
     X, Calendar, Clock, MessageSquare, CheckCircle2, 
     Stethoscope, FileText, RotateCcw, AlertTriangle, HelpCircle, 
     TrendingUp, Award, Zap, Copy, Check, RefreshCw, ArrowRightLeft,
-    Sparkles, ShieldCheck, User, BarChart2, Info, FileDown,
+    Sparkles, ShieldCheck, User, Info, FileDown,
     Inbox, UserCheck, Send, ArrowDownLeft
 } from 'lucide-react';
 import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText, getLocalDateString } from '../../services/agentShiftService';
@@ -179,20 +179,6 @@ export default function AgentShiftSummaryModal({
                     gap: '12px'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                            width: '44px',
-                            height: '44px',
-                            borderRadius: '12px',
-                            background: 'rgba(255, 255, 255, 0.15)',
-                            backdropFilter: 'blur(8px)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            border: '1px solid rgba(255, 255, 255, 0.2)',
-                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
-                        }}>
-                            <BarChart2 size={24} color="#38BDF8" />
-                        </div>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <h2 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
