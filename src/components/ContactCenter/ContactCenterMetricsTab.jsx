@@ -1709,6 +1709,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 <ContactCenterAiCostTab
                     timeRange={timeRange}
                     setTimeRange={setTimeRange}
+                    selectedMonth={selectedMonth}
+                    setSelectedMonth={setSelectedMonth}
                     customStartDate={customStartDate}
                     setCustomStartDate={setCustomStartDate}
                     customEndDate={customEndDate}

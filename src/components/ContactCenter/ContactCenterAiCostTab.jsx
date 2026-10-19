@@ -42,6 +42,8 @@ const SERVICE_LABELS = {
 export default function ContactCenterAiCostTab({
     timeRange = 'this_month',
     setTimeRange,
+    selectedMonth,
+    setSelectedMonth,
     customStartDate,
     setCustomStartDate,
     customEndDate,
@@ -53,12 +55,38 @@ export default function ContactCenterAiCostTab({
 }) {
     const [loading, setLoading] = useState(true);
     const [logs, setLogs] = useState([]);
-    const [allMonthLogs, setAllMonthLogs] = useState([]);
+    const [summaryData, setSummaryData] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedServiceFilter, setSelectedServiceFilter] = useState('all');
     const [configuredModel, setConfiguredModel] = useState('gpt-5.4-mini');
 
-    // Carga de telemetría de tokens desde contact_center_ai_usage_logs
+    const getCurrentMonthKey = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+    const activeMonthKey = selectedMonth || getCurrentMonthKey();
+
+    const formatMonthLabel = (key) => {
+        if (!key) return '';
+        const [y, m] = key.split('-');
+        const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+        const raw = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    };
+
+    const periodLabel = useMemo(() => {
+        if (timeRange === 'this_month') {
+            const isCurrent = activeMonthKey === getCurrentMonthKey();
+            return `${formatMonthLabel(activeMonthKey)} ${isCurrent ? '(Mes en curso)' : ''}`;
+        }
+        if (timeRange === 'last_month') return 'Mes Pasado';
+        if (timeRange === 'today') return 'Hoy';
+        if (timeRange === 'week') return 'Últimos 7 días';
+        if (timeRange === 'custom') return `${customStartDate || ''} al ${customEndDate || ''}`;
+        return formatMonthLabel(activeMonthKey);
+    }, [timeRange, activeMonthKey, customStartDate, customEndDate]);
+
+    // Carga de telemetría de tokens desde contact_center_ai_usage_logs / app_config roll-up
     const loadAiUsageData = async () => {
         setLoading(true);
         try {
@@ -76,14 +104,17 @@ export default function ContactCenterAiCostTab({
             let filterEnd = null;
 
             if (timeRange === 'this_month') {
-                filterStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-                filterEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+                const [yStr, mStr] = activeMonthKey.split('-');
+                const y = parseInt(yStr, 10);
+                const m = parseInt(mStr, 10) - 1;
+                filterStart = new Date(y, m, 1, 0, 0, 0);
+                filterEnd = new Date(y, m + 1, 0, 23, 59, 59, 999);
             } else if (timeRange === 'last_month') {
                 filterStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
-                filterEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+                filterEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
             } else if (timeRange === 'today') {
                 filterStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-                filterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+                filterEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
             } else if (timeRange === 'week') {
                 filterStart = new Date(now);
                 filterStart.setDate(filterStart.getDate() - 7);
@@ -94,33 +125,30 @@ export default function ContactCenterAiCostTab({
                 if (customEndDate) filterEnd = new Date(customEndDate + 'T23:59:59');
             }
 
-            let query = supabase
+            // 1. Consultar resumen pre-agregado en app_config (Contador Roll-up instantáneo)
+            const summaryKey = `cc_ai_summary_${activeMonthKey}`;
+            const { data: summaryRow } = await supabase
+                .from('app_config')
+                .select('value, updated_at')
+                .eq('key', summaryKey)
+                .maybeSingle();
+
+            setSummaryData(summaryRow?.value || null);
+
+            // 2. Traer registros recientes para la tabla de auditoría (últimos 100 registros para navegación ágil)
+            let auditQuery = supabase
                 .from('contact_center_ai_usage_logs')
                 .select('*')
                 .order('created_at', { ascending: false })
-                .limit(4000);
+                .limit(100);
 
-            if (filterStart) query = query.gte('created_at', filterStart.toISOString());
-            if (filterEnd) query = query.lte('created_at', filterEnd.toISOString());
+            if (filterStart) auditQuery = auditQuery.gte('created_at', filterStart.toISOString());
+            if (filterEnd) auditQuery = auditQuery.lte('created_at', filterEnd.toISOString());
 
-            // Mes actual completo para run-rate mensual preciso
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-            const monthQuery = supabase
-                .from('contact_center_ai_usage_logs')
-                .select('prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, created_at, model')
-                .gte('created_at', monthStart.toISOString())
-                .limit(10000);
+            const { data: auditData, error: auditErr } = await auditQuery;
+            if (auditErr) throw auditErr;
 
-            const [{ data: periodData, error: periodErr }, { data: monthData, error: monthErr }] = await Promise.all([
-                query,
-                monthQuery
-            ]);
-
-            if (periodErr) throw periodErr;
-            if (monthErr) throw monthErr;
-
-            setLogs(periodData || []);
-            setAllMonthLogs(monthData || []);
+            setLogs(auditData || []);
         } catch (err) {
             console.error('[ai-cost] Error cargando logs de IA:', err);
             if (addToast) addToast('Error consultando telemetría de tokens de IA', 'error');
@@ -131,10 +159,120 @@ export default function ContactCenterAiCostTab({
 
     useEffect(() => {
         loadAiUsageData();
-    }, [timeRange, customStartDate, customEndDate]);
+    }, [timeRange, customStartDate, customEndDate, selectedMonth]);
 
     // Métricas del período filtrado
     const stats = useMemo(() => {
+        // Caso A: Usar contador consolidado cuando está disponible para el mes seleccionado
+        if (summaryData && timeRange === 'this_month') {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayEntry = summaryData.dailyMap?.[todayStr] || { prompt: 0, completion: 0, total: 0, costUsd: 0, calls: 0 };
+            
+            // Curva diaria ordenada cronológicamente
+            const dailyTrend = Object.values(summaryData.dailyMap || {})
+                .sort((a, b) => a.date.localeCompare(b.date))
+                .map(d => {
+                    const parts = d.date.split('-');
+                    return {
+                        ...d,
+                        displayDate: `${parts[2]}/${parts[1]}`,
+                        costArs: Math.round(d.costUsd * arsRate)
+                    };
+                });
+
+            const totalCostUsd = summaryData.totalCostUsd || 0;
+
+            // Desglose por servicio ordenado por costo descendente
+            const serviceBreakdown = Object.values(summaryData.serviceBreakdown || {})
+                .sort((a, b) => b.costUsd - a.costUsd)
+                .map(s => ({
+                    ...s,
+                    pct: totalCostUsd > 0 ? ((s.costUsd / totalCostUsd) * 100).toFixed(1) : 0,
+                    costArs: Math.round(s.costUsd * arsRate)
+                }));
+
+            // Desglose por modelo ordenado por costo descendente
+            const modelBreakdown = Object.values(summaryData.modelBreakdown || {})
+                .sort((a, b) => b.costUsd - a.costUsd)
+                .map(m => ({
+                    ...m,
+                    pct: totalCostUsd > 0 ? ((m.costUsd / totalCostUsd) * 100).toFixed(1) : 0,
+                    costArs: Math.round(m.costUsd * arsRate)
+                }));
+
+            const totalCalls = summaryData.totalCalls || 0;
+            const avgLatencyMs = summaryData.avgLatencyMs || 0;
+            const avgCostPerCall = totalCalls > 0 ? totalCostUsd / totalCalls : 0;
+            const uniquePatients = summaryData.uniquePatientsCount || 0;
+            const avgCostPerPatient = uniquePatients > 0 ? totalCostUsd / uniquePatients : 0;
+
+            return {
+                totalCalls,
+                totalPrompt: summaryData.totalPrompt || 0,
+                totalCompletion: summaryData.totalCompletion || 0,
+                totalTokens: summaryData.totalTokens || 0,
+                totalCostUsd,
+                totalCostArs: Math.round(totalCostUsd * arsRate),
+                avgLatencyMs,
+                avgCostPerCall,
+                avgCostPerPatient,
+                uniquePatients,
+                todayTokens: todayEntry.total,
+                todayCostUsd: todayEntry.costUsd,
+                todayCostArs: Math.round(todayEntry.costUsd * arsRate),
+                todayCalls: todayEntry.calls,
+                dailyTrend,
+                serviceBreakdown,
+                modelBreakdown
+            };
+        }
+
+        // Caso B: Si es 'today' y tenemos dailyMap en summaryData
+        if (summaryData && timeRange === 'today') {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayEntry = summaryData.dailyMap?.[todayStr] || { prompt: 0, completion: 0, total: 0, costUsd: 0, calls: 0 };
+            
+            const todayLogs = logs.filter(l => (l.created_at || '').startsWith(todayStr));
+            const sMap = {};
+            const mMap = {};
+            todayLogs.forEach(l => {
+                const s = l.service_name || 'otros';
+                const m = l.model || 'otros';
+                const c = Number(l.estimated_cost_usd) || 0;
+                const t = l.total_tokens || 0;
+                if (!sMap[s]) sMap[s] = { service: s, calls: 0, totalTokens: 0, costUsd: 0 };
+                sMap[s].calls++;
+                sMap[s].totalTokens += t;
+                sMap[s].costUsd += c;
+                if (!mMap[m]) mMap[m] = { model: m, calls: 0, totalTokens: 0, costUsd: 0 };
+                mMap[m].calls++;
+                mMap[m].totalTokens += t;
+                mMap[m].costUsd += c;
+            });
+
+            const costToday = todayEntry.costUsd || Object.values(sMap).reduce((a, b) => a + b.costUsd, 0);
+            return {
+                totalCalls: todayEntry.calls || todayLogs.length,
+                totalPrompt: todayEntry.prompt || 0,
+                totalCompletion: todayEntry.completion || 0,
+                totalTokens: todayEntry.total || 0,
+                totalCostUsd: costToday,
+                totalCostArs: Math.round(costToday * arsRate),
+                avgLatencyMs: summaryData.avgLatencyMs || 0,
+                avgCostPerCall: todayEntry.calls > 0 ? costToday / todayEntry.calls : 0,
+                avgCostPerPatient: 0,
+                uniquePatients: 0,
+                todayTokens: todayEntry.total,
+                todayCostUsd: todayEntry.costUsd,
+                todayCostArs: Math.round(todayEntry.costUsd * arsRate),
+                todayCalls: todayEntry.calls,
+                dailyTrend: [{ date: todayStr, displayDate: todayStr.slice(5), ...todayEntry, costArs: Math.round(todayEntry.costUsd * arsRate) }],
+                serviceBreakdown: Object.values(sMap).map(s => ({ ...s, pct: costToday > 0 ? ((s.costUsd / costToday) * 100).toFixed(1) : 0, costArs: Math.round(s.costUsd * arsRate) })),
+                modelBreakdown: Object.values(mMap).map(m => ({ ...m, pct: costToday > 0 ? ((m.costUsd / costToday) * 100).toFixed(1) : 0, costArs: Math.round(m.costUsd * arsRate) }))
+            };
+        }
+
+        // Caso C: Cómputo sobre logs cargados en memoria
         let totalPrompt = 0;
         let totalCompletion = 0;
         let totalTokens = 0;
@@ -166,7 +304,6 @@ export default function ContactCenterAiCostTab({
 
             if (l.phone) uniquePhones.add(l.phone);
 
-            // Hoy
             const dayKey = (l.created_at || '').substring(0, 10);
             if (dayKey === todayStr) {
                 todayTokens += t;
@@ -174,7 +311,6 @@ export default function ContactCenterAiCostTab({
                 todayCalls++;
             }
 
-            // Agrupación por Servicio
             if (!serviceMap[sName]) {
                 serviceMap[sName] = { service: sName, calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, costUsd: 0 };
             }
@@ -184,7 +320,6 @@ export default function ContactCenterAiCostTab({
             serviceMap[sName].totalTokens += t;
             serviceMap[sName].costUsd += cost;
 
-            // Agrupación por Modelo
             if (!modelMap[mName]) {
                 modelMap[mName] = { model: mName, calls: 0, totalTokens: 0, costUsd: 0 };
             }
@@ -192,7 +327,6 @@ export default function ContactCenterAiCostTab({
             modelMap[mName].totalTokens += t;
             modelMap[mName].costUsd += cost;
 
-            // Agrupación Diaria
             if (dayKey) {
                 if (!dailyMap[dayKey]) {
                     dailyMap[dayKey] = { date: dayKey, prompt: 0, completion: 0, total: 0, costUsd: 0, calls: 0 };
@@ -205,7 +339,6 @@ export default function ContactCenterAiCostTab({
             }
         });
 
-        // Curva diaria ordenada cronológicamente
         const dailyTrend = Object.values(dailyMap)
             .sort((a, b) => a.date.localeCompare(b.date))
             .map(d => {
@@ -217,7 +350,6 @@ export default function ContactCenterAiCostTab({
                 };
             });
 
-        // Desglose por servicio ordenado por costo descendente
         const serviceBreakdown = Object.values(serviceMap)
             .sort((a, b) => b.costUsd - a.costUsd)
             .map(s => ({
@@ -226,7 +358,6 @@ export default function ContactCenterAiCostTab({
                 costArs: Math.round(s.costUsd * arsRate)
             }));
 
-        // Desglose por modelo
         const modelBreakdown = Object.values(modelMap)
             .sort((a, b) => b.costUsd - a.costUsd)
             .map(m => ({
@@ -259,7 +390,7 @@ export default function ContactCenterAiCostTab({
             serviceBreakdown,
             modelBreakdown
         };
-    }, [logs, arsRate]);
+    }, [summaryData, logs, timeRange, arsRate]);
 
     // Proyecciones a Fin de Mes
     const projections = useMemo(() => {
@@ -268,13 +399,12 @@ export default function ContactCenterAiCostTab({
         const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
         const daysRemaining = Math.max(0, totalDaysInMonth - daysElapsed);
 
-        let monthTotalTokens = 0;
-        let monthTotalCostUsd = 0;
-
-        allMonthLogs.forEach(l => {
-            monthTotalTokens += (l.total_tokens || 0);
-            monthTotalCostUsd += (Number(l.estimated_cost_usd) || 0);
-        });
+        const monthTotalTokens = (summaryData && timeRange === 'this_month') 
+            ? summaryData.totalTokens 
+            : stats.totalTokens;
+        const monthTotalCostUsd = (summaryData && timeRange === 'this_month')
+            ? summaryData.totalCostUsd
+            : stats.totalCostUsd;
 
         const dailyAvgTokens = monthTotalTokens / daysElapsed;
         const dailyAvgCostUsd = monthTotalCostUsd / daysElapsed;
@@ -282,20 +412,6 @@ export default function ContactCenterAiCostTab({
         const projectedMonthTokens = Math.round(dailyAvgTokens * totalDaysInMonth);
         const projectedMonthCostUsd = Number((dailyAvgCostUsd * totalDaysInMonth).toFixed(2));
         const projectedMonthCostArs = Math.round(projectedMonthCostUsd * arsRate);
-
-        // Simulación: ¿Cuánto costaría ese mismo volumen mensual con GPT-4o-mini?
-        // Prompt tokens es ~95% del total, Completion es ~5%
-        const simulatedPromptTokens = projectedMonthTokens * 0.95;
-        const simulatedCompTokens = projectedMonthTokens * 0.05;
-        const miniProjectedCostUsd = Number((
-            ((simulatedPromptTokens * PRICING_TABLE['gpt-4o-mini'].promptPerM) +
-             (simulatedCompTokens * PRICING_TABLE['gpt-4o-mini'].completionPerM)) / 1_000_000
-        ).toFixed(2));
-        const miniProjectedCostArs = Math.round(miniProjectedCostUsd * arsRate);
-
-        const netSavingsUsd = Math.max(0, projectedMonthCostUsd - miniProjectedCostUsd);
-        const netSavingsArs = Math.max(0, projectedMonthCostArs - miniProjectedCostArs);
-        const savingsPct = projectedMonthCostUsd > 0 ? Math.round((netSavingsUsd / projectedMonthCostUsd) * 100) : 0;
 
         return {
             daysElapsed,
@@ -307,14 +423,9 @@ export default function ContactCenterAiCostTab({
             dailyAvgTokens,
             projectedMonthTokens,
             projectedMonthCostUsd,
-            projectedMonthCostArs,
-            miniProjectedCostUsd,
-            miniProjectedCostArs,
-            netSavingsUsd,
-            netSavingsArs,
-            savingsPct
+            projectedMonthCostArs
         };
-    }, [allMonthLogs, arsRate]);
+    }, [summaryData, stats, timeRange, arsRate]);
 
     // Filtrar tabla de auditoría
     const filteredAuditLogs = useMemo(() => {
@@ -362,17 +473,25 @@ export default function ContactCenterAiCostTab({
                         <Cpu size={22} />
                     </div>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F2942' }}>
                                 Auditoría de Tokens & Proyecciones de Costos IA
                             </h3>
+                            <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                background: '#EFF6FF', color: '#0284C7', border: '1px solid #BFDBFE',
+                                padding: '2px 8px', borderRadius: '12px', fontSize: '0.68rem', fontWeight: 700
+                            }}>
+                                <Calendar size={12} />
+                                Período: {periodLabel}
+                            </span>
                             <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '4px',
                                 background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0',
                                 padding: '2px 8px', borderRadius: '12px', fontSize: '0.68rem', fontWeight: 700
                             }}>
                                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
-                                Telemetría Activa en Producción
+                                Telemetría Activa
                             </span>
                         </div>
                         <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
