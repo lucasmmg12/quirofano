@@ -160,7 +160,7 @@ import {
 } from '../../services/contactCenterService';
 import { fetchMetaTemplates } from '../../services/metaTemplateService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
-import { fetchPacienteDetalle } from '../../services/pacienteUnificadoService';
+import { fetchPacienteDetalle, normalizeTimeTo24h } from '../../services/pacienteUnificadoService';
 import { 
     getContactCenterQuickReplies, 
     findQuickReplyByShortcut, 
@@ -1247,6 +1247,47 @@ export default function ContactCenterChatConsole({
     // Estados Historial Clínico 360°
     const [patientHistory, setPatientHistory] = useState(null);
     const [loadingHistory, setLoadingHistory] = useState(false);
+
+    // Lista deduplicada y normalizada a 24h de turnos próximos (evita duplicados 17:40 vs 05:40 p. m.)
+    const deduplicatedTurnosProximos = useMemo(() => {
+        if (!patientHistory?.turnosProximos || !Array.isArray(patientHistory.turnosProximos)) return [];
+        const unique = [];
+        const seenKeys = new Set();
+        const seenIds = new Set();
+
+        for (const tp of patientHistory.turnosProximos) {
+            const normTime = normalizeTimeTo24h(tp.hora_visita || '');
+            const normDate = String(tp.fecha_iso || tp.fecha_visita || '').replace(/\D/g, '').slice(0, 8);
+            const cleanTimeKey = normTime.replace(':', '').slice(0, 4);
+
+            const normDoc = String(tp.medico || tp.agenda || '')
+                .toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]/g, '')
+                .slice(0, 12);
+
+            const cleanId = String(tp.id_visita || '').replace(/\D/g, '');
+            const hasValidId = cleanId && cleanId.length >= 4;
+            const key = `${normDate}_${cleanTimeKey}_${normDoc}`;
+
+            if ((hasValidId && seenIds.has(cleanId)) || seenKeys.has(key)) {
+                continue;
+            }
+
+            if (hasValidId) seenIds.add(cleanId);
+            seenKeys.add(key);
+            unique.push({
+                ...tp,
+                hora_visita: normTime
+            });
+        }
+
+        return unique.sort((a, b) => {
+            const dateA = `${a.fecha_visita || a.fecha_iso || ''} ${a.hora_visita || ''}`;
+            const dateB = `${b.fecha_visita || b.fecha_iso || ''} ${b.hora_visita || ''}`;
+            return dateA.localeCompare(dateB);
+        });
+    }, [patientHistory?.turnosProximos]);
 
     // Modal de Cierre / Finalización de Atención
     const [closeModalOpen, setCloseModalOpen] = useState(false);
@@ -8849,7 +8890,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     )}
 
                                     {/* ALERTA ACCESO RÁPIDO: TURNOS PRÓXIMOS & ONLINE DEL PACIENTE */}
-                                    {patientHistory?.turnosProximos && patientHistory.turnosProximos.length > 0 && (
+                                    {deduplicatedTurnosProximos && deduplicatedTurnosProximos.length > 0 && (
                                         <div style={{
                                             background: ccTheme.isDark ? '#064E3B22' : 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
                                             border: `1.5px solid ${ccTheme.isDark ? '#059669' : '#6EE7B7'}`,
@@ -8862,7 +8903,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <span>📅 TIENE TURNOS PRÓXIMOS ({patientHistory.turnosProximos.length})</span>
+                                                    <span>📅 TIENE TURNOS PRÓXIMOS ({deduplicatedTurnosProximos.length})</span>
                                                 </div>
                                                 <button 
                                                     onClick={() => setActiveDetailTab('historial')}
@@ -8876,7 +8917,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     Ver en Historial →
                                                 </button>
                                             </div>
-                                            {patientHistory.turnosProximos.slice(0, 2).map((tp, i) => (
+                                            {deduplicatedTurnosProximos.slice(0, 2).map((tp, i) => (
                                                 <div key={i} style={{ 
                                                     background: rightCardBg, 
                                                     border: `1px solid ${rightCardBorder}`, 
@@ -9094,12 +9135,12 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                     </div>
 
                                     {/* SECCIÓN 1: TURNOS PRÓXIMOS & CITAS ONLINE (ACCESO RÁPIDO) */}
-                                    {patientHistory.turnosProximos && patientHistory.turnosProximos.length > 0 ? (
+                                    {deduplicatedTurnosProximos && deduplicatedTurnosProximos.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                             <div style={{ fontSize: '0.74rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <span>📅 TURNOS PRÓXIMOS & CITAS ONLINE ({patientHistory.turnosProximos.length})</span>
+                                                <span>📅 TURNOS PRÓXIMOS & CITAS ONLINE ({deduplicatedTurnosProximos.length})</span>
                                             </div>
-                                            {patientHistory.turnosProximos.map((tp, idx) => (
+                                            {deduplicatedTurnosProximos.map((tp, idx) => (
                                                 <div key={idx} style={{
                                                     background: rightCardBg,
                                                     border: tp.origen === 'online' ? `1.5px solid ${ccTheme.isDark ? '#0284C7' : '#93C5FD'}` : `1.5px solid ${ccTheme.isDark ? '#059669' : '#6EE7B7'}`,

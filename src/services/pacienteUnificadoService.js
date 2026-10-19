@@ -8,6 +8,32 @@ import { getSalusSyncBaseUrl } from './salusSync';
 
 const TABLE = 'hospital_pacientes';
 
+/**
+ * Normaliza cualquier formato de hora (12h am/pm, 24h, con espacios especiales o sin segundos)
+ * al estándar militar 24h 'HH:mm'
+ */
+export function normalizeTimeTo24h(timeStr) {
+    if (!timeStr) return '';
+    let str = String(timeStr).trim().replace(/\u00a0/g, ' ').toLowerCase();
+
+    const isPm = str.includes('p.') || str.includes('pm') || str.includes('p. m');
+    const isAm = str.includes('a.') || str.includes('am') || str.includes('a. m');
+
+    const match = str.match(/(\d{1,2}):(\d{2})/);
+    if (!match) return timeStr.replace(/hs|\./gi, '').trim();
+
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+
+    if (isPm && hours < 12) {
+        hours += 12;
+    } else if (isAm && hours === 12) {
+        hours = 0;
+    }
+
+    return String(hours).padStart(2, '0') + ':' + minutes;
+}
+
 // ─── Búsqueda de pacientes (nombre, DNI o NHC) ───
 export async function searchPacientes(query, { page = 0, pageSize = 50 } = {}) {
     if (!query || query.trim().length < 2) return { data: [], count: 0 };
@@ -510,19 +536,48 @@ export async function fetchPacienteDetalle(paciente) {
                     }
                 }
 
-                // Deduplicar turnos próximos por fecha, hora y profesional para garantizar consistencia total
+                // Deduplicar turnos próximos por ID de visita y clave compuesta (fecha + hora 24h + profesional)
                 const uniqueTurnos = [];
                 const seenKeys = new Set();
+                const seenIds = new Set();
+
                 for (const tp of turnosProximosData) {
+                    const normTime = normalizeTimeTo24h(tp.hora_visita || '');
+                    tp.hora_visita = normTime;
+
                     const normDate = String(tp.fecha_iso || tp.fecha_visita || '').replace(/\D/g, '').slice(0, 8);
-                    const normTime = String(tp.hora_visita || '').slice(0, 5).replace(':', '');
-                    const normDoc = String(tp.medico || '').toLowerCase().trim().slice(0, 15);
-                    const key = `${normDate}_${normTime}_${normDoc}`;
-                    if (!seenKeys.has(key)) {
-                        seenKeys.add(key);
-                        uniqueTurnos.push(tp);
+                    const cleanTimeKey = normTime.replace(':', '').slice(0, 4);
+
+                    const normDoc = String(tp.medico || tp.agenda || '')
+                        .toLowerCase()
+                        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-z0-9]/g, '')
+                        .slice(0, 12);
+
+                    const cleanId = String(tp.id_visita || '').replace(/\D/g, '');
+                    const hasValidId = cleanId && cleanId.length >= 4;
+
+                    const key = `${normDate}_${cleanTimeKey}_${normDoc}`;
+
+                    if (hasValidId && seenIds.has(cleanId)) {
+                        continue;
                     }
+                    if (seenKeys.has(key)) {
+                        continue;
+                    }
+
+                    if (hasValidId) seenIds.add(cleanId);
+                    seenKeys.add(key);
+                    uniqueTurnos.push(tp);
                 }
+
+                // Ordenar turnos próximos cronológicamente ascendente (el más cercano primero)
+                uniqueTurnos.sort((a, b) => {
+                    const dateA = `${a.fecha_visita || a.fecha_iso || ''} ${a.hora_visita || ''}`;
+                    const dateB = `${b.fecha_visita || b.fecha_iso || ''} ${b.hora_visita || ''}`;
+                    return dateA.localeCompare(dateB);
+                });
+
                 turnosProximosData = uniqueTurnos;
             }
 
