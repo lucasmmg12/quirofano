@@ -848,53 +848,6 @@ export default function ContactCenterAiCostTab({
                 </div>
             </div>
 
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* DIRECTIVAS DE OPTIMIZACIÓN Y GOBERNANZA DE TOKENS (GROW LABS)    */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                background: '#F8FAFC',
-                borderRadius: '12px',
-                border: '1px solid #E2E8F0',
-                padding: '20px 24px'
-            }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 800, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Zap size={16} color="#0284C7" />
-                    3 Medidas de Alta Eficiencia para Reducir Gasto de Tokens
-                </h4>
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                    gap: '12px'
-                }}>
-                    <div style={{ background: '#FFFFFF', padding: '14px 16px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#059669', marginBottom: '4px' }}>
-                            1. Utilizar gpt-4o-mini en el Bot
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B', lineHeight: 1.4 }}>
-                            El modelo <strong>gpt-4o-mini</strong> reduce el costo de entrada de $5.00 a $0.15 por millón de tokens (ahorro del <strong>97%</strong>) con excelente calidad de redacción y comprensión médica en español argentino.
-                        </p>
-                    </div>
-
-                    <div style={{ background: '#FFFFFF', padding: '14px 16px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#0284C7', marginBottom: '4px' }}>
-                            2. Triage Determinista Previo
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B', lineHeight: 1.4 }}>
-                            Los mensajes de navegación directa como <em>"1"</em>, <em>"2"</em>, <em>"Menú"</em> o <em>"Atrás"</em> se resuelven por reglas fijas en el webhook sin consumir tokens de OpenAI.
-                        </p>
-                    </div>
-
-                    <div style={{ background: '#FFFFFF', padding: '14px 16px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#7C3AED', marginBottom: '4px' }}>
-                            3. Prompt Caching Automático
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B', lineHeight: 1.4 }}>
-                            OpenAI aplica un descuento del 50% en prompts de más de 1.024 tokens repetidos. Mantener estable el System Prompt principal aprovecha automáticamente esta bonificación de red.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
         </div>
     );
 }
