@@ -202,13 +202,13 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
         {
             title: 'INGRESADOS HOY',
             val: String(kpis.conversacionesIngresadas || 0),
-            sub: 'Consultas entrantes',
+            sub: `${kpis.ingresadosHoyAtendidos || 0} atend. (${kpis.tasaAtencion || 0}%)`,
             color: THEME.accent
         },
         {
-            title: 'ATENDIDOS HOY',
-            val: String(kpis.conversacionesAtendidas || 0),
-            sub: `${kpis.tasaAtencion || 100}% atencion`,
+            title: 'ATENDIDOS JORNADA',
+            val: String(kpis.totalAtendidasJornada || kpis.conversacionesAtendidas || 0),
+            sub: `${kpis.arrastreAnteriorAtendido || 0} arrastre previo`,
             color: THEME.success
         },
         {

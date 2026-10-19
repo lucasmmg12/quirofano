@@ -482,13 +482,15 @@ export async function getAgentDailyShiftMetrics({
 
     // === CALCULO DE INGRESADOS VS ATENDIDOS DEL DIA ===
     let conversacionesIngresadas = 0;
-    let conversacionesAtendidas = 0;
+    let ingresadosHoyAtendidos = 0;
+    let arrastreAnteriorAtendido = 0;
+    let totalAtendidasJornada = 0;
     let conversacionesPendientes = 0;
     let tasaAtencion = 100;
 
     if (isTeamOverview) {
         // Enfoque Global del Equipo:
-        // 1. Ingresados: Teléfonos únicos con mensajes entrantes de Contact Center + nuevas conversaciones creadas en la jornada
+        // 1. Ingresados Hoy: Teléfonos únicos con mensajes entrantes de Contact Center + nuevas conversaciones creadas en la jornada
         const validIncoming = (incomingMessages || []).filter(m => !m.line_id || m.line_id === 'contact_center');
         const inPhonesSet = new Set(validIncoming.map(m => m.phone).filter(Boolean));
         const createdPhonesSet = new Set((createdConversations || []).map(c => c.phone).filter(Boolean));
@@ -500,31 +502,59 @@ export async function getAgentDailyShiftMetrics({
         const atendidosPhonesSet = new Set([...humanOutPhonesSet, ...closedPhonesSet]);
 
         conversacionesIngresadas = ingresadosPhonesSet.size;
-        conversacionesAtendidas = atendidosPhonesSet.size;
 
-        // Cuántos de los ingresados hoy fueron efectivamente atendidos
-        let ingresadosAtendidosCount = 0;
+        // Cuántos de los ingresados hoy fueron efectivamente atendidos hoy
         ingresadosPhonesSet.forEach(p => {
-            if (atendidosPhonesSet.has(p)) ingresadosAtendidosCount++;
+            if (atendidosPhonesSet.has(p)) ingresadosHoyAtendidos++;
         });
 
-        conversacionesPendientes = Math.max(0, conversacionesIngresadas - ingresadosAtendidosCount);
+        // Cuántos de los atendidos hoy corresponden a arrastre de días anteriores (noche o días previos)
+        atendidosPhonesSet.forEach(p => {
+            if (!ingresadosPhonesSet.has(p)) arrastreAnteriorAtendido++;
+        });
+
+        totalAtendidasJornada = atendidosPhonesSet.size;
+        conversacionesPendientes = Math.max(0, conversacionesIngresadas - ingresadosHoyAtendidos);
         tasaAtencion = conversacionesIngresadas > 0
-            ? Math.min(100, Math.round((conversacionesAtendidas / conversacionesIngresadas) * 100))
+            ? Math.min(100, Math.round((ingresadosHoyAtendidos / conversacionesIngresadas) * 100))
             : 100;
+        conversacionesAtendidas = totalAtendidasJornada;
     } else {
         // Enfoque Operadora Individual:
+        const validIncoming = (incomingMessages || []).filter(m => !m.line_id || m.line_id === 'contact_center');
+        const inPhonesSet = new Set(validIncoming.map(m => m.phone).filter(Boolean));
+        const createdPhonesSet = new Set((createdConversations || []).map(c => c.phone).filter(Boolean));
+        const ingresadosHoyGeneralSet = new Set([...inPhonesSet, ...createdPhonesSet]);
+
         const assignedPhones = new Set((agentAttendedConversations || []).map(c => c.phone).filter(Boolean));
         const closedByAgentPhones = new Set(agentClosedConversations.map(c => c.phone).filter(Boolean));
-        const ingresadosPhonesSet = new Set([...assignedPhones, ...agentOutgoingPhonesSet, ...closedByAgentPhones]);
-        const atendidasPhonesSet = new Set([...agentOutgoingPhonesSet, ...closedByAgentPhones]);
+        const agentHandledPhonesSet = new Set([...agentOutgoingPhonesSet, ...closedByAgentPhones, ...assignedPhones]);
+        const agentAtendidasSet = new Set([...agentOutgoingPhonesSet, ...closedByAgentPhones]);
 
-        conversacionesIngresadas = Math.max(ingresadosPhonesSet.size, agentAttendedConversations.length);
-        conversacionesAtendidas = atendidasPhonesSet.size;
+        // Teléfonos que ingresaron hoy en los que intervino o que le fueron asignados a la operadora
+        const agentIngresadosHoySet = new Set();
+        agentHandledPhonesSet.forEach(p => {
+            if (ingresadosHoyGeneralSet.has(p)) {
+                agentIngresadosHoySet.add(p);
+            }
+        });
+
+        conversacionesIngresadas = agentIngresadosHoySet.size > 0 ? agentIngresadosHoySet.size : Math.max(assignedPhones.size, 1);
+
+        agentIngresadosHoySet.forEach(p => {
+            if (agentAtendidasSet.has(p)) ingresadosHoyAtendidos++;
+        });
+
+        agentAtendidasSet.forEach(p => {
+            if (!agentIngresadosHoySet.has(p)) arrastreAnteriorAtendido++;
+        });
+
+        totalAtendidasJornada = agentAtendidasSet.size;
         conversacionesPendientes = Math.max(0, chatsActivosSinCerrar.length);
         tasaAtencion = conversacionesIngresadas > 0
-            ? Math.min(100, Math.round((conversacionesAtendidas / conversacionesIngresadas) * 100))
+            ? Math.min(100, Math.round((ingresadosHoyAtendidos / conversacionesIngresadas) * 100))
             : 100;
+        conversacionesAtendidas = totalAtendidasJornada;
     }
 
     // === GENERACIÓN DE SMART INSIGHTS ===
@@ -564,19 +594,19 @@ export async function getAgentDailyShiftMetrics({
     if (isTeamOverview) {
         scoreNivel = 'Operación Global del Día';
         scoreColor = '#003B71';
-        scoreDiagnostico = `Balance diario del equipo: ${conversacionesIngresadas} conversaciones ingresadas hoy vs ${conversacionesAtendidas} atendidas (${totalFinalizadas} cerradas, ${conversacionesPendientes} pendientes de atención). Se emitieron ${totalMensajes} mensajes y se agendaron ${turnosSalusCount} turnos en SALUS (${turnosCanceladosCount} cancelaciones procesadas).`;
+        scoreDiagnostico = `Balance diario del equipo: ${conversacionesIngresadas} consultas ingresadas hoy (${ingresadosHoyAtendidos} atendidas, ${conversacionesPendientes} pendientes de hoy) más ${arrastreAnteriorAtendido} casos de arrastre resueltos de días anteriores. Total atendidas en la jornada: ${totalAtendidasJornada} (${totalFinalizadas} cerradas). Se emitieron ${totalMensajes} mensajes y se agendaron ${turnosSalusCount} turnos en SALUS (${turnosCanceladosCount} cancelaciones procesadas).`;
     } else if (totalFinalizadas >= 40 || turnosSalusCount >= 20 || totalMensajes >= 150) {
         scoreNivel = 'Sobresaliente / Alto Impacto';
         scoreColor = '#059669';
-        scoreDiagnostico = `Jornada de máxima productividad: ${conversacionesIngresadas} conversaciones ingresadas en tu guardia (${conversacionesAtendidas} atendidas, ${totalFinalizadas} cerradas). Mantuviste un ritmo de respuesta continuo con ${totalMensajes} mensajes y ${turnosSalusCount} turnos efectivos cargados en SALUS.`;
+        scoreDiagnostico = `Jornada de máxima productividad: ${conversacionesIngresadas} consultas ingresadas hoy (${ingresadosHoyAtendidos} atendidas de hoy + ${arrastreAnteriorAtendido} de arrastre previo = ${totalAtendidasJornada} atendidas, ${totalFinalizadas} cerradas). Mantuviste un ritmo de respuesta continuo con ${totalMensajes} mensajes y ${turnosSalusCount} turnos efectivos cargados en SALUS.`;
     } else if (totalFinalizadas >= 20 || turnosSalusCount >= 10 || totalMensajes >= 80) {
         scoreNivel = 'Muy Buena / Ritmo Estable';
         scoreColor = '#0284C7';
-        scoreDiagnostico = `Turno fluido y ordenado: ${conversacionesIngresadas} consultas ingresadas (${conversacionesAtendidas} atendidas, ${totalFinalizadas} resueltas). Tasa resolutiva del ${tasaResolucion}% y ${turnosSalusCount} turnos en SALUS agendados.`;
+        scoreDiagnostico = `Turno fluido y ordenado: ${totalAtendidasJornada} consultas atendidas (${ingresadosHoyAtendidos} de hoy + ${arrastreAnteriorAtendido} de días previos, ${totalFinalizadas} resueltas). Tasa resolutiva del ${tasaResolucion}% y ${turnosSalusCount} turnos en SALUS agendados.`;
     } else {
         scoreNivel = 'Moderada / En Seguimiento';
         scoreColor = '#D97706';
-        scoreDiagnostico = `Jornada con volumen balanceado: ${conversacionesIngresadas} consultas ingresadas (${conversacionesAtendidas} atendidas). Se registraron ${totalMensajes} mensajes y ${turnosSalusCount} turnos agendados.`;
+        scoreDiagnostico = `Jornada con volumen balanceado: ${totalAtendidasJornada} consultas atendidas (${ingresadosHoyAtendidos} de hoy, ${arrastreAnteriorAtendido} de arrastre). Se registraron ${totalMensajes} mensajes y ${turnosSalusCount} turnos agendados.`;
     }
 
     const insights = [
@@ -637,7 +667,10 @@ export async function getAgentDailyShiftMetrics({
         },
         kpis: {
             conversacionesIngresadas,
-            conversacionesAtendidas,
+            conversacionesAtendidas: totalAtendidasJornada,
+            totalAtendidasJornada,
+            ingresadosHoyAtendidos,
+            arrastreAnteriorAtendido,
             conversacionesPendientes,
             tasaAtencion,
             mensajesEnviados: totalMensajes,
@@ -821,9 +854,11 @@ export function buildShiftSummaryClipboardText(metrics) {
         `📅 *Fecha:* ${fechaFormat}`,
         ``,
         `📈 *MÉTRICAS PRINCIPALES DEL DÍA:*`,
-        `• 📥 *Conversaciones Ingresadas:* ${kpis.conversacionesIngresadas || 0}`,
-        `• 🎧 *Conversaciones Atendidas:* ${kpis.conversacionesAtendidas || 0} (${kpis.tasaAtencion || 100}% de atención)`,
-        `• ⏳ *Pendientes de Atención:* ${kpis.conversacionesPendientes || 0}`,
+        `• 📥 *Nuevas Ingresadas Hoy:* ${kpis.conversacionesIngresadas || 0}`,
+        `• 🔄 *Arrastre Días Previos (Atendidas hoy):* ${kpis.arrastreAnteriorAtendido || 0}`,
+        `• 🎧 *Total Atendidas en la Jornada:* ${kpis.totalAtendidasJornada || kpis.conversacionesAtendidas || 0} (${kpis.ingresadosHoyAtendidos || 0} de hoy + ${kpis.arrastreAnteriorAtendido || 0} arrastre)`,
+        `• 📊 *Tasa de Atención de Hoy:* ${kpis.tasaAtencion || 100}% (${kpis.ingresadosHoyAtendidos || 0} de ${kpis.conversacionesIngresadas || 0})`,
+        `• ⏳ *Pendientes de Hoy:* ${kpis.conversacionesPendientes || 0}`,
         `• 💬 *Mensajes Enviados:* ${kpis.mensajesEnviados}`,
         `• ✅ *Conversaciones Finalizadas:* ${kpis.conversacionesFinalizadas}`,
         `• 🩺 *Turnos Agendados en SALUS:* ${kpis.turnosSalus}`,

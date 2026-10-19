@@ -451,12 +451,12 @@ export default function AgentShiftSummaryModal({
                                             {kpis.conversacionesIngresadas || 0}
                                         </div>
                                         <span style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 600 }}>
-                                            Consultas y chats entrantes
+                                            {kpis.ingresadosHoyAtendidos || 0} atendidas ({kpis.tasaAtencion || 0}%)
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* 2. Conversaciones Atendidas Hoy */}
+                                {/* 2. Conversaciones Atendidas en la Jornada */}
                                 <div style={{
                                     background: '#FFFFFF',
                                     borderRadius: '12px',
@@ -469,7 +469,7 @@ export default function AgentShiftSummaryModal({
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                                         <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803D' }}>
-                                            Atendidas Hoy
+                                            Atendidas en la Jornada
                                         </span>
                                         <div style={{
                                             width: '28px',
@@ -486,10 +486,10 @@ export default function AgentShiftSummaryModal({
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
-                                            {kpis.conversacionesAtendidas || 0}
+                                            {kpis.totalAtendidasJornada || kpis.conversacionesAtendidas || 0}
                                         </div>
                                         <span style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 600 }}>
-                                            {kpis.tasaAtencion || 100}% de atención
+                                            {kpis.ingresadosHoyAtendidos || 0} de hoy + {kpis.arrastreAnteriorAtendido || 0} arrastre
                                         </span>
                                     </div>
                                 </div>
@@ -695,7 +695,7 @@ export default function AgentShiftSummaryModal({
                                                 Balance de Flujo: Ingresados vs. Atendidos
                                             </span>
                                             <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'block' }}>
-                                                Relación entre la demanda total que ingresó en el día y las consultas atendidas
+                                                Demanda ingresada hoy ({kpis.conversacionesIngresadas || 0}) vs. casos de arrastre de días anteriores gestionados ({kpis.arrastreAnteriorAtendido || 0})
                                             </span>
                                         </div>
                                     </div>
@@ -710,9 +710,22 @@ export default function AgentShiftSummaryModal({
                                             background: '#EFF6FF',
                                             color: '#1D4ED8',
                                             border: '1px solid #BFDBFE'
-                                        }}>
-                                            📥 Ingresados: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesIngresadas || 0}</strong>
+                                        }} title="Pacientes nuevos o mensajes entrantes recibidos en la jornada">
+                                            📥 Nuevas de Hoy: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesIngresadas || 0}</strong>
                                         </span>
+                                        {kpis.arrastreAnteriorAtendido > 0 && (
+                                            <span style={{
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                padding: '4px 9px',
+                                                borderRadius: '8px',
+                                                background: '#F1F5F9',
+                                                color: '#334155',
+                                                border: '1px solid #CBD5E1'
+                                            }} title="Conversaciones iniciadas en días previos que el equipo atendió o cerró en esta jornada">
+                                                🔄 Arrastre Día Anterior: <strong style={{ marginLeft: 3 }}>{kpis.arrastreAnteriorAtendido}</strong>
+                                            </span>
+                                        )}
                                         <span style={{
                                             fontSize: '0.72rem',
                                             fontWeight: 700,
@@ -721,8 +734,8 @@ export default function AgentShiftSummaryModal({
                                             background: '#F0FDF4',
                                             color: '#15803D',
                                             border: '1px solid #BBF7D0'
-                                        }}>
-                                            🎧 Atendidos: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesAtendidas || 0}</strong>
+                                        }} title="Total de conversaciones atendidas o cerradas en la jornada">
+                                            🎧 Total Atendidas: <strong style={{ marginLeft: 3 }}>{kpis.totalAtendidasJornada || kpis.conversacionesAtendidas || 0}</strong>
                                         </span>
                                         <span style={{
                                             fontSize: '0.72rem',
@@ -744,8 +757,8 @@ export default function AgentShiftSummaryModal({
                                                 background: '#FFFBEB',
                                                 color: '#B45309',
                                                 border: '1px solid #FDE68A'
-                                            }}>
-                                                ⏳ En Espera / Sin Atender: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesPendientes}</strong>
+                                            }} title="Pacientes ingresados hoy que aún no recibieron respuesta">
+                                                ⏳ En Espera (Hoy): <strong style={{ marginLeft: 3 }}>{kpis.conversacionesPendientes}</strong>
                                             </span>
                                         )}
                                     </div>
@@ -768,7 +781,7 @@ export default function AgentShiftSummaryModal({
                                                 borderRadius: '999px',
                                                 transition: 'width 0.4s ease'
                                             }}
-                                            title={`Atendidos: ${kpis.conversacionesAtendidas || 0} (${kpis.tasaAtencion || 100}%)`}
+                                            title={`Atendidas de Hoy: ${kpis.ingresadosHoyAtendidos || 0} de ${kpis.conversacionesIngresadas || 0} (${kpis.tasaAtencion || 100}%)`}
                                         />
                                         {kpis.conversacionesPendientes > 0 && (
                                             <div 
@@ -778,18 +791,19 @@ export default function AgentShiftSummaryModal({
                                                     borderRadius: '0 999px 999px 0',
                                                     transition: 'width 0.4s ease'
                                                 }}
-                                                title={`Pendientes: ${kpis.conversacionesPendientes}`}
+                                                title={`Pendientes de Hoy: ${kpis.conversacionesPendientes}`}
                                             />
                                         )}
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap', gap: '4px' }}>
                                         <span style={{ fontSize: '0.7rem', color: '#15803D', fontWeight: 700 }}>
-                                            {kpis.tasaAtencion || 100}% de tasa de atención sobre consultas ingresadas
+                                            {kpis.tasaAtencion || 100}% de atención sobre consultas ingresadas hoy ({kpis.ingresadosHoyAtendidos || 0} de {kpis.conversacionesIngresadas || 0})
                                         </span>
                                         <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 500 }}>
                                             {kpis.conversacionesPendientes > 0 
-                                                ? `${kpis.conversacionesPendientes} paciente(s) aún sin respuesta en la jornada` 
-                                                : 'Todos los pacientes ingresados recibieron atención'}
+                                                ? `${kpis.conversacionesPendientes} paciente(s) de hoy sin respuesta` 
+                                                : 'Sin pacientes pendientes de hoy'}
+                                            {kpis.arrastreAnteriorAtendido > 0 ? ` · ${kpis.arrastreAnteriorAtendido} de arrastre resueltos hoy` : ''}
                                         </span>
                                     </div>
                                 </div>
