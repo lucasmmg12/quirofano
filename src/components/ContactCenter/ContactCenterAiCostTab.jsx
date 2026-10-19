@@ -485,14 +485,7 @@ export default function ContactCenterAiCostTab({
                                 <Calendar size={12} />
                                 Período: {periodLabel}
                             </span>
-                            <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0',
-                                padding: '2px 8px', borderRadius: '12px', fontSize: '0.68rem', fontWeight: 700
-                            }}>
-                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
-                                Telemetría Activa
-                            </span>
+
                         </div>
                         <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
                             Monitoreo en tiempo real de consumo de tokens OpenAI, costos estimados en USD/ARS y cálculo de ahorro
