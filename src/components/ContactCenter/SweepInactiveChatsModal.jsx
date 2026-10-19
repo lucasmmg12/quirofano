@@ -13,10 +13,11 @@ import {
     Loader2
 } from 'lucide-react';
 import { sweepInactiveConversations } from '../../services/contactCenterService';
+import { supabase } from '../../lib/supabase';
 
 /**
  * Modal de Barrido Rápido de Conversaciones Inactivas
- * Permite archivar en bloque conversaciones sin actividad (+24h, +12h, etc.)
+ * Permite archivar en bloque conversaciones sin actividad (+24h, +8h, +4h, +2h)
  * Estilo Clean Clinical - Calidad QOAG
  */
 export default function SweepInactiveChatsModal({
@@ -33,24 +34,101 @@ export default function SweepInactiveChatsModal({
     const [isSweeping, setIsSweeping] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [sweepResult, setSweepResult] = useState(null);
+    const [dbConvs, setDbConvs] = useState(null);
+    const [loadingDbStats, setLoadingDbStats] = useState(false);
 
     // Actualizar motivo predeterminado al cambiar el umbral
     useEffect(() => {
         setResolutionReason(`Cierre automático por inactividad (+${hoursThreshold}h)`);
     }, [hoursThreshold]);
 
-    // Resetear estado al abrir
+    // Cargar estadísticas globales en vivo desde Supabase al abrir el modal
     useEffect(() => {
         if (isOpen) {
             setSweepResult(null);
             setErrorMsg(null);
             setIsSweeping(false);
+            setLoadingDbStats(true);
+
+            supabase
+                .from('contact_center_conversations')
+                .select('phone, last_message_at, updated_at, created_at, assigned_agent_id, status, nombre_completo')
+                .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","archived","closed")')
+                .then(({ data, error }) => {
+                    if (!error && Array.isArray(data)) {
+                        setDbConvs(data);
+                        // Si no hay conversaciones de +24h, auto-seleccionar el umbral con inactividad disponible
+                        const now = Date.now();
+                        const count24 = data.filter(c => {
+                            const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                            return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 24 * 3600 * 1000;
+                        }).length;
+                        if (count24 === 0) {
+                            const count4 = data.filter(c => {
+                                const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                                return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 4 * 3600 * 1000;
+                            }).length;
+                            if (count4 > 0) {
+                                setHoursThreshold(4);
+                            } else {
+                                const count2 = data.filter(c => {
+                                    const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                                    return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 2 * 3600 * 1000;
+                                }).length;
+                                if (count2 > 0) setHoursThreshold(2);
+                            }
+                        }
+                    }
+                })
+                .catch((err) => {
+                    console.warn('[SweepModal] Error consultando conversaciones abiertas:', err);
+                })
+                .finally(() => {
+                    setLoadingDbStats(false);
+                });
         }
     }, [isOpen]);
 
-    // Calcular estadísticas en tiempo real sobre los chats activos en memoria
+    // Calcular estadísticas en tiempo real: priorizar el padrón completo de la BD
     const stats = useMemo(() => {
         const now = Date.now();
+
+        // Si ya cargaron los datos directos de Supabase, usarlos; de lo contrario fallback a los de memoria
+        if (dbConvs && Array.isArray(dbConvs)) {
+            const openList = dbConvs.filter(c => {
+                const st = (c.status || '').toLowerCase();
+                return !['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st);
+            });
+
+            const getOlderCount = (hours, onlyMine = false) => {
+                const cutoffMs = hours * 3600 * 1000;
+                return openList.filter(c => {
+                    if (onlyMine && c.assigned_agent_id !== activeAgent?.id) {
+                        return false;
+                    }
+                    const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                    const time = timeStr ? new Date(timeStr).getTime() : 0;
+                    return (now - time) >= cutoffMs;
+                }).length;
+            };
+
+            return {
+                totalOpen: openList.length,
+                myOpen: openList.filter(c => c.assigned_agent_id === activeAgent?.id).length,
+                over24hAll: getOlderCount(24, false),
+                over24hMine: getOlderCount(24, true),
+                over8hAll: getOlderCount(8, false),
+                over8hMine: getOlderCount(8, true),
+                over4hAll: getOlderCount(4, false),
+                over4hMine: getOlderCount(4, true),
+                over2hAll: getOlderCount(2, false),
+                over2hMine: getOlderCount(2, true),
+                selectedCount: getOlderCount(hoursThreshold, scope === 'mine'),
+                getCount: (h) => getOlderCount(h, scope === 'mine')
+            };
+        }
+
+        // Fallback memoria local si la consulta aún está en tránsito
         const openChats = (chats || []).filter(c => {
             const st = (c.status || '').toLowerCase();
             return !['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st);
@@ -72,16 +150,16 @@ export default function SweepInactiveChatsModal({
             myOpen: openChats.filter(c => c.assignedTo === activeAgent?.id || c.assigned_agent_id === activeAgent?.id).length,
             over24hAll: getOlderCount(24, false),
             over24hMine: getOlderCount(24, true),
-            over12hAll: getOlderCount(12, false),
-            over12hMine: getOlderCount(12, true),
             over8hAll: getOlderCount(8, false),
             over8hMine: getOlderCount(8, true),
             over4hAll: getOlderCount(4, false),
             over4hMine: getOlderCount(4, true),
+            over2hAll: getOlderCount(2, false),
+            over2hMine: getOlderCount(2, true),
             selectedCount: getOlderCount(hoursThreshold, scope === 'mine'),
             getCount: (h) => getOlderCount(h, scope === 'mine')
         };
-    }, [chats, activeAgent, hoursThreshold, scope]);
+    }, [dbConvs, chats, activeAgent, hoursThreshold, scope]);
 
     if (!isOpen) return null;
 
@@ -98,21 +176,33 @@ export default function SweepInactiveChatsModal({
         try {
             const now = Date.now();
             const cutoffMs = hoursThreshold * 3600 * 1000;
-            const openChats = (chats || []).filter(c => {
-                const st = (c.status || '').toLowerCase();
-                return !['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st);
-            });
 
-            const targetChats = openChats.filter(c => {
-                if (scope === 'mine' && c.assignedTo !== activeAgent?.id && c.assigned_agent_id !== activeAgent?.id) {
-                    return false;
-                }
-                const time = c.lastMessageTimestamp || (c.updated_at ? new Date(c.updated_at).getTime() : 0);
-                return (now - time) >= cutoffMs;
-            });
+            let targetPhones = [];
+            let targetChatIds = [];
 
-            const targetChatIds = targetChats.map(c => c.id).filter(Boolean);
-            const targetPhones = targetChats.map(c => c.phone).filter(Boolean);
+            if (dbConvs && Array.isArray(dbConvs) && dbConvs.length > 0) {
+                const targetConvs = dbConvs.filter(c => {
+                    const st = (c.status || '').toLowerCase();
+                    if (['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st)) return false;
+                    if (scope === 'mine' && c.assigned_agent_id !== activeAgent?.id) return false;
+                    const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                    const time = timeStr ? new Date(timeStr).getTime() : 0;
+                    return (now - time) >= cutoffMs;
+                });
+                targetPhones = targetConvs.map(c => c.phone).filter(Boolean);
+            } else {
+                const openChats = (chats || []).filter(c => {
+                    const st = (c.status || '').toLowerCase();
+                    return !['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st);
+                });
+                const targetChats = openChats.filter(c => {
+                    if (scope === 'mine' && c.assignedTo !== activeAgent?.id && c.assigned_agent_id !== activeAgent?.id) return false;
+                    const time = c.lastMessageTimestamp || (c.updated_at ? new Date(c.updated_at).getTime() : 0);
+                    return (now - time) >= cutoffMs;
+                });
+                targetChatIds = targetChats.map(c => c.id).filter(Boolean);
+                targetPhones = targetChats.map(c => c.phone).filter(Boolean);
+            }
 
             const result = await sweepInactiveConversations({
                 hoursThreshold,
@@ -120,7 +210,7 @@ export default function SweepInactiveChatsModal({
                 closedByAgentId: 'lmarinero',
                 closedByAgentName: 'Lucas Marinero (Supervisor)',
                 resolutionReason: resolutionReason.trim(),
-                targetPhones
+                targetPhones: targetPhones.length > 0 ? targetPhones : null
             });
 
             if (!result.success && result.error) {
@@ -286,15 +376,22 @@ export default function SweepInactiveChatsModal({
                         <>
                             {/* Selector de Umbral de Tiempo */}
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                                    ⏱️ Seleccionar Antigüedad de Inactividad:
-                                </label>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                                        ⏱️ Seleccionar Antigüedad de Inactividad:
+                                    </label>
+                                    {loadingDbStats && (
+                                        <span style={{ fontSize: '0.68rem', color: '#0284C7', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                            <Loader2 size={12} className="animate-spin" /> Escaneando base de datos...
+                                        </span>
+                                    )}
+                                </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
                                     {[
-                                        { h: 24, label: '+24 Horas', desc: 'Meta Vencida', badge: 'Recomendado' },
-                                        { h: 12, label: '+12 Horas', desc: 'Medio Día', badge: null },
-                                        { h: 8, label: '+8 Horas', desc: 'Noche / Turno Ant.', badge: 'Turno Ant.' },
-                                        { h: 4, label: '+4 Horas', desc: 'Sin Respuesta Hoy', badge: null }
+                                        { h: 24, label: '+24 Horas', desc: 'Meta Vencida (Ayer)', badge: 'Ayer' },
+                                        { h: 8, label: '+8 Horas', desc: 'Turno Mañana', badge: null },
+                                        { h: 4, label: '+4 Horas', desc: 'Sin Resp. (+4h)', badge: 'Recomendado' },
+                                        { h: 2, label: '+2 Horas', desc: 'Inactivos (+2h)', badge: 'Hoy' }
                                     ].map(opt => {
                                         const isSel = hoursThreshold === opt.h;
                                         const count = stats?.getCount ? stats.getCount(opt.h) : 0;
@@ -318,7 +415,7 @@ export default function SweepInactiveChatsModal({
                                                         position: 'absolute',
                                                         top: '-8px',
                                                         right: '4px',
-                                                        background: opt.badge === 'Recomendado' ? '#0284C7' : '#059669',
+                                                        background: opt.badge === 'Recomendado' ? '#0284C7' : (opt.badge === 'Hoy' ? '#059669' : '#64748B'),
                                                         color: '#FFFFFF',
                                                         fontSize: '0.55rem',
                                                         fontWeight: 800,
@@ -456,17 +553,20 @@ export default function SweepInactiveChatsModal({
 
                             {/* Banner de Garantía y Seguridad Clínica */}
                             <div style={{
-                                padding: '10px 14px',
+                                padding: '12px 14px',
                                 borderRadius: '10px',
-                                backgroundColor: '#F8FAFC',
-                                border: '1px solid #E2E8F0',
+                                backgroundColor: '#F0FDF4',
+                                border: '1px solid #BBF7D0',
                                 display: 'flex',
                                 alignItems: 'flex-start',
                                 gap: '10px'
                             }}>
-                                <ShieldCheck size={20} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
-                                <div style={{ fontSize: '0.74rem', color: '#475569', lineHeight: 1.4 }}>
-                                    <strong style={{ color: '#065F46' }}>Garantía de continuidad clínica:</strong> Si algún paciente responde en el futuro a este WhatsApp, el chat se <strong>desarchivará automáticamente</strong> y reingresará a la bandeja en tiempo real sin perder ningún dato.
+                                <ShieldCheck size={22} color="#16A34A" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div style={{ fontSize: '0.74rem', color: '#166534', lineHeight: 1.45 }}>
+                                    <strong style={{ color: '#14532D', display: 'block', marginBottom: '2px' }}>
+                                        🛡️ Garantía de Integridad: ¡Ningún mensaje se borra!
+                                    </strong>
+                                    Esta acción solo <strong>archiva y cambia el estado</strong> de las conversaciones inactivas en la bandeja. Todo el historial de mensajes de WhatsApp queda <strong>100% preservado</strong> en la base de datos. Si un paciente vuelve a escribir, la conversación se <strong>desarchivará automáticamente</strong> reingresando a la bandeja en tiempo real con todo su historial.
                                 </div>
                             </div>
 
