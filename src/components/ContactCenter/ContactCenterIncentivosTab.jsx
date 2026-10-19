@@ -93,16 +93,19 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             setDataSource(salusRes.source || 'cloud');
             setLastSyncDate(salusRes.updatedAt || new Date().toISOString());
 
-            // Priorizar valor de conversaciones únicas auditadas
+            // Priorizar valor de conversaciones únicas auditadas o conteo real de CRM
             let defaultMsgs = rawData.conversacionesUnicas;
-            if (p === '2026-09') {
+            if (p === '2026-08') {
+                defaultMsgs = rawData.conversacionesUnicas || 7820;
+            } else if (p === '2026-09') {
                 defaultMsgs = rawData.conversacionesUnicas || 8587;
-            } else if (p === '2026-10') {
-                defaultMsgs = rawData.conversacionesUnicas || 2772;
-            } else if (!defaultMsgs) {
-                if (p === '2026-08') defaultMsgs = 7820;
-                else if (msgsSb && msgsSb > 1000) defaultMsgs = msgsSb;
-                else defaultMsgs = 8587;
+            } else {
+                // Período actual o en curso: priorizar conteo real de conversaciones únicas
+                if (msgsSb && msgsSb > 0) {
+                    defaultMsgs = msgsSb;
+                } else if (!defaultMsgs || defaultMsgs === 2772) {
+                    defaultMsgs = rawData.conversacionesUnicas || 5677;
+                }
             }
             setMensajesManuales(String(defaultMsgs));
 
@@ -153,6 +156,16 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
         cargarPeriodo(periodo, false);
     }, [periodo]);
 
+    // Fechas dinámicas para el período seleccionado y mes en curso
+    const now = new Date();
+    const currentMonthIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const isCurrentMonth = periodo === currentMonthIso;
+    const currentDay = isCurrentMonth ? now.getDate() : 0;
+    const [pYear, pMonth] = (periodo || currentMonthIso).split('-').map(Number);
+    const totalDaysInMonth = new Date(pYear, pMonth, 0).getDate();
+    const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const periodMonthName = monthNames[pMonth - 1] || 'Octubre';
+
     // Cargar datos históricos comparativos mes a mes para los gráficos de performance
     useEffect(() => {
         let isMounted = true;
@@ -174,17 +187,18 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
         let msgs = Number(mensajesManuales) || 0;
         let datosAUsar = datosSalus;
 
-        if (periodo === '2026-10' && octubreModoProyeccion && datosSalus) {
-            msgs = datosSalus.proyeccionConvs || Math.round((Number(mensajesManuales) || 2772) / 9 * 31) || 9548;
+        if (isCurrentMonth && octubreModoProyeccion && datosSalus) {
+            const factorProyeccion = currentDay > 0 ? (totalDaysInMonth / currentDay) : 1;
+            msgs = datosSalus.proyeccionConvs || Math.round((Number(mensajesManuales) || 0) * factorProyeccion);
             datosAUsar = {
                 ...datosSalus,
                 turnosGrupales: {
                     ...datosSalus.turnosGrupales,
-                    total: datosSalus.proyeccionTurnos || Math.round((datosSalus.turnosGrupales?.total || 785) / 9 * 31) || 2704
+                    total: datosSalus.proyeccionTurnos || Math.round((datosSalus.turnosGrupales?.total || 0) * factorProyeccion)
                 },
                 agentes: (datosSalus.agentes || []).map(ag => ({
                     ...ag,
-                    turnos: Math.round((ag.turnos || 0) / 9 * 31)
+                    turnos: Math.round((ag.turnos || 0) * factorProyeccion)
                 }))
             };
         }
@@ -195,7 +209,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             datosSalus: datosAUsar,
             ajustesFte
         });
-    }, [periodo, mensajesManuales, datosSalus, ajustesFte, octubreModoProyeccion]);
+    }, [periodo, mensajesManuales, datosSalus, ajustesFte, octubreModoProyeccion, isCurrentMonth, currentDay, totalDaysInMonth]);
 
     const formatCurrency = (val) => {
         return new Intl.NumberFormat('es-AR', {
@@ -368,6 +382,25 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
 
                     <button
+                        type="button"
+                        onClick={() => cargarPeriodo(periodo, true)}
+                        disabled={loading}
+                        title="Sincronizar y actualizar métricas de SALUS y WhatsApp en tiempo real"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            background: '#F8FAFC', border: '1px solid #CBD5E1',
+                            padding: '8px 12px', borderRadius: '10px',
+                            fontSize: '0.76rem', fontWeight: 700, color: '#003B71',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            opacity: loading ? 0.7 : 1,
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <RefreshCw size={13} className={loading ? "animate-spin" : ""} color="#003B71" />
+                        Actualizar SALUS
+                    </button>
+
+                    <button
                         onClick={() => setShowEscalonesModal(true)}
                         style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
@@ -482,7 +515,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </button>
                 </div>
 
-                {periodo === '2026-10' ? (
+                {isCurrentMonth ? (
                     <span style={{
                         fontSize: '0.72rem', fontWeight: 800,
                         background: '#FEF3C7', color: '#B45309',
@@ -491,7 +524,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         border: '1px solid #FDE68A'
                     }}>
                         <Activity size={13} color="#D97706" />
-                        Mes en Curso • Día 9 de 31
+                        Mes en Curso • Día {currentDay} de {totalDaysInMonth}
                     </span>
                 ) : (
                     <span style={{
@@ -513,7 +546,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             {activeViewTab === 'liquidacion' && (
                 <div>
                     {/* Banner de Mes en Curso: Toggle Real vs Proyección */}
-                    {periodo === '2026-10' && (
+                    {isCurrentMonth && (
                         <div style={{
                             background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
                             border: '1px solid #FDE68A',
@@ -537,12 +570,12 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#92400E' }}>
-                                        Octubre 2026 está en curso (Día 9 de 31)
+                                        {periodMonthName} {pYear} está en curso (Día {currentDay} de {totalDaysInMonth})
                                     </div>
                                     <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
                                         {octubreModoProyeccion 
                                             ? 'Mostrando liquidación estimada proyectada a fin de mes manteniendo el ritmo actual.'
-                                            : 'Mostrando producción real auditada acumulada al 9 de Octubre (2.772 convs • 785 turnos).'}
+                                            : `Mostrando producción real auditada acumulada al ${currentDay} de ${periodMonthName} (${Number(mensajesManuales || 0).toLocaleString('es-AR')} convs • ${Number(datosSalus?.turnosGrupales?.total || 0).toLocaleString('es-AR')} turnos).`}
                                     </div>
                                 </div>
                             </div>
@@ -562,7 +595,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                         transition: 'all 0.15s ease'
                                     }}
                                 >
-                                    📍 Real Acumulado al Día (Día 9)
+                                    📍 Real Acumulado al Día (Día {currentDay})
                                 </button>
                                 <button
                                     type="button"

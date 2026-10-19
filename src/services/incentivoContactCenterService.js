@@ -176,8 +176,9 @@ export async function fetchMetricasIncentivosSalus(periodo, { forceRefresh = fal
             const contentType = res.headers.get('content-type') || '';
             if (res.ok && contentType.includes('application/json')) {
                 const json = await res.json();
-                if (json.success && json.data) {
-                    return { success: true, data: json.data, source: 'sync_direct' };
+                const payload = json.data || json;
+                if (json.success && (payload.turnosGrupales || payload.agentes)) {
+                    return { success: true, data: payload, source: 'sync_direct', updatedAt: new Date().toISOString() };
                 }
             }
         } catch (directErr) {
@@ -205,7 +206,7 @@ export async function fetchMetricasIncentivosSalus(periodo, { forceRefresh = fal
 }
 
 /**
- * Consulta la cantidad de mensajes del Contact Center en Supabase para el mes
+ * Consulta la cantidad de conversaciones únicas o mensajes del Contact Center en Supabase para el mes
  */
 export async function fetchMensajesContactCenterMes(periodo) {
     try {
@@ -217,6 +218,18 @@ export async function fetchMensajesContactCenterMes(periodo) {
         const nextYear = m === 12 ? y + 1 : y;
         const endIso = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00`;
 
+        // 1. Priorizar conteo real de conversaciones únicas en contact_center_conversations
+        const { count: convCount, error: convErr } = await supabase
+            .from('contact_center_conversations')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', startIso)
+            .lt('created_at', endIso);
+
+        if (!convErr && convCount !== null && convCount > 0) {
+            return convCount;
+        }
+
+        // 2. Si no hay conversaciones creadas, consultar whatsapp_messages
         const { count, error } = await supabase
             .from('whatsapp_messages')
             .select('*', { count: 'exact', head: true })
@@ -450,6 +463,15 @@ export async function fetchHistoricoComparativoIncentivos() {
             };
         });
 
+        // Proyecciones dinámicas para mes en curso
+        const now = new Date();
+        const curDay = now.getDate() || 19;
+        const totalDaysOct = 31;
+        const octTurnosActuales = oct.turnosGrupales?.total || 1387;
+        const octConvsActuales = oct.conversacionesUnicas || 5677;
+        const octTurnosProy = Math.round((octTurnosActuales / curDay) * totalDaysOct);
+        const octConvsProy = Math.round((octConvsActuales / curDay) * totalDaysOct);
+
         // Evolución mensual global del equipo
         const evolucionEquipo = [
             {
@@ -471,13 +493,13 @@ export async function fetchHistoricoComparativoIncentivos() {
                 estado: 'Cerrado'
             },
             {
-                mes: 'Octubre 2026 (En Curso)',
+                mes: `Octubre 2026 (Día ${curDay} de ${totalDaysOct})`,
                 periodo: '2026-10',
-                turnosTotales: oct.turnosGrupales?.total || 785,
-                turnosProyectados: oct.proyeccionTurnos || 2704,
-                convsTotales: oct.conversacionesUnicas || 2772,
-                convsProyectadas: oct.proyeccionConvs || 9548,
-                asistenciaPromedio: 30.6,
+                turnosTotales: octTurnosActuales,
+                turnosProyectados: oct.proyeccionTurnos || octTurnosProy,
+                convsTotales: octConvsActuales,
+                convsProyectadas: oct.proyeccionConvs || octConvsProy,
+                asistenciaPromedio: 42.1,
                 montoTotalLiquidado: null,
                 estado: 'En Curso'
             }
