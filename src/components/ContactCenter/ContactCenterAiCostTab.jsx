@@ -424,55 +424,6 @@ export default function ContactCenterAiCostTab({
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* BANNER ESTRATÉGICO: ANÁLISIS DE AHORRO INMEDIATO CON GPT-4o-MINI */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                background: 'linear-gradient(135deg, #0F2942 0%, #1E3A8A 60%, #0284C7 100%)',
-                borderRadius: '12px',
-                padding: '20px 24px',
-                color: '#FFFFFF',
-                boxShadow: '0 4px 16px rgba(15, 41, 66, 0.15)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '16px'
-            }}>
-                <div style={{ maxWidth: '680px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span style={{
-                            background: '#FEF08A', color: '#854D0E', padding: '2px 8px',
-                            borderRadius: '12px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase'
-                        }}>
-                            Diagnóstico de Eficiencia Grow Labs
-                        </span>
-                        <span style={{ fontSize: '0.74rem', color: '#93C5FD' }}>
-                            Potencial de reducción de gasto: <strong>{projections.savingsPct}%</strong>
-                        </span>
-                    </div>
-                    <h3 style={{ margin: '0 0 6px', fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>
-                        Proyección actual de gasto mensual: ${projections.projectedMonthCostUsd.toLocaleString()} USD ({projections.projectedMonthCostArs.toLocaleString()} ARS)
-                    </h3>
-                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#E0F2FE', lineHeight: 1.45 }}>
-                        El bot conversacional procesa aproximadamente <strong>{formatTokens(projections.dailyAvgTokens)} tokens diarios</strong>.
-                        Cambiando el motor a <strong style={{ color: '#86EFAC' }}>gpt-4o-mini</strong> se mantiene la misma precisión médica con un costo mensual proyectado de solo <strong style={{ color: '#86EFAC' }}>${projections.miniProjectedCostUsd.toLocaleString()} USD (${projections.miniProjectedCostArs.toLocaleString()} ARS)</strong>, generando un ahorro neto de <strong>${projections.netSavingsUsd.toLocaleString()} USD (~${projections.netSavingsArs.toLocaleString()} ARS)</strong> al mes.
-                    </p>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-                    <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.7rem', color: '#93C5FD', textTransform: 'uppercase', fontWeight: 700 }}>Ahorro Neto Proyectado</span>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#4ADE80' }}>
-                            -${projections.netSavingsUsd.toLocaleString()} USD
-                        </div>
-                        <span style={{ fontSize: '0.72rem', color: '#E0F2FE' }}>
-                            ≈ ${projections.netSavingsArs.toLocaleString()} ARS / mes
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
             {/* GRID DE KPIS DE CONSUMO Y PROYECCIONES                            */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{
