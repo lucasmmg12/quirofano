@@ -7,7 +7,7 @@ import {
     FileText, HelpCircle, PhoneCall, DollarSign, TrendingUp, X, 
     Calculator, Info, ShieldCheck, Zap, Award, UserCheck, Timer,
     CheckSquare, TrendingDown, Smile, UserX, Layers, Target, Cpu,
-    ChevronLeft, Printer
+    ChevronLeft, Printer, FileDown
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -1570,6 +1570,34 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         <Printer size={13} />
                         Informe Mensual
                     </button>
+
+                    {/* BOTÓN INFORME DE CAPACIDAD Y CUELLOS DE BOTELLA (PDF) */}
+                    <a
+                        href="/Informe_Contact_Center_Sanatorio_Argentino.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download="Informe_Contact_Center_Sanatorio_Argentino.pdf"
+                        title="Descargar Auditoría Oficial de Capacidad Instalada y Cuellos de Botella (PDF)"
+                        style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1.5px solid #FED7AA',
+                            background: '#FFF7ED',
+                            color: '#C2410C',
+                            fontSize: '0.76rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 1px 3px rgba(194, 65, 12, 0.08)',
+                            textDecoration: 'none',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <FileDown size={14} color="#EA580C" />
+                        Capacidad & Cuellos de Botella (PDF)
+                    </a>
 
                     <button
                         type="button"
@@ -3865,6 +3893,22 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <a
+                                    href="/Informe_Contact_Center_Sanatorio_Argentino.pdf"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download="Informe_Contact_Center_Sanatorio_Argentino.pdf"
+                                    title="Descargar Auditoría Oficial de Capacidad y Cuellos de Botella (PDF)"
+                                    style={{
+                                        padding: '8px 14px', borderRadius: '8px', border: '1px solid #FED7AA',
+                                        background: '#FFF7ED', color: '#C2410C', fontSize: '0.78rem',
+                                        fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                        textDecoration: 'none'
+                                    }}
+                                >
+                                    <FileDown size={14} color="#EA580C" />
+                                    Auditoría Capacidad (PDF)
+                                </a>
                                 <button
                                     type="button"
                                     onClick={() => window.print()}

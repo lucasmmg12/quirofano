@@ -360,10 +360,15 @@ export async function generateComprehensiveReport() {
     doc.setTextColor(...THEME.navy);
     doc.text('ANÁLISIS DE CONVERSACIONES TOTALES VS. CAPACIDAD MÁXIMA OPERATIVA', margin + 6, y + 8);
 
+    const firstDayStr = sortedDays[0];
+    const lastDayStr = sortedDays[sortedDays.length - 1];
+    const totalDaysCount = sortedDays.length;
+    const pctSinAgenteGlobal = sumConvsPacientes > 0 ? Math.round((sumConvsSinRespuestaAgente / sumConvsPacientes) * 100) : 0;
+
     doc.setFont(font, 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...THEME.bodyText);
-    doc.text(`Período de Auditoría: 01 al 16 de Octubre de 2026 (16 jornadas)  |  Sesiones Totales: ${sumConvsPacientes.toLocaleString('es-AR')} conversaciones`, margin + 6, y + 16);
+    doc.text(`Período de Auditoría: 01 al ${lastDayStr ? lastDayStr.substring(8) : '19'} de Octubre de 2026 (${totalDaysCount} jornadas)  |  Sesiones Totales: ${sumConvsPacientes.toLocaleString('es-AR')} conversaciones`, margin + 6, y + 16);
 
     y += 28;
 
@@ -419,7 +424,7 @@ export async function generateComprehensiveReport() {
     doc.setFontSize(7.4);
     doc.setTextColor(...THEME.bodyText);
     const diagText = cleanText(
-        `Al computar las conversaciones día a día (considerando que un paciente que escribe en días distintos equivale a conversaciones independientes), se registran 7.836 sesiones de atención en 16 días (+61% respecto al padrón estático de teléfonos). El equipo de operadoras posee un techo operativo estricto de ~430 conversaciones/día. En días hábiles pico, la demanda de los pacientes alcanza entre 780 y 1.006 conversaciones diarias, generando una sobredemanda de hasta un 130% por encima de la capacidad instalada. Como consecuencia directa, 3.958 conversaciones (50.5% del total) no pudieron recibir respuesta humana en el día, dependiendo exclusivamente de la contención del Bot o quedando en espera prolongada.`
+        `Al computar las conversaciones día a día (considerando que un paciente que escribe en días distintos equivale a conversaciones independientes), se registran ${sumConvsPacientes.toLocaleString('es-AR')} sesiones de atención en ${totalDaysCount} días (+61% respecto al padrón estático de teléfonos). El equipo de operadoras posee un techo operativo estricto de ~430 conversaciones/día. En días hábiles pico, la demanda de los pacientes alcanza entre 780 y 1.006 conversaciones diarias, generando una sobredemanda de hasta un 130% por encima de la capacidad instalada. Como consecuencia directa, ${sumConvsSinRespuestaAgente.toLocaleString('es-AR')} conversaciones (${pctSinAgenteGlobal}% del total) no pudieron recibir respuesta humana en el día, dependiendo exclusivamente de la contención del Bot o quedando en espera prolongada.`
     );
     doc.text(doc.splitTextToSize(diagText, contentW - 12), margin + 6, y + 13);
 
@@ -1064,10 +1069,15 @@ export async function generateComprehensiveReport() {
     const desktopPath = path.resolve('C:\\Users\\Sanatorio Argentino\\Desktop\\Informe_Contact_Center_Sanatorio_Argentino.pdf');
     fs.writeFileSync(desktopPath, pdfData);
 
+    // Copiar a public para acceso y descarga directa desde el navegador web
+    const publicPath = path.resolve('public', outputFileName);
+    fs.writeFileSync(publicPath, pdfData);
+
     console.log(`\n======================================================`);
     console.log(`¡PDF actualizado exitosamente con análisis de CONVERSACIONES y CUELLOS DE BOTELLA!`);
-    console.log(`Ubicación 1: ${outputPath}`);
-    console.log(`Ubicación 2: ${desktopPath}`);
+    console.log(`Ubicación 1 (Raíz): ${outputPath}`);
+    console.log(`Ubicación 2 (Desktop): ${desktopPath}`);
+    console.log(`Ubicación 3 (Web Public): ${publicPath}`);
     console.log(`======================================================\n`);
 }
 
