@@ -70,7 +70,7 @@ export default function AgentShiftSummaryModal({
             setMetrics(data);
         } catch (err) {
             console.error('Error cargando métricas de final de turno:', err);
-            setErrorMsg('No se pudieron obtener las métricas del turno. Intenta nuevamente.');
+            setErrorMsg(err?.message ? `No se pudieron obtener las métricas del turno (${err.message}). Intenta nuevamente.` : 'No se pudieron obtener las métricas del turno. Intenta nuevamente.');
         } finally {
             setLoading(false);
         }

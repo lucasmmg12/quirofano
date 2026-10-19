@@ -116,7 +116,10 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
     if (base) {
         try {
             const url = `${base}/api/salus/turnos-agentes-hoy?fecha=${targetDate}`;
-            const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 5000) : null;
+            const res = await fetch(url, { signal: controller ? controller.signal : undefined });
+            if (timeoutId) clearTimeout(timeoutId);
             if (res.ok) {
                 const json = await res.json();
                 if (json.success && json.data) {
@@ -482,6 +485,7 @@ export async function getAgentDailyShiftMetrics({
 
     // === CALCULO DE INGRESADOS VS ATENDIDOS DEL DIA ===
     let conversacionesIngresadas = 0;
+    let conversacionesAtendidas = 0;
     let ingresadosHoyAtendidos = 0;
     let arrastreAnteriorAtendido = 0;
     let totalAtendidasJornada = 0;
