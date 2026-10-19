@@ -561,6 +561,59 @@ export async function getAgentDailyShiftMetrics({
         conversacionesAtendidas = totalAtendidasJornada;
     }
 
+    // === DISTRIBUCIÓN HORARIA DE INGRESOS DE PACIENTES (DEMANDA) ===
+    // Identificar el primer mensaje entrante o momento de creación de cada paciente en la jornada
+    const validIncomingForHourly = (incomingMessages || []).filter(m => !m.line_id || m.line_id === 'contact_center');
+    const patientFirstSeenMap = new Map();
+
+    validIncomingForHourly.forEach(m => {
+        if (!m.phone) return;
+        const t = new Date(m.created_at).getTime();
+        if (!patientFirstSeenMap.has(m.phone) || t < patientFirstSeenMap.get(m.phone)) {
+            patientFirstSeenMap.set(m.phone, t);
+        }
+    });
+
+    (createdConversations || []).forEach(c => {
+        if (!c.phone) return;
+        const t = new Date(c.created_at).getTime();
+        if (!patientFirstSeenMap.has(c.phone) || t < patientFirstSeenMap.get(c.phone)) {
+            patientFirstSeenMap.set(c.phone, t);
+        }
+    });
+
+    const hourlyIncomingDistribution = {};
+    for (let h = 7; h <= 21; h++) {
+        const hourLabel = `${String(h).padStart(2, '0')}:00`;
+        hourlyIncomingDistribution[hourLabel] = 0;
+    }
+
+    let peakIncomingHour = null;
+    let peakIncomingCount = 0;
+
+    // Si es visión del equipo: todos los pacientes que escribieron hoy
+    // Si es visión individual: pacientes que ingresaron hoy asignados o gestionados por la operadora
+    const incomingPhonesToDistribute = isTeamOverview
+        ? Array.from(patientFirstSeenMap.keys())
+        : (typeof agentIngresadosHoySet !== 'undefined' && agentIngresadosHoySet && agentIngresadosHoySet.size > 0 
+            ? Array.from(agentIngresadosHoySet) 
+            : Array.from(patientFirstSeenMap.keys()));
+
+    incomingPhonesToDistribute.forEach(phone => {
+        const timestamp = patientFirstSeenMap.get(phone);
+        if (!timestamp) return;
+        const d = new Date(timestamp);
+        const hour = d.getHours();
+        const label = `${String(hour).padStart(2, '0')}:00`;
+        if (hourlyIncomingDistribution[label] !== undefined) {
+            hourlyIncomingDistribution[label] = (hourlyIncomingDistribution[label] || 0) + 1;
+            if (hourlyIncomingDistribution[label] > peakIncomingCount) {
+                peakIncomingCount = hourlyIncomingDistribution[label];
+                peakIncomingHour = label;
+            }
+        }
+    });
+
     // === GENERACIÓN DE SMART INSIGHTS ===
     const totalMensajes = agentOutgoingMessages.length;
     const totalFinalizadas = agentClosedConversations.length;
@@ -691,6 +744,9 @@ export async function getAgentDailyShiftMetrics({
         canceladosSalusDetalle,
         resolutionHistogram: agentResolutionHistogram,
         hourlyDistribution,
+        hourlyIncomingDistribution,
+        peakIncomingHour,
+        peakIncomingCount,
         categorias,
         totalConsultasClasificadas,
         resolucionesMap,

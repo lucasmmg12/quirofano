@@ -61,6 +61,7 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
         canceladosSalusDetalle = [],
         categorias = {},
         hourlyDistribution = {},
+        hourlyIncomingDistribution = {},
         score = {},
         insights = []
     } = metrics;
@@ -462,7 +463,54 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
         y = doc.lastAutoTable.finalY + 6;
     }
 
-    // ─── 9. RITMO DEL TURNO & DISTRIBUCIÓN HORARIA ───
+    // ─── 9. DEMANDA & RITMO DEL TURNO (DISTRIBUCIÓN HORARIA) ───
+    if (hourlyIncomingDistribution && Object.keys(hourlyIncomingDistribution).length > 0) {
+        if (y > pageH - 45) {
+            doc.addPage();
+            y = 18;
+        }
+
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(13, 148, 136); // Teal / Demanda
+        doc.text('CURVA DE INGRESO DE PACIENTES POR HORA (DEMANDA DEL DIA)', margin, y + 4);
+
+        y += 6;
+
+        const hourKeys = [];
+        for (let h = 7; h <= 21; h++) {
+            hourKeys.push(`${String(h).padStart(2, '0')}:00`);
+        }
+
+        const headHours = hourKeys.map(h => h.substring(0, 2) + 'h');
+        const countIncoming = hourKeys.map(h => String(hourlyIncomingDistribution[h] || 0));
+
+        autoTable(doc, {
+            startY: y,
+            margin: { left: margin, right: margin },
+            head: [headHours],
+            body: [countIncoming],
+            theme: 'grid',
+            styles: {
+                fontSize: 6.8,
+                cellPadding: 2,
+                halign: 'center',
+                textColor: THEME.bodyText,
+                lineColor: THEME.border,
+                lineWidth: 0.2
+            },
+            headStyles: {
+                fillColor: [15, 118, 110], // Teal header
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                fontSize: 6.8,
+                halign: 'center'
+            }
+        });
+
+        y = doc.lastAutoTable.finalY + 6;
+    }
+
     if (hourlyDistribution && Object.keys(hourlyDistribution).length > 0) {
         if (y > pageH - 45) {
             doc.addPage();

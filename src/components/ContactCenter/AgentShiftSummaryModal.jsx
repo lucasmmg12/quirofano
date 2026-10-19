@@ -40,6 +40,7 @@ export default function AgentShiftSummaryModal({
     const [errorMsg, setErrorMsg] = useState(null);
     const [showTurnosModal, setShowTurnosModal] = useState(false);
     const [selectedCategoriaModal, setSelectedCategoriaModal] = useState(initialCategoriaModal || null);
+    const [curvaTab, setCurvaTab] = useState('ambas'); // 'ambas' | 'ingresos' | 'respuestas'
 
     // Sincronizar agente y contexto inicial cuando se abre
     useEffect(() => {
@@ -138,9 +139,13 @@ export default function AgentShiftSummaryModal({
     const totalConsultas = metrics?.totalConsultasClasificadas || 0;
     const score = metrics?.score || { nivel: 'Calculando...', color: '#0284C7', diagnostico: '' };
     const hourlyDistribution = metrics?.hourlyDistribution || {};
-
-    // Obtener el valor máximo para escalar el mini gráfico horario
     const maxHourVal = Math.max(1, ...Object.values(hourlyDistribution));
+
+    const hourlyIncomingDistribution = metrics?.hourlyIncomingDistribution || {};
+    const maxIncomingHourVal = Math.max(1, ...Object.values(hourlyIncomingDistribution));
+    const totalIncomingCurve = Object.values(hourlyIncomingDistribution).reduce((a, b) => a + b, 0);
+    const peakIncomingHour = metrics?.peakIncomingHour || null;
+    const peakIncomingCount = metrics?.peakIncomingCount || 0;
 
     return (
         <div style={{
@@ -795,85 +800,245 @@ export default function AgentShiftSummaryModal({
                                 </div>
                             </div>
 
-                            {/* ── DISTRIBUCIÓN HORARIA DEL RITMO DE MENSAJES (MINI-BAR-CHART) ── */}
-                            <div style={{
-                                background: '#FFFFFF',
-                                borderRadius: '12px',
-                                padding: '16px 20px',
-                                border: '1px solid #E2E8F0',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                                    <div>
-                                        <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                                            Curva de Respuestas por Hora (Ritmo del Turno)
-                                        </h3>
-                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                            Evolución del volumen de interacción de la operadora a lo largo de su jornada
-                                        </span>
-                                    </div>
-                                    <span style={{
-                                        fontSize: '0.7rem',
-                                        fontWeight: 700,
-                                        padding: '2px 8px',
-                                        borderRadius: '6px',
-                                        background: '#F1F5F9',
-                                        color: '#334155'
-                                    }}>
-                                        7:00 a 21:00 hs
+                            {/* ── SELECTOR DE CURVAS HORARIAS ── */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginTop: '2px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                        Distribución Horaria:
                                     </span>
-                                </div>
-
-                                <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: `repeat(${Object.keys(hourlyDistribution).length}, 1fr)`,
-                                    gap: '6px',
-                                    alignItems: 'flex-end',
-                                    height: '75px',
-                                    paddingTop: '8px'
-                                }}>
-                                    {Object.entries(hourlyDistribution).map(([hora, cant]) => {
-                                        const pct = (cant / maxHourVal) * 100;
-                                        const isHigh = cant === maxHourVal && cant > 0;
-                                        return (
-                                            <div key={hora} style={{
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                alignItems: 'center',
-                                                height: '100%',
-                                                justifyContent: 'flex-end',
-                                                gap: '4px'
-                                            }}>
-                                                <span style={{
-                                                    fontSize: '0.62rem',
-                                                    fontWeight: 700,
-                                                    color: isHigh ? '#0284C7' : cant > 0 ? '#475569' : '#CBD5E1'
-                                                }}>
-                                                    {cant > 0 ? cant : ''}
-                                                </span>
-                                                <div 
-                                                    title={`${hora}: ${cant} mensajes enviados`}
-                                                    style={{
-                                                        width: '100%',
-                                                        maxWidth: '28px',
-                                                        height: `${Math.max(4, pct)}%`,
-                                                        borderRadius: '4px 4px 0 0',
-                                                        background: isHigh 
-                                                            ? 'linear-gradient(180deg, #0284C7 0%, #0369A1 100%)' 
-                                                            : cant > 0 
-                                                                ? '#93C5FD' 
-                                                                : '#E2E8F0',
-                                                        transition: 'all 0.3s ease'
-                                                    }} 
-                                                />
-                                                <span style={{ fontSize: '0.58rem', color: '#94A3B8', fontWeight: 600 }}>
-                                                    {hora.split(':')[0]}h
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurvaTab('ambas')}
+                                        style={{
+                                            fontSize: '0.70rem',
+                                            fontWeight: curvaTab === 'ambas' ? 700 : 500,
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: curvaTab === 'ambas' ? '1.5px solid #0284C7' : '1px solid #E2E8F0',
+                                            background: curvaTab === 'ambas' ? '#E0F2FE' : '#FFFFFF',
+                                            color: curvaTab === 'ambas' ? '#0369A1' : '#64748B',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        Ambas Curvas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurvaTab('ingresos')}
+                                        style={{
+                                            fontSize: '0.70rem',
+                                            fontWeight: curvaTab === 'ingresos' ? 700 : 500,
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: curvaTab === 'ingresos' ? '1.5px solid #0D9488' : '1px solid #E2E8F0',
+                                            background: curvaTab === 'ingresos' ? '#CCFBF1' : '#FFFFFF',
+                                            color: curvaTab === 'ingresos' ? '#0F766E' : '#64748B',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        📥 Ingreso de Pacientes ({totalIncomingCurve})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurvaTab('respuestas')}
+                                        style={{
+                                            fontSize: '0.70rem',
+                                            fontWeight: curvaTab === 'respuestas' ? 700 : 500,
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: curvaTab === 'respuestas' ? '1.5px solid #0284C7' : '1px solid #E2E8F0',
+                                            background: curvaTab === 'respuestas' ? '#E0F2FE' : '#FFFFFF',
+                                            color: curvaTab === 'respuestas' ? '#0369A1' : '#64748B',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        📤 Respuestas Enviadas ({kpis.mensajesEnviados || 0})
+                                    </button>
                                 </div>
                             </div>
+
+                            {/* ── 1. CURVA DE INGRESO DE PACIENTES POR HORA (DEMANDA) ── */}
+                            {(curvaTab === 'ambas' || curvaTab === 'ingresos') && (
+                                <div style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '12px',
+                                    padding: '16px 20px',
+                                    border: '1px solid #E2E8F0',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                                    Curva de Ingreso de Pacientes por Hora (Demanda de Consultas)
+                                                </h3>
+                                                {peakIncomingCount > 0 && (
+                                                    <span style={{
+                                                        fontSize: '0.64rem',
+                                                        fontWeight: 700,
+                                                        color: '#0F766E',
+                                                        background: '#CCFBF1',
+                                                        border: '1px solid #99F6E4',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        Pico: {peakIncomingCount} pacientes ({peakIncomingHour?.split(':')[0]}h)
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                Volumen de pacientes y nuevas conversaciones que escribieron al Contact Center según la franja horaria
+                                            </span>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            background: '#F0FDFA',
+                                            color: '#0F766E',
+                                            border: '1px solid #CCFBF1'
+                                        }}>
+                                            7:00 a 21:00 hs
+                                        </span>
+                                    </div>
+
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: `repeat(${Object.keys(hourlyIncomingDistribution).length || 15}, 1fr)`,
+                                        gap: '6px',
+                                        alignItems: 'flex-end',
+                                        height: '75px',
+                                        paddingTop: '8px'
+                                    }}>
+                                        {Object.entries(hourlyIncomingDistribution).map(([hora, cant]) => {
+                                            const pct = (cant / maxIncomingHourVal) * 100;
+                                            const isHigh = cant === maxIncomingHourVal && cant > 0;
+                                            return (
+                                                <div key={hora} style={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    height: '100%',
+                                                    justifyContent: 'flex-end',
+                                                    gap: '4px'
+                                                }}>
+                                                    <span style={{
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 700,
+                                                        color: isHigh ? '#0D9488' : cant > 0 ? '#0F766E' : '#CBD5E1'
+                                                    }}>
+                                                        {cant > 0 ? cant : ''}
+                                                    </span>
+                                                    <div 
+                                                        title={`${hora}: ${cant} paciente(s) ingresaron`}
+                                                        style={{
+                                                            width: '100%',
+                                                            maxWidth: '28px',
+                                                            height: `${Math.max(4, pct)}%`,
+                                                            borderRadius: '4px 4px 0 0',
+                                                            background: isHigh 
+                                                                ? 'linear-gradient(180deg, #0D9488 0%, #047857 100%)' 
+                                                                : cant > 0 
+                                                                    ? '#2DD4BF' 
+                                                                    : '#E2E8F0',
+                                                            transition: 'all 0.3s ease'
+                                                        }} 
+                                                    />
+                                                    <span style={{ fontSize: '0.58rem', color: '#94A3B8', fontWeight: 600 }}>
+                                                        {hora.split(':')[0]}h
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── 2. CURVA DE RESPUESTAS POR HORA (RITMO DEL TURNO) ── */}
+                            {(curvaTab === 'ambas' || curvaTab === 'respuestas') && (
+                                <div style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '12px',
+                                    padding: '16px 20px',
+                                    border: '1px solid #E2E8F0',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                                        <div>
+                                            <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Curva de Respuestas por Hora (Ritmo del Turno)
+                                            </h3>
+                                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                Evolución del volumen de interacción y respuestas de la operadora a lo largo de su jornada
+                                            </span>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            padding: '2px 8px',
+                                            borderRadius: '6px',
+                                            background: '#F1F5F9',
+                                            color: '#334155'
+                                        }}>
+                                            7:00 a 21:00 hs
+                                        </span>
+                                    </div>
+
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: `repeat(${Object.keys(hourlyDistribution).length || 15}, 1fr)`,
+                                        gap: '6px',
+                                        alignItems: 'flex-end',
+                                        height: '75px',
+                                        paddingTop: '8px'
+                                    }}>
+                                        {Object.entries(hourlyDistribution).map(([hora, cant]) => {
+                                            const pct = (cant / maxHourVal) * 100;
+                                            const isHigh = cant === maxHourVal && cant > 0;
+                                            return (
+                                                <div key={hora} style={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    height: '100%',
+                                                    justifyContent: 'flex-end',
+                                                    gap: '4px'
+                                                }}>
+                                                    <span style={{
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 700,
+                                                        color: isHigh ? '#0284C7' : cant > 0 ? '#475569' : '#CBD5E1'
+                                                    }}>
+                                                        {cant > 0 ? cant : ''}
+                                                    </span>
+                                                    <div 
+                                                        title={`${hora}: ${cant} mensajes enviados`}
+                                                        style={{
+                                                            width: '100%',
+                                                            maxWidth: '28px',
+                                                            height: `${Math.max(4, pct)}%`,
+                                                            borderRadius: '4px 4px 0 0',
+                                                            background: isHigh 
+                                                                ? 'linear-gradient(180deg, #0284C7 0%, #0369A1 100%)' 
+                                                                : cant > 0 
+                                                                    ? '#93C5FD' 
+                                                                    : '#E2E8F0',
+                                                            transition: 'all 0.3s ease'
+                                                        }} 
+                                                    />
+                                                    <span style={{ fontSize: '0.58rem', color: '#94A3B8', fontWeight: 600 }}>
+                                                        {hora.split(':')[0]}h
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* ── HISTOGRAMA DE TIEMPOS DE RESOLUCIÓN DEL TURNO (SLA) ── */}
                             <div style={{
