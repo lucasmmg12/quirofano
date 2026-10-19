@@ -3,7 +3,7 @@ import {
     Sparkles, DollarSign, TrendingUp, TrendingDown, Cpu, Activity,
     Calendar, RefreshCw, AlertTriangle, CheckCircle2, ArrowRight,
     Layers, ShieldAlert, BarChart3, PieChart, Clock, Zap, Info,
-    ExternalLink, Search, Filter, HelpCircle, ChevronRight, Sliders
+    ExternalLink, Search, Filter, HelpCircle, ChevronRight
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -54,7 +54,6 @@ export default function ContactCenterAiCostTab({
     const [loading, setLoading] = useState(true);
     const [logs, setLogs] = useState([]);
     const [allMonthLogs, setAllMonthLogs] = useState([]);
-    const [volumeMultiplier, setVolumeMultiplier] = useState(1); // 1x, 1.5x, 2x, 3x
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedServiceFilter, setSelectedServiceFilter] = useState('all');
     const [configuredModel, setConfiguredModel] = useState('gpt-5.4-mini');
@@ -583,138 +582,6 @@ export default function ContactCenterAiCostTab({
                             Latencia: {stats.avgLatencyMs} ms
                         </span>
                     </div>
-                </div>
-            </div>
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* SIMULADOR INTERACTIVO DE MODELOS Y VOLUMEN DE ATENCIÓN           */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                background: '#FFFFFF',
-                borderRadius: '12px',
-                border: '1px solid #E2E8F0',
-                padding: '20px 24px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-            }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Sliders size={18} color="#0284C7" />
-                            <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0F2942' }}>
-                                Simulador de Modelos OpenAI & Multiplicador de Demanda
-                            </h4>
-                        </div>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                            Compara el impacto económico real en la factura mensual de Sanatorio Argentino según el modelo elegido y volumen de pacientes
-                        </p>
-                    </div>
-
-                    {/* Selector de volumen */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F1F5F9', padding: '3px', borderRadius: '8px' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', padding: '0 6px' }}>Demanda:</span>
-                        {[1, 1.5, 2, 3].map(mult => (
-                            <button
-                                key={mult}
-                                type="button"
-                                onClick={() => setVolumeMultiplier(mult)}
-                                style={{
-                                    border: 'none',
-                                    background: volumeMultiplier === mult ? '#0F2942' : 'transparent',
-                                    color: volumeMultiplier === mult ? '#FFFFFF' : '#475569',
-                                    padding: '4px 10px',
-                                    borderRadius: '6px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s'
-                                }}
-                            >
-                                {mult}x {mult === 1 ? '(Actual)' : ''}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Tarjetas comparativas de Modelos */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                    gap: '14px'
-                }}>
-                    {Object.entries(PRICING_TABLE).map(([mKey, mInfo]) => {
-                        const baseTokens = projections.projectedMonthTokens * volumeMultiplier;
-                        const pTokens = baseTokens * 0.95;
-                        const cTokens = baseTokens * 0.05;
-                        const simCostUsd = ((pTokens * mInfo.promptPerM) + (cTokens * mInfo.completionPerM)) / 1_000_000;
-                        const simCostArs = Math.round(simCostUsd * arsRate);
-                        const isRecommended = mKey === 'gpt-4o-mini';
-                        const isCurrentActive = mKey === configuredModel;
-
-                        return (
-                            <div 
-                                key={mKey}
-                                style={{
-                                    background: isRecommended ? '#F0FDF4' : '#F8FAFC',
-                                    border: `1.5px solid ${isRecommended ? '#86EFAC' : (isCurrentActive ? '#FCA5A5' : '#E2E8F0')}`,
-                                    borderRadius: '10px',
-                                    padding: '16px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'space-between',
-                                    position: 'relative',
-                                    gap: '12px'
-                                }}
-                            >
-                                {isRecommended && (
-                                    <span style={{
-                                        position: 'absolute', top: '-10px', right: '12px',
-                                        background: '#059669', color: '#FFFFFF', padding: '2px 8px',
-                                        borderRadius: '10px', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase'
-                                    }}>
-                                        ⭐ Recomendado Grow Labs
-                                    </span>
-                                )}
-                                {isCurrentActive && (
-                                    <span style={{
-                                        position: 'absolute', top: '-10px', right: '12px',
-                                        background: '#DC2626', color: '#FFFFFF', padding: '2px 8px',
-                                        borderRadius: '10px', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase'
-                                    }}>
-                                        ⚠️ Modelo Configurado
-                                    </span>
-                                )}
-
-                                <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <div>
-                                            <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F2942' }}>
-                                                {mInfo.name}
-                                            </div>
-                                            <span style={{ fontSize: '0.66rem', color: mInfo.color, fontWeight: 700 }}>
-                                                {mInfo.tag}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ marginTop: '10px', fontSize: '0.68rem', color: '#64748B', lineHeight: 1.4 }}>
-                                        Entrada: <strong>${mInfo.promptPerM}/1M</strong> · Salida: <strong>${mInfo.completionPerM}/1M</strong>
-                                    </div>
-                                </div>
-
-                                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '10px' }}>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>
-                                        Gasto Mensual Estimado:
-                                    </span>
-                                    <div style={{ fontSize: '1.4rem', fontWeight: 900, color: isRecommended ? '#059669' : '#0F2942', marginTop: '2px' }}>
-                                        ${simCostUsd.toFixed(2)} <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>USD</span>
-                                    </div>
-                                    <div style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 700 }}>
-                                        ≈ ${simCostArs.toLocaleString()} ARS / mes
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
                 </div>
             </div>
 
