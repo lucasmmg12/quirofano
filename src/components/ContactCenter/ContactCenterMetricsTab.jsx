@@ -1292,7 +1292,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         assignedCount: a.assignedCount || a.resolvedCount || a.conversationsCount || a.responseTimesMin.length
                     };
                 })
-                .sort((a, b) => b.count - a.count);
+                .sort((a, b) => (b.conversationsCount || 0) - (a.conversationsCount || 0));
 
             // ── C2. Cómputo de Niveles de SLA & Distribución de Demoras ──
             let slaOptimo = 0;
@@ -3272,8 +3272,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {metrics.byAgentList.map(ag => {
                         const isExp = !!expandedAgents[ag.id];
-                        const totalAsesorasMsgs = metrics.byAgentList.reduce((acc, a) => acc + (a.count || 0), 0) || 1;
-                        const pct = Math.round((ag.count / totalAsesorasMsgs) * 100);
+                        const totalAsesorasConvs = metrics.byAgentList.reduce((acc, a) => acc + (a.conversationsCount || 0), 0) || 1;
+                        const convPct = Math.round(((ag.conversationsCount || 0) / totalAsesorasConvs) * 100);
 
                         return (
                             <div 
@@ -3319,13 +3319,27 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     </div>
 
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                        {/* CONVERSACIONES ASIGNADAS */}
                                         <div style={{ textAlign: 'right' }}>
                                             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F2942' }}>
-                                                {ag.count.toLocaleString('es-AR')} msgs
+                                                {(ag.conversationsCount || 0).toLocaleString('es-AR')} asignadas
                                             </div>
                                             <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                {pct}% del total
+                                                {convPct}% de la demanda
                                             </div>
+                                        </div>
+
+                                        {/* PÍLDORA: CONVERSACIONES FINALIZADAS */}
+                                        <div 
+                                            title="Conversaciones finalizadas y resueltas activamente por la asesora"
+                                            style={{
+                                                padding: '4px 9px', borderRadius: '6px', background: '#ECFDF5',
+                                                color: '#065F46', fontSize: '0.72rem', fontWeight: 800, border: '1px solid #A7F3D0',
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={12} color="#059669" />
+                                            {(ag.resolvedCount || 0).toLocaleString('es-AR')} finalizadas
                                         </div>
 
                                         {/* BADGE DESTACADO: TURNOS SALUS */}
@@ -3339,13 +3353,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         >
                                             <CalendarCheck size={12} color="#166534" />
                                             🏥 {ag.turnosSalus ? `${ag.turnosSalus.toLocaleString('es-AR')} turnos SALUS` : `${ag.resolvedReasons?.['Turno Coordinado'] || 0} turnos`}
-                                        </div>
-
-                                        <div style={{
-                                            padding: '4px 8px', borderRadius: '6px', background: '#ECFDF5',
-                                            color: '#047857', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #A7F3D0'
-                                        }}>
-                                            💬 {ag.conversationsCount || 0} conv ({ag.conversationsPct || 0}%)
                                         </div>
 
 
@@ -3418,23 +3425,17 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             </div>
 
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Total Despachos</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0F2942', marginTop: '2px' }}>{ag.count.toLocaleString('es-AR')}</div>
-                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mensajes enviados</div>
+                                                <div style={{ fontSize: '0.68rem', color: '#0284C7', fontWeight: 700 }}>Conversaciones Asignadas</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0369A1', marginTop: '2px' }}>{(ag.conversationsCount || 0).toLocaleString('es-AR')}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Casos atendidos en el período</div>
                                             </div>
 
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 700 }}>Conversaciones Atendidas</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.conversationsCount || 0}</div>
-                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>~{ag.avgMessagesPerConversation || 0} msgs/conv</div>
-                                            </div>
-
-
-
-                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Casos Finalizados</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.resolvedCount}</div>
-                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Cierres registrados</div>
+                                                <div style={{ fontSize: '0.68rem', color: '#065F46', fontWeight: 700 }}>Conversaciones Finalizadas</div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{(ag.resolvedCount || 0).toLocaleString('es-AR')}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
+                                                    {ag.conversationsCount > 0 ? `${Math.round(((ag.resolvedCount || 0) / ag.conversationsCount) * 100)}% resueltas activas` : 'Cierres registrados'}
+                                                </div>
                                             </div>
 
                                             {/* FRT CON EXPLICACIÓN PEDAGÓGICA */}
