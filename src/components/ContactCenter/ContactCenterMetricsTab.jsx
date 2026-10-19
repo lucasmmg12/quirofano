@@ -260,6 +260,31 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             }
 
+            // ── Cargar Snapshot de Métricas y Turnos SALUS para el período seleccionado ──
+            const targetMonthKey = timeRange === 'last_month' 
+                ? (() => { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })()
+                : (selectedMonth || getCurrentMonthKey());
+
+            const salusDataByAgent = {};
+            try {
+                const { data: cfgRow } = await supabase
+                    .from('app_config')
+                    .select('value')
+                    .eq('key', `cc_incentivo_${targetMonthKey}`)
+                    .maybeSingle();
+
+                if (cfgRow?.value) {
+                    const parsed = typeof cfgRow.value === 'string' ? JSON.parse(cfgRow.value) : cfgRow.value;
+                    if (Array.isArray(parsed?.agentes)) {
+                        parsed.agentes.forEach(ag => {
+                            salusDataByAgent[ag.id] = ag;
+                        });
+                    }
+                }
+            } catch (salusErr) {
+                console.warn('[metrics] No se pudo cargar snapshot de SALUS:', salusErr);
+            }
+
             // ── A. Estructuras de Acumulación Escalar (RAM ultrabaja < 5MB) ──
             let totalOut = 0;
             let totalIn = 0;
@@ -1166,17 +1191,37 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         });
                     }
 
-                    // 2. Evolución Diaria en el mes
+                    // 2. Evolución Diaria en el período seleccionado (ordenada cronológicamente)
                     const dailyChartData = Object.entries(a.dailyMap || {})
-                        .map(([dia, mensajes]) => ({ dia, mensajes }));
+                        .map(([dia, mensajes]) => ({ dia, mensajes }))
+                        .sort((x, y) => {
+                            const [d1, m1] = x.dia.split('/').map(Number);
+                            const [d2, m2] = y.dia.split('/').map(Number);
+                            return (m1 - m2) || (d1 - d2);
+                        });
 
                     // 3. Motivos de Cierre y Trámites
                     const reasonsChartData = Object.entries(a.resolvedReasons || {})
                         .map(([motivo, cantidad]) => ({ motivo, cantidad }))
                         .sort((x, y) => y.cantidad - x.cantidad);
 
+                    // 4. Métricas oficiales de turnos en SALUS
+                    const salusAg = salusDataByAgent[a.id] || {};
+                    const turnosSalus = salusAg.turnos !== undefined ? salusAg.turnos : (a.resolvedReasons?.['Turno Coordinado'] || 0);
+                    const citasTotalesSalus = salusAg.citasTotales || 0;
+                    const asistidasSalus = salusAg.asistidas || 0;
+                    const asistenciaPctSalus = salusAg.asistenciaPct || 0;
+                    const ausenciasSalus = salusAg.ausencias || 0;
+                    const justificadasSalus = salusAg.justificadas || 0;
+
                     return {
                         ...a,
+                        turnosSalus,
+                        citasTotalesSalus,
+                        asistidasSalus,
+                        asistenciaPctSalus,
+                        ausenciasSalus,
+                        justificadasSalus,
                         conversationsCount: a.conversationsCount,
                         conversationsPct: convPct,
                         avgMessagesPerConversation: msgPerConv,
@@ -1309,6 +1354,24 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
     useEffect(() => {
         loadMetrics();
+    }, [timeRange, selectedMonth, customStartDate, customEndDate]);
+
+    // Etiqueta legible del período temporal activo para encabezados y gráficos
+    const periodLabel = useMemo(() => {
+        if (timeRange === 'this_month') {
+            const [y, m] = (selectedMonth || getCurrentMonthKey()).split('-');
+            const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+            const name = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+            return name.charAt(0).toUpperCase() + name.slice(1);
+        }
+        if (timeRange === 'last_month') return 'Mes Anterior';
+        if (timeRange === 'today') return 'Hoy';
+        if (timeRange === 'week') return 'Últimos 7 días';
+        if (timeRange === 'custom') {
+            if (customStartDate && customEndDate) return `${customStartDate} al ${customEndDate}`;
+            return 'Período Personalizado';
+        }
+        return 'Mes Actual';
     }, [timeRange, selectedMonth, customStartDate, customEndDate]);
 
     // Cálculo en tiempo real de la Bolsa 1 de Incentivos (50% de Productividad Mensual)
@@ -3089,6 +3152,78 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </span>
                 </div>
 
+                {/* 💡 GUÍA DIDÁCTICA Y GLOSARIO CLÍNICO DE INDICADORES (FRT, AHT, SLA & SALUS) */}
+                <div style={{
+                    background: '#F8FAFC',
+                    borderRadius: '10px',
+                    border: '1px solid #E2E8F0',
+                    padding: '14px 16px',
+                    marginBottom: '16px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                        <Info size={16} color="#0284C7" />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F2942' }}>
+                            Guía de Auditoría: ¿Qué significa cada indicador de rendimiento?
+                        </span>
+                        <span style={{
+                            fontSize: '0.68rem',
+                            color: '#0369A1',
+                            background: '#E0F2FE',
+                            border: '1px solid #BAE6FD',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            marginLeft: 'auto'
+                        }}>
+                            Período Activo: {periodLabel}
+                        </span>
+                    </div>
+
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                        gap: '10px',
+                        fontSize: '0.73rem',
+                        lineHeight: '1.4'
+                    }}>
+                        <div style={{ background: '#FFFFFF', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                            <div style={{ fontWeight: 800, color: '#059669', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '3px' }}>
+                                <Clock size={13} /> 1er Contacto (FRT - First Response Time)
+                            </div>
+                            <p style={{ margin: 0, color: '#475569' }}>
+                                Mide cuántos minutos espera el paciente desde que el Bot le transfiere la consulta hasta que la asesora envía su <strong>primer mensaje humano</strong>. Meta óptima: &lt; 15 min (evita abandono de consulta).
+                            </p>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                            <div style={{ fontWeight: 800, color: '#7C3AED', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '3px' }}>
+                                <Timer size={13} /> Tiempo de Gestión (AHT - Handle Time)
+                            </div>
+                            <p style={{ margin: 0, color: '#475569' }}>
+                                Tiempo neto que la asesora pasa gestionando la consulta del paciente, <strong>desde que toma el chat hasta que pulsa Finalizar</strong>. Mide la agilidad para resolver y tipificar el trámite.
+                            </p>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', padding: '10px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                            <div style={{ fontWeight: 800, color: '#D97706', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '3px' }}>
+                                <Zap size={13} /> Cumplimiento SLA (&lt;15 min)
+                            </div>
+                            <p style={{ margin: 0, color: '#475569' }}>
+                                Porcentaje de chats respondidos <strong>dentro de los primeros 15 minutos</strong> de espera (Meta institucional: ≥ 80%). Un porcentaje bajo revela momentos de cola acumulada en horas pico.
+                            </p>
+                        </div>
+
+                        <div style={{ background: '#FFFFFF', padding: '10px 12px', borderRadius: '8px', border: '1px solid #BAE6FD' }}>
+                            <div style={{ fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '3px' }}>
+                                <CalendarCheck size={13} /> Turnos Brindados en SALUS
+                            </div>
+                            <p style={{ margin: 0, color: '#475569' }}>
+                                Cantidad oficial de <strong>turnos médicos agendados directamente en el sistema SALUS</strong> por la asesora en el período seleccionado. Refleja la producción asistencial efectiva.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {metrics.byAgentList.map(ag => {
                         const isExp = !!expandedAgents[ag.id];
@@ -3138,14 +3273,27 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                                         <div style={{ textAlign: 'right' }}>
                                             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F2942' }}>
-                                                {ag.count} msgs
+                                                {ag.count.toLocaleString('es-AR')} msgs
                                             </div>
                                             <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
                                                 {pct}% del total
                                             </div>
+                                        </div>
+
+                                        {/* BADGE DESTACADO: TURNOS SALUS */}
+                                        <div 
+                                            title="Cantidad oficial de turnos médicos agendados en SALUS durante el período"
+                                            style={{
+                                                padding: '4px 9px', borderRadius: '6px', background: '#F0FDF4',
+                                                color: '#166534', fontSize: '0.7rem', fontWeight: 800, border: '1px solid #BBF7D0',
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                            }}
+                                        >
+                                            <CalendarCheck size={12} color="#166534" />
+                                            🏥 {ag.turnosSalus ? `${ag.turnosSalus.toLocaleString('es-AR')} turnos SALUS` : `${ag.resolvedReasons?.['Turno Coordinado'] || 0} turnos`}
                                         </div>
 
                                         <div style={{
@@ -3162,17 +3310,23 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             📥 {ag.assignedCount || ag.resolvedCount} tomados
                                         </div>
 
-                                        <div style={{
-                                            padding: '4px 8px', borderRadius: '6px', background: '#F1F5F9',
-                                            color: '#475569', fontSize: '0.7rem', fontWeight: 700
-                                        }}>
+                                        <div 
+                                            title="FRT: Tiempo hasta que la asesora envía su 1er mensaje humano"
+                                            style={{
+                                                padding: '4px 8px', borderRadius: '6px', background: '#F1F5F9',
+                                                color: '#475569', fontSize: '0.7rem', fontWeight: 700
+                                            }}
+                                        >
                                             ⚡ FRT: {ag.avgAgentFRTMin || ag.avgResponseTimeMin}m
                                         </div>
 
-                                        <div style={{
-                                            padding: '4px 8px', borderRadius: '6px', background: '#F5F3FF',
-                                            color: '#6D28D9', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #DDD6FE'
-                                        }}>
+                                        <div 
+                                            title="AHT: Tiempo neto que la asesora dedica a gestionar el chat hasta cerrarlo"
+                                            style={{
+                                                padding: '4px 8px', borderRadius: '6px', background: '#F5F3FF',
+                                                color: '#6D28D9', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #DDD6FE'
+                                            }}
+                                        >
                                             🎯 AHT: {ag.avgHandleTimeMin > 0 ? `${ag.avgHandleTimeMin}m` : '< 5m'}
                                         </div>
 
@@ -3195,43 +3349,104 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         {/* TARJETAS INTERNAS */}
                                         <div style={{
                                             display: 'grid',
-                                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
                                             gap: '10px'
                                         }}>
+                                            {/* 1. TURNOS SALUS OFICIALES */}
+                                            <div style={{
+                                                background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px',
+                                                border: '1.5px solid #BAE6FD', boxShadow: '0 1px 3px rgba(2, 132, 199, 0.08)'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <div style={{ fontSize: '0.68rem', color: '#0369A1', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <CalendarCheck size={13} color="#0284C7" />
+                                                        Turnos en SALUS
+                                                    </div>
+                                                    <span style={{ fontSize: '0.6rem', background: '#E0F2FE', color: '#0369A1', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                                                        Oficial
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284C7', marginTop: '2px' }}>
+                                                    {ag.turnosSalus ? ag.turnosSalus.toLocaleString('es-AR') : (ag.resolvedReasons?.['Turno Coordinado'] || 0)}
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', marginLeft: '3px' }}>dados</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B', marginTop: '1px' }}>
+                                                    {ag.asistenciaPctSalus 
+                                                        ? `${ag.asistidasSalus || 0} asistidas (${ag.asistenciaPctSalus}%)`
+                                                        : 'Agendados en agenda médica SALUS'}
+                                                </div>
+                                            </div>
+
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Total Despachos</div>
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0F2942', marginTop: '2px' }}>{ag.count.toLocaleString('es-AR')}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mensajes enviados</div>
                                             </div>
+
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 700 }}>Conversaciones Atendidas</div>
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.conversationsCount || 0}</div>
                                                 <div style={{ fontSize: '0.62rem', color: '#64748B' }}>~{ag.avgMessagesPerConversation || 0} msgs/conv</div>
                                             </div>
+
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Chats Tomados</div>
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0284C7', marginTop: '2px' }}>{ag.assignedCount || ag.resolvedCount}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Fichas asignadas</div>
                                             </div>
+
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Casos Finalizados</div>
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.resolvedCount}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Cierres registrados</div>
                                             </div>
-                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>1er Contacto (FRT)</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>{ag.avgAgentFRTMin || ag.avgResponseTimeMin} min</div>
+
+                                            {/* FRT CON EXPLICACIÓN PEDAGÓGICA */}
+                                            <div 
+                                                title="FRT (First Response Time): Minutos que el paciente esperó hasta recibir el 1er mensaje humano de la asesora."
+                                                style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}
+                                            >
+                                                <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Clock size={12} /> 1er Contacto (FRT)
+                                                </div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
+                                                    {ag.avgAgentFRTMin || ag.avgResponseTimeMin} min
+                                                </div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
+                                                    Espera hasta 1er msj de asesora
+                                                </div>
                                             </div>
-                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Resolución Neta AHT</div>
+
+                                            {/* AHT CON EXPLICACIÓN PEDAGÓGICA */}
+                                            <div 
+                                                title="AHT (Average Handling Time): Tiempo neto que dura la atención del chat desde que la asesora lo toma hasta que lo cierra."
+                                                style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}
+                                            >
+                                                <div style={{ fontSize: '0.68rem', color: '#7C3AED', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Timer size={12} /> Gestión Neta (AHT)
+                                                </div>
                                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#8B5CF6', marginTop: '2px' }}>
                                                     {ag.avgHandleTimeMin > 0 ? `${ag.avgHandleTimeMin}m` : '< 5m'}
                                                 </div>
-                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mediana: {ag.medianHandleTimeMin || 0}m</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
+                                                    Mediana: {ag.medianHandleTimeMin || 0}m de gestión
+                                                </div>
                                             </div>
-                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Cumplimiento SLA</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: ag.slaCumplimientoPct >= 85 ? '#059669' : '#D97706', marginTop: '2px' }}>
+
+                                            {/* SLA CON EXPLICACIÓN PEDAGÓGICA */}
+                                            <div 
+                                                title="SLA: Porcentaje de consultas donde la asesora envió su 1er mensaje en menos de 15 minutos (Meta institucional: ≥80%)."
+                                                style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}
+                                            >
+                                                <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Zap size={12} /> Cumplimiento SLA
+                                                </div>
+                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: ag.slaCumplimientoPct >= 80 ? '#059669' : '#D97706', marginTop: '2px' }}>
                                                     {ag.slaCumplimientoPct}%
                                                 </div>
-                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Pico: {ag.peakHour}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
+                                                    Chats en &lt;15m (Meta: ≥80%)
+                                                </div>
                                             </div>
                                         </div>
 
@@ -3257,7 +3472,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                             Curva de Despachos por Franja Horaria
                                                         </div>
                                                         <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
-                                                            Distribución de respuestas activas de 07:00 a 21:00 hs
+                                                            Distribución de respuestas de 07:00 a 21:00 hs · Período: {periodLabel}
                                                         </div>
                                                     </div>
                                                     <span style={{
@@ -3319,7 +3534,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                 </div>
                                             </div>
 
-                                            {/* GRÁFICO 2: EVOLUCIÓN DIARIA EN EL MES */}
+                                            {/* GRÁFICO 2: EVOLUCIÓN DIARIA EN EL PERÍODO SELECCIONADO */}
                                             <div style={{
                                                 background: '#FFFFFF',
                                                 padding: '14px 16px',
@@ -3334,7 +3549,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                             Evolución Diaria de Respuestas
                                                         </div>
                                                         <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
-                                                            Volumen de despachos día por día en el período seleccionado
+                                                            Volumen de despachos día por día · Período: {periodLabel}
                                                         </div>
                                                     </div>
                                                     <span style={{
@@ -3381,7 +3596,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                         </ResponsiveContainer>
                                                     ) : (
                                                         <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.76rem' }}>
-                                                            Sin despachos registrados en el rango
+                                                            Sin despachos registrados en el período seleccionado
                                                         </div>
                                                     )}
                                                 </div>
@@ -3419,6 +3634,32 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                     </span>
                                                 </div>
 
+                                                {/* INCLUIR TURNOS SALUS EN LA DISTRIBUCIÓN DE TRÁMITES */}
+                                                <div style={{
+                                                    background: '#F0FDF4',
+                                                    padding: '8px 12px',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid #BBF7D0',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <CalendarCheck size={16} color="#15803D" />
+                                                        <div>
+                                                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#14532D' }}>
+                                                                Turnos Médicos Otorgados en SALUS
+                                                            </div>
+                                                            <div style={{ fontSize: '0.62rem', color: '#166534' }}>
+                                                                Citas creadas formalmente en agenda médica hospitalaria
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <span style={{ fontSize: '1rem', fontWeight: 900, color: '#15803D' }}>
+                                                        {ag.turnosSalus ? ag.turnosSalus.toLocaleString('es-AR') : (ag.resolvedReasons?.['Turno Coordinado'] || 0)}
+                                                    </span>
+                                                </div>
+
                                                 {ag.reasonsChartData && ag.reasonsChartData.length > 0 ? (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
                                                         {ag.reasonsChartData.slice(0, 5).map((rItem, idx) => {
@@ -3448,7 +3689,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                 )}
                                             </div>
 
-                                            {/* PANEL: VELOCIDAD Y CUMPLIMIENTO SLA */}
+                                            {/* PANEL: VELOCIDAD Y CUMPLIMIENTO SLA CON EXPLICACIÓN CLARA */}
                                             <div style={{
                                                 background: '#FFFFFF',
                                                 padding: '14px 16px',
@@ -3465,7 +3706,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                             Velocidad de Respuesta & Niveles SLA
                                                         </div>
                                                         <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
-                                                            Desglose de demoras antes del primer contacto
+                                                            Desglose de demoras antes del 1er contacto humano
                                                         </div>
                                                     </div>
                                                     <span style={{
@@ -3476,12 +3717,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                         fontSize: '0.68rem',
                                                         fontWeight: 800
                                                     }}>
-                                                        {ag.slaCumplimientoPct}% en SLA
+                                                        {ag.slaCumplimientoPct}% en SLA (&lt;15m)
                                                     </span>
                                                 </div>
 
+                                                {/* EXPLICACIÓN DIDÁCTICA DEL SLA */}
+                                                <div style={{
+                                                    fontSize: '0.67rem',
+                                                    color: '#475569',
+                                                    background: '#F8FAFC',
+                                                    padding: '8px 10px',
+                                                    borderRadius: '6px',
+                                                    border: '1px solid #E2E8F0',
+                                                    lineHeight: '1.35'
+                                                }}>
+                                                    <strong>¿Qué mide este semáforo?</strong> Evalúa qué porcentaje de pacientes esperaron <strong>menos de 15 minutos</strong> para ser atendidos. La meta institucional es ≥ 80%. Los casos en rojo (&gt;1h) corresponden a colas de espera formadas en horas pico o fuera de turno.
+                                                </div>
+
                                                 {/* BARRA SEGMENTADA */}
-                                                <div style={{ marginTop: '4px' }}>
+                                                <div style={{ marginTop: '2px' }}>
                                                     <div style={{
                                                         width: '100%',
                                                         height: '10px',
@@ -3504,7 +3758,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                         />
                                                     </div>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.66rem', color: '#64748B' }}>
-                                                        <span style={{ color: '#047857', fontWeight: 700 }}>● &lt;15m: {ag.slaBreakdown?.optimoPct || 0}%</span>
+                                                        <span style={{ color: '#047857', fontWeight: 700 }}>● &lt;15m (En SLA): {ag.slaBreakdown?.optimoPct || 0}%</span>
                                                         <span style={{ color: '#B45309', fontWeight: 700 }}>● 15-60m: {ag.slaBreakdown?.aceptablePct || 0}%</span>
                                                         <span style={{ color: '#DC2626', fontWeight: 700 }}>● &gt;1h: {ag.slaBreakdown?.demoradoPct || 0}%</span>
                                                     </div>
@@ -3514,7 +3768,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                     display: 'grid',
                                                     gridTemplateColumns: 'repeat(2, 1fr)',
                                                     gap: '8px',
-                                                    marginTop: '6px',
+                                                    marginTop: '4px',
                                                     padding: '8px 10px',
                                                     background: '#F8FAFC',
                                                     borderRadius: '8px',
@@ -3523,10 +3777,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                     <div>
                                                         <div style={{ fontSize: '0.62rem', color: '#64748B' }}>1er Contacto (FRT):</div>
                                                         <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F2942' }}>{ag.avgAgentFRTMin || ag.avgResponseTimeMin} min</div>
+                                                        <div style={{ fontSize: '0.58rem', color: '#64748B' }}>Espera del paciente</div>
                                                     </div>
                                                     <div>
-                                                        <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mediana de Resolución:</div>
+                                                        <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Mediana de Gestión (AHT):</div>
                                                         <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#8B5CF6' }}>{ag.medianHandleTimeMin || 0} min</div>
+                                                        <div style={{ fontSize: '0.58rem', color: '#64748B' }}>Tiempo activo de chat</div>
                                                     </div>
                                                 </div>
                                             </div>
