@@ -3013,9 +3013,32 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         if (context?.patientName) {
             context.patientName.toLowerCase().split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3).forEach((w: string) => patientNameWords.add(w));
         }
+
+        // 1. Extraer palabras inmediatamente contiguas al DNI (formato frecuente: "Alejandra castillo 32632518" o "Castillo Alejandra 32632518")
+        const dniInMsg = extractDniFromText(clean);
+        if (dniInMsg) {
+            const normClean = clean.replace(/[\.,\-_/]+/g, ' ').replace(/\s+/g, ' ');
+            const dniIdx = normClean.indexOf(dniInMsg);
+            if (dniIdx >= 0) {
+                const beforeDni = normClean.substring(0, dniIdx).trim();
+                const afterDni = normClean.substring(dniIdx + dniInMsg.length).trim();
+
+                const nonNameTokens = new Set(['dni', 'documento', 'doc', 'nro', 'hola', 'buenas', 'buen', 'dia', 'tardes', 'noches', 'favor', 'por', 'poseo', 'tengo', 'obra', 'social', 'osde', 'osp', 'plan', 'particular', 'sancor', 'swiss', 'medife', 'galeno']);
+                const beforeTokens = beforeDni.split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w) && !nonNameTokens.has(w));
+                // Los últimos 2-3 tokens antes del DNI representan el nombre y apellido del paciente
+                beforeTokens.slice(-3).forEach(w => patientNameWords.add(w));
+
+                const afterTokens = afterDni.split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w) && !nonNameTokens.has(w));
+                if (beforeTokens.length === 0 && afterTokens.length > 0) {
+                    afterTokens.slice(0, 3).forEach(w => patientNameWords.add(w));
+                }
+            }
+        }
+
         const selfNamePatterns = [
             /(?:a\s+mi\s+nombre|mi\s+nombre\s+es|nombre(?:\s+completo)?(?:\s+es)?|soy|me\s+llamo|paciente:?)\s+([a-záéíóúñ\s]+?)(?:(?:\s+\d{6,8})|\s+obra|\s+osp|\s+para|\s+turno|\s+tomografia|\s+estudio|\s+con|\s+$)/i,
-            /(?:paciente\s+titular|a\s+nombre\s+de)\s+([a-záéíóúñ\s]+?)(?:(?:\s+\d{6,8})|\s+obra|\s+osp|\s+para|\s+turno|\s+tomografia|\s+estudio|\s+con|\s+$)/i
+            /(?:paciente\s+titular|a\s+nombre\s+de)\s+([a-záéíóúñ\s]+?)(?:(?:\s+\d{6,8})|\s+obra|\s+osp|\s+para|\s+turno|\s+tomografia|\s+estudio|\s+con|\s+$)/i,
+            /^(?:hola|buenas(?: tardes| noches)?|buen d[ií]a)?\s*([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+){1,3})\s*(?:,|\bdni\b|\bdoc\b|\bdocumento\b)?\s*[:\s]*\b\d{6,8}\b/i
         ];
         for (const p of selfNamePatterns) {
             const sm = clean.match(p);
@@ -4337,7 +4360,23 @@ async function handleChatbotTriage(
 
     // patientLegalName es el nombre formal para registrar en la historia clínica / titular
     const convNameClean = (conv?.nombre_completo && !isMedicalSpecialty(conv.nombre_completo) && !conv.nombre_completo.startsWith('Paciente')) ? conv.nombre_completo : null;
-    const patientLegalName = paciente?.nombre || (terceroPaciente ? (cleanSender || rawSender) : (convNameClean || cleanSender || rawSender));
+
+    // Extracción de nombre y apellido si viene en el texto junto al DNI (ej: "Alejandra castillo 32632518")
+    let extractedNameFromMsg: string | null = null;
+    if (dniInMessage) {
+        const norm = cleanText.replace(/[\.,\-_/]+/g, ' ').replace(/\s+/g, ' ');
+        const dniIdx = norm.indexOf(dniInMessage);
+        if (dniIdx >= 0) {
+            const before = norm.substring(0, dniIdx).trim();
+            const nonName = new Set(['dni', 'documento', 'doc', 'nro', 'hola', 'buenas', 'buen', 'dia', 'tardes', 'noches', 'favor', 'por', 'soy', 'me', 'llamo', 'nombre', 'paciente', 'para', 'turno', 'cita']);
+            const wordsBefore = before.split(/\s+/).filter(w => w.length >= 2 && !nonName.has(w.toLowerCase()));
+            if (wordsBefore.length >= 2 && wordsBefore.length <= 4) {
+                extractedNameFromMsg = wordsBefore.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            }
+        }
+    }
+
+    const patientLegalName = paciente?.nombre || (terceroPaciente ? (cleanSender || rawSender) : (convNameClean || extractedNameFromMsg || cleanSender || rawSender));
     const fullName = whatsappName; // Mantener compatibilidad interna llamando al usuario por su {name}
     const os = (paciente?.coseguro || 'Particular / A confirmar').trim();
     const dniTitular = paciente?.dni || (!terceroPaciente ? dniInMessage : null) || null;
@@ -4361,7 +4400,7 @@ async function handleChatbotTriage(
         updates = {
             ...updates,
             dni: dniInMessage,
-            nombre_completo: fullName,
+            nombre_completo: extractedNameFromMsg || patientLegalName || fullName,
             es_paciente_existente: false
         };
     }
@@ -4470,7 +4509,7 @@ async function handleChatbotTriage(
         agentName: lastAgentMessage?.sender_name || conv?.closed_by_agent_name || null,
         turnoOnlineProximo,
         turnosActivosProximos,
-        patientName: fullName,
+        patientName: [patientLegalName, paciente?.nombre, conv?.nombre_completo, extractedNameFromMsg, cleanSender, fullName].filter(Boolean).join(' '),
         resolvedDni,
         previousResolutionReason: wasClosed ? conv?.resolution_reason : null,
         botStage: conv?.bot_stage || null
@@ -4515,6 +4554,38 @@ async function handleChatbotTriage(
     if (rawDocName) {
         rawDocName = rawDocName.replace(/^\([^)]+\)\s*/, '').replace(/\s*\([^)]+\)$/, '').replace(/\s+SSLN$/i, '').replace(/\s+SEDE\s+\d+/i, '').trim();
     }
+
+    // GUARDA DE SEGURIDAD ABSOLUTA CONTRA COLISIÓN CON EL PACIENTE:
+    // Si el médico inferido coincide con el nombre o apellido del paciente,
+    // y en el mensaje NO hubo mención explícita ("Dr.", "Dra.", "Doctor", "turno con", "atenderme con"),
+    // se descarta el médico para evitar asignar el turno al apellido del propio paciente.
+    if (rawDocName) {
+        const cleanDocSurname = rawDocName.replace(/^Dr[a]?\.\s*/i, '').trim().split(/[\s,]+/)[0].toLowerCase();
+        const hasExplicitDoctorMention = /\b(?:doctor|doctora|dr|dra)\.?/i.test(cleanText) ||
+            /\b(?:turno\s+con|atenderme\s+con|atencion\s+con|verme\s+con|cita\s+con)\b/i.test(cleanText);
+
+        const allPatientNames = [
+            extractedNameFromMsg,
+            patientLegalName,
+            paciente?.nombre,
+            conv?.nombre_completo,
+            cleanSender,
+            fullName
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        const patientTokens = allPatientNames.split(/[\s,.\-_/]+/).filter(w => w.length >= 3 && !['paciente', 'usuario', 'whatsapp', 'user'].includes(w));
+        const isCollision = patientTokens.some(pt => pt === cleanDocSurname || (cleanDocSurname.length >= 4 && pt.includes(cleanDocSurname)));
+
+        if (isCollision && !hasExplicitDoctorMention) {
+            console.warn(`[triage-bot] ⚠️ Colisión evitada: médico inferido "${rawDocName}" coincide con apellido/nombre del paciente "${allPatientNames}". Descartando.`);
+            rawDocName = null;
+            if (analysis) {
+                analysis.doctorRecord = null;
+                analysis.doctorCandidate = null;
+            }
+        }
+    }
+
     const isDocFemale = rawDocName && /\b(dra\.?|doctora|agustina|ana|sonia|laura|silvia|lucia|lucía|julieta|marisa|cintia|paulina|daniela|mariana|maria|valeria|patricia|carolina|veronica|romina|natalia|vanesa|gabriela|lorena|cecilia|marcela|andrea|elena|claudia|bertha)\b/i.test(rawDocName);
     const hasHonorific = rawDocName && /^(dr|dra)\.?/i.test(rawDocName);
     const isDocService = isServiceProviderName(rawDocName);
