@@ -129,7 +129,6 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             } else if (p === '2026-10') {
                 setAjustesFte({
                     eleal: 0.5, // Curva 50%
-                    macosta: 0.0, // Ya cesó
                     solivier: 1.0,
                     vjacques: 1.0,
                     daguilera: 1.0
@@ -137,7 +136,6 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             } else {
                 setAjustesFte({
                     eleal: 0.5,
-                    macosta: 0.0,
                     solivier: 1.0,
                     vjacques: 1.0,
                     daguilera: 1.0
@@ -716,7 +714,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
                     gap: '10px'
                 }}>
-                    {liquidacion.agentes.map(ag => (
+                    {liquidacion.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).map(ag => (
                         <div key={ag.id} style={{
                             background: '#F8FAFC',
                             borderRadius: '12px',
@@ -780,7 +778,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         </p>
                     </div>
                     <span style={{ fontSize: '0.72rem', background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontWeight: 700, color: '#475569' }}>
-                        Dotación Evaluada: {liquidacion.agentes.length} operadoras
+                        Dotación Evaluada: {liquidacion.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).length} operadoras
                     </span>
                 </div>
 
@@ -800,7 +798,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             </tr>
                         </thead>
                         <tbody>
-                            {liquidacion.agentes.map((ag) => (
+                            {liquidacion.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).map((ag) => (
                                 <tr key={ag.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s ease' }}>
                                     <td style={{ padding: '12px', fontWeight: 700, color: '#0F2942' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

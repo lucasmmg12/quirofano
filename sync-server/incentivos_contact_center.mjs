@@ -202,7 +202,11 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             estado,
             fte
         };
-    });
+    }).filter(ag => !(periodoIso >= '2026-10' && ag.id === 'macosta'));
+
+    // Calcular total de turnos grupales de la dotación activa
+    const totalTurnosActivos = listaAgentes.reduce((acc, a) => acc + a.turnos, 0);
+    const escalonTurnosActivos = calculateEscalon(totalTurnosActivos, 'turnos');
 
     return {
         periodo: periodoIso,
@@ -210,12 +214,12 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         endDate,
         config: INCENTIVO_TIERS,
         turnosGrupales: {
-            total: totalTurnosGrupal,
-            escalon: escalonTurnos.escalon,
-            montoPorAgente: escalonTurnos.monto,
+            total: totalTurnosActivos,
+            escalon: escalonTurnosActivos.escalon,
+            montoPorAgente: escalonTurnosActivos.monto,
             meta: INCENTIVO_TIERS.bolsas.turnos.meta,
             tope: INCENTIVO_TIERS.bolsas.turnos.tope,
-            progresoPct: escalonTurnos.progresoPct
+            progresoPct: escalonTurnosActivos.progresoPct
         },
         agentes: listaAgentes
     };
