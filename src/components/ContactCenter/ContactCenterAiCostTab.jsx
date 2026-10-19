@@ -20,6 +20,7 @@ import {
     Cell
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
+import { fetchDolarOficial } from '../../services/dolarService';
 
 // Tarifas de referencia de OpenAI por 1 Millón de tokens (USD)
 const PRICING_TABLE = {
@@ -160,6 +161,14 @@ export default function ContactCenterAiCostTab({
     useEffect(() => {
         loadAiUsageData();
     }, [timeRange, customStartDate, customEndDate, selectedMonth]);
+
+    useEffect(() => {
+        fetchDolarOficial().then(d => {
+            if (d?.venta && setArsRate) {
+                setArsRate(d.venta);
+            }
+        });
+    }, []);
 
     // Métricas del período filtrado
     const stats = useMemo(() => {
@@ -494,12 +503,12 @@ export default function ContactCenterAiCostTab({
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    {/* Cotización Dólar editable */}
+                    {/* Cotización Dólar Oficial en vivo desde DolarApi.com */}
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         background: '#F8FAFC', padding: '6px 12px', borderRadius: '8px',
                         border: '1px solid #CBD5E1'
-                    }}>
+                    }} title="Cotización oficial automática desde DolarApi.com (editable)">
                         <DollarSign size={15} color="#059669" />
                         <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 700 }}>Dólar Ref:</span>
                         <span style={{ fontSize: '0.72rem', color: '#64748B' }}>$</span>
@@ -512,9 +521,33 @@ export default function ContactCenterAiCostTab({
                                 fontSize: '0.78rem', fontWeight: 800, color: '#0F2942',
                                 outline: 'none'
                             }}
-                            title="Cotización ARS editable por dólar"
+                            title="Cotización ARS editable (actualizada vía DolarApi)"
                         />
                         <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>ARS</span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                fetchDolarOficial(true).then(d => {
+                                    if (d?.venta && setArsRate) {
+                                        setArsRate(d.venta);
+                                        if (addToast) addToast(`Dólar actualizado a $${d.venta} ARS (DolarApi Oficial)`, 'success');
+                                    }
+                                });
+                            }}
+                            title="Sincronizar en tiempo real con DolarApi.com"
+                            style={{
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                color: '#0284C7',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '2px',
+                                marginLeft: '2px'
+                            }}
+                        >
+                            <RefreshCw size={12} />
+                        </button>
                     </div>
 
                     {/* Botón Refrescar */}

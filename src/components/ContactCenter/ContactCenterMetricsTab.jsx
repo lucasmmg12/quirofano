@@ -29,6 +29,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { CONTACT_CENTER_AGENTS, isClosedOrArchived } from '../../services/contactCenterService';
 import { INCENTIVO_CONFIG, calculateEscalon } from '../../services/incentivoContactCenterService';
+import { fetchDolarOficial } from '../../services/dolarService';
 import ContactCenterAiCostTab from './ContactCenterAiCostTab';
 
 const COSTO_POR_MENSAJE_USD = 0.026; // $0.026 USD por mensaje enviado a partir del 1.001
@@ -107,6 +108,14 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     // Control de Modal de Costos de WhatsApp
     const [costModalOpen, setCostModalOpen] = useState(false);
     const [arsRate, setArsRate] = useState(COTIZACION_DOLAR_REF);
+
+    useEffect(() => {
+        fetchDolarOficial().then(d => {
+            if (d?.venta) {
+                setArsRate(d.venta);
+            }
+        });
+    }, []);
 
     // Acordeón de Agentes desplegables
     const [expandedAgents, setExpandedAgents] = useState({});
