@@ -3148,7 +3148,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         <div>
                                             <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F2942' }}>{ag.name}</div>
                                             <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                {ag.avgResponseTimeMin > 0 ? `Promedio: ${ag.avgResponseTimeMin}m` : 'Respuesta inmediata'} • {ag.assignedCount || 0} tomados
+                                                {ag.avgResponseTimeMin > 0 ? `Promedio: ${ag.avgResponseTimeMin}m` : 'Respuesta inmediata'}
                                             </div>
                                         </div>
                                     </div>
@@ -3348,12 +3348,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             💬 {ag.conversationsCount || 0} conv ({ag.conversationsPct || 0}%)
                                         </div>
 
-                                        <div style={{
-                                            padding: '4px 8px', borderRadius: '6px', background: '#F0F9FF',
-                                            color: '#0369A1', fontSize: '0.7rem', fontWeight: 700, border: '1px solid #BAE6FD'
-                                        }}>
-                                            📥 {ag.assignedCount || ag.resolvedCount} tomados
-                                        </div>
+
 
                                         <div 
                                             title="FRT: Tiempo hasta que la asesora envía su 1er mensaje humano"
@@ -3434,11 +3429,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                 <div style={{ fontSize: '0.62rem', color: '#64748B' }}>~{ag.avgMessagesPerConversation || 0} msgs/conv</div>
                                             </div>
 
-                                            <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Chats Tomados</div>
-                                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0284C7', marginTop: '2px' }}>{ag.assignedCount || ag.resolvedCount}</div>
-                                                <div style={{ fontSize: '0.62rem', color: '#64748B' }}>Fichas asignadas</div>
-                                            </div>
+
 
                                             <div style={{ background: '#FFFFFF', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>Casos Finalizados</div>
