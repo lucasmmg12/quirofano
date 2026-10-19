@@ -218,6 +218,7 @@ function App({ currentUser, onLogout }) {
 
     // Restricted viewer check
     const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
+    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim());
 
     // Derive activeView directly from the URL pathname
     // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)
@@ -267,7 +268,7 @@ function App({ currentUser, onLogout }) {
             const initActivity = async () => {
                 await startSession(currentUser);
                 // Track initial module
-                const initialView = isUciOnly 
+                const initialView = (isGobernanzaOnly || isUciOnly)
                     ? 'gobernanza_indicadores' 
                     : isContactCenterOnly 
                         ? 'contact_center' 
@@ -276,6 +277,17 @@ function App({ currentUser, onLogout }) {
             };
             initActivity();
             
+            if (isGobernanzaOnly) {
+                const GOB_ALLOWED_VIEWS = ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+                setSelectedModules(GOB_ALLOWED_VIEWS);
+                setNeedsModuleOnboarding(false);
+                setShowModuleOnboarding(false);
+                if (activeView === 'inicio' || !GOB_ALLOWED_VIEWS.includes(activeView)) {
+                    navigate('/gobernanza_indicadores', { replace: true });
+                }
+                return;
+            }
+
             if (isUciOnly) {
                 setSelectedModules(['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics']);
                 setNeedsModuleOnboarding(false);
@@ -354,6 +366,14 @@ function App({ currentUser, onLogout }) {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
         const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
+
+        if (isGobernanzaOnly) {
+            const GOB_ALLOWED_VIEWS = ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+            if (!GOB_ALLOWED_VIEWS.includes(activeView)) {
+                setActiveView('gobernanza_indicadores');
+            }
+            return;
+        }
 
         if (isUciOnly) {
             const UCI_ALLOWED_VIEWS = ['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
@@ -545,14 +565,14 @@ function App({ currentUser, onLogout }) {
     useEffect(() => {
         const handler = (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                if (isUciOnly) return;
+                if (isUciOnly || isGobernanzaOnly) return;
                 e.preventDefault();
                 setCommandPaletteOpen(prev => !prev);
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isUciOnly]);
+    }, [isUciOnly, isGobernanzaOnly]);
 
     // === CART OPERATIONS (unified: prácticas + internación) ===
     const handleAddToCart = useCallback((practice) => {

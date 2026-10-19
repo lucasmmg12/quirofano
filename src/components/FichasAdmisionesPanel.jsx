@@ -34,6 +34,7 @@ import DigitalSignaturePad from './common/DigitalSignaturePad';
 import PrintConstanciaFichas from './PrintConstanciaFichas';
 import CircuitoFichasBanner from './common/CircuitoFichasBanner';
 import { generarPdfConstanciaFichas } from '../utils/fichasEntregaPdf';
+import { triggerAltasSync } from '../services/salusSync';
 
 export default function FichasAdmisionesPanel({ isPublic = false, currentUser = null }) {
     // Pestañas
@@ -95,6 +96,10 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
     // Impresión
     const printRef = useRef(null);
     const [printData, setPrintData] = useState(null);
+
+    // Sincronización manual de altas desde SALUS
+    const [syncingAltas, setSyncingAltas] = useState(false);
+    const [syncProgress, setSyncProgress] = useState('');
 
     // ─── Carga de Datos ───
     const loadPendientes = useCallback(async () => {
@@ -529,6 +534,46 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                             Copiar Link para Recepción
                         </button>
                     )}
+
+                    <button
+                        type="button"
+                        id="fichas-sync-salus-btn"
+                        disabled={syncingAltas}
+                        title="Trae desde SALUS las últimas admisiones / altas (se ejecuta automáticamente cada 20 min de 6 a 22 hs)"
+                        onClick={async () => {
+                            setSyncingAltas(true);
+                            setSyncProgress('Solicitando...');
+                            try {
+                                const res = await triggerAltasSync({
+                                    requestedBy: currentUser?.nombre || (isPublic ? 'Recepción (link público)' : 'Usuario'),
+                                    onProgress: (t) => setSyncProgress(t)
+                                });
+                                showToast(`Fichas sincronizadas con SALUS${res?.elapsed ? ` (${res.elapsed})` : ''}`);
+                                if (activeTab === 'pendientes') loadPendientes();
+                                else if (activeTab === 'carrito') loadCarrito();
+                                else loadHistorial();
+                            } catch (err) {
+                                console.error('[FichasAdmisiones] Error sync altas:', err);
+                                showToast(err.message || 'Error sincronizando con SALUS', 'error');
+                            } finally {
+                                setSyncingAltas(false);
+                                setSyncProgress('');
+                            }
+                        }}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            background: syncingAltas ? '#e0f2fe' : '#0284c7',
+                            border: '1px solid #0284c7',
+                            color: syncingAltas ? '#0369a1' : '#ffffff',
+                            fontSize: '0.82rem', fontWeight: 700,
+                            cursor: syncingAltas ? 'wait' : 'pointer',
+                            boxShadow: '0 1px 2px rgba(2,132,199,0.25)', transition: 'all 0.2s'
+                        }}
+                    >
+                        <RefreshCw size={15} className={syncingAltas ? 'animate-spin' : ''} />
+                        {syncingAltas ? (syncProgress || 'Sincronizando...') : 'Sincronizar SALUS'}
+                    </button>
 
                     <button
                         type="button"

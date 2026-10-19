@@ -1559,6 +1559,7 @@ interface IntentDetectionResult {
         | 'agradecimiento_cierre'
         | 'seguimiento_asesor'
         | 'derivacion_agente'
+        | 'mas_informacion'
         | 'saludo_en_flujo'
         | 'seleccion_medico'
         | 'consulta_arancel'
@@ -1798,12 +1799,23 @@ function formatTurnoTargetPhrase(target: string | null | undefined): string {
     return ` con *${clean}*`;
 }
 
+/**
+ * Indica si un "profesional" de SALUS es en realidad un servicio / institución
+ * (ej: "GINECOLOGIA GUARDIAS", "LABORATORIO", "VACUNATORIO") y por lo tanto
+ * NO debe mostrarse con tratamiento "Dr./Dra.".
+ */
+function isServiceProviderName(name: string | null | undefined): boolean {
+    if (!name) return false;
+    const n = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return /\b(escuela|colegio|instituto|lab\b|laboratorio|guardias?|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia|consultorio|servicio|urgencias?)\b/i.test(n);
+}
+
 function formatDoctorDisplay(rawDoc: any): { displayName: string; specialty: string; cleanSurnameAndName: string } {
     if (!rawDoc) return { displayName: 'Profesional', specialty: 'Consultorios', cleanSurnameAndName: 'Profesional' };
     let name = (rawDoc.profesional_nombre || '').trim();
 
     // Si el nombre corresponde a una institución, centro, escuela o servicio operativo (no a una persona médica)
-    const isInstitution = /\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(name);
+    const isInstitution = isServiceProviderName(name);
     if (isInstitution) {
         return {
             displayName: name,
@@ -2188,7 +2200,7 @@ function getWelcomeMenuMessage(pacienteNombre?: string): string {
         `2️⃣ *Consultar mi próximo turno o visita agendada* 📅\n` +
         `3️⃣ *Autorizaciones y órdenes médicas* 📋\n` +
         `4️⃣ *Guardia médica 24 horas y urgencias* 🚨\n` +
-        `5️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:00 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
+        `5️⃣ *Más información* ℹ️ _(laboratorio, radiografías, otras consultas o hablar con un agente)_\n\n` +
         `Podés responder con el número (*1*, *2*, *3*, *4* o *5*) o escribirnos tu consulta.\n` +
         `💡 _Si en cualquier momento deseás volver, escribí *\"Menú\"* o *\"Atrás\"*._`;
 }
@@ -2708,13 +2720,33 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         context?.botStage === 'esperando_datos_nuevo' ||
         context?.botStage === 'esperando_orden_foto';
 
-    // GUARDA ESTRICTA DE CONTEXTO: Si el bot está esperando datos específicos del paciente,
-    // los dígitos aislados NO deben disparar opciones del menú principal.
-    const isLastBotWelcomeMenu = 
+    // SUBMENÚ "MÁS INFORMACIÓN" (opción 5 del menú de bienvenida)
+    // Se activa si botStage es 'menu_mas_info' O si el último mensaje del bot fue dicho submenú (inmunidad ante latencia de DB)
+    const isLastBotMasInfoMenu =
         !isWaitingForUserData && (
+            context?.botStage === 'menu_mas_info' ||
+            lastBotContent.includes('más información') ||
+            lastBotContent.includes('mas informacion') ||
+            lastBotContent.includes('sobre qué te gustaría saber') ||
+            lastBotContent.includes('sobre que te gustaria saber') ||
+            lastBotContent.includes('1️⃣ *laboratorio*') ||
+            lastBotContent.includes('1️⃣ laboratorio')
+        );
+
+    // GUARDA ESTRICTA DE CONTEXTO: Si el bot está esperando datos específicos del paciente,
+    // o si el último mensaje fue Más Información, los dígitos aislados NO deben disparar opciones del menú principal.
+    const isLastBotWelcomeMenu = 
+        !isWaitingForUserData &&
+        !isLastBotMasInfoMenu &&
+        !lastBotContent.includes('más información') &&
+        !lastBotContent.includes('mas informacion') &&
+        !lastBotContent.includes('sobre qué te gustaría saber') &&
+        !lastBotContent.includes('sobre que te gustaria saber') && (
             context?.botStage === 'menu_bienvenida' ||
             context?.botStage === 'inicio' ||
-            (!context?.botStage && (lastBotContent.includes('consultar mi próximo turno') || lastBotContent.includes('en qué podemos ayudarte hoy')))
+            lastBotContent.includes('consultar mi próximo turno') ||
+            lastBotContent.includes('en qué podemos ayudarte hoy') ||
+            lastBotContent.includes('te damos la bienvenida')
         );
 
     const isLastBotImageMenu = !isWaitingForUserData && (lastBotContent.includes('recibimos tu imagen') || lastBotContent.includes('presupuesto o aranceles particulares'));
@@ -2727,7 +2759,20 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             lastBotContent.includes('estás gestionando para otro paciente')
         );
 
-    if (!isWaitingForUserData) {
+    if (isLastBotMasInfoMenu) {
+        if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(clean)) {
+            return { intent: 'servicio_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+        }
+        if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(clean)) {
+            return { intent: 'radiografia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        }
+        if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean) || /\b(agente|asesor|asesora|operador|operadora|humano|persona)\b/i.test(clean)) {
+            return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
+        }
+        // Texto libre: continúa con la detección por regex / IA
+    }
+
+    if (!isWaitingForUserData && !isLastBotMasInfoMenu) {
         if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
             if (isLastBotWelcomeMenu) {
                 return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
@@ -2769,6 +2814,9 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                 return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
             }
             return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
+        }
+        if ((/^[5|5️⃣]$/.test(clean) || /^opci[oó]n\s*5$/i.test(clean)) && isLastBotWelcomeMenu) {
+            return { intent: 'mas_informacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '5' };
         }
         if (/^[5|5️⃣]$/.test(clean) || /^opci[oó]n\s*5$/i.test(clean) || /^[0|0️⃣]$/.test(clean) || /^opci[oó]n\s*0$/i.test(clean)) {
             return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: clean.includes('0') ? '0' : '5' };
@@ -4419,7 +4467,12 @@ async function handleChatbotTriage(
     }
     const isDocFemale = rawDocName && /\b(dra\.?|doctora|agustina|ana|sonia|laura|silvia|lucia|lucía|julieta|marisa|cintia|paulina|daniela|mariana|maria|valeria|patricia|carolina|veronica|romina|natalia|vanesa|gabriela|lorena|cecilia|marcela|andrea|elena|claudia|bertha)\b/i.test(rawDocName);
     const hasHonorific = rawDocName && /^(dr|dra)\.?/i.test(rawDocName);
-    const doctorDisplay = rawDocName ? (hasHonorific ? rawDocName : (isDocFemale ? `Dra. ${rawDocName}` : `Dr. ${rawDocName}`)) : null;
+    const isDocService = isServiceProviderName(rawDocName);
+    const doctorDisplay = rawDocName
+        ? (isDocService
+            ? rawDocName.toLowerCase().split(/\s+/).filter(Boolean).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+            : (hasHonorific ? rawDocName : (isDocFemale ? `Dra. ${rawDocName}` : `Dr. ${rawDocName}`)))
+        : null;
     const doctorSpecialty = analysis.doctorRecord?.especialidad ? ` (${analysis.doctorRecord.especialidad})` : '';
 
 
@@ -5224,7 +5277,68 @@ async function handleChatbotTriage(
         }
     }
     // =============================================
-    // FLUJO 0A-2E y 0A-3: DERIVACIÓN A AGENTE HUMANO (OPCIÓN 5 O SOLICITUD DE ASESOR)
+    // FLUJO: MÁS INFORMACIÓN (OPCIÓN 5 DEL MENÚ DE BIENVENIDA)
+    // Submenú: 1 Laboratorio (derivación) | 2 Radiografías | 3 Agente humano
+    // =============================================
+    else if (analysis.intent === 'mas_informacion') {
+        replyText = `ℹ️ *Más información*\n\n` +
+            `¿Sobre qué te gustaría saber? Seleccioná una opción:\n\n` +
+            `1️⃣ *Laboratorio* (análisis, extracciones, preparación, resultados) 🩸\n` +
+            `2️⃣ *Radiografías / Rayos X* 🩻\n` +
+            `3️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:00 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
+            `También podés escribirnos directamente tu consulta.\n` +
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+        updates.status = 'bot';
+        updates.bot_active = true;
+        updates.bot_stage = 'menu_mas_info';
+        updates.motivo_consulta = 'Más información (esperando selección)';
+        if (conv) {
+            conv.bot_stage = 'menu_mas_info';
+            conv.bot_active = true;
+            conv.status = 'bot';
+            conv.motivo_consulta = 'Más información (esperando selección)';
+        }
+        nextStage = 'menu_mas_info';
+        return await finalizeAndSend(replyText, nextStage, updates);
+    }
+    // Si la conversación estaba en menu_mas_info y el usuario envió 1 o 2 y por alguna razón
+    // no cayó en el intent correspondiente, capturarlo de inmediato antes de cualquier otro flujo:
+    else if (
+        (currentStage === 'menu_mas_info' || lastBotContent.includes('sobre qué te gustaría saber') || lastBotContent.includes('1️⃣ *laboratorio*')) &&
+        analysis.intent !== 'volver_atras' &&
+        analysis.intent !== 'saludo_inicial' &&
+        !isNavigationBackOrMenu(cleanText)
+    ) {
+        if (/^[1|1️⃣]$/.test(cleanText.trim()) || /^opci[oó]n\s*1$/i.test(cleanText.trim()) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(cleanText)) {
+            updates.motivo_consulta = 'Laboratorio: Atención Presencial y Extracciones';
+            replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
+                `⚠️ Las consultas de *Laboratorio* (preparación, ayuno, presupuestos, resultados y extracciones) *no se gestionan por este canal*. Por favor comunicate directamente con el Laboratorio a través de sus líneas de WhatsApp (abajo) 👇\n\n` +
+                `Contamos con laboratorio de análisis clínicos en:\n` +
+                `📍 *Sede 01 (San Luis 432 Oeste):* Guardias activas las *24 horas*.\n` +
+                `📍 *Sede Santa Fe (Santa Fe 263 Este):* Horario de atención de *7:30 a 21:00 hs*.\n\n` +
+                `📋 *Pautas para la atención:*\n` +
+                `• La atención en ambas sedes es *por orden de llegada* (no se saca turno previo).\n` +
+                `• *Extracciones de sangre:* Hasta las 10:00 am (por condiciones de ayuno).\n\n` +
+                `📲 *Líneas de WhatsApp para consultas de preparación / ayuno:*\n` +
+                `• Sede 01: https://wa.me/5492644867408\n` +
+                `• Sede Santa Fe: https://wa.me/5492644609384\n\n` +
+                `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/` +
+                getInfoResolutionFooter();
+            nextStage = 'informacion_respondida';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+        if (/^[2|2️⃣]$/.test(cleanText.trim()) || /^opci[oó]n\s*2$/i.test(cleanText.trim()) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(cleanText)) {
+            updates.motivo_consulta = 'Información: Radiografías / RX';
+            replyText = getRadiografiaInfoMessage();
+            nextStage = 'informacion_respondida';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+        if (/^[3|3️⃣]$/.test(cleanText.trim()) || /^opci[oó]n\s*3$/i.test(cleanText.trim()) || /\b(agente|asesor|asesora|operador|humano|persona)\b/i.test(cleanText)) {
+            // Continúa naturalmente hacia el bloque de derivacion_agente que sigue a continuación
+        }
+    }
+    // =============================================
+    // FLUJO 0A-2E y 0A-3: DERIVACIÓN A AGENTE HUMANO (OPCIÓN 3 DE "MÁS INFORMACIÓN", OPCIÓN 0 O SOLICITUD DE ASESOR)
     // REGLA ESTRICTA MANDATORIA: NUNCA pasar a 'sin_asignar' sin DNI válido Y Motivo concreto.
     // =============================================
     else if (
@@ -6154,6 +6268,7 @@ async function handleChatbotTriage(
     else if (analysis.intent === 'servicio_laboratorio') {
         updates.motivo_consulta = 'Laboratorio: Atención Presencial y Extracciones';
         replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
+            `⚠️ Las consultas de *Laboratorio* (preparación, ayuno, presupuestos, resultados y extracciones) *no se gestionan por este canal*. Por favor comunicate directamente con el Laboratorio a través de sus líneas de WhatsApp (abajo) 👇\n\n` +
             `Contamos con laboratorio de análisis clínicos en:\n` +
             `📍 *Sede 01 (San Luis 432 Oeste):* Guardias activas las *24 horas*.\n` +
             `📍 *Sede Santa Fe (Santa Fe 263 Este):* Horario de atención de *7:30 a 21:00 hs*.\n\n` +
@@ -6444,7 +6559,7 @@ async function handleChatbotTriage(
         let doctorNoteMsg = '';
         const effectiveSpecialty = analysis.specialtyCandidate || detectSpecialty(cleanText) || null;
         if (doctorDisplay) {
-            doctorNoteMsg = ` con el *${doctorDisplay}*${doctorSpecialty}`;
+            doctorNoteMsg = isDocService ? ` en *${doctorDisplay}*${doctorSpecialty}` : ` con el *${doctorDisplay}*${doctorSpecialty}`;
             updates.medico_o_especialidad = analysis.doctorRecord?.profesional_nombre || doctorDisplay;
             updates.motivo_consulta = `Solicitud de Turno: ${doctorDisplay}`;
         } else if (effectiveSpecialty) {

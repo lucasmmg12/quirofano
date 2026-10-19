@@ -1851,7 +1851,12 @@ export default function ContactCenterChatConsole({
             const lastRun = lastAiSummaryTimeRef.current[phone] || 0;
             const cooldownPassed = (Date.now() - lastRun) > 180000;
             
-            if (!cooldownPassed || selectedChat.aiSummary || aiSummaryData) {
+            const existingSummary = aiSummaryData || selectedChat.aiSummary;
+            const summaryTs = existingSummary?.generated_at ? new Date(existingSummary.generated_at).getTime() : 0;
+            const lastMsgTs = new Date(lastMsgInChat.timestamp || lastMsgInChat.created_at || Date.now()).getTime();
+            const summaryIsStale = !existingSummary || (summaryTs && lastMsgTs > summaryTs);
+            
+            if (!cooldownPassed || !summaryIsStale) {
                 return;
             }
 

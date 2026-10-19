@@ -138,8 +138,27 @@ Deno.serve(async (req) => {
             'es', 'mi', 'con', 'quien', 'le', 'coordino', 'gracias', 'por', 'favor',
             'atencion', 'consulta', 'saber', 'necesito', 'quiero', 'pedir', 'sacar',
             'sanatorio', 'argentino', 'erica', 'leal', 'flor', 'datos', 'dni', 'solicito',
-            'paciente', 'hacer', 'hacerme', 'ver', 'verme', 'atender', 'atenderme'
+            'paciente', 'hacer', 'hacerme', 'ver', 'verme', 'atender', 'atenderme',
+            'buenos', 'buenas', 'informacion', 'social', 'obra', 'provincia', 'control',
+            'anual', 'numero', 'comunicarme', 'tengo', 'este', 'esta', 'tenia', 'leer'
         ]);
+
+        // Nombres de las agentes del Contact Center: el paciente suele saludarlas por su nombre
+        // ("Hola Daniela") y eso NO es un pedido de turno con un médico homónimo.
+        const normalizeWord = (w: string) => (w || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const agentNameTokens = new Set<string>();
+        for (const m of messages) {
+            if (m.direction === 'incoming') continue;
+            (m.sender_name || '').split(/[^A-Za-zÁÉÍÓÚáéíóúÑñ]+/).forEach((t: string) => { if (t.length >= 3) agentNameTokens.add(normalizeWord(t)); });
+            const soyMatch = normalizeWord(m.content || '').match(/\bsoy\s+([a-z]{3,})/g) || [];
+            soyMatch.forEach((s: string) => agentNameTokens.add(s.replace(/^soy\s+/, '')));
+        }
+        for (const m of messages) {
+            if (m.direction !== 'incoming') continue;
+            const vocatives = normalizeWord(m.content || '').match(/\b(hola|gracias|buen dia|buenos dias|buenas tardes|buenas)\s*,?\s+([a-z]{3,})/g) || [];
+            vocatives.forEach((v: string) => { const last = v.split(/[\s,]+/).pop(); if (last) agentNameTokens.add(last); });
+        }
+        agentNameTokens.forEach(t => STOPWORDS_PRESTADORES.add(t));
 
         const fullIncomingText = messages
             .filter(m => m.direction === 'incoming' && m.content)
@@ -235,6 +254,9 @@ Deno.serve(async (req) => {
                 return `• Prestador en Cartilla: ${d.profesional_nombre} | Especialidad: ${esp} (Coincide con texto del paciente: "${d.matchedTerm}")`;
             }).join('\n');
 
+            if (candidateDoctorsList[0].score < 10) {
+                doctorsContextPrompt = `\nPOSIBLES COINCIDENCIAS DE BAJA CONFIANZA EN CARTILLA (solo una palabra suelta):\n${doctorsLines}\n\nATENCIÓN: estas coincidencias pueden ser falsas (ej: el paciente saluda a la agente por su nombre de pila). Úsalas SOLO si el paciente pide claramente turno con ese profesional; en caso contrario ignóralas y deja "doctor_detectado.nombre_aproximado" en null.\n`;
+            } else
             doctorsContextPrompt = `\nPRESTADORES MÉDICOS DE SANATORIO ARGENTINO DETECTADOS EN LA CONVERSACIÓN:\n${doctorsLines}\n\nREGLA ESTRICTA SOBRE PRESTADORES DETECTADOS:\nEl paciente ha mencionado a uno de los profesionales médicos arriba listados. DEBES identificarlo sin dudar en "doctor_detectado.nombre_aproximado" (usa el nombre común del médico), asignarle su especialidad correspondiente en "doctor_detectado.especialidad_mencionada", y en "resumen_solicitud" especificar con claridad que solicita turno con dicho profesional (incluso si no dijo la palabra "doctor/a" ni "médico/a").\n`;
         }
 
@@ -378,7 +400,28 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         let detectedDoctorName = parsed.doctor_detectado?.nombre_aproximado;
 
         // Salvaguarda determinística: Si OpenAI no asignó doctor_detectado pero el pre-matching detectó con alta confianza a un prestador de cartilla
-        if (!detectedDoctorName && candidateDoctorsList.length > 0) {
+        const isProgramTramite = /prevenir|chequeo preventivo/i.test(parsed.tipo_tramite || '');
+        const hasHighConfidenceCandidate = candidateDoctorsList.length > 0 && candidateDoctorsList[0].score >= 10;
+
+        // Programa Prevenir / Chequeo: no hay prestador salvo que el paciente lo nombre con nombre y apellido
+        if (isProgramTramite && !hasHighConfidenceCandidate && parsed.doctor_detectado) {
+            parsed.doctor_detectado.nombre_aproximado = null;
+            detectedDoctorName = null;
+        }
+
+        // Descartar doctores cuyo nombre solo coincide con el nombre de una agente (saludo al operador)
+        if (detectedDoctorName && !hasHighConfidenceCandidate) {
+            const dWords = normalizeWord(detectedDoctorName).replace(/\b(dr|dra|doctor|doctora)\b\.?/g, '').split(/\s+/).filter((w: string) => w.length >= 3);
+            const nonAgentWords = dWords.filter((w: string) => !agentNameTokens.has(w) && normalizeWord(patientTextMessages).includes(w));
+            if (nonAgentWords.length === 0) {
+                console.log(`[chat-summary] Descartando doctor '${detectedDoctorName}': solo coincide con nombre de agente o no figura en el texto del paciente.`);
+                detectedDoctorName = null;
+                if (parsed.doctor_detectado) parsed.doctor_detectado.nombre_aproximado = null;
+            }
+        }
+
+        // Salvaguarda determinística: solo con coincidencia de alta confianza (nombre + apellido)
+        if (!detectedDoctorName && hasHighConfidenceCandidate && !isProgramTramite) {
             const topCandidate = candidateDoctorsList[0];
             const cleanName = topCandidate.profesional_nombre.replace(/\s+SLS.*$/i, '').replace(/^(dr|dra)\.?\s+/i, '').trim();
             detectedDoctorName = cleanName;
@@ -402,7 +445,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
             }
         }
 
-        if (!detectedDoctorName && conv?.medico_o_especialidad && !conv.medico_o_especialidad.includes('Circuito') && !conv.medico_o_especialidad.includes('Programa')) {
+        if (!detectedDoctorName && !isProgramTramite && conv?.medico_o_especialidad && !/circuito|programa|guardia/i.test(conv.medico_o_especialidad)) {
             detectedDoctorName = conv.medico_o_especialidad;
         }
 
@@ -506,7 +549,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         // Si no se encontró por médico pero sí por especialidad
         if (!matchedDoctor && parsed.doctor_detectado?.especialidad_mencionada) {
             const spec = parsed.doctor_detectado.especialidad_mencionada.trim();
-            if (spec.length >= 4) {
+            if (spec.length >= 4 && !/^consulta( m[eé]dica)?$/i.test(spec)) {
                 const { data: docsBySpec } = await supabase
                     .from('contact_center_doctor_parameters')
                     .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
@@ -530,7 +573,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         const finalSummary = {
             ...(conv?.ai_summary || {}),
             ...parsed,
-            prestador_matched: matchedDoctor,
+            prestador_matched: matchedDoctor || null,
             generated_at: new Date().toISOString(),
         };
 

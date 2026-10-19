@@ -163,6 +163,61 @@ export async function syncAll() {
 }
 
 /**
+ * Sincroniza únicamente las Altas Administrativas (fuente de Entrega de Fichas).
+ * Mucho más rápida que la sync integral. Usa localhost si está disponible,
+ * o la cola cloud `salus_sync_requests` (mode = 'altas').
+ * @param {{ requestedBy?: string, onProgress?: (task: string) => void }} opts
+ * @returns {Promise<{ success: boolean, elapsed?: string, results?: any }>}
+ */
+export async function triggerAltasSync({ requestedBy = 'Usuario', onProgress = null } = {}) {
+    const isLocal = isLocalEnvironment();
+
+    if (isLocal && typeof window !== 'undefined' && window.location.protocol !== 'https:') {
+        try {
+            const res = await fetch('http://localhost:3456/api/salus/sync/altas?fast=true', { signal: AbortSignal.timeout(300000) });
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success) return json;
+            }
+        } catch (_) {}
+    }
+
+    const { data: request, error: reqErr } = await supabase
+        .from('salus_sync_requests')
+        .insert({
+            mode: 'altas',
+            status: 'pending',
+            requested_by: requestedBy,
+            requested_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+    if (reqErr || !request) {
+        throw new Error(reqErr?.message || 'No se pudo crear la solicitud de sincronización de altas.');
+    }
+
+    const maxWaitMs = 600000;
+    const startWait = Date.now();
+    while (Date.now() - startWait < maxWaitMs) {
+        await new Promise(r => setTimeout(r, 2000));
+        const [reqRes, statusRes] = await Promise.all([
+            supabase.from('salus_sync_requests').select('*').eq('id', request.id).single(),
+            supabase.from('salus_sync_server_status').select('current_task').eq('id', 'primary').single()
+        ]);
+        if (statusRes?.data?.current_task && onProgress) onProgress(statusRes.data.current_task);
+        const reqState = reqRes?.data;
+        if (reqState?.status === 'completed') {
+            return { success: true, elapsed: reqState.elapsed, results: reqState.results };
+        }
+        if (reqState?.status === 'error') {
+            throw new Error(reqState.error || 'Error al sincronizar altas');
+        }
+    }
+    throw new Error('La sincronización de altas está demorando. Continúa procesándose en el servidor central.');
+}
+
+/**
  * Sincroniza el padrón maestro de pacientes desde SALUS hacia hospital_pacientes
  * Soporta ejecución en LAN local y vía cola Cloud para PCs externas
  */

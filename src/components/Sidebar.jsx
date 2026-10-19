@@ -14,11 +14,16 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
     const isUciOnly = username === 'naguilera';
+    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar'].includes(username);
     const isLMarinero = ['lmarinero', 'lucas marinero'].includes(username) || MASTER_ADMINS.includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
+        if (isGobernanzaOnly) {
+            return ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id);
+        }
+
         if (isUciOnly) {
             return id === 'gobernanza_indicadores' || ['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id);
         }
@@ -79,7 +84,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const [altasOpen, setAltasOpen] = useState(false);
     const [cirugiasOpen, setCirugiasOpen] = useState(false);
     const [simonOpen, setSimonOpen] = useState(false);
-    const [gobernanzaOpen, setGobernanzaOpen] = useState(false);
+    const [gobernanzaOpen, setGobernanzaOpen] = useState(() =>
+        isGobernanzaOnly || ['gobernanza', 'gobernanza_indicadores'].includes(activeView)
+    );
     const [contactCenterOpen, setContactCenterOpen] = useState(() => 
         ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView) || isContactCenterOnly
     );
@@ -397,7 +404,32 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             </div>
 
             <nav className="sidebar__nav">
-                {isUciOnly ? (
+                {isGobernanzaOnly ? (
+                    <>
+                        {/* Gobernanza de Datos */}
+                        {renderGroup({
+                            label: 'Gobernanza de Datos',
+                            icon: ShieldCheck,
+                            isOpen: gobernanzaOpen,
+                            setOpen: setGobernanzaOpen,
+                            isGroupActive: activeView === 'gobernanza' || activeView === 'gobernanza_indicadores',
+                            subItems: [
+                                { id: 'gobernanza_indicadores', label: 'Dashboard e Indicadores', icon: BarChart3 },
+                                { id: 'gobernanza', label: 'Proyectos & Audios IA', icon: ShieldCheck },
+                            ],
+                        })}
+
+                        {/* Simon IA para consultas */}
+                        {renderGroup({
+                            label: 'Simon IA',
+                            icon: Brain,
+                            isOpen: simonOpen,
+                            setOpen: setSimonOpen,
+                            isGroupActive: isSimonActive,
+                            subItems: simonSubItems,
+                        })}
+                    </>
+                ) : isUciOnly ? (
                     <>
                         <Link
                             to="/gobernanza_indicadores"

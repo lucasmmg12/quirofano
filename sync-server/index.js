@@ -4178,6 +4178,20 @@ async function processSyncRequestsQueue() {
                     elapsed: `${((pRes?.durationMs || 0) / 1000).toFixed(1)}s`,
                     results: pRes
                 };
+            } else if (reqItem.mode === 'altas') {
+                await updateServerTask('Sincronizando Altas Administrativas (Fichas)');
+                const t0 = Date.now();
+                syncInProgress = true;
+                let aRes;
+                try {
+                    aRes = await syncAltasAdministrativas(await getPool(), true);
+                } finally {
+                    syncInProgress = false;
+                }
+                syncResult = {
+                    elapsed: `${((Date.now() - t0) / 1000).toFixed(1)}s`,
+                    results: { altas: aRes }
+                };
             } else {
                 syncResult = await performFullSync(reqItem.mode === 'fast');
             }
@@ -4276,6 +4290,29 @@ app.listen(PORT, '0.0.0.0', () => {
                 console.warn('⚠️ [Turnos Activos Auto] Error en ciclo periódico:', e.message);
             }
         }, 5 * 60 * 1000);
+
+        // 1b-2. ALTAS ADMINISTRATIVAS / FICHAS (Cada 20 min entre 06:00 y 22:00)
+        // Garantiza que recepción encuentre las fichas cargadas al iniciar la jornada (7:00)
+        // sin depender de una sincronización manual.
+        let altasAutoRunning = false;
+        const runAltasAutoCycle = async (label) => {
+            if (syncInProgress || altasAutoRunning) return;
+            const hour = new Date().getHours();
+            if (hour < 6 || hour >= 22) return;
+            altasAutoRunning = true;
+            try {
+                console.log(`⏰ [Altas Auto] ${label}...`);
+                const poolInst = await getPool();
+                const r = await syncAltasAdministrativas(poolInst, true);
+                console.log(`⏰ [Altas Auto] ✅ Finalizado (${JSON.stringify(r)?.slice(0, 120)})`);
+            } catch (e) {
+                console.warn('⚠️ [Altas Auto] Error:', e.message);
+            } finally {
+                altasAutoRunning = false;
+            }
+        };
+        setTimeout(() => runAltasAutoCycle('Sincronización inicial de altas administrativas'), 30000);
+        setInterval(() => runAltasAutoCycle('Sincronización periódica de altas (cada 20 min)'), 20 * 60 * 1000);
 
         // 1c. CENSO DE CAMAS UCI (Cada 10 min)
         setTimeout(async () => {
