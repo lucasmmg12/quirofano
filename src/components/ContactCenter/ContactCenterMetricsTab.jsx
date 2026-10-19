@@ -297,10 +297,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             let humanConversationsCount = 0;
             let botOnlyConversationsCount = 0;
 
-            const ALL_AGENTS_METRICS = [
-                ...CONTACT_CENTER_AGENTS,
-                { id: 'lmarinero', username: 'lmarinero', legacyId: 'lucas', name: 'Lucas Marinero', fullName: 'Lucas Marinero', role: 'Supervisor Contact Center', color: '#0284C7', avatar: 'LM' }
-            ];
+            // ÚNICAMENTE las asesoras de atención al paciente (excluyendo expresamente a lmarinero, antonella y supervisores)
+            const ALL_AGENTS_METRICS = CONTACT_CENTER_AGENTS.filter(ag => {
+                const id = (ag.id || '').toLowerCase();
+                const n = (ag.name || '').toLowerCase();
+                return id !== 'lmarinero' && id !== 'macosta' && !n.includes('lucas') && !n.includes('marinero') && !n.includes('antonella');
+            });
 
             const agentDataMap = {};
             ALL_AGENTS_METRICS.forEach(ag => {
@@ -758,21 +760,59 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const normPhone = c.phone ? c.phone.trim() : null;
                 const tracker = normPhone ? phoneTracker.get(normPhone) : null;
 
-                // Identificar agente asignado
+                const r = (c.resolution_reason || 'Otro / Aclaración en Nota').toLowerCase();
+                const closedById = (c.closed_by_agent_id || '').toLowerCase();
+                const closedByName = (c.closed_by_agent_name || '').toLowerCase();
                 const assignedAgentId = (c.assigned_agent_id || '').toLowerCase();
                 const assignedAgentName = (c.assigned_agent_name || '').toLowerCase();
+
+                // Detección estricta de Cierre Masivo / Barrido / Limpieza de Cola / Supervisor
+                const isMassClosureOrSweep = (
+                    r.includes('cierre masivo') ||
+                    r.includes('barrido') ||
+                    r.includes('inactividad') ||
+                    r.includes('24h') ||
+                    r.includes('expir') ||
+                    r.includes('auto-gestión bot') ||
+                    r.includes('time-out') ||
+                    r.includes('masivo') ||
+                    closedById === 'lmarinero' ||
+                    closedById === 'sistema' ||
+                    closedByName.includes('lucas') ||
+                    closedByName.includes('marinero') ||
+                    closedByName.includes('supervisor') ||
+                    closedByName.includes('sistema') ||
+                    closedByName.includes('bot')
+                );
+
+                // Excluir asignaciones de supervisión o barridos
+                const isAssignedToSupervisor = (
+                    assignedAgentId === 'lmarinero' || 
+                    assignedAgentId.includes('lucas') || 
+                    assignedAgentName.includes('lucas') || 
+                    assignedAgentName.includes('marinero') ||
+                    assignedAgentId === 'sistema' ||
+                    assignedAgentName.includes('sistema')
+                );
+
+                // Identificar agente asignado (solo entre las 4 asesoras operativas reales)
                 let matchedAssignedAgentId = null;
-                for (const ag of ALL_AGENTS_METRICS) {
-                    if (
-                        assignedAgentId === ag.id || 
-                        assignedAgentId === (ag.username || '').toLowerCase() ||
-                        (ag.legacyId && assignedAgentId === ag.legacyId) ||
-                        assignedAgentName.includes(ag.id) ||
-                        assignedAgentName.includes((ag.name || '').toLowerCase())
-                    ) {
-                        matchedAssignedAgentId = ag.id;
-                        agentDataMap[ag.id].assignedCount++;
-                        break;
+                if (!isAssignedToSupervisor) {
+                    for (const ag of ALL_AGENTS_METRICS) {
+                        if (
+                            assignedAgentId === ag.id || 
+                            assignedAgentId === (ag.username || '').toLowerCase() ||
+                            (ag.legacyId && assignedAgentId === ag.legacyId) ||
+                            assignedAgentName.includes(ag.id) ||
+                            assignedAgentName.includes((ag.name || '').toLowerCase())
+                        ) {
+                            matchedAssignedAgentId = ag.id;
+                            // NUNCA contabilizar en asesoras si el chat fue cerrado masivamente sin interacción
+                            if (!isMassClosureOrSweep) {
+                                agentDataMap[ag.id].assignedCount++;
+                            }
+                            break;
+                        }
                     }
                 }
 
@@ -864,20 +904,37 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         reasonsMap['Otro / Aclaración en Nota'] = (reasonsMap['Otro / Aclaración en Nota'] || 0) + 1;
                     }
 
-                    // AHT Neto: Específicamente entre que lo agarra el agente y lo finaliza
-                    if (assignedDate && c.closed_at) {
-                        const closedDate = new Date(c.closed_at);
-                        const handleMin = (closedDate - assignedDate) / 60000;
-                        if (handleMin >= 0 && handleMin < 1440) { // menos de 24 hs
-                            const valHandle = Number(handleMin.toFixed(1));
-                            allAgentHandleTimes.push(valHandle);
-                            
-                            // Atribuir a la asesora que cerró o a la que estuvo asignada
-                            const closedAgent = (c.closed_by_agent_name || c.assigned_agent_name || '').toLowerCase();
-                            for (const ag of ALL_AGENTS_METRICS) {
-                                if (closedAgent.includes(ag.id) || closedAgent.includes((ag.name || '').toLowerCase())) {
-                                    agentDataMap[ag.id].handleTimesMin.push(valHandle);
-                                    break;
+                    // AHT Neto & Resoluciones por Asesora: NUNCA atribuir a las asesoras si fue cierre masivo o barrido
+                    if (!isMassClosureOrSweep) {
+                        let actualResolvedAgId = null;
+                        for (const ag of ALL_AGENTS_METRICS) {
+                            if (
+                                closedById === ag.id || 
+                                closedByName.includes(ag.id) || 
+                                closedByName.includes((ag.name || '').toLowerCase())
+                            ) {
+                                actualResolvedAgId = ag.id;
+                                break;
+                            }
+                        }
+                        if (!actualResolvedAgId && matchedAssignedAgentId) {
+                            actualResolvedAgId = matchedAssignedAgentId;
+                        }
+
+                        if (actualResolvedAgId && agentDataMap[actualResolvedAgId]) {
+                            agentDataMap[actualResolvedAgId].resolvedCount++;
+                            const matchedCat = MOTIVOS_FINALIZACION_CATALOGO.find(m => r.includes(m.key.toLowerCase()));
+                            const reasonLabel = matchedCat ? matchedCat.label : (c.resolution_reason || 'Otro / Consulta Respondida');
+                            agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] = (agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] || 0) + 1;
+
+                            // AHT Neto: solo duraciones de atención humana activa razonables (< 180 min)
+                            if (assignedDate && c.closed_at) {
+                                const closedDate = new Date(c.closed_at);
+                                const handleMin = (closedDate - assignedDate) / 60000;
+                                if (handleMin >= 0 && handleMin <= 180) {
+                                    const valHandle = Number(handleMin.toFixed(1));
+                                    allAgentHandleTimes.push(valHandle);
+                                    agentDataMap[actualResolvedAgId].handleTimesMin.push(valHandle);
                                 }
                             }
                         }
@@ -917,20 +974,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         resHistogramCounts.de5a30m++;
                     }
 
-                    // Contabilizar resoluciones por agente y motivos de cierre
-                    const closedAgent = (c.closed_by_agent_name || c.assigned_agent_name || '').toLowerCase();
-                    for (const ag of ALL_AGENTS_METRICS) {
-                        if (closedAgent.includes(ag.id) || closedAgent.includes((ag.name || '').toLowerCase())) {
-                            agentDataMap[ag.id].resolvedCount++;
-                            const matchedCat = MOTIVOS_FINALIZACION_CATALOGO.find(m => r.includes(m.key.toLowerCase()));
-                            const reasonLabel = matchedCat ? matchedCat.label : (c.resolution_reason || 'Otro / Consulta Respondida');
-                            agentDataMap[ag.id].resolvedReasons[reasonLabel] = (agentDataMap[ag.id].resolvedReasons[reasonLabel] || 0) + 1;
-                            break;
-                        }
-                    }
-
                     // Guardar para cálculo de First Contact Resolution (FCR)
-                    if (c.closed_at && normPhone) {
+                    if (c.closed_at && normPhone && !isMassClosureOrSweep) {
                         resolvedPhonesWithCloseDate.push({
                             phone: normPhone,
                             closedAt: new Date(c.closed_at).getTime()
@@ -1146,9 +1191,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             const handleUnder10m = allAgentHandleTimes.filter(t => t <= 10).length;
             const handleUnder10mPct = allAgentHandleTimes.length > 0 ? Math.round((handleUnder10m / allAgentHandleTimes.length) * 100) : 0;
 
-            // Rendimiento detallado por asesora
+            // Rendimiento detallado por asesora: ÚNICAMENTE las asesoras de atención al paciente
             const agentList = Object.values(agentDataMap)
-                .filter(a => a.id !== 'otros_operadores' || a.count > 0 || a.conversationsCount > 0)
+                .filter(a => ALL_AGENTS_METRICS.some(ag => ag.id === a.id))
                 .map(a => {
                     const avgTime = a.responseTimesMin.length > 0
                         ? Number((a.responseTimesMin.reduce((x, y) => x + y, 0) / a.responseTimesMin.length).toFixed(1))
@@ -3227,8 +3272,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {metrics.byAgentList.map(ag => {
                         const isExp = !!expandedAgents[ag.id];
-                        const totalHumano = Math.max(metrics.agentMessages, 1);
-                        const pct = Math.round((ag.count / totalHumano) * 100);
+                        const totalAsesorasMsgs = metrics.byAgentList.reduce((acc, a) => acc + (a.count || 0), 0) || 1;
+                        const pct = Math.round((ag.count / totalAsesorasMsgs) * 100);
 
                         return (
                             <div 
