@@ -2733,23 +2733,29 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             lastBotContent.includes('1️⃣ laboratorio')
         );
 
+    const isLastBotImageMenu = !isWaitingForUserData && (
+        context?.botStage === 'menu_imagen' ||
+        lastBotContent.includes('recibimos tu imagen') || 
+        lastBotContent.includes('presupuesto o aranceles particulares')
+    );
+
     // GUARDA ESTRICTA DE CONTEXTO: Si el bot está esperando datos específicos del paciente,
-    // o si el último mensaje fue Más Información, los dígitos aislados NO deben disparar opciones del menú principal.
+    // o si el último mensaje fue Más Información o Menú de Imagen, los dígitos aislados NO deben disparar opciones del menú principal.
     const isLastBotWelcomeMenu = 
         !isWaitingForUserData &&
         !isLastBotMasInfoMenu &&
+        !isLastBotImageMenu &&
+        context?.botStage !== 'menu_imagen' &&
         !lastBotContent.includes('más información') &&
         !lastBotContent.includes('mas informacion') &&
         !lastBotContent.includes('sobre qué te gustaría saber') &&
         !lastBotContent.includes('sobre que te gustaria saber') && (
             context?.botStage === 'menu_bienvenida' ||
-            context?.botStage === 'inicio' ||
+            (context?.botStage === 'inicio' && !lastBotContent.includes('recibimos tu imagen')) ||
             lastBotContent.includes('consultar mi próximo turno') ||
             lastBotContent.includes('en qué podemos ayudarte hoy') ||
             lastBotContent.includes('te damos la bienvenida')
         );
-
-    const isLastBotImageMenu = !isWaitingForUserData && (lastBotContent.includes('recibimos tu imagen') || lastBotContent.includes('presupuesto o aranceles particulares'));
     const isLastBotGreetingMenu = 
         !isWaitingForUserData && (
             context?.botStage === 'menu_opciones' ||
@@ -2963,10 +2969,12 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'fundacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
 
-    // 14. DERIVACIÓN EXPLÍCITA A ASESOR HUMANO / OPERADOR
+    // 14. DERIVACIÓN EXPLÍCITA A ASESOR HUMANO / OPERADOR (INCLUYE FRUSTRACIÓN Y AYUDA)
     const isAgente = 
+        /^(ayuda|auxilio|socorro|por\s+favor)[!.\s]*$/i.test(clean) ||
+        /\b(necesito\s+ayuda|ayuda\s+por\s+favor|por\s+favor\s+ayuda|representante|un\s+representante|asesor\s+humano|humano\s+por\s+favor)\b/i.test(clean) ||
         /^(asesor[ao]?s?|operador[ao]?s?|agentes?|representantes?|humano|persona)[!.\s]*$/i.test(clean) ||
-        /\b(atienda\s+(?:un[ao]?\s+)?(?:persona|humano|alguien|asesor[ao]?|operador[ao]?)|hablar\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|persona|operador|operadora|humano|agente|representante|alguien)|comunicarme\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|persona|humano|alguien|un\s+agente)|pasame\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|operador|agente|alguien)|atenci[oó]n\s+humana|asistencia\s+humana|persona\s+real|humano\s+por\s+favor|quiero\s+(?:una\s+persona|un\s+asesor|hablar\s+con\s+alguien|comunicarme\s+con\s+un\s+asesor)|(?:el\s+)?bot\s+(?:no\s+sirve|no\s+funciona|nunca\s+funciona|no\s+entiende|es\s+in[uú]til)|no\s+quiero\s+(?:hablar\s+con\s+)?(?:un\s+)?bot|como\s+hago\s+para\s+que\s+me\s+atienda\s+un[ao]?\s+(?:persona|humano|alguien)|asesor\s+humano|necesito\s+(?:un\s+)?asesor|quiero\s+(?:un\s+)?asesor)\b/i.test(clean);
+        /\b(atienda\s+(?:un[ao]?\s+)?(?:persona|humano|alguien|asesor[ao]?|operador[ao]?)|hablar\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|persona|operador|operadora|humano|agente|representante|alguien)|comunicarme\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|persona|humano|alguien|un\s+agente)|pasame\s+con\s+(?:un[ao]?\s+)?(?:asesor|asesora|operador|agente|alguien)|atenci[oó]n\s+humana|asistencia\s+humana|persona\s+real|quiero\s+(?:una\s+persona|un\s+asesor|hablar\s+con\s+alguien|comunicarme\s+con\s+un\s+asesor)|(?:el\s+)?bot\s+(?:no\s+sirve|no\s+funciona|nunca\s+funciona|no\s+entiende|es\s+in[uú]til)|no\s+quiero\s+(?:hablar\s+con\s+)?(?:un\s+)?bot|como\s+hago\s+para\s+que\s+me\s+atienda\s+un[ao]?\s+(?:persona|humano|alguien)|necesito\s+(?:un\s+)?asesor|quiero\s+(?:un\s+)?asesor)\b/i.test(clean);
     if (isAgente) {
         return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
@@ -3000,6 +3008,25 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
     // Si no se detectó por regex con prefijo "Dr./con/para", buscar si alguna palabra o bigrama del mensaje coincide con la cartilla de médicos
     if (!doctorCandidate) {
+        // Palabras del nombre del propio paciente (para NUNCA confundir el apellido o nombre del paciente con el de un médico)
+        const patientNameWords = new Set<string>();
+        if (context?.patientName) {
+            context.patientName.toLowerCase().split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3).forEach((w: string) => patientNameWords.add(w));
+        }
+        const selfNamePatterns = [
+            /(?:a\s+mi\s+nombre|mi\s+nombre\s+es|nombre(?:\s+completo)?(?:\s+es)?|soy|me\s+llamo|paciente:?)\s+([a-záéíóúñ\s]+?)(?:(?:\s+\d{6,8})|\s+obra|\s+osp|\s+para|\s+turno|\s+tomografia|\s+estudio|\s+con|\s+$)/i,
+            /(?:paciente\s+titular|a\s+nombre\s+de)\s+([a-záéíóúñ\s]+?)(?:(?:\s+\d{6,8})|\s+obra|\s+osp|\s+para|\s+turno|\s+tomografia|\s+estudio|\s+con|\s+$)/i
+        ];
+        for (const p of selfNamePatterns) {
+            const sm = clean.match(p);
+            if (sm && sm[1]) {
+                sm[1].trim().split(/\s+/).filter((w: string) => w.length >= 3).forEach((w: string) => patientNameWords.add(w.toLowerCase()));
+            }
+        }
+
+        const detectedStudyInMsg = detectEstudioConOrden(clean);
+        const hasStudyInMsg = Boolean(detectedStudyInMsg);
+
         const wordsInText = clean.split(/[\s,.\-_/]+/).map(w => w.trim()).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
         const nonDoctorWords = new Set([
             'turno', 'turnos', 'cita', 'citas', 'para', 'por', 'con', 'del', 'las', 'los', 'una', 'uno',
@@ -3007,7 +3034,13 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'sancor', 'osde', 'osp', 'omint', 'swiss', 'medical', 'particular', 'provincia', 'damsup',
             'hola', 'buen', 'dia', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
             'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre',
-            'cualquier', 'horario', 'cuando', 'tiene'
+            'cualquier', 'horario', 'cuando', 'tiene',
+            // Términos diagnósticos y administrativos
+            'tomografia', 'computada', 'resonancia', 'magnetica', 'ecografia', 'mamografia', 'radiografia',
+            'densitometria', 'alta', 'resolucion', 'adicional', 'otros', 'organos', 'regiones', 'estudio',
+            'estudios', 'practica', 'practicas', 'orden', 'ordenes', 'medica', 'medicas', 'autorizacion',
+            'autorizaciones', 'pedido', 'pedidos', 'receta', 'recetas', 'coseguro', 'cobertura', 'ayuda',
+            'representante', 'asesor', 'asesora', 'operador', 'operadora'
         ]);
 
         const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
@@ -3017,6 +3050,13 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             const w1 = wordsInText[i];
             const w2 = wordsInText[i + 1];
             if (!nonDoctorWords.has(w1) && !nonDoctorWords.has(w2) && w1.length >= 3 && w2.length >= 3) {
+                // Si alguna de las palabras pertenece al nombre del paciente, no tomar como médico salvo prefijo explícito Dr/Dra
+                if ((patientNameWords.has(w1) || patientNameWords.has(w2)) && !/(?:doctor|doctora|dr|dra)\.?/i.test(clean)) {
+                    continue;
+                }
+                if (hasStudyInMsg && !/(?:doctor|doctora|dr|dra)\.?/i.test(clean)) {
+                    continue;
+                }
                 try {
                     const { data: bMatch } = await supabase
                         .from('contact_center_doctor_parameters')
@@ -3038,6 +3078,16 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         if (!doctorCandidate) {
             for (const w of wordsInText) {
                 if (!nonDoctorWords.has(w) && !STOPWORDS_MEDICOS.has(w) && w.length >= 4) {
+                    // Exclusión obligatoria: NUNCA inferir médico a partir del apellido o nombre del propio paciente
+                    const isPatientSelfName = patientNameWords.has(w);
+                    const hasExplicitHonorific = new RegExp(`\\b(?:doctor|doctora|dr|dra)\\.?\\s+${w}\\b`, 'i').test(clean);
+                    if (isPatientSelfName && !hasExplicitHonorific) {
+                        continue;
+                    }
+                    // Si el paciente está pidiendo un estudio diagnóstico (ej. Tomografía), no buscar médicos por palabras sueltas
+                    if (hasStudyInMsg && !hasExplicitHonorific) {
+                        continue;
+                    }
                     try {
                         const { data: dMatch } = await supabase
                             .from('contact_center_doctor_parameters')
@@ -4477,7 +4527,13 @@ async function handleChatbotTriage(
 
 
     // Si encontramos múltiples doctores homónimos, consultar al paciente cuál necesita con opciones a-, b-, c-...
-    if (analysis.multipleDoctors && analysis.multipleDoctors.length > 1 && analysis.intent !== 'volver_atras') {
+    // GUARDA ESTRICTA: NO disparar desambiguación si el mensaje solicita un estudio de diagnóstico (ej. Tomografía/Ecografía)
+    // sin mencionar explícitamente "Dr/Dra [Apellido]"
+    const studyInText = detectEstudioConOrden(cleanText);
+    const hasExplicitDocToken = /(?:doctor|doctora|dr|dra)\.?/i.test(cleanText);
+    const skipDoctorDisambiguation = Boolean(studyInText) && !hasExplicitDocToken;
+
+    if (analysis.multipleDoctors && analysis.multipleDoctors.length > 1 && analysis.intent !== 'volver_atras' && !skipDoctorDisambiguation) {
         const docList = analysis.multipleDoctors;
         const letters = ['a', 'b', 'c', 'd', 'e'];
         const capSurname = analysis.doctorCandidate 
@@ -4596,9 +4652,9 @@ async function handleChatbotTriage(
     if (isImageWithoutContext) {
         console.log(`[triage-bot] Chat ${phone}: Imagen/orden médica enviada sin contexto previo. Preguntando al paciente qué desea realizar.`);
         updates.motivo_consulta = 'Imagen / Orden médica recibida (aguardando selección de trámite)';
-        updates.bot_stage = 'menu_opciones';
+        updates.bot_stage = 'menu_imagen';
         updates.bot_active = true;
-        nextStage = 'menu_opciones';
+        nextStage = 'menu_imagen';
 
         if (isExistingPatient) {
             replyText = `¡Hola *${fullName}*! 🏥 Recibimos tu imagen / orden médica.\n\n` +
@@ -4887,24 +4943,29 @@ async function handleChatbotTriage(
         else if (isLetterD && storedDocs[3]) selectedDoc = storedDocs[3];
         else if (isLetterE && storedDocs[4]) selectedDoc = storedDocs[4];
         else {
-            // 2. Búsqueda por nombre de pila o especialidad dentro de los médicos ofrecidos
-            const words = trimmed.split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
+            // 2. Búsqueda por nombre de pila o apellido específico dentro de los médicos ofrecidos (NUNCA en condiciones_consulta)
+            const nonDoctorSelectionWords = new Set([
+                'obra', 'social', 'provincia', 'particular', 'osp', 'osde', 'swiss', 'medical', 'galeno', 'medife', 'jerarquicos', 'damsup', 'iosfa', 'pami', 'turno', 'turnos', 'consulta', 'dia', 'horario', 'mañana', 'tarde', 'siesta', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'favor', 'gracias', 'hola', 'buenas', 'dni', 'para', 'estudio', 'tomografia', 'ecografia'
+            ]);
+            const words = trimmed.split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3 && !STOPWORDS_MEDICOS.has(w) && !nonDoctorSelectionWords.has(w));
             
-            selectedDoc = storedDocs.find((d: any) => {
-                const info = d.formattedInfo || formatDoctorDisplay(d);
-                const docText = `${d.profesional_nombre} ${info.displayName} ${info.specialty} ${d.condiciones_consulta || ''}`.toLowerCase();
-                return words.some((w: string) => {
-                    const rx = new RegExp(`\\b${w}\\b`, 'i');
-                    return rx.test(docText);
+            if (words.length > 0) {
+                selectedDoc = storedDocs.find((d: any) => {
+                    const info = d.formattedInfo || formatDoctorDisplay(d);
+                    const docText = `${d.profesional_nombre} ${info.displayName}`.toLowerCase();
+                    return words.some((w: string) => {
+                        const rx = new RegExp(`\\b${w}\\b`, 'i');
+                        return rx.test(docText);
+                    });
                 });
-            });
-            
-            // Si no se encontró en storedDocs, buscar coincidencia por palabras completas en el nombre
-            if (!selectedDoc && words.length > 0) {
-                for (const w of words) {
-                    const rx = new RegExp(`\\b${w}\\b`, 'i');
-                    const found = storedDocs.find((d: any) => rx.test(d.profesional_nombre));
-                    if (found) { selectedDoc = found; break; }
+                
+                // Si no se encontró en storedDocs, buscar coincidencia por palabras completas en el nombre
+                if (!selectedDoc) {
+                    for (const w of words) {
+                        const rx = new RegExp(`\\b${w}\\b`, 'i');
+                        const found = storedDocs.find((d: any) => rx.test(d.profesional_nombre));
+                        if (found) { selectedDoc = found; break; }
+                    }
                 }
             }
         }
@@ -5021,8 +5082,36 @@ async function handleChatbotTriage(
             const isPideAgente = /\b(agente|asesor|asesora|operador|operadora|humano|persona|hablar\s+con\s+alguien)\b/i.test(trimmed);
             const isNonDoctorSector = /\b(farmacia|es\s+para\s+farmacia|laboratorio|guardia|vacunatorio|rayos|ecograf[ií]a|administraci[oó]n|facturaci[oó]n|auditor[ií]a)\b/i.test(trimmed);
 
+            // B-bis) El paciente proporcionó su Obra Social (ej: "obra social provincia", "osp", "osde")
+            const autoOsInSelection = (await extractPatientVariables(cleanText, candidateDni))?.obra_social;
+            if (autoOsInSelection) {
+                updates.obra_social = autoOsInSelection;
+            }
+
             // Contador de intentos fallidos en esta etapa
             const previousAttempts = Number(conv?.ai_summary?.intentos_seleccion_medico || 0);
+
+            if (autoOsInSelection && !isPideAgente && !isNonDoctorSector && previousAttempts < 1) {
+                replyText = `¡Muchas gracias${whatsappName ? ` *${whatsappName}*` : ''}! 📋 Registramos tu cobertura: *${autoOsInSelection}*.\n\n` +
+                    `Para coordinar tu turno con el profesional exacto, por favor indícanos con cuál de ellos deseás atenderte (podés responder con la letra *a*, *b*... o su nombre de pila):\n\n` +
+                    storedDocs.map((d: any, idx: number) => {
+                        const letter = ['a', 'b', 'c', 'd', 'e'][idx] || `${idx + 1}`;
+                        const info = d.formattedInfo || formatDoctorDisplay(d);
+                        return `*${letter}-* ${info.displayName} (${info.specialty})`;
+                    }).join('\n') +
+                    `\n\n🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                updates.bot_stage = 'esperando_seleccion_medico';
+                nextStage = 'esperando_seleccion_medico';
+                updates.ai_summary = {
+                    ...(conv?.ai_summary || {}),
+                    candidates_medicos: storedDocs,
+                    pending_os: autoOsInSelection,
+                    intentos_seleccion_medico: 1
+                };
+                return await finalizeAndSend(replyText, nextStage, updates);
+            }
 
             if (isPideAgente || isNonDoctorSector || previousAttempts >= 1) {
                 // Derivación directa a asesor humano tras 1 intento fallido o mención de sector/agente
@@ -5383,7 +5472,19 @@ async function handleChatbotTriage(
             : null;
         
         const motiveInMsg = extractCleanConsultationMotive(cleanText);
-        const finalMotive = motiveInMsg || existingMotive;
+        const studyContext = detectEstudioConOrden(cleanText) || detectEstudioConOrden(conv?.medico_o_especialidad) || detectEstudioConOrden(conv?.motivo_consulta);
+        const doctorContext = conv?.medico_o_especialidad || null;
+
+        let finalMotive = motiveInMsg || existingMotive;
+        if (!finalMotive && studyContext) {
+            finalMotive = `Coordinación de estudio: ${studyContext}`;
+        } else if (!finalMotive && doctorContext) {
+            finalMotive = `Consulta médica con ${doctorContext}`;
+        } else if (!finalMotive && effectiveDni && (/^(ayuda|socorro|auxilio|por\s+favor|necesito\s+ayuda|agente|asesor|humano|persona|operador)/i.test(cleanText.trim()) || conv?.bot_stage === 'esperando_datos_agente')) {
+            finalMotive = (conv?.motivo_consulta && conv.motivo_consulta.length >= 6 && !conv.motivo_consulta.includes('esperando'))
+                ? conv.motivo_consulta
+                : 'Solicitud de asistencia directa con operador';
+        }
 
         const safeConvName = (conv?.nombre_completo && !isMedicalSpecialty(conv.nombre_completo) && !conv.nombre_completo.startsWith('Paciente')) ? conv.nombre_completo : null;
         const resolvedName = updates.nombre_completo || paciente?.nombre || safeConvName || whatsappName || 'Paciente';
