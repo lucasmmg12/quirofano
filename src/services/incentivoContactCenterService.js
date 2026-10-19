@@ -358,15 +358,15 @@ export async function guardarConversacionesAuditadasMes(periodo, conversaciones)
 }
 
 /**
- * Obtiene y procesa la comparación histórica mes a mes (Agosto vs Septiembre vs Proyecciones)
- * para los gráficos de performance de agentes y equipo.
+ * Obtiene y procesa la comparación histórica mes a mes para los gráficos de performance y comparativa,
+ * respondiendo dinámicamente al período seleccionado en el filtro superior.
  */
-export async function fetchHistoricoComparativoIncentivos() {
+export async function fetchHistoricoComparativoIncentivos(periodo = '2026-10') {
     try {
         const { data: rows, error } = await supabase
             .from('app_config')
             .select('key, value')
-            .in('key', ['cc_incentivo_2026-08', 'cc_incentivo_2026-09', 'cc_incentivo_2026-10']);
+            .like('key', 'cc_incentivo_%');
 
         if (error) throw error;
 
@@ -376,18 +376,24 @@ export async function fetchHistoricoComparativoIncentivos() {
             monthsData[p] = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
         });
 
-        const ago = monthsData['2026-08'] || {};
-        const sep = monthsData['2026-09'] || {};
-        const oct = monthsData['2026-10'] || {};
+        // Determinar mes seleccionado y mes anterior de comparación
+        const [y, m] = (periodo || '2026-10').split('-').map(Number);
+        const prevM = m === 1 ? 12 : m - 1;
+        const prevY = m === 1 ? y - 1 : y;
+        const prevPeriod = `${prevY}-${String(prevM).padStart(2, '0')}`;
 
-        const agentesAgo = {};
-        (ago.agentes || []).forEach(a => { agentesAgo[a.id] = a; });
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const labelActual = `${monthNames[m - 1]} ${y}`;
+        const labelAnterior = `${monthNames[prevM - 1]} ${prevY}`;
 
-        const agentesSep = {};
-        (sep.agentes || []).forEach(a => { agentesSep[a.id] = a; });
+        const curr = monthsData[periodo] || {};
+        const prev = monthsData[prevPeriod] || {};
 
-        const agentesOct = {};
-        (oct.agentes || []).forEach(a => { agentesOct[a.id] = a; });
+        const agentesPrev = {};
+        (prev.agentes || []).forEach(a => { agentesPrev[a.id] = a; });
+
+        const agentesCurr = {};
+        (curr.agentes || []).forEach(a => { agentesCurr[a.id] = a; });
 
         const agentOrder = ['solivier', 'vjacques', 'daguilera', 'eleal', 'macosta'];
         const agentNames = {
@@ -399,120 +405,145 @@ export async function fetchHistoricoComparativoIncentivos() {
         };
 
         const comparativoAgentes = agentOrder.map(id => {
-            const aAgo = agentesAgo[id] || {};
-            const aSep = agentesSep[id] || {};
-            const aOct = agentesOct[id] || {};
+            const aPrev = agentesPrev[id] || {};
+            const aCurr = agentesCurr[id] || {};
 
-            const turnosAgo = aAgo.turnos || 0;
-            const turnosSep = aSep.turnos || 0;
-            const turnosOct = aOct.turnos || 0;
-            const turnosDiff = turnosSep - turnosAgo;
-            const turnosPct = turnosAgo > 0 ? Math.round((turnosDiff / turnosAgo) * 100) : 0;
+            const turnosPrev = aPrev.turnos || 0;
+            const turnosCurr = aCurr.turnos || 0;
+            const turnosDiff = turnosCurr - turnosPrev;
+            const turnosPct = turnosPrev > 0 ? Math.round((turnosDiff / turnosPrev) * 100) : 0;
 
-            const asistAgo = aAgo.asistenciaPct || 0;
-            const asistSep = aSep.asistenciaPct || 0;
-            const asistOct = aOct.asistenciaPct || 0;
-            const asistDiff = Math.round((asistSep - asistAgo) * 100) / 100;
+            const asistPrev = aPrev.asistenciaPct || 0;
+            const asistCurr = aCurr.asistenciaPct || 0;
+            const asistDiff = Math.round((asistCurr - asistPrev) * 100) / 100;
 
-            const msjsAgo = aAgo.mensajesIndividuales || (id === 'solivier' ? 2256 : id === 'vjacques' ? 1622 : id === 'eleal' ? 732 : id === 'macosta' ? 2036 : 0);
-            const msjsSep = aSep.mensajesIndividuales || (id === 'vjacques' ? 2505 : id === 'solivier' ? 2435 : id === 'daguilera' ? 1903 : id === 'eleal' ? 1744 : 0);
-            const msjsOct = aOct.mensajesIndividuales || (id === 'vjacques' ? 820 : id === 'solivier' ? 790 : id === 'daguilera' ? 610 : id === 'eleal' ? 552 : 0);
-            const msjsDiff = msjsSep - msjsAgo;
-            const msjsPct = msjsAgo > 0 ? Math.round((msjsDiff / msjsAgo) * 100) : 0;
+            const msjsRefPrev = prevPeriod === '2026-09' ? MENSAJES_INDIVIDUALES_REF : MENSAJES_INDIVIDUALES_AGOSTO;
+            const msjsRefCurr = periodo === '2026-09' ? MENSAJES_INDIVIDUALES_REF : periodo === '2026-08' ? MENSAJES_INDIVIDUALES_AGOSTO : {};
 
-            const varAgo = (aAgo.montoAsistencia || 0) + (aAgo.montoTurnos || 0);
-            const varSep = (aSep.montoAsistencia || 0) + (aSep.montoTurnos || 0);
-            const varOct = (aOct.montoAsistencia || 0) + (aOct.montoTurnos || 0);
+            const msjsPrev = aPrev.mensajesIndividuales || msjsRefPrev[id] || 0;
+            const msjsCurr = aCurr.mensajesIndividuales || msjsRefCurr[id] || (periodo === '2026-10' ? (id === 'vjacques' ? 2505 : id === 'solivier' ? 2435 : id === 'daguilera' ? 1903 : id === 'eleal' ? 1744 : 0) : 0);
+            const msjsDiff = msjsCurr - msjsPrev;
+            const msjsPct = msjsPrev > 0 ? Math.round((msjsDiff / msjsPrev) * 100) : 0;
 
-            const totalAgo = (aAgo.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varAgo;
-            const totalSep = (aSep.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varSep;
-            const totalOct = (aOct.baseGarantizada || BASE_GARANTIZADA_HISTORICA) + varOct;
+            const varPrev = (aPrev.montoAsistencia || 0) + (aPrev.montoTurnos || 0);
+            const varCurr = (aCurr.montoAsistencia || 0) + (aCurr.montoTurnos || 0);
+            const varDiff = varCurr - varPrev;
 
             return {
                 id,
-                name: agentNames[id] || aSep.name || aAgo.name || id,
+                name: agentNames[id] || aCurr.name || aPrev.name || id,
                 shortName: (agentNames[id] || id).split(' ')[0],
-                // Turnos
-                turnosAgo,
-                turnosSep,
-                turnosOct,
+                // Métricas dinámicas prev vs curr
+                turnosPrev,
+                turnosCurr,
                 turnosDiff,
                 turnosPct,
-                // Asistencia
-                asistAgo,
-                asistSep,
-                asistOct,
+                asistPrev,
+                asistCurr,
                 asistDiff,
-                // Mensajes
-                msjsAgo,
-                msjsSep,
-                msjsOct,
+                msjsPrev,
+                msjsCurr,
                 msjsDiff,
                 msjsPct,
-                // Variable y Total
-                varAgo,
-                varSep,
-                varOct,
-                totalAgo,
-                totalSep,
-                totalOct,
-                fteSep: aSep.fte ?? 1.0,
-                fteOct: aOct.fte ?? (id === 'macosta' ? 0 : id === 'eleal' ? 0.5 : 1.0),
-                estadoSep: aSep.estado || 'ACTIVA',
-                estadoOct: aOct.estado || (id === 'macosta' ? 'BAJA' : 'ACTIVA')
+                varPrev,
+                varCurr,
+                varDiff,
+                ftePrev: aPrev.fte ?? 1.0,
+                fteCurr: aCurr.fte ?? (id === 'macosta' ? 0 : id === 'eleal' ? 0.5 : 1.0),
+                estadoPrev: aPrev.estado || 'ACTIVA',
+                estadoCurr: aCurr.estado || (id === 'macosta' ? 'BAJA' : 'ACTIVA')
             };
         });
 
-        // Proyecciones dinámicas para mes en curso
-        const now = new Date();
-        const curDay = now.getDate() || 19;
-        const totalDaysOct = 31;
-        const octTurnosActuales = oct.turnosGrupales?.total || 1387;
-        const octConvsActuales = oct.conversacionesUnicas || 5677;
-        const octTurnosProy = Math.round((octTurnosActuales / curDay) * totalDaysOct);
-        const octConvsProy = Math.round((octConvsActuales / curDay) * totalDaysOct);
+        // Insights dinámicos basados en la producción real
+        const agentesActivos = comparativoAgentes.filter(a => a.turnosCurr > 0 || a.turnosPrev > 0);
+
+        // 1. Líder en Turnos
+        const sortedTurnos = [...agentesActivos].sort((a, b) => b.turnosCurr - a.turnosCurr);
+        const liderTurnos = sortedTurnos[0] || { name: '—', turnosCurr: 0, turnosDiff: 0 };
+
+        // 2. Mayor Salto en Turnos (mayor diff positivo o mayor % de crecimiento)
+        const conCrecimiento = [...agentesActivos].filter(a => a.turnosDiff > 0).sort((a, b) => b.turnosDiff - a.turnosDiff);
+        const liderSalto = conCrecimiento[0] || sortedTurnos[0] || { name: '—', turnosDiff: 0, turnosPrev: 0, turnosCurr: 0, turnosPct: 0 };
+
+        // 3. Mayor Asistencia a Citas
+        const sortedAsist = [...agentesActivos].sort((a, b) => b.asistCurr - a.asistCurr);
+        const liderAsistencia = sortedAsist[0] || { name: '—', asistCurr: 0 };
+
+        // 4. Mayor Volumen de Conversaciones
+        const sortedMsjs = [...agentesActivos].sort((a, b) => b.msjsCurr - a.msjsCurr);
+        const liderMensajes = sortedMsjs[0] || { name: '—', msjsCurr: 0, msjsDiff: 0 };
 
         // Evolución mensual global del equipo
-        const evolucionEquipo = [
-            {
-                mes: 'Agosto 2026',
-                periodo: '2026-08',
-                turnosTotales: ago.turnosGrupales?.total || 4710,
-                convsTotales: ago.conversacionesUnicas || 7820,
-                asistenciaPromedio: 64.5,
-                montoTotalLiquidado: 998240,
-                estado: 'Cerrado'
-            },
-            {
-                mes: 'Septiembre 2026',
-                periodo: '2026-09',
-                turnosTotales: sep.turnosGrupales?.total || 4174,
-                convsTotales: sep.conversacionesUnicas || 8587,
-                asistenciaPromedio: 56.5,
-                montoTotalLiquidado: 943867,
-                estado: 'Cerrado'
-            },
-            {
-                mes: `Octubre 2026 (Día ${curDay} de ${totalDaysOct})`,
-                periodo: '2026-10',
-                turnosTotales: octTurnosActuales,
-                turnosProyectados: oct.proyeccionTurnos || octTurnosProy,
-                convsTotales: octConvsActuales,
-                convsProyectadas: oct.proyeccionConvs || octConvsProy,
-                asistenciaPromedio: 42.1,
+        const sortedMonths = Object.keys(monthsData).sort();
+        const now = new Date();
+        const curDay = now.getDate() || 19;
+
+        const evolucionEquipo = sortedMonths.map(pKey => {
+            const mData = monthsData[pKey];
+            const [pY, pM] = pKey.split('-').map(Number);
+            const mName = monthNames[pM - 1];
+            const isCurrEnCurso = pKey === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const totalDaysInMonth = new Date(pY, pM, 0).getDate();
+
+            const turnos = mData.turnosGrupales?.total || 0;
+            const convs = mData.conversacionesUnicas || 0;
+            const turnosProj = isCurrEnCurso ? Math.round((turnos / curDay) * totalDaysInMonth) : turnos;
+            const convsProj = isCurrEnCurso ? Math.round((convs / curDay) * totalDaysInMonth) : convs;
+
+            // Calcular promedio de asistencia de agentes
+            const agentesList = mData.agentes || [];
+            const sumaAsist = agentesList.reduce((acc, a) => acc + (a.asistenciaPct || 0), 0);
+            const asistProm = agentesList.length > 0 ? Math.round((sumaAsist / agentesList.length) * 10) / 10 : 0;
+
+            return {
+                mes: isCurrEnCurso ? `${mName} ${pY} (Día ${curDay} de ${totalDaysInMonth})` : `${mName} ${pY}`,
+                periodo: pKey,
+                turnosTotales: turnos,
+                turnosProyectados: turnosProj,
+                convsTotales: convs,
+                convsProyectadas: convsProj,
+                asistenciaPromedio: asistProm,
                 montoTotalLiquidado: null,
-                estado: 'En Curso'
-            }
-        ];
+                estado: isCurrEnCurso ? 'En Curso' : 'Cerrado'
+            };
+        });
 
         return {
             success: true,
+            periodoActual: periodo,
+            periodoAnterior: prevPeriod,
+            labelActual,
+            labelAnterior,
             comparativoAgentes,
+            insights: {
+                liderTurnos: {
+                    name: liderTurnos.name,
+                    turnos: liderTurnos.turnosCurr,
+                    diff: liderTurnos.turnosDiff
+                },
+                liderSalto: {
+                    name: liderSalto.name,
+                    diff: liderSalto.turnosDiff,
+                    pct: liderSalto.turnosPct,
+                    prev: liderSalto.turnosPrev,
+                    curr: liderSalto.turnosCurr
+                },
+                liderAsistencia: {
+                    name: liderAsistencia.name,
+                    asistenciaPct: liderAsistencia.asistCurr
+                },
+                liderMensajes: {
+                    name: liderMensajes.name,
+                    mensajes: liderMensajes.msjsCurr,
+                    diff: liderMensajes.msjsDiff
+                }
+            },
             evolucionEquipo
         };
     } catch (err) {
         console.error('Error calculando comparativo histórico:', err);
-        return { success: false, comparativoAgentes: [], evolucionEquipo: [] };
+        return { success: false, comparativoAgentes: [], evolucionEquipo: [], insights: null };
     }
 }
 

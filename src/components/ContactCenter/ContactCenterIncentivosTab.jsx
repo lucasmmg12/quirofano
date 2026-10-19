@@ -170,7 +170,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     useEffect(() => {
         let isMounted = true;
         setLoadingHistorico(true);
-        fetchHistoricoComparativoIncentivos().then(res => {
+        fetchHistoricoComparativoIncentivos(periodo).then(res => {
             if (isMounted && res.success) {
                 setHistoricoData(res);
             }
@@ -1141,7 +1141,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             </h3>
                         </div>
                         <p style={{ margin: '4px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                            Auditoría de productividad de cada colaboradora y del equipo: <strong>Agosto 2026 vs Septiembre 2026</strong> (SALUS y CRM WhatsApp).
+                            Auditoría de productividad de cada colaboradora y del equipo: <strong>{historicoData?.labelAnterior || 'Mes Anterior'} vs {historicoData?.labelActual || 'Mes Actual'}</strong> (SALUS y CRM WhatsApp).
                         </p>
                     </div>
 
@@ -1194,13 +1194,18 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: '10px', padding: '10px 14px'
                     }}>
                         <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#7C3AED', textTransform: 'uppercase' }}>
-                            🥇 Más Turnos en Septiembre
+                            🥇 Más Turnos en {historicoData?.labelActual?.split(' ')[0] || ''}
                         </div>
                         <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
-                            Virginia Jacques
+                            {historicoData?.insights?.liderTurnos?.name || '—'}
                         </div>
                         <div style={{ fontSize: '0.70rem', color: '#6B21A8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <strong>1.227 turnos</strong> <span style={{ color: '#16A34A', fontWeight: 700 }}>(+125 vs Ago)</span>
+                            <strong>{historicoData?.insights?.liderTurnos?.turnos?.toLocaleString() || 0} turnos</strong>
+                            {historicoData?.insights?.liderTurnos?.diff !== undefined && (
+                                <span style={{ color: historicoData.insights.liderTurnos.diff >= 0 ? '#16A34A' : '#DC2626', fontWeight: 700 }}>
+                                    ({historicoData.insights.liderTurnos.diff >= 0 ? '+' : ''}{historicoData.insights.liderTurnos.diff} vs {historicoData?.labelAnterior?.split(' ')[0] || 'Ant'})
+                                </span>
+                            )}
                         </div>
                     </div>
 
@@ -1208,13 +1213,20 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px', padding: '10px 14px'
                     }}>
                         <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#16A34A', textTransform: 'uppercase' }}>
-                            🚀 Mayor Salto en Turnos
+                            🚀 Mayor Variación en Turnos
                         </div>
                         <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
-                            Erica Leal
+                            {historicoData?.insights?.liderSalto?.name || '—'}
                         </div>
                         <div style={{ fontSize: '0.70rem', color: '#15803D', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <strong>+63.9% de aumento</strong> (de 573 a 939 turnos)
+                            <strong>
+                                {historicoData?.insights?.liderSalto?.pct !== undefined
+                                    ? `${historicoData.insights.liderSalto.pct >= 0 ? '+' : ''}${historicoData.insights.liderSalto.pct}%`
+                                    : '—'}
+                            </strong>
+                            {historicoData?.insights?.liderSalto?.prev !== undefined && (
+                                <span>(de {historicoData.insights.liderSalto.prev} a {historicoData.insights.liderSalto.curr} turnos)</span>
+                            )}
                         </div>
                     </div>
 
@@ -1225,10 +1237,10 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             🎯 Mayor Asistencia a Citas
                         </div>
                         <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
-                            Sofia Olivier
+                            {historicoData?.insights?.liderAsistencia?.name || '—'}
                         </div>
                         <div style={{ fontSize: '0.70rem', color: '#0369A1', fontWeight: 600 }}>
-                            <strong>57.46%</strong> (Meta institucional: 55%)
+                            <strong>{historicoData?.insights?.liderAsistencia?.asistenciaPct || 0}%</strong> (Meta institucional: 55%)
                         </div>
                     </div>
 
@@ -1239,10 +1251,10 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             💬 Mayor Volumen de Mensajes
                         </div>
                         <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F2942', marginTop: '2px' }}>
-                            Virginia Jacques
+                            {historicoData?.insights?.liderMensajes?.name || '—'}
                         </div>
                         <div style={{ fontSize: '0.70rem', color: '#B45309', fontWeight: 600 }}>
-                            <strong>2.505 conversaciones</strong> (+54.4% vs Ago)
+                            <strong>{historicoData?.insights?.liderMensajes?.mensajes?.toLocaleString() || 0} conversaciones</strong>
                         </div>
                     </div>
                 </div>
@@ -1264,20 +1276,20 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 >
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
-                                    <YAxis domain={[40, 75]} unit="%" tick={{ fill: '#64748B', fontSize: 11 }} />
+                                    <YAxis domain={[20, 80]} unit="%" tick={{ fill: '#64748B', fontSize: 11 }} />
                                     <Tooltip 
-                                        formatter={(val, name) => [`${val}%`, name === 'asistAgo' ? 'Agosto 2026' : 'Septiembre 2026']}
+                                        formatter={(val, name) => [`${val}%`, name === 'asistPrev' ? (historicoData?.labelAnterior || 'Mes Anterior') : (historicoData?.labelActual || 'Mes Actual')]}
                                         labelFormatter={(label) => `Operadora: ${label}`}
                                         contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
                                     />
                                     <Legend 
-                                        formatter={(val) => val === 'asistAgo' ? 'Agosto 2026 (%)' : 'Septiembre 2026 (%)'}
+                                        formatter={(val) => val === 'asistPrev' ? `${historicoData?.labelAnterior || 'Mes Anterior'} (%)` : `${historicoData?.labelActual || 'Mes Actual'} (%)`}
                                         wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
                                     />
                                     <ReferenceLine y={55} stroke="#16A34A" strokeDasharray="4 4" label={{ value: 'Meta 55%', fill: '#16A34A', fontSize: 11, fontWeight: 700, position: 'right' }} />
                                     <ReferenceLine y={60} stroke="#059669" strokeDasharray="2 2" label={{ value: 'Tope 60%', fill: '#059669', fontSize: 11, fontWeight: 700, position: 'right' }} />
-                                    <Bar dataKey="asistAgo" name="asistAgo" fill="#94A3B8" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                                    <Bar dataKey="asistSep" name="asistSep" fill="#0284C7" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="asistPrev" name="asistPrev" fill="#94A3B8" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="asistCurr" name="asistCurr" fill="#0284C7" radius={[6, 6, 0, 0]} maxBarSize={36} />
                                 </BarChart>
                             ) : metricChartType === 'turnos' ? (
                                 <BarChart
@@ -1288,16 +1300,16 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                     <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
                                     <YAxis tick={{ fill: '#64748B', fontSize: 11 }} />
                                     <Tooltip 
-                                        formatter={(val, name) => [val.toLocaleString() + ' turnos', name === 'turnosAgo' ? 'Agosto 2026' : 'Septiembre 2026']}
+                                        formatter={(val, name) => [val.toLocaleString() + ' turnos', name === 'turnosPrev' ? (historicoData?.labelAnterior || 'Mes Anterior') : (historicoData?.labelActual || 'Mes Actual')]}
                                         labelFormatter={(label) => `Operadora: ${label}`}
                                         contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
                                     />
                                     <Legend 
-                                        formatter={(val) => val === 'turnosAgo' ? 'Turnos Agosto 2026' : 'Turnos Septiembre 2026'}
+                                        formatter={(val) => val === 'turnosPrev' ? `Turnos ${historicoData?.labelAnterior || 'Mes Anterior'}` : `Turnos ${historicoData?.labelActual || 'Mes Actual'}`}
                                         wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
                                     />
-                                    <Bar dataKey="turnosAgo" name="turnosAgo" fill="#C4B5FD" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                                    <Bar dataKey="turnosSep" name="turnosSep" fill="#7C3AED" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="turnosPrev" name="turnosPrev" fill="#C4B5FD" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="turnosCurr" name="turnosCurr" fill="#7C3AED" radius={[6, 6, 0, 0]} maxBarSize={36} />
                                 </BarChart>
                             ) : metricChartType === 'mensajes' ? (
                                 <BarChart
@@ -1308,16 +1320,16 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                     <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
                                     <YAxis tick={{ fill: '#64748B', fontSize: 11 }} />
                                     <Tooltip 
-                                        formatter={(val, name) => [val.toLocaleString() + ' msjs', name === 'msjsAgo' ? 'Agosto 2026' : 'Septiembre 2026']}
+                                        formatter={(val, name) => [val.toLocaleString() + ' msjs', name === 'msjsPrev' ? (historicoData?.labelAnterior || 'Mes Anterior') : (historicoData?.labelActual || 'Mes Actual')]}
                                         labelFormatter={(label) => `Operadora: ${label}`}
                                         contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
                                     />
                                     <Legend 
-                                        formatter={(val) => val === 'msjsAgo' ? 'Conversaciones Agosto 2026' : 'Conversaciones Septiembre 2026'}
+                                        formatter={(val) => val === 'msjsPrev' ? `Conversaciones ${historicoData?.labelAnterior || 'Mes Anterior'}` : `Conversaciones ${historicoData?.labelActual || 'Mes Actual'}`}
                                         wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
                                     />
-                                    <Bar dataKey="msjsAgo" name="msjsAgo" fill="#7DD3FC" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                                    <Bar dataKey="msjsSep" name="msjsSep" fill="#0284C7" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="msjsPrev" name="msjsPrev" fill="#7DD3FC" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="msjsCurr" name="msjsCurr" fill="#0284C7" radius={[6, 6, 0, 0]} maxBarSize={36} />
                                 </BarChart>
                             ) : metricChartType === 'variable' ? (
                                 <BarChart
@@ -1328,16 +1340,16 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                     <XAxis dataKey="shortName" tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }} />
                                     <YAxis tickFormatter={(val) => `$${Math.round(val / 1000)}k`} tick={{ fill: '#64748B', fontSize: 11 }} />
                                     <Tooltip 
-                                        formatter={(val, name) => [formatCurrency(val), name === 'varAgo' ? 'Variable Agosto' : 'Variable Septiembre']}
+                                        formatter={(val, name) => [formatCurrency(val), name === 'varPrev' ? `Variable ${historicoData?.labelAnterior || 'Mes Anterior'}` : `Variable ${historicoData?.labelActual || 'Mes Actual'}`]}
                                         labelFormatter={(label) => `Operadora: ${label}`}
                                         contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}
                                     />
                                     <Legend 
-                                        formatter={(val) => val === 'varAgo' ? 'Variable Percibido Agosto ($)' : 'Variable Percibido Septiembre ($)'}
+                                        formatter={(val) => val === 'varPrev' ? `Variable Percibido ${historicoData?.labelAnterior || 'Mes Anterior'} ($)` : `Variable Percibido ${historicoData?.labelActual || 'Mes Actual'} ($)`}
                                         wrapperStyle={{ fontSize: '12px', fontWeight: 600 }}
                                     />
-                                    <Bar dataKey="varAgo" name="varAgo" fill="#86EFAC" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                                    <Bar dataKey="varSep" name="varSep" fill="#16A34A" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="varPrev" name="varPrev" fill="#86EFAC" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                                    <Bar dataKey="varCurr" name="varCurr" fill="#16A34A" radius={[6, 6, 0, 0]} maxBarSize={36} />
                                 </BarChart>
                             ) : (
                                 <LineChart
@@ -1370,12 +1382,20 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         <thead>
                             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569' }}>
                                 <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 800 }}>Colaboradora</th>
-                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Turnos Ago ➔ Sep</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>
+                                    Turnos {historicoData?.labelAnterior?.split(' ')[0] || 'Ant'} ➔ {historicoData?.labelActual?.split(' ')[0] || 'Act'}
+                                </th>
                                 <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Var. Turnos</th>
-                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Asistencia Ago ➔ Sep</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>
+                                    Asistencia {historicoData?.labelAnterior?.split(' ')[0] || 'Ant'} ➔ {historicoData?.labelActual?.split(' ')[0] || 'Act'}
+                                </th>
                                 <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Dif. Asistencia</th>
-                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>Mensajes Ago ➔ Sep</th>
-                                <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800 }}>Variable Ago ➔ Sep</th>
+                                <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800 }}>
+                                    Mensajes {historicoData?.labelAnterior?.split(' ')[0] || 'Ant'} ➔ {historicoData?.labelActual?.split(' ')[0] || 'Act'}
+                                </th>
+                                <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800 }}>
+                                    Variable {historicoData?.labelAnterior?.split(' ')[0] || 'Ant'} ➔ {historicoData?.labelActual?.split(' ')[0] || 'Act'}
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1386,14 +1406,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 }}>
                                     <td style={{ padding: '10px 10px', fontWeight: 800, color: '#0F2942' }}>
                                         {ag.name}
-                                        {ag.fteSep < 1 && (
+                                        {ag.fteCurr < 1 && (
                                             <span style={{ marginLeft: '6px', fontSize: '0.64rem', padding: '1px 5px', borderRadius: '4px', background: '#F1F5F9', color: '#64748B', fontWeight: 700 }}>
-                                                {Math.round(ag.fteSep * 100)}% FTE
+                                                {Math.round(ag.fteCurr * 100)}% FTE
                                             </span>
                                         )}
                                     </td>
                                     <td style={{ padding: '10px 10px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
-                                        {ag.turnosAgo.toLocaleString()} ➔ <strong>{ag.turnosSep.toLocaleString()}</strong>
+                                        {ag.turnosPrev.toLocaleString()} ➔ <strong>{ag.turnosCurr.toLocaleString()}</strong>
                                     </td>
                                     <td style={{ padding: '10px 10px', textAlign: 'center' }}>
                                         <span style={{
@@ -1405,7 +1425,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                         </span>
                                     </td>
                                     <td style={{ padding: '10px 10px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
-                                        {ag.asistAgo}% ➔ <strong>{ag.asistSep}%</strong>
+                                        {ag.asistPrev}% ➔ <strong>{ag.asistCurr}%</strong>
                                     </td>
                                     <td style={{ padding: '10px 10px', textAlign: 'center' }}>
                                         <span style={{
@@ -1417,10 +1437,10 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                         </span>
                                     </td>
                                     <td style={{ padding: '10px 10px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
-                                        {ag.msjsAgo > 0 ? ag.msjsAgo.toLocaleString() : '—'} ➔ <strong>{ag.msjsSep.toLocaleString()}</strong>
+                                        {ag.msjsPrev > 0 ? ag.msjsPrev.toLocaleString() : '—'} ➔ <strong>{ag.msjsCurr > 0 ? ag.msjsCurr.toLocaleString() : '—'}</strong>
                                     </td>
                                     <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 800, color: '#003B71' }}>
-                                        {formatCurrency(ag.varAgo)} ➔ <strong>{formatCurrency(ag.varSep)}</strong>
+                                        {formatCurrency(ag.varPrev)} ➔ <strong>{formatCurrency(ag.varCurr)}</strong>
                                     </td>
                                 </tr>
                             ))}
