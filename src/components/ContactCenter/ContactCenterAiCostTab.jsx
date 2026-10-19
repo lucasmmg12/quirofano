@@ -484,7 +484,7 @@ export default function ContactCenterAiCostTab({
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F2942' }}>
-                                Auditoría de Tokens & Proyecciones de Costos IA
+                                Auditoría de Tokens
                             </h3>
                             <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '4px',

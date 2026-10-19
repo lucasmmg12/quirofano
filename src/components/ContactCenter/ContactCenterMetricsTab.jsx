@@ -1705,7 +1705,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     }}
                 >
                     <Cpu size={16} />
-                    Auditoría de Tokens & Proyecciones IA
+                    Auditoría de Tokens
                     <span style={{
                         background: activeMetricsView === 'ia_tokens' ? '#FFFFFF' : '#E0F2FE',
                         color: activeMetricsView === 'ia_tokens' ? '#0284C7' : '#0369A1',
