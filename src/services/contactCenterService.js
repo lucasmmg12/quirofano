@@ -850,20 +850,20 @@ export function resolveConversationTags(conv, messages = []) {
 export async function fetchLiveAndDemoChats() {
     try {
         // 1. Traer conversaciones estructuradas de contact_center_conversations
-        // Prioridad: Conversaciones activas + lote de recientes finalizados para resolver CRM y mensajes sin saturar memoria
+        // Prioridad: TODAS las conversaciones activas (sin límite artificial de 200 para evitar que queden pacientes invisibles)
+        // + lote de recientes finalizados para resolver CRM y mensajes sin saturar memoria
         const [activeConvRes, archivedConvRes] = await Promise.all([
             supabase
                 .from('contact_center_conversations')
                 .select('*')
                 .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","closed","archived")')
-                .order('updated_at', { ascending: false })
-                .limit(200),
+                .order('updated_at', { ascending: false }),
             supabase
                 .from('contact_center_conversations')
                 .select('*')
                 .in('status', ['archivado', 'cerrado', 'finalizado', 'resuelto', 'closed', 'archived'])
                 .order('updated_at', { ascending: false })
-                .limit(120)
+                .limit(200)
         ]);
 
         const activeList = activeConvRes.data || [];
@@ -876,14 +876,14 @@ export async function fetchLiveAndDemoChats() {
         });
 
         // 2. Traer mensajes EXCLUSIVOS de la línea de Contact Center
-        // Limit incrementado a 800 para cubrir chats concurrentes sin truncar conversaciones activas.
+        // Limit incrementado a 3000 para cubrir todos los chats activos concurrentes sin truncar conversaciones.
         // NOTA: El índice idx_whatsapp_messages_line_created garantiza que esta query sea O(log n).
         const { data: slimMessages, error } = await supabase
             .from('whatsapp_messages')
             .select(CC_MESSAGE_SLIM_SELECT)
             .eq('line_id', 'contact_center')
             .order('created_at', { ascending: false })
-            .limit(800);
+            .limit(3000);
         const rawMessages = (slimMessages || []).map(rehydrateSlimMessage);
 
         if (error) {
