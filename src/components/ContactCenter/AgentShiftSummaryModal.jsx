@@ -3,7 +3,8 @@ import {
     X, Calendar, Clock, MessageSquare, CheckCircle2, 
     Stethoscope, FileText, RotateCcw, AlertTriangle, HelpCircle, 
     TrendingUp, Award, Zap, Copy, Check, RefreshCw, ArrowRightLeft,
-    Sparkles, ShieldCheck, User, BarChart2, Info, FileDown
+    Sparkles, ShieldCheck, User, BarChart2, Info, FileDown,
+    Inbox, UserCheck, Send, ArrowDownLeft
 } from 'lucide-react';
 import { getAgentDailyShiftMetrics, buildShiftSummaryClipboardText, getLocalDateString } from '../../services/agentShiftService';
 import { CONTACT_CENTER_AGENTS } from '../../services/contactCenterService';
@@ -119,10 +120,15 @@ export default function AgentShiftSummaryModal({
     if (!isOpen) return null;
 
     const kpis = metrics?.kpis || {
+        conversacionesIngresadas: 0,
+        conversacionesAtendidas: 0,
+        conversacionesPendientes: 0,
+        tasaAtencion: 100,
         mensajesEnviados: 0,
         conversacionesFinalizadas: 0,
         conversacionesGestionadas: 0,
         turnosSalus: 0,
+        turnosCancelados: 0,
         tasaResolucion: 0,
         promMensajesPorChat: '0',
         chatsPendientes: 0
@@ -406,50 +412,89 @@ export default function AgentShiftSummaryModal({
                                 </div>
                             </div>
 
-                            {/* ── 4 KPIS HERO DEL FINAL DE TURNO ── */}
+                            {/* ── 5 KPIS HERO DEL FINAL DE TURNO ── */}
                             <div style={{
                                 display: 'grid',
-                                gridTemplateColumns: 'repeat(4, 1fr)',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                                 gap: '12px'
                             }}>
-                                {/* 1. Mensajes Enviados */}
+                                {/* 1. Conversaciones Ingresadas Hoy */}
                                 <div style={{
                                     background: '#FFFFFF',
                                     borderRadius: '12px',
                                     padding: '14px 16px',
-                                    border: '1px solid #E2E8F0',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                                    border: '1px solid #BAE6FD',
+                                    boxShadow: '0 2px 4px rgba(2, 132, 199, 0.04)',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     justifyContent: 'space-between'
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                                            Mensajes Enviados
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1' }}>
+                                            Ingresadas Hoy
                                         </span>
                                         <div style={{
                                             width: '28px',
                                             height: '28px',
                                             borderRadius: '8px',
-                                            background: '#EFF6FF',
+                                            background: '#F0F9FF',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center'
+                                            justifyContent: 'center',
+                                            border: '1px solid #BAE6FD'
                                         }}>
-                                            <MessageSquare size={15} color="#0284C7" />
+                                            <Inbox size={15} color="#0284C7" />
                                         </div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
-                                            {kpis.mensajesEnviados}
+                                            {kpis.conversacionesIngresadas || 0}
                                         </div>
                                         <span style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 600 }}>
-                                            ~{kpis.promMensajesPorChat} msgs / conversación
+                                            Consultas y chats entrantes
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* 2. Conversaciones Finalizadas */}
+                                {/* 2. Conversaciones Atendidas Hoy */}
+                                <div style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '12px',
+                                    padding: '14px 16px',
+                                    border: '1px solid #BBF7D0',
+                                    boxShadow: '0 2px 4px rgba(16, 185, 129, 0.04)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803D' }}>
+                                            Atendidas Hoy
+                                        </span>
+                                        <div style={{
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '8px',
+                                            background: '#F0FDF4',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            border: '1px solid #BBF7D0'
+                                        }}>
+                                            <UserCheck size={15} color="#16A34A" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
+                                            {kpis.conversacionesAtendidas || 0}
+                                        </div>
+                                        <span style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 600 }}>
+                                            {kpis.tasaAtencion || 100}% de atención
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* 3. Casos Finalizados */}
                                 <div style={{
                                     background: '#FFFFFF',
                                     borderRadius: '12px',
@@ -468,25 +513,26 @@ export default function AgentShiftSummaryModal({
                                             width: '28px',
                                             height: '28px',
                                             borderRadius: '8px',
-                                            background: '#F0FDF4',
+                                            background: '#F8FAFC',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center'
+                                            justifyContent: 'center',
+                                            border: '1px solid #E2E8F0'
                                         }}>
-                                            <CheckCircle2 size={15} color="#16A34A" />
+                                            <CheckCircle2 size={15} color="#059669" />
                                         </div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
-                                            {kpis.conversacionesFinalizadas}
+                                            {kpis.conversacionesFinalizadas || 0}
                                         </div>
-                                        <span style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 600 }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>
                                             {kpis.tasaResolucion}% tasa resolutiva
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* 3. Turnos Agendados SALUS (Clickeable para ver detalle y mapeo por DNI) */}
+                                {/* 4. Turnos Agendados SALUS */}
                                 <div 
                                     onClick={() => setShowTurnosModal(true)}
                                     title="Haz clic para ver el detalle de los turnos y su mapeo con WhatsApp por DNI"
@@ -580,7 +626,7 @@ export default function AgentShiftSummaryModal({
                                     </div>
                                 </div>
 
-                                {/* 4. Total Casos Gestionados */}
+                                {/* 5. Mensajes Enviados */}
                                 <div style={{
                                     background: '#FFFFFF',
                                     borderRadius: '12px',
@@ -593,26 +639,157 @@ export default function AgentShiftSummaryModal({
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                                         <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                                            Total Gestionados
+                                            Mensajes Enviados
                                         </span>
                                         <div style={{
                                             width: '28px',
                                             height: '28px',
                                             borderRadius: '8px',
-                                            background: '#FFFBEB',
+                                            background: '#EFF6FF',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center'
+                                            justifyContent: 'center',
+                                            border: '1px solid #DBEAFE'
                                         }}>
-                                            <TrendingUp size={15} color="#D97706" />
+                                            <MessageSquare size={15} color="#0284C7" />
                                         </div>
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1 }}>
-                                            {kpis.conversacionesGestionadas}
+                                            {kpis.mensajesEnviados}
                                         </div>
-                                        <span style={{ fontSize: '0.7rem', color: kpis.chatsPendientes > 0 ? '#D97706' : '#16A34A', fontWeight: 600 }}>
-                                            {kpis.chatsPendientes > 0 ? `${kpis.chatsPendientes} pendientes de cierre` : 'Bandeja limpia al 100%'}
+                                        <span style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 600 }}>
+                                            ~{kpis.promMensajesPorChat} msgs / conversación
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ── BALANCE DE FLUJO: INGRESADOS VS ATENDIDOS ── */}
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '12px',
+                                padding: '14px 18px',
+                                border: '1px solid #E2E8F0',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '10px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{
+                                            width: '28px',
+                                            height: '28px',
+                                            borderRadius: '8px',
+                                            background: '#F0F9FF',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            border: '1px solid #BAE6FD'
+                                        }}>
+                                            <ArrowRightLeft size={15} color="#0284C7" />
+                                        </div>
+                                        <div>
+                                            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Balance de Flujo: Ingresados vs. Atendidos
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'block' }}>
+                                                Relación entre la demanda total que ingresó en el día y las consultas atendidas
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Badges de balance */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <span style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            padding: '4px 9px',
+                                            borderRadius: '8px',
+                                            background: '#EFF6FF',
+                                            color: '#1D4ED8',
+                                            border: '1px solid #BFDBFE'
+                                        }}>
+                                            📥 Ingresados: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesIngresadas || 0}</strong>
+                                        </span>
+                                        <span style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            padding: '4px 9px',
+                                            borderRadius: '8px',
+                                            background: '#F0FDF4',
+                                            color: '#15803D',
+                                            border: '1px solid #BBF7D0'
+                                        }}>
+                                            🎧 Atendidos: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesAtendidas || 0}</strong>
+                                        </span>
+                                        <span style={{
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            padding: '4px 9px',
+                                            borderRadius: '8px',
+                                            background: '#ECFDF5',
+                                            color: '#047857',
+                                            border: '1px solid #A7F3D0'
+                                        }}>
+                                            ✅ Cerrados: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesFinalizadas || 0}</strong>
+                                        </span>
+                                        {kpis.conversacionesPendientes > 0 && (
+                                            <span style={{
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                padding: '4px 9px',
+                                                borderRadius: '8px',
+                                                background: '#FFFBEB',
+                                                color: '#B45309',
+                                                border: '1px solid #FDE68A'
+                                            }}>
+                                                ⏳ En Espera / Sin Atender: <strong style={{ marginLeft: 3 }}>{kpis.conversacionesPendientes}</strong>
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Barra de porcentaje visual */}
+                                <div>
+                                    <div style={{
+                                        height: '9px',
+                                        width: '100%',
+                                        background: '#E2E8F0',
+                                        borderRadius: '999px',
+                                        overflow: 'hidden',
+                                        display: 'flex'
+                                    }}>
+                                        <div 
+                                            style={{
+                                                width: `${Math.min(100, Math.max(0, kpis.tasaAtencion || 0))}%`,
+                                                background: 'linear-gradient(90deg, #10B981 0%, #059669 100%)',
+                                                borderRadius: '999px',
+                                                transition: 'width 0.4s ease'
+                                            }}
+                                            title={`Atendidos: ${kpis.conversacionesAtendidas || 0} (${kpis.tasaAtencion || 100}%)`}
+                                        />
+                                        {kpis.conversacionesPendientes > 0 && (
+                                            <div 
+                                                style={{
+                                                    width: `${Math.min(100, Math.max(0, 100 - (kpis.tasaAtencion || 0)))}%`,
+                                                    background: '#F59E0B',
+                                                    borderRadius: '0 999px 999px 0',
+                                                    transition: 'width 0.4s ease'
+                                                }}
+                                                title={`Pendientes: ${kpis.conversacionesPendientes}`}
+                                            />
+                                        )}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#15803D', fontWeight: 700 }}>
+                                            {kpis.tasaAtencion || 100}% de tasa de atención sobre consultas ingresadas
+                                        </span>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 500 }}>
+                                            {kpis.conversacionesPendientes > 0 
+                                                ? `${kpis.conversacionesPendientes} paciente(s) aún sin respuesta en la jornada` 
+                                                : 'Todos los pacientes ingresados recibieron atención'}
                                         </span>
                                     </div>
                                 </div>

@@ -197,19 +197,25 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
 
     y += 21;
 
-    // ─── 5. 4 KPIS HERO (Bloques con elevación / cajas) ───
+    // ─── 5. 5 KPIS HERO (Bloques con elevación / cajas) ───
     const kpiCards = [
         {
-            title: 'MENSAJES ENVIADOS',
-            val: String(kpis.mensajesEnviados || 0),
-            sub: `~${kpis.promMensajesPorChat || 0} msgs / conv`,
+            title: 'INGRESADOS HOY',
+            val: String(kpis.conversacionesIngresadas || 0),
+            sub: 'Consultas entrantes',
             color: THEME.accent
+        },
+        {
+            title: 'ATENDIDOS HOY',
+            val: String(kpis.conversacionesAtendidas || 0),
+            sub: `${kpis.tasaAtencion || 100}% atencion`,
+            color: THEME.success
         },
         {
             title: 'CASOS FINALIZADOS',
             val: String(kpis.conversacionesFinalizadas || 0),
             sub: `${kpis.tasaResolucion || 0}% tasa resolutiva`,
-            color: THEME.success
+            color: [5, 150, 105]
         },
         {
             title: 'TURNOS EN SALUS',
@@ -218,14 +224,14 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
             color: THEME.purple
         },
         {
-            title: 'TOTAL GESTIONADOS',
-            val: String(kpis.conversacionesGestionadas || 0),
-            sub: `${kpis.chatsPendientes || 0} pendientes de cierre`,
-            color: [249, 115, 22] // Orange 500
+            title: 'MENSAJES ENVIADOS',
+            val: String(kpis.mensajesEnviados || 0),
+            sub: `~${kpis.promMensajesPorChat || 0} msgs/conv`,
+            color: THEME.navy
         }
     ];
 
-    const kpiCardW = (colW - 9) / 4;
+    const kpiCardW = (colW - 12) / 5;
     const kpiCardH = 21;
 
     kpiCards.forEach((kpi, i) => {
@@ -235,22 +241,22 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
         doc.roundedRect(kx, y, kpiCardW, kpiCardH, 2, 2, 'FD');
 
         // Etiqueta superior
-        doc.setFontSize(6);
+        doc.setFontSize(5.8);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...THEME.mutedText);
-        doc.text(kpi.title, kx + 3.5, y + 5);
+        doc.text(kpi.title, kx + 3, y + 5);
 
         // Valor numérico hero
-        doc.setFontSize(14);
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...THEME.darkText);
-        doc.text(kpi.val, kx + 3.5, y + 12.5);
+        doc.text(kpi.val, kx + 3, y + 12.5);
 
         // Subtexto
-        doc.setFontSize(6.4);
+        doc.setFontSize(5.8);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...kpi.color);
-        doc.text(kpi.sub, kx + 3.5, y + 17.5);
+        doc.text(kpi.sub, kx + 3, y + 17.5);
     });
 
     y += kpiCardH + 6;

@@ -179,8 +179,10 @@ export async function getAgentDailyShiftMetrics({
     const [
         turnosSalusData,
         outgoingMessages,
+        incomingMessages,
         closedConversations,
-        attendedConversations
+        attendedConversations,
+        createdConversations
     ] = await Promise.all([
         fetchTurnosSalusHoy(targetDate),
 
@@ -188,7 +190,7 @@ export async function getAgentDailyShiftMetrics({
         fetchAllRows(() => {
             let q = supabase
                 .from('whatsapp_messages')
-                .select('id, created_at, content, sender_name, phone')
+                .select('id, created_at, content, sender_name, phone, line_id')
                 .gte('created_at', startIso)
                 .lte('created_at', endIso)
                 .eq('direction', 'outgoing');
@@ -201,7 +203,17 @@ export async function getAgentDailyShiftMetrics({
             return q;
         }),
 
-        // 2. Conversaciones cerradas/finalizadas en la jornada
+        // 2. Mensajes entrantes recibidos en la jornada (para cuantificar ingresos reales de pacientes)
+        fetchAllRows(() => {
+            return supabase
+                .from('whatsapp_messages')
+                .select('id, created_at, phone, line_id')
+                .gte('created_at', startIso)
+                .lte('created_at', endIso)
+                .eq('direction', 'incoming');
+        }),
+
+        // 3. Conversaciones cerradas/finalizadas en la jornada
         fetchAllRows(() => {
             return supabase
                 .from('contact_center_conversations')
@@ -210,13 +222,22 @@ export async function getAgentDailyShiftMetrics({
                 .lte('closed_at', endIso);
         }),
 
-        // 3. Conversaciones asignadas o actualizadas donde intervino en la jornada
+        // 4. Conversaciones asignadas o actualizadas donde intervino en la jornada
         fetchAllRows(() => {
             return supabase
                 .from('contact_center_conversations')
                 .select('phone, nombre_completo, dni, status, assigned_agent_id, assigned_agent_name, closed_by_agent_name, motivo_consulta, ai_summary, tags, updated_at, created_at, resolution_reason')
                 .gte('updated_at', startIso)
                 .lte('updated_at', endIso);
+        }),
+
+        // 5. Conversaciones creadas/iniciadas en la jornada (nuevos ingresos)
+        fetchAllRows(() => {
+            return supabase
+                .from('contact_center_conversations')
+                .select('phone, nombre_completo, dni, status, assigned_agent_id, assigned_agent_name, created_at')
+                .gte('created_at', startIso)
+                .lte('created_at', endIso);
         })
     ]);
 
@@ -459,6 +480,53 @@ export async function getAgentDailyShiftMetrics({
     // Chats actualmente asignados sin cerrar (para verificar si la bandeja queda limpia)
     const chatsActivosSinCerrar = agentAttendedConversations.filter(c => !['cerrado', 'archivado', 'finalizado', 'resuelto'].includes(c.status));
 
+    // === CALCULO DE INGRESADOS VS ATENDIDOS DEL DIA ===
+    let conversacionesIngresadas = 0;
+    let conversacionesAtendidas = 0;
+    let conversacionesPendientes = 0;
+    let tasaAtencion = 100;
+
+    if (isTeamOverview) {
+        // Enfoque Global del Equipo:
+        // 1. Ingresados: Teléfonos únicos con mensajes entrantes de Contact Center + nuevas conversaciones creadas en la jornada
+        const validIncoming = (incomingMessages || []).filter(m => !m.line_id || m.line_id === 'contact_center');
+        const inPhonesSet = new Set(validIncoming.map(m => m.phone).filter(Boolean));
+        const createdPhonesSet = new Set((createdConversations || []).map(c => c.phone).filter(Boolean));
+        const ingresadosPhonesSet = new Set([...inPhonesSet, ...createdPhonesSet]);
+
+        // 2. Atendidos: Teléfonos que recibieron respuesta humana (operadora) o fueron finalizados/cerrados en el día
+        const humanOutPhonesSet = new Set(agentOutgoingMessages.map(m => m.phone).filter(Boolean));
+        const closedPhonesSet = new Set((closedConversations || []).map(c => c.phone).filter(Boolean));
+        const atendidosPhonesSet = new Set([...humanOutPhonesSet, ...closedPhonesSet]);
+
+        conversacionesIngresadas = ingresadosPhonesSet.size;
+        conversacionesAtendidas = atendidosPhonesSet.size;
+
+        // Cuántos de los ingresados hoy fueron efectivamente atendidos
+        let ingresadosAtendidosCount = 0;
+        ingresadosPhonesSet.forEach(p => {
+            if (atendidosPhonesSet.has(p)) ingresadosAtendidosCount++;
+        });
+
+        conversacionesPendientes = Math.max(0, conversacionesIngresadas - ingresadosAtendidosCount);
+        tasaAtencion = conversacionesIngresadas > 0
+            ? Math.min(100, Math.round((conversacionesAtendidas / conversacionesIngresadas) * 100))
+            : 100;
+    } else {
+        // Enfoque Operadora Individual:
+        const assignedPhones = new Set((agentAttendedConversations || []).map(c => c.phone).filter(Boolean));
+        const closedByAgentPhones = new Set(agentClosedConversations.map(c => c.phone).filter(Boolean));
+        const ingresadosPhonesSet = new Set([...assignedPhones, ...agentOutgoingPhonesSet, ...closedByAgentPhones]);
+        const atendidasPhonesSet = new Set([...agentOutgoingPhonesSet, ...closedByAgentPhones]);
+
+        conversacionesIngresadas = Math.max(ingresadosPhonesSet.size, agentAttendedConversations.length);
+        conversacionesAtendidas = atendidasPhonesSet.size;
+        conversacionesPendientes = Math.max(0, chatsActivosSinCerrar.length);
+        tasaAtencion = conversacionesIngresadas > 0
+            ? Math.min(100, Math.round((conversacionesAtendidas / conversacionesIngresadas) * 100))
+            : 100;
+    }
+
     // === GENERACIÓN DE SMART INSIGHTS ===
     const totalMensajes = agentOutgoingMessages.length;
     const totalFinalizadas = agentClosedConversations.length;
@@ -496,19 +564,19 @@ export async function getAgentDailyShiftMetrics({
     if (isTeamOverview) {
         scoreNivel = 'Operación Global del Día';
         scoreColor = '#003B71';
-        scoreDiagnostico = `Balance diario del equipo de Contact Center: ${totalMensajes} mensajes emitidos, ${totalGestionadas} casos tomados (${totalFinalizadas} cerrados) y ${turnosSalusCount} turnos efectivos cargados en SALUS (${turnosCanceladosCount} cancelaciones procesadas).`;
+        scoreDiagnostico = `Balance diario del equipo: ${conversacionesIngresadas} conversaciones ingresadas hoy vs ${conversacionesAtendidas} atendidas (${totalFinalizadas} cerradas, ${conversacionesPendientes} pendientes de atención). Se emitieron ${totalMensajes} mensajes y se agendaron ${turnosSalusCount} turnos en SALUS (${turnosCanceladosCount} cancelaciones procesadas).`;
     } else if (totalFinalizadas >= 40 || turnosSalusCount >= 20 || totalMensajes >= 150) {
         scoreNivel = 'Sobresaliente / Alto Impacto';
         scoreColor = '#059669';
-        scoreDiagnostico = `Jornada de máxima productividad. Mantuviste un ritmo de respuesta continuo con ${totalMensajes} mensajes y un volumen destacado de ${turnosSalusCount} turnos efectivos cargados en SALUS.`;
+        scoreDiagnostico = `Jornada de máxima productividad: ${conversacionesIngresadas} conversaciones ingresadas en tu guardia (${conversacionesAtendidas} atendidas, ${totalFinalizadas} cerradas). Mantuviste un ritmo de respuesta continuo con ${totalMensajes} mensajes y ${turnosSalusCount} turnos efectivos cargados en SALUS.`;
     } else if (totalFinalizadas >= 20 || turnosSalusCount >= 10 || totalMensajes >= 80) {
         scoreNivel = 'Muy Buena / Ritmo Estable';
         scoreColor = '#0284C7';
-        scoreDiagnostico = `Turno fluido y ordenado. Lograste resolver el ${tasaResolucion}% de las gestiones tomadas, cerrando ${totalFinalizadas} conversaciones sin acumular demoras críticas.`;
+        scoreDiagnostico = `Turno fluido y ordenado: ${conversacionesIngresadas} consultas ingresadas (${conversacionesAtendidas} atendidas, ${totalFinalizadas} resueltas). Tasa resolutiva del ${tasaResolucion}% y ${turnosSalusCount} turnos en SALUS agendados.`;
     } else {
         scoreNivel = 'Moderada / En Seguimiento';
         scoreColor = '#D97706';
-        scoreDiagnostico = `Jornada con volumen balanceado o enfoque en gestiones complejas. Se registraron ${totalMensajes} mensajes y ${turnosSalusCount} turnos agendados.`;
+        scoreDiagnostico = `Jornada con volumen balanceado: ${conversacionesIngresadas} consultas ingresadas (${conversacionesAtendidas} atendidas). Se registraron ${totalMensajes} mensajes y ${turnosSalusCount} turnos agendados.`;
     }
 
     const insights = [
@@ -568,6 +636,10 @@ export async function getAgentDailyShiftMetrics({
             firstName: cleanFirstName
         },
         kpis: {
+            conversacionesIngresadas,
+            conversacionesAtendidas,
+            conversacionesPendientes,
+            tasaAtencion,
             mensajesEnviados: totalMensajes,
             conversacionesFinalizadas: totalFinalizadas,
             conversacionesGestionadas: totalGestionadas,
@@ -749,12 +821,14 @@ export function buildShiftSummaryClipboardText(metrics) {
         `📅 *Fecha:* ${fechaFormat}`,
         ``,
         `📈 *MÉTRICAS PRINCIPALES DEL DÍA:*`,
+        `• 📥 *Conversaciones Ingresadas:* ${kpis.conversacionesIngresadas || 0}`,
+        `• 🎧 *Conversaciones Atendidas:* ${kpis.conversacionesAtendidas || 0} (${kpis.tasaAtencion || 100}% de atención)`,
+        `• ⏳ *Pendientes de Atención:* ${kpis.conversacionesPendientes || 0}`,
         `• 💬 *Mensajes Enviados:* ${kpis.mensajesEnviados}`,
         `• ✅ *Conversaciones Finalizadas:* ${kpis.conversacionesFinalizadas}`,
         `• 🩺 *Turnos Agendados en SALUS:* ${kpis.turnosSalus}`,
-        `• 🎯 *Efectividad Resolutiva:* ${kpis.tasaResolucion}% (${kpis.conversacionesFinalizadas}/${kpis.conversacionesGestionadas} gestionadas)`,
+        `• 🎯 *Efectividad Resolutiva:* ${kpis.tasaResolucion}%`,
         `• 💬 *Promedio de Mensajes/Caso:* ${kpis.promMensajesPorChat}`,
-        `• 📥 *Chats Asignados Pendientes:* ${kpis.chatsPendientes}`,
         ``,
         `📋 *TIPOS DE CONSULTAS GESTIONADAS:*`,
         `• 🩺 Turnos Nuevos y Citas: ${categorias.turnosNuevos.count}`,
