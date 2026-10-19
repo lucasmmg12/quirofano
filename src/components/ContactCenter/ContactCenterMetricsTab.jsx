@@ -31,6 +31,7 @@ import { CONTACT_CENTER_AGENTS, isClosedOrArchived } from '../../services/contac
 import { INCENTIVO_CONFIG, calculateEscalon } from '../../services/incentivoContactCenterService';
 import { fetchDolarOficial } from '../../services/dolarService';
 import ContactCenterAiCostTab from './ContactCenterAiCostTab';
+import ContactCenterCapacidadTab from './ContactCenterCapacidadTab';
 
 const COSTO_POR_MENSAJE_USD = 0.026; // $0.026 USD por mensaje enviado a partir del 1.001
 const MENSAJES_GRATIS_MENSUALES = 1000; // Primeros 1.000 mensajes salientes sin costo (Meta Free Tier)
@@ -1580,34 +1581,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         Informe Mensual
                     </button>
 
-                    {/* BOTÓN INFORME DE CAPACIDAD Y CUELLOS DE BOTELLA (PDF) */}
-                    <a
-                        href="/Informe_Contact_Center_Sanatorio_Argentino.pdf"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download="Informe_Contact_Center_Sanatorio_Argentino.pdf"
-                        title="Descargar Auditoría Oficial de Capacidad Instalada y Cuellos de Botella (PDF)"
-                        style={{
-                            padding: '8px 14px',
-                            borderRadius: '8px',
-                            border: '1.5px solid #FED7AA',
-                            background: '#FFF7ED',
-                            color: '#C2410C',
-                            fontSize: '0.76rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            boxShadow: '0 1px 3px rgba(194, 65, 12, 0.08)',
-                            textDecoration: 'none',
-                            transition: 'all 0.15s ease'
-                        }}
-                    >
-                        <FileDown size={14} color="#EA580C" />
-                        Capacidad & Cuellos de Botella (PDF)
-                    </a>
-
                     <button
                         type="button"
                         onClick={loadMetrics}
@@ -1683,6 +1656,38 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
                 <button
                     type="button"
+                    onClick={() => setActiveMetricsView('capacidad')}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 18px',
+                        borderRadius: '9px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        background: activeMetricsView === 'capacidad' ? '#C2410C' : 'transparent',
+                        color: activeMetricsView === 'capacidad' ? '#FFFFFF' : '#475569',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <AlertTriangle size={16} />
+                    Capacidad & Cuellos de Botella
+                    <span style={{
+                        background: activeMetricsView === 'capacidad' ? '#FFFFFF' : '#FFEDD5',
+                        color: activeMetricsView === 'capacidad' ? '#C2410C' : '#9A3412',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800
+                    }}>
+                        Informe Dinámico
+                    </span>
+                </button>
+
+                <button
+                    type="button"
                     onClick={() => setActiveMetricsView('ia_tokens')}
                     style={{
                         display: 'inline-flex',
@@ -1727,6 +1732,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     arsRate={arsRate}
                     setArsRate={setArsRate}
                     addToast={addToast}
+                />
+            ) : activeMetricsView === 'capacidad' ? (
+                <ContactCenterCapacidadTab
+                    metrics={metrics}
+                    selectedMonth={selectedMonth}
+                    timeRange={timeRange}
                 />
             ) : (
                 <>
