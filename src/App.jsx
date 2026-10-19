@@ -174,6 +174,7 @@ const VIEW_LABELS = {
     consultas: 'Consultas',
     auditoria_historias: 'Auditoría de Historias',
     beto: 'Simon IA',
+    simon: 'Simon IA',
     beto_rules: 'Gestión de Reglas',
     asociaciones_entrega: 'Asociaciones Entrega',
     entrega_fichas: '1. Entrega de Fichas',

@@ -117,7 +117,7 @@ function sanitizeQuestionText(str) {
     return cleaned;
 }
 
-export default function RAGPanel() {
+export default function RAGPanel({ addToast, isPublic = false, hideHistory = false, initialUser = null }) {
     // State
     const [activeTab, setActiveTab] = useState('chat') // 'chat' | 'documents'
     const [conversations, setConversations] = useState([])
@@ -161,7 +161,7 @@ export default function RAGPanel() {
     const [feedbackState, setFeedbackState] = useState({})
 
     // User identification (scoped per logged in user)
-    const currentUser = sessionStorage.getItem('username') || localStorage.getItem('username') || 'usuario_actual';
+    const currentUser = initialUser || sessionStorage.getItem('username') || localStorage.getItem('username') || (isPublic ? 'invitado_publico' : 'usuario_actual');
 
     // Correction modal state for Thumbs Down
     const [correctionModal, setCorrectionModal] = useState({
@@ -325,6 +325,10 @@ export default function RAGPanel() {
 
     // Load conversations
     async function loadConversations() {
+        if (hideHistory || isPublic) {
+            setConversations([])
+            return
+        }
         try {
             const data = await listRAGConversations()
             setConversations(data.conversations || [])
@@ -889,7 +893,24 @@ export default function RAGPanel() {
 
                     {activeTab === 'chat' && (
                         <div className="rag-conv-list">
-                            {conversations.length === 0 ? (
+                            {hideHistory || isPublic ? (
+                                <div className="rag-empty-state" style={{ padding: '26px 14px', textAlign: 'center' }}>
+                                    <div style={{
+                                        width: '40px', height: '40px', borderRadius: '50%',
+                                        background: 'rgba(37, 99, 235, 0.08)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        margin: '0 auto 12px', color: '#2563EB'
+                                    }}>
+                                        <Brain size={20} />
+                                    </div>
+                                    <p style={{ fontWeight: 600, color: 'var(--simon-text-main, #1E293B)', fontSize: '0.84rem', margin: '0 0 6px' }}>
+                                        Consulta Libre e Individual
+                                    </p>
+                                    <span style={{ fontSize: '0.73rem', color: 'var(--simon-text-muted, #64748B)', lineHeight: 1.45, display: 'block' }}>
+                                        Por privacidad médica y confidencialidad institucional, el historial de consultas previas no es visible. Podés formular todas las consultas que necesites en esta sesión.
+                                    </span>
+                                </div>
+                            ) : conversations.length === 0 ? (
                                 <div className="rag-empty-state">
                                     <Brain size={32} />
                                     <p>No hay conversaciones aún</p>
@@ -1312,14 +1333,16 @@ export default function RAGPanel() {
                                 style={{ display: 'none' }} multiple />
                             <input ref={folderInputRef} type="file" onChange={handleFileSelect}
                                 style={{ display: 'none' }} webkitdirectory="" directory="" multiple />
-                            <div className="rag-fm-actions" style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn btn-secondary" onClick={() => setShowNewFolder(!showNewFolder)} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500, color: '#475569' }}>
-                                    <FolderPlus size={14} /> Nueva Carpeta
-                                </button>
-                                <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: '#2563eb', border: 'none', color: 'white', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
-                                    <Upload size={14} /> Subir Archivos
-                                </button>
-                            </div>
+                            {!isPublic && (
+                                <div className="rag-fm-actions" style={{ display: 'flex', gap: '8px' }}>
+                                    <button className="btn btn-secondary" onClick={() => setShowNewFolder(!showNewFolder)} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: 'white', border: '1px solid #e2e8f0', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500, color: '#475569' }}>
+                                        <FolderPlus size={14} /> Nueva Carpeta
+                                    </button>
+                                    <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()} style={{ gap: '6px', display: 'flex', alignItems: 'center', background: '#2563eb', border: 'none', color: 'white', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
+                                        <Upload size={14} /> Subir Archivos
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1437,7 +1460,9 @@ export default function RAGPanel() {
                                                                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
                                                                                 <button onClick={() => handleOpenPreview(item)} title="Visualizar" style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Eye size={14} /></button>
                                                                                 <button onClick={() => handleDownload(item)} title="Descargar" style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Download size={14} /></button>
-                                                                                <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Trash2 size={14} /></button>
+                                                                                {!isPublic && (
+                                                                                    <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px' }}><Trash2 size={14} /></button>
+                                                                                )}
                                                                             </div>
                                                                         </td>
                                                                     </tr>
@@ -1478,9 +1503,11 @@ export default function RAGPanel() {
                                                         <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
                                                         <td style={{ padding: '12px 16px', color: '#94a3b8' }}>—</td>
                                                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(item) }} title="Eliminar carpeta" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                                                                <Trash2 size={14} />
-                                                            </button>
+                                                            {!isPublic && (
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteFolder(item) }} title="Eliminar carpeta" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 ) : (
@@ -1503,9 +1530,11 @@ export default function RAGPanel() {
                                                             <button onClick={() => handleDownload(item)} title="Descargar" style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#eff6ff'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
                                                                 <Download size={14} />
                                                             </button>
-                                                            <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-                                                                <Trash2 size={14} />
-                                                            </button>
+                                                            {!isPublic && (
+                                                                <button onClick={() => handleDeleteFile(item)} title="Eliminar" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', borderRadius: '4px', transition: 'all 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#fef2f2'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 )
