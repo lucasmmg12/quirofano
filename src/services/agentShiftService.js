@@ -344,11 +344,11 @@ export async function getAgentDailyShiftMetrics({
     // Categorización de tipos de consultas recibidas
     // Categorización de tipos de consultas recibidas (con detalle nominal de pacientes)
     const categorias = {
-        turnosNuevos: { label: 'Turnos Nuevos y Citas Médicas', count: 0, color: '#0284C7', icon: 'Calendar', conversaciones: [] },
-        estudiosAutorizaciones: { label: 'Estudios y Autorizaciones', count: 0, color: '#8B5CF6', icon: 'FileText', conversaciones: [] },
-        reprogramacionesCancelaciones: { label: 'Reprogramación y Cancelación', count: 0, color: '#F59E0B', icon: 'RotateCcw', conversaciones: [] },
-        consultasInformativas: { label: 'Consultas Generales y Asesoría', count: 0, color: '#10B981', icon: 'HelpCircle', conversaciones: [] },
-        guardiaUrgencias: { label: 'Guardia y Urgencias', count: 0, color: '#EF4444', icon: 'AlertTriangle', conversaciones: [] },
+        turnosNuevos: { label: 'Turnos', count: 0, color: '#0284C7', icon: 'Calendar', conversaciones: [] },
+        estudiosAutorizaciones: { label: 'Autorizaciones', count: 0, color: '#8B5CF6', icon: 'FileText', conversaciones: [] },
+        reprogramacionesCancelaciones: { label: 'Reprogramaciones', count: 0, color: '#F59E0B', icon: 'RotateCcw', conversaciones: [] },
+        consultasInformativas: { label: 'Consultas Generales', count: 0, color: '#10B981', icon: 'HelpCircle', conversaciones: [] },
+        guardiaUrgencias: { label: 'Guardias', count: 0, color: '#EF4444', icon: 'AlertTriangle', conversaciones: [] },
         otros: { label: 'Otras Gestiones', count: 0, color: '#64748B', icon: 'MoreHorizontal', conversaciones: [] }
     };
 
@@ -866,11 +866,12 @@ export function buildShiftSummaryClipboardText(metrics) {
         `• 💬 *Promedio de Mensajes/Caso:* ${kpis.promMensajesPorChat}`,
         ``,
         `📋 *TIPOS DE CONSULTAS GESTIONADAS:*`,
-        `• 🩺 Turnos Nuevos y Citas: ${categorias.turnosNuevos.count}`,
-        `• 📄 Estudios y Autorizaciones: ${categorias.estudiosAutorizaciones.count}`,
-        `• 🔄 Reprogramaciones y Cancelaciones: ${categorias.reprogramacionesCancelaciones.count}`,
+        `• 🩺 Turnos: ${categorias.turnosNuevos.count}`,
+        `• 📄 Autorizaciones: ${categorias.estudiosAutorizaciones.count}`,
+        `• 🔄 Reprogramaciones: ${categorias.reprogramacionesCancelaciones.count}`,
         `• ℹ️ Consultas Generales: ${categorias.consultasInformativas.count}`,
-        `• 🚨 Guardia y Urgencias: ${categorias.guardiaUrgencias.count}`,
+        `• 🚨 Guardias: ${categorias.guardiaUrgencias.count}`,
+        `• 📁 Otras Gestiones: ${categorias.otros?.count || 0}`,
         ``,
         `💡 *DIAGNÓSTICO DEL TURNO:*`,
         `✨ *Desempeño:* ${score.nivel}`,

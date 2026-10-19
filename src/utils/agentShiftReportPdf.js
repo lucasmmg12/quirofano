@@ -270,12 +270,12 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
     y += 6;
 
     const catRows = [
-        ['Turnos Nuevos y Citas Médicas', categorias.turnosNuevos?.count || 0, 'Citas para consultorio y especialistas'],
-        ['Estudios y Autorizaciones', categorias.estudiosAutorizaciones?.count || 0, 'Ecografías, radiografías, lab y órdenes'],
-        ['Reprogramación y Cancelación', categorias.reprogramacionesCancelaciones?.count || 0, 'Modificaciones de turnos agendados'],
-        ['Consultas Generales y Asesoría', categorias.consultasInformativas?.count || 0, 'Horarios, coberturas y orientación'],
-        ['Guardia y Urgencias', categorias.guardiaUrgencias?.count || 0, 'Derivación rápida a servicio de guardia'],
-        ['Otras Gestiones Administrativas', categorias.otros?.count || 0, 'Reclamos y solicitudes varias']
+        ['Turnos', categorias.turnosNuevos?.count || 0, 'Citas para consultorio y especialistas'],
+        ['Autorizaciones', categorias.estudiosAutorizaciones?.count || 0, 'Ecografías, radiografías, lab y órdenes'],
+        ['Reprogramaciones', categorias.reprogramacionesCancelaciones?.count || 0, 'Modificaciones de turnos agendados'],
+        ['Consultas Generales', categorias.consultasInformativas?.count || 0, 'Horarios, coberturas y orientación'],
+        ['Guardias', categorias.guardiaUrgencias?.count || 0, 'Derivación rápida a servicio de guardia'],
+        ['Otras Gestiones', categorias.otros?.count || 0, 'Reclamos y solicitudes varias']
     ];
 
     const totalCats = catRows.reduce((acc, r) => acc + r[1], 0) || 1;

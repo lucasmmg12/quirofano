@@ -996,11 +996,11 @@ export default function AgentShiftSummaryModal({
                                             })}
                                         </div>
 
-                                        {/* Grid de Cards de Categorías (Botones interactivos) */}
+                                        {/* Grid de Cards de Categorías (Botones interactivos optimizados para entrar en una sola fila o bloque armonioso) */}
                                         <div style={{
                                             display: 'grid',
-                                            gridTemplateColumns: 'repeat(3, 1fr)',
-                                            gap: '10px'
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                                            gap: '8px'
                                         }}>
                                             {Object.entries(categorias).map(([key, cat]) => {
                                                 const pct = totalConsultas > 0 ? ((cat.count / totalConsultas) * 100).toFixed(0) : '0';
@@ -1012,46 +1012,47 @@ export default function AgentShiftSummaryModal({
                                                         tabIndex={0}
                                                         onClick={() => setSelectedCategoriaModal(key)}
                                                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedCategoriaModal(key); }}
-                                                        title={`Click para ver el listado de ${count} paciente(s) y acceder a sus chats`}
+                                                        title={`Click para ver el listado de ${count} paciente(s) de ${cat.label} y acceder a sus chats`}
                                                         style={{
-                                                            padding: '10px 12px',
+                                                            padding: '8px 10px',
                                                             borderRadius: '8px',
                                                             border: '1px solid #E2E8F0',
-                                                            background: '#F8FAFC',
+                                                            background: '#FFFFFF',
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'space-between',
-                                                            gap: '8px',
+                                                            gap: '6px',
                                                             cursor: 'pointer',
                                                             transition: 'all 0.15s ease',
                                                             position: 'relative',
-                                                            userSelect: 'none'
+                                                            userSelect: 'none',
+                                                            minWidth: 0
                                                         }}
                                                         onMouseEnter={(e) => {
                                                             e.currentTarget.style.borderColor = cat.color;
-                                                            e.currentTarget.style.background = '#FFFFFF';
+                                                            e.currentTarget.style.background = '#F8FAFC';
                                                             e.currentTarget.style.boxShadow = `0 3px 8px -2px ${cat.color}25`;
                                                             e.currentTarget.style.transform = 'translateY(-1px)';
                                                         }}
                                                         onMouseLeave={(e) => {
                                                             e.currentTarget.style.borderColor = '#E2E8F0';
-                                                            e.currentTarget.style.background = '#F8FAFC';
+                                                            e.currentTarget.style.background = '#FFFFFF';
                                                             e.currentTarget.style.boxShadow = 'none';
                                                             e.currentTarget.style.transform = 'none';
                                                         }}
                                                     >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
                                                             <div style={{
-                                                                width: '10px',
-                                                                height: '10px',
-                                                                borderRadius: '3px',
+                                                                width: '8px',
+                                                                height: '8px',
+                                                                borderRadius: '2.5px',
                                                                 background: cat.color,
                                                                 flexShrink: 0
                                                             }} />
                                                             <span style={{
-                                                                fontSize: '0.74rem',
-                                                                color: '#334155',
-                                                                fontWeight: 600,
+                                                                fontSize: '0.73rem',
+                                                                color: '#1E293B',
+                                                                fontWeight: 700,
                                                                 whiteSpace: 'nowrap',
                                                                 overflow: 'hidden',
                                                                 textOverflow: 'ellipsis'
@@ -1059,18 +1060,17 @@ export default function AgentShiftSummaryModal({
                                                                 {cat.label}
                                                             </span>
                                                         </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                                            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
                                                                 {count}
                                                             </span>
-                                                            <span style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
+                                                            <span style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 600 }}>
                                                                 ({pct}%)
                                                             </span>
                                                             <span style={{
-                                                                fontSize: '0.64rem',
+                                                                fontSize: '0.62rem',
                                                                 color: cat.color,
-                                                                fontWeight: 800,
-                                                                marginLeft: '2px'
+                                                                opacity: 0.85
                                                             }}>
                                                                 💬
                                                             </span>
