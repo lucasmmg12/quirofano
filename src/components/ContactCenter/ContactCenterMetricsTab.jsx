@@ -529,19 +529,49 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 });
             }
 
-            // ── C. Carga Directa de Conversaciones de Contact Center (Sin paginación pesada) ──
-            setStreamingProgress({ current: 60, text: 'Analizando calidad de atención y SLA...' });
-            let cq = supabase
+            // ── C. Carga Completa de Conversaciones de Contact Center (Sin límite ni truncado de PostgREST) ──
+            setStreamingProgress({ current: 60, text: 'Cargando y analizando conversaciones...' });
+            const pageSize = 1000;
+            let baseCq = supabase
                 .from('contact_center_conversations')
-                .select('phone, status, resolution_reason, motivo_consulta, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at')
-                .order('created_at', { ascending: true });
+                .select('phone, status, resolution_reason, motivo_consulta, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at', { count: 'exact' });
 
-            if (filterStart) cq = cq.gte('created_at', filterStart.toISOString());
-            if (filterEnd) cq = cq.lte('created_at', filterEnd.toISOString());
+            if (filterStart) baseCq = baseCq.gte('created_at', filterStart.toISOString());
+            if (filterEnd) baseCq = baseCq.lte('created_at', filterEnd.toISOString());
 
-            const { data: convData, error: cErr } = await cq.limit(10000);
-            if (cErr) throw cErr;
-            const filteredConvs = convData || [];
+            const { data: firstPage, count: totalConvCount, error: firstErr } = await baseCq
+                .order('created_at', { ascending: true })
+                .range(0, pageSize - 1);
+
+            if (firstErr) throw firstErr;
+
+            const filteredConvs = [...(firstPage || [])];
+            const realTotal = totalConvCount || filteredConvs.length;
+
+            if (realTotal > pageSize) {
+                const fetchPromises = [];
+                for (let offset = pageSize; offset < realTotal; offset += pageSize) {
+                    let pageQuery = supabase
+                        .from('contact_center_conversations')
+                        .select('phone, status, resolution_reason, motivo_consulta, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at');
+
+                    if (filterStart) pageQuery = pageQuery.gte('created_at', filterStart.toISOString());
+                    if (filterEnd) pageQuery = pageQuery.lte('created_at', filterEnd.toISOString());
+
+                    fetchPromises.push(
+                        pageQuery
+                            .order('created_at', { ascending: true })
+                            .range(offset, offset + pageSize - 1)
+                            .then(({ data, error }) => {
+                                if (error) throw error;
+                                return data || [];
+                            })
+                    );
+                }
+
+                const pageResults = await Promise.all(fetchPromises);
+                pageResults.forEach(chunk => filteredConvs.push(...chunk));
+            }
 
             // Consolidación de pacientes únicos y sesiones
             const phoneConvCounts = {};
