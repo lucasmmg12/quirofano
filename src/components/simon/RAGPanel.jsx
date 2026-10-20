@@ -7,7 +7,8 @@ import {
     Search, Sparkles, Layers, BarChart3, FolderOpen, Tag,
     Download, FolderPlus, ArrowLeft, Home, Folder,
     Lightbulb, GraduationCap, HelpCircle, Shield, FileWarning,
-    Info, ThumbsUp, ThumbsDown, Eye, Calendar, ExternalLink, Pencil, Save
+    Info, ThumbsUp, ThumbsDown, Eye, Calendar, ExternalLink, Pencil, Save,
+    Copy, Check
 } from 'lucide-react'
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
@@ -92,8 +93,7 @@ function renderMarkdown(text) {
         .replace(/<\/table><br\/>/g, '</table>')
         .replace(/<\/div><br\/>/g, '</div>')
         .replace(/<\/ul><br\/>/g, '</ul>')
-        .replace(/<\/ol><br\/>/g, '</ol>')
-        .replace(/<li>(.*?)<\/li><br\/>/g, '<li>$1</li>');
+        .replace(/<li(.*?)<\/li><br\/>/g, '<li$1</li>');
         
     // 9. Restore Mermaid blocks
     html = html.replace(/__MERMAID_BLOCK_(\d+)__/g, (match, index) => {
@@ -115,6 +115,49 @@ function sanitizeQuestionText(str) {
     }
     cleaned = cleaned.replace(/\s+/g, ' ');
     return cleaned;
+}
+
+// Robust extractor for response content and related/suggested questions
+function extractContentAndQuestions(rawContent, role) {
+    if (!rawContent || role !== 'assistant') {
+        return { mainContent: rawContent || '', relatedQuestions: [] };
+    }
+
+    let mainContent = rawContent;
+    let rqSection = '';
+
+    // Case 1: Separated by markdown hr '---'
+    if (/---\s*\n/i.test(mainContent)) {
+        const parts = mainContent.split(/---\s*\n/);
+        mainContent = parts[0];
+        rqSection = parts.slice(1).join('\n');
+    }
+    // Case 2: Contains "También podrías preguntar" or variations
+    else if (/(?:💡\s*)?(?:¿?También podrías preguntar\??|Preguntas sugeridas:?|También podés consultar:?)/i.test(mainContent)) {
+        const matchIndex = mainContent.search(/(?:💡\s*)?(?:¿?También podrías preguntar\??|Preguntas sugeridas:?|También podés consultar:?)/i);
+        if (matchIndex !== -1) {
+            rqSection = mainContent.slice(matchIndex);
+            mainContent = mainContent.slice(0, matchIndex).trim();
+        }
+    }
+
+    let relatedQuestions = [];
+    if (rqSection) {
+        const cleanSection = rqSection.replace(/(?:💡\s*)?(?:¿?También podrías preguntar\??|Preguntas sugeridas:?|También podés consultar:?)\s*/i, '');
+        const matches = cleanSection.match(/¿([^?]+)\?/g);
+        if (matches && matches.length > 0) {
+            relatedQuestions = matches
+                .map(m => sanitizeQuestionText(m))
+                .filter(q => q.length > 5);
+        } else {
+            const lines = cleanSection.split('\n')
+                .map(l => l.replace(/^[-*•\d.]+\s*/, '').trim())
+                .filter(l => l.length > 5 && (l.endsWith('?') || l.startsWith('¿')));
+            relatedQuestions = lines.map(m => sanitizeQuestionText(m));
+        }
+    }
+
+    return { mainContent: mainContent.trim(), relatedQuestions };
 }
 
 export default function RAGPanel({ addToast, isPublic = false, hideHistory = false, initialUser = null }) {
@@ -162,6 +205,23 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
 
     // User identification (scoped per logged in user)
     const currentUser = initialUser || sessionStorage.getItem('username') || localStorage.getItem('username') || (isPublic ? 'invitado_publico' : 'usuario_actual');
+
+    // Estado de copia rápida al portapapeles (Estilo ChatGPT)
+    const [copiedMessageIndex, setCopiedMessageIndex] = useState(null);
+
+    const handleCopyMessage = (text, idx) => {
+        const cleanText = (text || '').replace(/<[^>]+>/g, '').trim();
+        if (navigator?.clipboard?.writeText) {
+            navigator.clipboard.writeText(cleanText);
+        }
+        setCopiedMessageIndex(idx);
+        if (addToast) {
+            addToast('Copiado al portapapeles', 'info');
+        }
+        setTimeout(() => {
+            setCopiedMessageIndex(null);
+        }, 2000);
+    };
 
     // Correction modal state for Thumbs Down
     const [correctionModal, setCorrectionModal] = useState({
@@ -1002,25 +1062,16 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                     ) : (
                         messages.map((msg, i) => (
                             <div key={i} className={`rag-message ${msg.role}`}>
-                                <div className="rag-message-avatar">
-                                    {msg.role === 'user' ? (
-                                        <div className="rag-avatar-user-badge">U</div>
-                                    ) : (
-                                        <div className="rag-avatar-simon-container" style={{ background: '#3b82f6', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                                {msg.role === 'assistant' && (
+                                    <div className="rag-message-avatar">
+                                        <div className="rag-avatar-simon-container">
                                             <Brain size={18} />
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                                 <div className="rag-message-content">
                                     {(() => {
-                                        const parts = (msg.content || '').split(/---\s*\n/);
-                                        const mainContent = parts[0];
-                                        let relatedQuestions = [];
-                                        if (msg.role === 'assistant' && parts.length > 1) {
-                                            const rqSection = parts[1];
-                                            const matches = rqSection.match(/- ¿([^?]+)\?/g) || [];
-                                            relatedQuestions = matches.map(m => m.replace(/^- /, '').trim());
-                                        }
+                                        const { mainContent, relatedQuestions } = extractContentAndQuestions(msg.content, msg.role);
                                         return (
                                             <>
                                                 <div
@@ -1030,15 +1081,21 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                                 {relatedQuestions.length > 0 && (
                                                     <div className="sg-related">
                                                         <div className="sg-related-title">
-                                                            <Lightbulb size={13} />
-                                                            También podrías preguntar:
+                                                            <Sparkles size={13} />
+                                                            <span>También podrías preguntar:</span>
                                                         </div>
                                                         <div className="sg-related-chips">
                                                             {relatedQuestions.map((rq, ri) => (
-                                                                <button key={ri} className="sg-chip query small"
-                                                                    onClick={() => { setInputValue(rq); }}
+                                                                <button
+                                                                    key={ri}
+                                                                    className="sg-chip query small"
+                                                                    onClick={() => {
+                                                                        setInputValue(rq);
+                                                                        chatInputRef.current?.focus();
+                                                                    }}
                                                                 >
-                                                                    {rq}
+                                                                    <ChevronRight size={13} className="sg-chip-arrow" />
+                                                                    <span>{rq}</span>
                                                                 </button>
                                                             ))}
                                                         </div>
@@ -1073,44 +1130,49 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                     )}
                                     {msg.sources && msg.sources.length > 0 && (
                                         <div className="rag-sources">
-                                            <div className="rag-sources-header">
-                                                <FileText size={13} color="#2563eb" />
-                                                <span>Fuentes consultadas ({msg.sources.length})</span>
-                                            </div>
-                                            <div className="rag-sources-grid">
-                                                {msg.sources.map((src, j) => (
-                                                    <div key={j} className="rag-source-item">
-                                                        <span className="rag-source-icon">
-                                                            {src.source_type === 'chat_history' ? '🧠' : (FILE_ICONS[src.file_type] || '📄')}
-                                                        </span>
-                                                        <span className="rag-source-name">
-                                                            {src.source_type === 'chat_history' ? 'Aprendido de chat previo' : src.filename}
-                                                        </span>
-                                                        <span className="badge info">{src.chunks_used} chunks</span>
-                                                        {src.rerank_score > 0 && (
-                                                            <span className="badge positive">{src.rerank_score}/10</span>
-                                                        )}
-                                                        {src.source_type !== 'chat_history' && src.storage_path && (
-                                                            <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                                                                <button
-                                                                    className="rag-source-download"
-                                                                    onClick={() => handleOpenPreview({ storage_path: src.storage_path, name: src.filename, file_type: src.file_type || ('.' + src.filename.split('.').pop()) })}
-                                                                    title={`Visualizar ${src.filename}`}
-                                                                >
-                                                                    <Eye size={12} />
-                                                                </button>
-                                                                <button
-                                                                    className="rag-source-download"
-                                                                    onClick={() => downloadRAGFile(src.storage_path)}
-                                                                    title={`Descargar ${src.filename}`}
-                                                                >
-                                                                    <Download size={12} />
-                                                                </button>
-                                                            </div>
-                                                        )}
+                                            <details className="rag-sources-collapsible">
+                                                <summary className="rag-sources-summary">
+                                                    <div className="rag-sources-summary-left">
+                                                        <FileText size={13} color="#2563eb" />
+                                                        <span>Fuentes consultadas ({msg.sources.length})</span>
                                                     </div>
-                                                ))}
-                                            </div>
+                                                    <ChevronRight size={13} className="rag-sources-chevron" />
+                                                </summary>
+                                                <div className="rag-sources-grid">
+                                                    {msg.sources.map((src, j) => (
+                                                        <div key={j} className="rag-source-item">
+                                                            <span className="rag-source-icon">
+                                                                {src.source_type === 'chat_history' ? '🧠' : (FILE_ICONS[src.file_type] || '📄')}
+                                                            </span>
+                                                            <span className="rag-source-name" title={src.filename}>
+                                                                {src.source_type === 'chat_history' ? 'Aprendido de chat previo' : src.filename}
+                                                            </span>
+                                                            <span className="badge info">{src.chunks_used} chunks</span>
+                                                            {src.rerank_score > 0 && (
+                                                                <span className="badge positive">{src.rerank_score}/10</span>
+                                                            )}
+                                                            {src.source_type !== 'chat_history' && src.storage_path && (
+                                                                <div className="rag-source-actions" style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                                                                    <button
+                                                                        className="rag-source-action-btn"
+                                                                        onClick={() => handleOpenPreview({ storage_path: src.storage_path, name: src.filename, file_type: src.file_type || ('.' + src.filename.split('.').pop()) })}
+                                                                        title={`Visualizar ${src.filename}`}
+                                                                    >
+                                                                        <Eye size={12} />
+                                                                    </button>
+                                                                    <button
+                                                                        className="rag-source-action-btn"
+                                                                        onClick={() => downloadRAGFile(src.storage_path)}
+                                                                        title={`Descargar ${src.filename}`}
+                                                                    >
+                                                                        <Download size={12} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </details>
                                         </div>
                                     )}
                                     {msg.pipeline_info && (
@@ -1145,45 +1207,56 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                         const fbState = feedbackState[fbKey]
                                         const fbFromMsg = msg.feedback
                                         const resolved = fbState || fbFromMsg
+                                        const isCopied = copiedMessageIndex === i
                                         
                                         return (
-                                            <div className={`rag-feedback-bar ${resolved ? 'resolved' : ''}`}>
-                                                {resolved === 'loading' ? (
-                                                    <span className="rag-feedback-loading">
-                                                        <Loader2 size={12} className="rag-spin" />
-                                                        Guardando...
-                                                    </span>
-                                                ) : resolved === 'correct' ? (
-                                                    <span className="rag-feedback-result correct">
-                                                        <ThumbsUp size={12} />
-                                                        Marcada como correcta
-                                                    </span>
-                                                ) : resolved === 'incorrect' ? (
-                                                    <span className="rag-feedback-result incorrect">
-                                                        <ThumbsDown size={12} />
-                                                        Marcada como incorrecta
-                                                    </span>
-                                                ) : (
-                                                    <>
-                                                        <span className="rag-feedback-label">¿Fue útil esta respuesta?</span>
+                                            <div className="rag-action-bar">
+                                                <button
+                                                    className={`rag-action-btn ${isCopied ? 'copied' : ''}`}
+                                                    onClick={() => handleCopyMessage(msg.content, i)}
+                                                    title="Copiar respuesta"
+                                                >
+                                                    {isCopied ? <Check size={13} style={{ color: '#10b981' }} /> : <Copy size={13} />}
+                                                    <span>{isCopied ? 'Copiado' : 'Copiar'}</span>
+                                                </button>
+
+                                                <div className="rag-action-divider" />
+
+                                                <div className={`rag-feedback-group ${resolved ? 'resolved' : ''}`}>
+                                                    {resolved === 'loading' ? (
+                                                        <span className="rag-feedback-loading">
+                                                            <Loader2 size={12} className="rag-spin" />
+                                                            Guardando...
+                                                        </span>
+                                                    ) : resolved === 'correct' ? (
+                                                        <span className="rag-feedback-result correct">
+                                                            <ThumbsUp size={12} />
+                                                            Útil
+                                                        </span>
+                                                    ) : resolved === 'incorrect' ? (
+                                                        <span className="rag-feedback-result incorrect">
+                                                            <ThumbsDown size={12} />
+                                                            No útil
+                                                        </span>
+                                                    ) : (
                                                         <div className="rag-feedback-buttons">
                                                             <button
-                                                                className="rag-feedback-btn correct"
+                                                                className="rag-action-btn"
                                                                 onClick={() => handleFeedback(assistantIndex, true)}
-                                                                title="Respuesta correcta"
+                                                                title="Respuesta útil"
                                                             >
                                                                 <ThumbsUp size={13} />
                                                             </button>
                                                             <button
-                                                                className="rag-feedback-btn incorrect"
+                                                                className="rag-action-btn"
                                                                 onClick={() => handleFeedback(assistantIndex, false)}
-                                                                title="Respuesta incorrecta"
+                                                                title="Respuesta no útil"
                                                             >
                                                                 <ThumbsDown size={13} />
                                                             </button>
                                                         </div>
-                                                    </>
-                                                )}
+                                                    )}
+                                                </div>
                                             </div>
                                         )
                                     })()}

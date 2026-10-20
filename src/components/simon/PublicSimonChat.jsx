@@ -63,7 +63,7 @@ export default function PublicSimonChat() {
             height: '100vh',
             width: '100vw',
             overflow: 'hidden',
-            background: 'var(--neutral-50, #F8FAFC)'
+            background: 'var(--simon-bg, #ffffff)'
         }}>
             {/* Topbar Institucional idéntica al sistema */}
             <header className="topbar" style={{ minHeight: '38px', height: '38px', flexShrink: 0 }}>
