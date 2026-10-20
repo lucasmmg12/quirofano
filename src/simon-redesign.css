@@ -2321,4 +2321,55 @@ body.dark-theme .simon-public-new-chat-btn:hover {
   color: #60a5fa;
 }
 
+/* ===============================================
+   Fondo de Pantalla Institucional Sanatorio Argentino
+   Marca de agua muy transparente para no interferir con los textos
+   =============================================== */
+.rag-container {
+  height: 100% !important;
+  border: none;
+  border-radius: 0;
+  background: var(--simon-bg, #ffffff);
+}
+
+.rag-main-area,
+.rag-chat-area {
+  position: relative;
+  background-color: var(--simon-bg, #ffffff);
+}
+
+.rag-chat-area::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url('/SANARG2021_fondo%20de%20pantalla.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  opacity: 0.055; /* Muy transparente: marca de agua sutil y elegante */
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.dark-theme .rag-chat-area::before {
+  opacity: 0.038;
+  filter: brightness(0.6) contrast(1.1);
+}
+
+.rag-messages {
+  position: relative;
+  z-index: 1;
+}
+
+.rag-input-area,
+.rag-input-container,
+.rag-input-wrapper {
+  position: relative;
+  z-index: 2;
+}
+
 
