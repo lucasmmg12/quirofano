@@ -2560,12 +2560,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         </div>
                     </div>
 
-                    <span style={{
-                        fontSize: '0.74rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
-                        background: '#F0F9FF', color: '#0284C7', border: '1px solid #BAE6FD'
-                    }}>
-                        🏥 Auditoría de Atención Sanatorio Argentino
-                    </span>
                 </div>
 
                 {/* TARJETAS DE CATEGORÍAS CLÍNICAS */}
