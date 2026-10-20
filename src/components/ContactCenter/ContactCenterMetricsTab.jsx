@@ -811,10 +811,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     if (!isMassClosureOrSweep) {
                         let actualResolvedAgId = null;
                         for (const ag of ALL_AGENTS_METRICS) {
+                            const aliases = ag.aliases || [ag.id, (ag.name || '').toLowerCase()];
                             if (
                                 closedById === ag.id || 
-                                closedByName.includes(ag.id) || 
-                                closedByName.includes((ag.name || '').toLowerCase())
+                                (ag.username && closedById === ag.username.toLowerCase()) ||
+                                (ag.legacyId && closedById === ag.legacyId) ||
+                                aliases.some(al => closedById.includes(al) || closedByName.includes(al))
                             ) {
                                 actualResolvedAgId = ag.id;
                                 break;
@@ -2341,13 +2343,21 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.68rem' }}>
-                                            <span title="Conversaciones Asignadas" style={{ color: '#0284C7' }}>
-                                                <strong>{ag.assignedCount.toLocaleString('es-AR')}</strong> asig.
-                                            </span>
-                                            <span style={{ color: '#CBD5E1' }}>|</span>
-                                            <span title="Conversaciones Finalizadas" style={{ color: '#059669' }}>
-                                                <strong>{ag.resolvedCount.toLocaleString('es-AR')}</strong> fin.
-                                            </span>
+                                            {ag.assignedCount > ag.resolvedCount ? (
+                                                <>
+                                                    <span title="Conversaciones Asignadas" style={{ color: '#0284C7' }}>
+                                                        <strong>{ag.assignedCount.toLocaleString('es-AR')}</strong> asig.
+                                                    </span>
+                                                    <span style={{ color: '#CBD5E1' }}>|</span>
+                                                    <span title="Conversaciones Finalizadas" style={{ color: '#059669' }}>
+                                                        <strong>{ag.resolvedCount.toLocaleString('es-AR')}</strong> fin.
+                                                    </span>
+                                                </>
+                                            ) : (
+                                                <span title="Conversaciones Finalizadas" style={{ color: '#059669' }}>
+                                                    <strong>{ag.resolvedCount.toLocaleString('es-AR')}</strong> finalizadas
+                                                </span>
+                                            )}
                                         </div>
                                         <span style={{
                                             fontSize: '0.64rem', fontWeight: 800, color: ag.color,
