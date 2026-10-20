@@ -1028,16 +1028,22 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 };
             });
 
-            // ── Histograma de Resolución (Buckets SLA) ──
-            const totalResolvedCases = Object.values(resHistogramCounts).reduce((a, b) => a + b, 0);
+            // ── Histograma de Resolución (Buckets SLA sin incluir inactivos +24hs) ──
+            const totalResolvedActiveCases = (
+                resHistogramCounts.under5m +
+                resHistogramCounts.de5a30m +
+                resHistogramCounts.de30a60m +
+                resHistogramCounts.de1a4h +
+                resHistogramCounts.de4a12h +
+                resHistogramCounts.de12a24h
+            );
             const resolutionHistogramData = [
-                { range: '< 5 min', label: 'Menos de 5 min', casos: resHistogramCounts.under5m, pct: totalResolvedCases ? Math.round((resHistogramCounts.under5m / totalResolvedCases) * 100) : 0, color: '#10B981', sla: 'Inmediata' },
-                { range: '5-30 min', label: '5 a 30 min', casos: resHistogramCounts.de5a30m, pct: totalResolvedCases ? Math.round((resHistogramCounts.de5a30m / totalResolvedCases) * 100) : 0, color: '#059669', sla: 'Rápida' },
-                { range: '30-60 min', label: '30 min a 1 hora', casos: resHistogramCounts.de30a60m, pct: totalResolvedCases ? Math.round((resHistogramCounts.de30a60m / totalResolvedCases) * 100) : 0, color: '#0284C7', sla: 'Estándar' },
-                { range: '1-4 hs', label: '1 a 4 horas', casos: resHistogramCounts.de1a4h, pct: totalResolvedCases ? Math.round((resHistogramCounts.de1a4h / totalResolvedCases) * 100) : 0, color: '#F59E0B', sla: 'Mismo Turno' },
-                { range: '4-12 hs', label: '4 a 12 horas', casos: resHistogramCounts.de4a12h, pct: totalResolvedCases ? Math.round((resHistogramCounts.de4a12h / totalResolvedCases) * 100) : 0, color: '#F97316', sla: 'Turno Siguiente' },
-                { range: '12-24 hs', label: '12 a 24 horas', casos: resHistogramCounts.de12a24h, pct: totalResolvedCases ? Math.round((resHistogramCounts.de12a24h / totalResolvedCases) * 100) : 0, color: '#EF4444', sla: 'Demorada' },
-                { range: '+24 hs', label: '+24 hs (Inactivos)', casos: resHistogramCounts.mas24h, pct: totalResolvedCases ? Math.round((resHistogramCounts.mas24h / totalResolvedCases) * 100) : 0, color: '#64748B', sla: 'Inactividad / Barrido' }
+                { range: '< 5 min', label: 'Menos de 5 min', casos: resHistogramCounts.under5m, pct: totalResolvedActiveCases ? Math.round((resHistogramCounts.under5m / totalResolvedActiveCases) * 100) : 0, color: '#10B981', sla: 'Inmediata' },
+                { range: '5-30 min', label: '5 a 30 min', casos: resHistogramCounts.de5a30m, pct: totalResolvedActiveCases ? Math.round((resHistogramCounts.de5a30m / totalResolvedActiveCases) * 100) : 0, color: '#059669', sla: 'Rápida' },
+                { range: '30-60 min', label: '30 min a 1 hora', casos: resHistogramCounts.de30a60m, pct: totalResolvedActiveCases ? Math.round((resHistogramCounts.de30a60m / totalResolvedActiveCases) * 100) : 0, color: '#0284C7', sla: 'Estándar' },
+                { range: '1-4 hs', label: '1 a 4 horas', casos: resHistogramCounts.de1a4h, pct: totalResolvedActiveCases ? Math.round((resHistogramCounts.de1a4h / totalResolvedActiveCases) * 100) : 0, color: '#F59E0B', sla: 'Mismo Turno' },
+                { range: '4-12 hs', label: '4 a 12 horas', casos: resHistogramCounts.de4a12h, pct: totalResolvedActiveCases ? Math.round((resHistogramCounts.de4a12h / totalResolvedActiveCases) * 100) : 0, color: '#F97316', sla: 'Turno Siguiente' },
+                { range: '12-24 hs', label: '12 a 24 horas', casos: resHistogramCounts.de12a24h, pct: totalResolvedActiveCases ? Math.round((resHistogramCounts.de12a24h / totalResolvedActiveCases) * 100) : 0, color: '#EF4444', sla: 'Demorada' }
             ];
 
             const totalFRTCases = Object.values(frtHistogramCounts).reduce((a, b) => a + b, 0);
@@ -3044,7 +3050,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     Histograma de Resolución de Casos (SLA en Minutos y Horas)
                                 </h4>
                                 <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                    Distribución de casos resueltos en &lt; 5m, 5-30m, 1h, 4h, 12h y archivados por inactividad (+24hs sin respuesta)
+                                    Distribución de tiempos de resolución de casos activos en menos de 24 horas (&lt; 5m, 5-30m, 1h, 4h, 12h y hasta 24h)
                                 </p>
                             </div>
                         </div>
