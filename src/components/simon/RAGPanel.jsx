@@ -1222,51 +1222,73 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                         
                                         return (
                                             <div className="rag-action-bar">
-                                                <button
-                                                    className={`rag-action-btn ${isCopied ? 'copied' : ''}`}
-                                                    onClick={() => handleCopyMessage(msg.content, i)}
-                                                    title="Copiar respuesta"
-                                                >
-                                                    {isCopied ? <Check size={13} style={{ color: '#10b981' }} /> : <Copy size={13} />}
-                                                    <span>{isCopied ? 'Copiado' : 'Copiar'}</span>
-                                                </button>
-
-                                                <div className="rag-action-divider" />
-
-                                                <div className={`rag-feedback-group ${resolved ? 'resolved' : ''}`}>
+                                                <div className="rag-feedback-card">
                                                     {resolved === 'loading' ? (
-                                                        <span className="rag-feedback-loading">
-                                                            <Loader2 size={12} className="rag-spin" />
-                                                            Guardando...
-                                                        </span>
+                                                        <div className="rag-feedback-loading">
+                                                            <Loader2 size={15} className="rag-spin" />
+                                                            <span>Guardando tu feedback...</span>
+                                                        </div>
                                                     ) : resolved === 'correct' ? (
-                                                        <span className="rag-feedback-result correct">
-                                                            <ThumbsUp size={12} />
-                                                            Útil
-                                                        </span>
+                                                        <div className="rag-feedback-resolved-card correct">
+                                                            <div className="rag-feedback-resolved-icon">
+                                                                <CheckCircle size={16} />
+                                                            </div>
+                                                            <div className="rag-feedback-resolved-text">
+                                                                <span className="rag-feedback-resolved-title">¡Muchas gracias por tu valoración!</span>
+                                                                <span className="rag-feedback-resolved-subtitle">Confirmaste que esta respuesta es correcta y útil. Simón aprenderá de este caso.</span>
+                                                            </div>
+                                                        </div>
                                                     ) : resolved === 'incorrect' ? (
-                                                        <span className="rag-feedback-result incorrect">
-                                                            <ThumbsDown size={12} />
-                                                            No útil
-                                                        </span>
+                                                        <div className="rag-feedback-resolved-card incorrect">
+                                                            <div className="rag-feedback-resolved-icon">
+                                                                <AlertCircle size={16} />
+                                                            </div>
+                                                            <div className="rag-feedback-resolved-text">
+                                                                <span className="rag-feedback-resolved-title">Registrado para revisión</span>
+                                                                <span className="rag-feedback-resolved-subtitle">Gracias por el aviso. Podés aportar la corrección para perfeccionar la respuesta.</span>
+                                                            </div>
+                                                        </div>
                                                     ) : (
-                                                        <div className="rag-feedback-buttons">
-                                                            <button
-                                                                className="rag-action-btn"
-                                                                onClick={() => handleFeedback(assistantIndex, true)}
-                                                                title="Respuesta útil"
-                                                            >
-                                                                <ThumbsUp size={13} />
-                                                            </button>
-                                                            <button
-                                                                className="rag-action-btn"
-                                                                onClick={() => handleFeedback(assistantIndex, false)}
-                                                                title="Respuesta no útil"
-                                                            >
-                                                                <ThumbsDown size={13} />
-                                                            </button>
+                                                        <div className="rag-feedback-prompt-wrapper">
+                                                            <div className="rag-feedback-prompt-label">
+                                                                <span className="rag-feedback-prompt-question">
+                                                                    ¿Te resultó útil esta respuesta?
+                                                                </span>
+                                                                <span className="rag-feedback-prompt-sub">
+                                                                    Tu feedback ayuda al Sanatorio a entrenar y mejorar la precisión de Simón
+                                                                </span>
+                                                            </div>
+                                                            <div className="rag-feedback-cta-buttons">
+                                                                <button
+                                                                    className="rag-feedback-vote-btn vote-up"
+                                                                    onClick={() => handleFeedback(assistantIndex, true)}
+                                                                    title="La información es correcta y responde lo que necesitaba"
+                                                                >
+                                                                    <ThumbsUp size={14} className="rag-feedback-vote-icon" />
+                                                                    <span>Sí, me sirvió</span>
+                                                                </button>
+                                                                <button
+                                                                    className="rag-feedback-vote-btn vote-down"
+                                                                    onClick={() => handleFeedback(assistantIndex, false)}
+                                                                    title="La información no es correcta o necesita corrección"
+                                                                >
+                                                                    <ThumbsDown size={14} className="rag-feedback-vote-icon" />
+                                                                    <span>No me sirvió</span>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     )}
+                                                </div>
+
+                                                <div className="rag-action-secondary">
+                                                    <button
+                                                        className={`rag-copy-pill-btn ${isCopied ? 'copied' : ''}`}
+                                                        onClick={() => handleCopyMessage(msg.content, i)}
+                                                        title="Copiar texto de la respuesta"
+                                                    >
+                                                        {isCopied ? <Check size={13} style={{ color: '#10b981' }} /> : <Copy size={13} />}
+                                                        <span>{isCopied ? '¡Texto copiado!' : 'Copiar respuesta'}</span>
+                                                    </button>
                                                 </div>
                                             </div>
                                         )
