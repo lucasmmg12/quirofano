@@ -1172,7 +1172,16 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     };
 
     return (
-        <div className="content no-print" style={{ padding: activeSubTab === 'conversaciones' ? '0' : '16px 20px', background: '#F8FAFC', minHeight: 'calc(100vh - 70px)' }}>
+        <div 
+            className="content no-print" 
+            style={{ 
+                padding: activeSubTab === 'conversaciones' ? '0 4px 4px 4px' : '16px 20px', 
+                background: '#F8FAFC', 
+                minHeight: activeSubTab === 'conversaciones' ? 'calc(100vh - 42px)' : 'calc(100vh - 70px)',
+                height: activeSubTab === 'conversaciones' ? 'calc(100vh - 42px)' : 'auto',
+                boxSizing: 'border-box'
+            }}
+        >
             {/* Vistas del Módulo */}
             {activeSubTab === 'cancelaciones' && (
                 <ContactCenterCancelacionesTab 
