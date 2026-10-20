@@ -2833,17 +2833,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             <ShieldCheck size={22} />
                         </div>
                         <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
-                                    Panel Clínico de Tiempos & Calidad de Atención al Paciente
-                                </h3>
-                                <span style={{
-                                    fontSize: '0.66rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
-                                    background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0'
-                                }}>
-                                    Meta SLA: &lt; 15 min
-                                </span>
-                            </div>
+                            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
+                                Panel Clínico de Tiempos & Calidad de Atención al Paciente
+                            </h3>
                             <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
                                 Medición exhaustiva de tiempos de espera en cola, velocidad de 1er contacto humano, resolución neta (AHT) y retención del paciente
                             </p>
