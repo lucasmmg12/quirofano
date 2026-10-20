@@ -1258,6 +1258,20 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             const totalConvsEntered = filteredConvs.length > 0 ? filteredConvs.length : totalConversationsCount;
 
+            const botConversationAutomationPct = totalConvsEntered > 0 
+                ? Math.round((botOnlyConversationsCount / totalConvsEntered) * 100) 
+                : 0;
+            const humanConversationPct = totalConvsEntered > 0 
+                ? Math.round((humanConversationsCount / totalConvsEntered) * 100) 
+                : 0;
+
+            choicesTally.solicitar_turno = inquiryTypesMap.turnos || 0;
+            choicesTally.reprogramar_turno = inquiryTypesMap.reprogramaciones || 0;
+            choicesTally.autorizar = inquiryTypesMap.autorizaciones || 0;
+            choicesTally.guardia = inquiryTypesMap.guardia || 0;
+            choicesTally.informes = inquiryTypesMap.informes || 0;
+            choicesTally.otros = (inquiryTypesMap.otros || 0) + (inquiryTypesMap.asesora || 0);
+
             setMetrics({
                 totalOutgoing: totalOut,
                 agentMessages: agentCount,
