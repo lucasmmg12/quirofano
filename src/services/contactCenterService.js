@@ -1222,6 +1222,7 @@ export async function fetchLiveAndDemoChats() {
                 badgeTimeText: waitingInfo.badgeTimeText,
                 chatbot: '#triage-sanatorio',
                 avatarColor: '#0284C7',
+                avatarUrl: conv?.avatar_url || conv?.photo_url || null,
                 tags: resolveConversationTags(conv, formattedMessages),
                 whatsappName: incomingSenderName || null,
                 lastIncomingAt: lastIncomingIso,

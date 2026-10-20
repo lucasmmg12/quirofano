@@ -4631,14 +4631,26 @@ export default function ContactCenterChatConsole({
                                                     title="Seleccionar para finalizar masivamente"
                                                 />
                                             )}
-                                            <div style={{
-                                                width: '22px', height: '22px', borderRadius: '50%',
-                                                background: chat.avatarColor || '#1E40AF', color: '#FFF',
-                                                fontSize: '0.58rem', fontWeight: 800, display: 'flex',
-                                                alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                                            }}>
-                                                {getChatAvatarInitials(chat)}
-                                            </div>
+                                            {chat.avatarUrl ? (
+                                                <img 
+                                                    src={chat.avatarUrl} 
+                                                    alt={getCleanChatName(chat)}
+                                                    style={{
+                                                        width: '22px', height: '22px', borderRadius: '50%',
+                                                        objectFit: 'cover', flexShrink: 0
+                                                    }}
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                />
+                                            ) : (
+                                                <div style={{
+                                                    width: '22px', height: '22px', borderRadius: '50%',
+                                                    background: chat.avatarColor || '#1E40AF', color: '#FFF',
+                                                    fontSize: '0.58rem', fontWeight: 800, display: 'flex',
+                                                    alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                }}>
+                                                    {getChatAvatarInitials(chat)}
+                                                </div>
+                                            )}
                                             <div style={{ minWidth: 0 }}>
                                                 <span style={{ fontSize: '0.73rem', fontWeight: 700, color: isSelected ? (ccTheme.accentColor || (ccTheme.isDark ? '#38BDF8' : '#1E40AF')) : themeCardText, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {getCleanChatName(chat)}
