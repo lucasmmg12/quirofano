@@ -436,57 +436,6 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
                 </div>
             </div>
 
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 6. PLAN ESTRATÉGICO DE MITIGACIÓN Y RECOMENDACIONES               */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                background: 'linear-gradient(135deg, #0F2942 0%, #1E3A8A 100%)',
-                borderRadius: '12px',
-                padding: '22px 26px',
-                color: '#FFFFFF',
-                boxShadow: '0 4px 14px rgba(15, 41, 66, 0.12)'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                    <ShieldCheck size={20} color="#38BDF8" />
-                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#FFFFFF' }}>
-                        Recomendaciones Ejecutivas para Eliminar el Cuello de Botella
-                    </h4>
-                </div>
-
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                    gap: '14px'
-                }}>
-                    <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#38BDF8', marginBottom: '6px' }}>
-                            1. Refuerzo de Apertura Lunes (07:30 a 11:30)
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.74rem', color: '#E0F2FE', lineHeight: 1.45 }}>
-                            Concentrar el 100% del personal en horario matutino los días lunes para descomprimir los mensajes acumulados durante el fin de semana.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#4ADE80', marginBottom: '6px' }}>
-                            2. Autogestión de Turnos Repetitivos
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.74rem', color: '#E0F2FE', lineHeight: 1.45 }}>
-                            Potenciar la integración con el sistema de turnos de SALUS para que confirmaciones, cancelaciones y reprogramaciones se gestionen 100% por el Bot.
-                        </p>
-                    </div>
-
-                    <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '16px', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#FCD34D', marginBottom: '6px' }}>
-                            3. Protocolo de Triage para Urgencias
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.74rem', color: '#E0F2FE', lineHeight: 1.45 }}>
-                            Identificar automáticamente mediante IA las consultas críticas de guardia o embarazadas para bypass de cola y asignación prioritaria en &lt; 60 segundos.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
         </div>
     );
 }
