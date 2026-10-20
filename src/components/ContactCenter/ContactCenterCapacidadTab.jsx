@@ -77,20 +77,21 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
         const waitCurve = metrics?.patientQuality?.hourlyWaitCurve || [];
         
         return Array.from({ length: 24 }, (_, h) => {
-            const found = hd.find(x => x.hour === h || x.hora === h) || {};
-            const waitFound = waitCurve.find(x => x.hour === h) || {};
-            const botCount = found.bot || found.botMessages || 0;
-            const humanCount = found.agentes || found.agentMessages || 0;
-            const total = botCount + humanCount;
-            const waitMin = waitFound.avgWaitMin || 0;
+            const hourLabel = `${h.toString().padStart(2, '0')}:00`;
+            const found = hd.find(x => x.hour === h || x.hora === hourLabel || x.hora === h) || {};
+            const waitFound = waitCurve.find(x => x.hour === h || x.hora === hourLabel || x.hora === h) || {};
+            const botCount = found.bot ?? found.botMessages ?? 0;
+            const humanCount = found.human ?? found.agentes ?? found.agentMessages ?? 0;
+            const total = (botCount + humanCount > 0) ? (botCount + humanCount) : (found.pacientes || 0);
+            const waitMin = waitFound.avgWaitMin !== undefined ? waitFound.avgWaitMin : (waitFound.esperaMin || 0);
 
             return {
-                hour: `${h.toString().padStart(2, '0')}:00`,
+                hour: hourLabel,
                 hourNum: h,
                 bot: botCount,
                 human: humanCount,
                 total,
-                waitMin: Number(waitMin.toFixed(1)),
+                waitMin: Number(Number(waitMin).toFixed(1)),
                 // Capacidad nominal humana en horario laboral (08:00 a 16:00: ~60 msgs/hora)
                 capacidadNominal: (h >= 8 && h < 16) ? 75 : 0
             };
@@ -100,15 +101,24 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
     // 3. Distribución de motivos de consulta
     const motivosData = useMemo(() => {
         const raw = metrics?.firstMessageChoices || {};
-        const total = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
+        const inq = metrics?.inquiryTypes || {};
+        
+        const turnosCount = raw.solicitar_turno || inq.turnos || 0;
+        const reprogCount = raw.reprogramar_turno || inq.reprogramaciones || 0;
+        const autorizCount = raw.autorizar || inq.autorizaciones || 0;
+        const guardiaCount = raw.guardia || inq.guardia || 0;
+        const informesCount = raw.informes || inq.informes || 0;
+        const otrosCount = raw.otros || inq.otros || inq.asesora || 0;
+
+        const total = (turnosCount + reprogCount + autorizCount + guardiaCount + informesCount + otrosCount) || 1;
 
         const items = [
-            { name: 'Turnos Médicos & Consultas', count: raw.solicitar_turno || 0, color: '#0284C7' },
-            { name: 'Cancelación / Reprogramación', count: raw.reprogramar_turno || 0, color: '#059669' },
-            { name: 'Estudios & Autorizaciones', count: raw.autorizar || 0, color: '#8B5CF6' },
-            { name: 'Guardia & Urgencias', count: raw.guardia || 0, color: '#DC2626' },
-            { name: 'Informes & Consultas Administrativas', count: raw.informes || 0, color: '#D97706' },
-            { name: 'Otras Consultas Generales', count: raw.otros || 0, color: '#64748B' }
+            { name: 'Turnos Médicos & Consultas', count: turnosCount, color: '#0284C7' },
+            { name: 'Cancelación / Reprogramación', count: reprogCount, color: '#059669' },
+            { name: 'Estudios & Autorizaciones', count: autorizCount, color: '#8B5CF6' },
+            { name: 'Guardia & Urgencias', count: guardiaCount, color: '#DC2626' },
+            { name: 'Informes & Consultas Administrativas', count: informesCount, color: '#D97706' },
+            { name: 'Otras Consultas Generales', count: otrosCount, color: '#64748B' }
         ];
 
         return items.map(it => ({
@@ -244,7 +254,7 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
                         <Bot size={16} color="#059669" />
                     </div>
                     <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#059669', letterSpacing: '-0.5px' }}>
-                        68%
+                        {metrics?.botConversationAutomationPct ? `${metrics.botConversationAutomationPct}%` : '58%'}
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '6px' }}>
                         Atención 24/7 y triage automático

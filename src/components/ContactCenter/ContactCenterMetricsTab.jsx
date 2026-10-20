@@ -438,6 +438,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             };
 
             const hourlyIncomingCounts = Array(24).fill(0);
+            const hourlyBotCounts = Array(24).fill(0);
+            const hourlyAgentCounts = Array(24).fill(0);
             const dailyOutTally = {};
             const responseTimesByDay = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
             const allFirstResponseTimes = [];
@@ -508,8 +510,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         let matchedAgId = null;
                         if (isBot) {
                             botCount++;
+                            hourlyBotCounts[mDate.getHours()]++;
                         } else {
                             agentCount++;
+                            hourlyAgentCounts[mDate.getHours()]++;
                             for (const ag of ALL_AGENTS_METRICS) {
                                 if (
                                     rawAgent === ag.id || 
@@ -1118,8 +1122,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     peakWaitHour = `${hour.toString().padStart(2, '0')}:00 hs`;
                 }
                 return {
+                    hour,
                     hora: `${hour.toString().padStart(2, '0')}:00`,
                     esperaMin: avg,
+                    avgWaitMin: avg,
                     casos: times.length,
                     isOperatingHour: isOp
                 };
@@ -1159,13 +1165,22 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             let peakHourIndex = 0;
             let peakHourVal = 0;
             const hourlyDemandData = hourlyIncomingCounts.map((count, hour) => {
+                const bCount = hourlyBotCounts[hour] || 0;
+                const hCount = hourlyAgentCounts[hour] || 0;
                 if (count > peakHourVal) {
                     peakHourVal = count;
                     peakHourIndex = hour;
                 }
                 return {
+                    hour,
                     hora: `${hour.toString().padStart(2, '0')}:00`,
                     pacientes: count,
+                    bot: bCount,
+                    botMessages: bCount,
+                    agentes: hCount,
+                    agentMessages: hCount,
+                    human: hCount,
+                    total: bCount + hCount,
                     esPico: hour === peakHourIndex
                 };
             });
