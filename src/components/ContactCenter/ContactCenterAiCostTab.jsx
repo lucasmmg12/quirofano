@@ -134,7 +134,111 @@ export default function ContactCenterAiCostTab({
                 .eq('key', summaryKey)
                 .maybeSingle();
 
-            setSummaryData(summaryRow?.value || null);
+            let parsedSummary = null;
+            if (summaryRow?.value) {
+                if (typeof summaryRow.value === 'string') {
+                    try {
+                        parsedSummary = JSON.parse(summaryRow.value);
+                    } catch (e) {
+                        console.warn('[ai-cost] Error parseando summaryRow.value JSON', e);
+                    }
+                } else if (typeof summaryRow.value === 'object') {
+                    parsedSummary = summaryRow.value;
+                }
+            }
+
+            // Si es el mes en curso, traer registros del día de hoy para sumar el consumo en vivo
+            const todayStr = new Date().toISOString().split('T')[0];
+            const isCurrentMonth = activeMonthKey === getCurrentMonthKey();
+            if (isCurrentMonth && (!parsedSummary?.dailyMap?.[todayStr])) {
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
+                const { data: todayLogs } = await supabase
+                    .from('contact_center_ai_usage_logs')
+                    .select('*')
+                    .gte('created_at', todayStart.toISOString());
+
+                if (todayLogs && todayLogs.length > 0) {
+                    if (!parsedSummary) {
+                        parsedSummary = {
+                            period: activeMonthKey,
+                            totalCalls: 0,
+                            totalPrompt: 0,
+                            totalCompletion: 0,
+                            totalTokens: 0,
+                            totalCostUsd: 0,
+                            avgLatencyMs: 0,
+                            uniquePatientsCount: 0,
+                            serviceBreakdown: {},
+                            modelBreakdown: {},
+                            dailyMap: {}
+                        };
+                    }
+                    if (!parsedSummary.dailyMap) parsedSummary.dailyMap = {};
+                    if (!parsedSummary.serviceBreakdown) parsedSummary.serviceBreakdown = {};
+                    if (!parsedSummary.modelBreakdown) parsedSummary.modelBreakdown = {};
+
+                    let tPrompt = 0;
+                    let tComp = 0;
+                    let tTotal = 0;
+                    let tCost = 0;
+                    let tLatency = 0;
+                    const todayPatients = new Set();
+
+                    todayLogs.forEach(l => {
+                        const p = l.prompt_tokens || 0;
+                        const c = l.completion_tokens || 0;
+                        const t = l.total_tokens || (p + c);
+                        const cost = Number(l.estimated_cost_usd) || 0;
+                        const s = l.service_name || 'conversational_bot';
+                        const m = l.model || 'gpt-5.4-mini';
+                        if (l.phone) todayPatients.add(l.phone);
+
+                        tPrompt += p;
+                        tComp += c;
+                        tTotal += t;
+                        tCost += cost;
+                        tLatency += (l.execution_ms || 0);
+
+                        // Service breakdown
+                        if (!parsedSummary.serviceBreakdown[s]) {
+                            parsedSummary.serviceBreakdown[s] = { service: s, calls: 0, totalTokens: 0, costUsd: 0 };
+                        }
+                        parsedSummary.serviceBreakdown[s].calls++;
+                        parsedSummary.serviceBreakdown[s].totalTokens += t;
+                        parsedSummary.serviceBreakdown[s].costUsd += cost;
+
+                        // Model breakdown
+                        if (!parsedSummary.modelBreakdown[m]) {
+                            parsedSummary.modelBreakdown[m] = { model: m, calls: 0, totalTokens: 0, costUsd: 0 };
+                        }
+                        parsedSummary.modelBreakdown[m].calls++;
+                        parsedSummary.modelBreakdown[m].totalTokens += t;
+                        parsedSummary.modelBreakdown[m].costUsd += cost;
+                    });
+
+                    parsedSummary.dailyMap[todayStr] = {
+                        date: todayStr,
+                        prompt: tPrompt,
+                        completion: tComp,
+                        total: tTotal,
+                        costUsd: tCost,
+                        calls: todayLogs.length
+                    };
+
+                    parsedSummary.totalCalls = (parsedSummary.totalCalls || 0) + todayLogs.length;
+                    parsedSummary.totalPrompt = (parsedSummary.totalPrompt || 0) + tPrompt;
+                    parsedSummary.totalCompletion = (parsedSummary.totalCompletion || 0) + tComp;
+                    parsedSummary.totalTokens = (parsedSummary.totalTokens || 0) + tTotal;
+                    parsedSummary.totalCostUsd = (parsedSummary.totalCostUsd || 0) + tCost;
+                    if (parsedSummary.totalCalls > 0) {
+                        parsedSummary.avgLatencyMs = Math.round(((parsedSummary.avgLatencyMs || 2200) * (parsedSummary.totalCalls - todayLogs.length) + tLatency) / parsedSummary.totalCalls);
+                    }
+                    parsedSummary.uniquePatientsCount = Math.max(parsedSummary.uniquePatientsCount || 0, (parsedSummary.uniquePatientsCount || 0) + todayPatients.size);
+                }
+            }
+
+            setSummaryData(parsedSummary);
 
             // 2. Traer registros recientes para la tabla de auditoría (últimos 100 registros para navegación ágil)
             let auditQuery = supabase
@@ -409,18 +513,18 @@ export default function ContactCenterAiCostTab({
         const daysRemaining = Math.max(0, totalDaysInMonth - daysElapsed);
 
         const monthTotalTokens = (summaryData && timeRange === 'this_month') 
-            ? summaryData.totalTokens 
-            : stats.totalTokens;
+            ? (Number(summaryData.totalTokens) || 0)
+            : (Number(stats.totalTokens) || 0);
         const monthTotalCostUsd = (summaryData && timeRange === 'this_month')
-            ? summaryData.totalCostUsd
-            : stats.totalCostUsd;
+            ? (Number(summaryData.totalCostUsd) || 0)
+            : (Number(stats.totalCostUsd) || 0);
 
-        const dailyAvgTokens = monthTotalTokens / daysElapsed;
-        const dailyAvgCostUsd = monthTotalCostUsd / daysElapsed;
+        const dailyAvgTokens = daysElapsed > 0 ? monthTotalTokens / daysElapsed : 0;
+        const dailyAvgCostUsd = daysElapsed > 0 ? monthTotalCostUsd / daysElapsed : 0;
 
-        const projectedMonthTokens = Math.round(dailyAvgTokens * totalDaysInMonth);
-        const projectedMonthCostUsd = Number((dailyAvgCostUsd * totalDaysInMonth).toFixed(2));
-        const projectedMonthCostArs = Math.round(projectedMonthCostUsd * arsRate);
+        const projectedMonthTokens = Math.round(dailyAvgTokens * totalDaysInMonth) || 0;
+        const projectedMonthCostUsd = Number((dailyAvgCostUsd * totalDaysInMonth).toFixed(2)) || 0;
+        const projectedMonthCostArs = Math.round(projectedMonthCostUsd * (Number(arsRate) || 1380)) || 0;
 
         return {
             daysElapsed,
