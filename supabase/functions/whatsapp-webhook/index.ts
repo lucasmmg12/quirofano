@@ -5186,7 +5186,30 @@ async function handleChatbotTriage(
 
             if (isPideAgente || isNonDoctorSector || previousAttempts >= 1) {
                 // Derivación directa a asesor humano tras 1 intento fallido o mención de sector/agente
+                const candidateDniInMsg = candidateDni || extractDniFromText(cleanText);
+                const effectiveDni = (candidateDniInMsg && isValidArgentineDni(candidateDniInMsg))
+                    ? candidateDniInMsg
+                    : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) 
+                        ? String(paciente.dni) 
+                        : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
+
                 const sectorTag = isNonDoctorSector ? ` (${cleanText.substring(0, 30)})` : '';
+
+                if (!effectiveDni) {
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_datos_agente';
+                    nextStage = 'esperando_datos_agente';
+                    updates.motivo_consulta = `Consulta con Agente: Selección no resuelta (${cleanText.substring(0, 50)})${sectorTag}`;
+                    replyText = `¡Comprendido! 👤 Para comunicarte con un asesor de Sanatorio Argentino y orientarte con el área adecuada, es indispensable que nos indiques tus datos:\n\n` +
+                        `1️⃣ *Número de DNI* del paciente (7 u 8 dígitos, sin puntos)\n` +
+                        `2️⃣ *Nombre y Apellido* completo\n` +
+                        `3️⃣ *Motivo o Especialidad médica requerida*\n\n` +
+                        `_Por favor envíanos estos datos para transferirte con un operador disponible._\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"*`;
+                    return await finalizeAndSend(replyText, nextStage, updates);
+                }
+
                 replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 👤 Para que puedas coordinar tu consulta sin demoras y brindarte la orientación exacta que necesitás, ya mismo te comunico con un asesor de nuestro equipo de atención.\n\n` +
                     `${getAgentHandoffNotice()}\n\n` +
                     `🔙 *Volver:* Escribí *"Menú"*`;
@@ -5319,6 +5342,28 @@ async function handleChatbotTriage(
                     };
                 } else {
                     // Si ya no se encontró médico y no se descifró la intención -> DERIVAR A ASESOR
+                    const candidateDniInMsg = candidateDni || extractDniFromText(cleanText);
+                    const effectiveDni = (candidateDniInMsg && isValidArgentineDni(candidateDniInMsg))
+                        ? candidateDniInMsg
+                        : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) 
+                            ? String(paciente.dni) 
+                            : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
+
+                    if (!effectiveDni) {
+                        updates.status = 'bot';
+                        updates.bot_active = true;
+                        updates.bot_stage = 'esperando_datos_agente';
+                        nextStage = 'esperando_datos_agente';
+                        updates.motivo_consulta = `Consulta con Agente: No se descifró profesional (${cleanText.substring(0, 50)})`;
+                        replyText = `¡Comprendido! 👤 Para brindarte una respuesta personalizada y coordinar con el área correspondiente, es indispensable que nos indiques tus datos:\n\n` +
+                            `1️⃣ *Número de DNI* del paciente (7 u 8 dígitos, sin puntos)\n` +
+                            `2️⃣ *Nombre y Apellido* completo\n` +
+                            `3️⃣ *Obra Social o Prepaga*\n\n` +
+                            `_Por favor envíanos estos datos para transferirte con un operador disponible._\n\n` +
+                            `🔙 *Volver:* Escribí *"Menú"*`;
+                        return await finalizeAndSend(replyText, nextStage, updates);
+                    }
+
                     replyText = `¡Comprendido${whatsappName ? ` *${whatsappName}*` : ''}! 👤 Para brindarte una respuesta rápida y coordinar con el profesional adecuado, ya mismo te comunico con un asesor de nuestro equipo de atención.\n\n` +
                         `${getAgentHandoffNotice()}\n\n` +
                         `🔙 *Volver:* Escribí *"Menú"*`;
@@ -6511,20 +6556,71 @@ async function handleChatbotTriage(
     // FLUJO: ADMINISTRACIÓN, CIRUGÍAS, PRESUPUESTOS Y ARANCELES
     // =============================================
     else if (analysis.intent === 'administracion_presupuestos') {
+        const candidateDniInMsg = candidateDni || extractDniFromText(cleanText);
+        const effectiveDni = (candidateDniInMsg && isValidArgentineDni(candidateDniInMsg))
+            ? candidateDniInMsg
+            : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) 
+                ? String(paciente.dni) 
+                : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
+
         const hasMedia = isIncomingMedia || patientSentImageRecently;
-        updates.motivo_consulta = `Presupuesto / Aranceles${hasMedia ? ' (con imagen)' : ''}: ${cleanText.slice(0, 70)}`;
-        replyText = `¡Hola${fullName ? ` *${fullName}*` : ''}! 🏥 Con gusto te ayudamos con la consulta de *presupuestos y aranceles* de tus estudios, prácticas médicas o consultas.\n\n` +
-            (hasMedia
-                ? `Recibimos tu archivo/imagen. Un asesor de nuestro equipo verificará los análisis y la cobertura de tu obra social para informarte los valores a la brevedad.\n\n`
-                : `Un asesor de nuestro equipo de atención tomará tu conversación a la brevedad para verificar la cobertura médica y cotizarte los estudios correspondientes.\n\n` +
-                  `_(Si contás con una orden médica o pedido prescripto, podés enviarnos la foto clara por este medio para agilizar la cotización)._\n\n`) +
-            `${getAgentHandoffNotice()}\n\n` +
+        const motiveDetail = cleanText.length > 5 ? cleanText.slice(0, 80) : 'Consulta de aranceles y presupuestos';
+
+        // ─── CASO 1: TIENE DNI VÁLIDO IDENTIFICADO ───
+        if (effectiveDni) {
+            updates.dni = effectiveDni;
+            if (!paciente?.id_paciente) {
+                try {
+                    const { data: pFound } = await supabase
+                        .from('hospital_pacientes')
+                        .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
+                        .eq('dni', effectiveDni)
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (pFound) {
+                        paciente = pFound;
+                        updates.nombre_completo = pFound.nombre;
+                        updates.nhc = pFound.nhc;
+                        updates.es_paciente_existente = true;
+                    }
+                } catch (_) {}
+            }
+
+            const patientDisplayName = updates.nombre_completo || paciente?.nombre || fullName || whatsappName || '';
+            updates.motivo_consulta = `Presupuesto / Aranceles${hasMedia ? ' (con imagen/orden)' : ''}: ${motiveDetail}`;
+            replyText = `¡Hola${patientDisplayName ? ` *${patientDisplayName}*` : ''}! 🏥 Con gusto te ayudamos con la cotización de *presupuestos y aranceles* de tus estudios o prácticas médicas.\n\n` +
+                (hasMedia
+                    ? `Recibimos tu archivo/imagen de la orden médica. Un asesor de nuestro equipo verificará los códigos y la cobertura de tu obra social para informarte los valores a la brevedad.\n\n`
+                    : `Un asesor de nuestro equipo de atención tomará tu consulta a la brevedad para verificar la cobertura médica y cotizarte los estudios o prácticas correspondientes.\n\n` +
+                      `_(Si contás con una orden médica o pedido prescripto, podés enviarnos la foto clara por este medio para agilizar la cotización)._\n\n`) +
+                `${getAgentHandoffNotice()}\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            nextStage = 'esperando_agente';
+            updates.ai_summary = buildTriageSummary(updates, 'presupuesto', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
+        // ─── CASO 2: NO TIENE DNI IDENTIFICADO (REGLA MANDATORIA) ───
+        // NUNCA derivar a 'sin_asignar' sin datos personales del paciente. Mantener el bot activo.
+        updates.status = 'bot';
+        updates.bot_active = true;
+        updates.bot_stage = 'esperando_datos_agente';
+        nextStage = 'esperando_datos_agente';
+        updates.motivo_consulta = `Presupuesto: ${motiveDetail}`;
+
+        replyText = `¡Hola! 🏥 Con gusto te ayudamos con la consulta de *presupuestos y aranceles* en Sanatorio Argentino.\n\n` +
+            `Para que nuestro equipo de cotizaciones pueda verificar los aranceles y la cobertura con tu obra social, es indispensable que nos indiques tus datos:\n\n` +
+            `1️⃣ *Número de DNI* del paciente (7 u 8 dígitos, sin puntos)\n` +
+            `2️⃣ *Nombre y Apellido* completo\n` +
+            `3️⃣ *Obra Social o Prepaga* (o aclarar si la atención será de forma *Particular*)\n` +
+            `4️⃣ *Práctica o estudio a cotizar* (si contás con una orden médica, podés enviarnos la *foto clara* por este medio)\n\n` +
+            `_Por favor, envíanos estos datos en tu respuesta para que podamos procesar tu cotización y transferirte de inmediato con un asesor._\n\n` +
             `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-        updates.status = 'sin_asignar';
-        updates.bot_active = false;
-        updates.bot_stage = 'esperando_agente';
-        nextStage = 'esperando_agente';
-        updates.ai_summary = buildTriageSummary(updates, 'presupuesto', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+
         return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
@@ -6698,6 +6794,30 @@ async function handleChatbotTriage(
                 updates.motivo_consulta = `Consulta Arancel Particular: ${effDocDisplay}${effSpec} (${price})`;
                 updates.medico_o_especialidad = `${effDocDisplay}${effSpec}`;
             } else {
+                const candidateDniInMsg = candidateDni || extractDniFromText(cleanText);
+                const effectiveDni = (candidateDniInMsg && isValidArgentineDni(candidateDniInMsg))
+                    ? candidateDniInMsg
+                    : ((paciente?.dni && isValidArgentineDni(String(paciente.dni))) 
+                        ? String(paciente.dni) 
+                        : (conv?.dni && isValidArgentineDni(String(conv.dni)) ? String(conv.dni) : null));
+
+                if (!effectiveDni) {
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_datos_agente';
+                    nextStage = 'esperando_datos_agente';
+                    updates.motivo_consulta = `Consulta Arancel: ${effDocDisplay}${effSpec}`;
+                    updates.medico_o_especialidad = `${effDocDisplay}${effSpec}`;
+                    replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Registramos tu consulta sobre el valor de la atención con el *${effDocDisplay}*${effSpec}.\n\n` +
+                        `Para que un asesor de nuestro equipo verifique los convenios y aranceles según la fecha de tu atención, es indispensable que nos indiques tus datos:\n\n` +
+                        `1️⃣ *Número de DNI* del paciente (7 u 8 dígitos, sin puntos)\n` +
+                        `2️⃣ *Nombre y Apellido* completo\n` +
+                        `3️⃣ *Obra Social o Prepaga* (o aclarar si la atención será *Particular*)\n\n` +
+                        `_Por favor envíanos estos datos en tu respuesta para transferirte con un operador disponible._\n\n` +
+                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                    return await finalizeAndSend(replyText, nextStage, updates);
+                }
+
                 replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Registramos tu consulta sobre el valor de la atención con el *${effDocDisplay}*${effSpec}.\n\n` +
                     `Para brindarte el arancel exacto y verificar convenios según la fecha de tu atención, te comunicamos con un asesor de nuestro equipo.\n\n` +
                     `📌 *Recordá:* Todo abono de consultas se realiza de forma presencial en el sector de Recepción del Sanatorio (no se realizan cobros ni transferencias por este medio).\n\n` +
