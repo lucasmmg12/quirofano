@@ -687,77 +687,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* 2.B MINI-TARJETAS INDIVIDUALES: CUÁNTO COBRA CADA OPERADORA       */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                background: '#FFFFFF',
-                borderRadius: '14px',
-                border: '1px solid #E2E8F0',
-                padding: '16px 20px',
-                marginBottom: '16px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Users size={16} color="#003B71" />
-                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Liquidación Individual por Operadora
-                        </span>
-                    </div>
-                    <span style={{ fontSize: '0.70rem', color: '#64748B', fontWeight: 600 }}>
-                        Liquidación según cumplimiento de bolsas y presentismo
-                    </span>
-                </div>
 
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-                    gap: '10px'
-                }}>
-                    {liquidacion.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).map(ag => (
-                        <div key={ag.id} style={{
-                            background: '#F8FAFC',
-                            borderRadius: '12px',
-                            border: '1px solid #E2E8F0',
-                            padding: '12px 14px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            transition: 'all 0.15s ease'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                    width: '34px', height: '34px', borderRadius: '50%',
-                                    background: ag.fte === 1.0 ? '#003B71' : '#475569',
-                                    color: '#FFFFFF',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '0.72rem', fontWeight: 800
-                                }}>
-                                    {ag.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F2942' }}>
-                                        {ag.name}
-                                    </div>
-                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
-                                        {ag.fte === 1.0 ? '100% FTE' : `${Math.round(ag.fte * 100)}% FTE`}
-                                        {ag.mensajesIndividuales > 0 ? ` • 💬 ${ag.mensajesIndividuales.toLocaleString()} msjs` : ''}
-                                        {` • Asist: ${ag.asistenciaPct}%`}
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#003B71' }}>
-                                    {formatCurrency(ag.totalALiquidar)}
-                                </div>
-                                <div style={{ fontSize: '0.66rem', color: '#16A34A', fontWeight: 700 }}>
-                                    +{formatCurrency(ag.totalVariable)} variable
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
 
             {/* TABLA DE LIQUIDACIÓN NOMINAL POR COLABORADORA */}
             <div style={{
