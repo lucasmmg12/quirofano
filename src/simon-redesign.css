@@ -881,6 +881,54 @@ body.dark-theme .rag-message-text {
   margin-bottom: 0;
 }
 
+/* Headers en Respuestas (Negrita, Letra más grande y Subrayado Institucional) */
+.rag-message-text h1,
+.rag-message-text h2,
+.rag-message-text h3,
+.rag-message-text h4,
+.markdown-h1,
+.markdown-h2,
+.markdown-h3,
+.markdown-h4 {
+  font-weight: 700;
+  color: #0f172a;
+  margin: 20px 0 10px 0;
+  line-height: 1.35;
+  text-decoration: underline;
+  text-decoration-color: #2563eb;
+  text-underline-offset: 6px;
+  text-decoration-thickness: 2.5px;
+  display: block;
+}
+
+body.dark-theme .rag-message-text h1,
+body.dark-theme .rag-message-text h2,
+body.dark-theme .rag-message-text h3,
+body.dark-theme .rag-message-text h4,
+body.dark-theme .markdown-h1,
+body.dark-theme .markdown-h2,
+body.dark-theme .markdown-h3,
+body.dark-theme .markdown-h4 {
+  color: #f8fafc;
+  text-decoration-color: #3b82f6;
+}
+
+.markdown-h1 {
+  font-size: 1.25rem;
+}
+
+.markdown-h2 {
+  font-size: 1.16rem;
+}
+
+.markdown-h3 {
+  font-size: 1.08rem;
+}
+
+.markdown-h4 {
+  font-size: 1.02rem;
+}
+
 .rag-message-text strong {
   color: #0f172a;
   font-weight: 600;

@@ -40,6 +40,12 @@ function renderMarkdown(text) {
     // 2. Parse horizontal lines (---)
     html = html.replace(/^---$/gm, '<hr class="markdown-hr" />');
     
+    // 2.5. Parse headers (#, ##, ###, ####)
+    html = html.replace(/^\s*####\s+(.*)/gm, '<h4 class="markdown-h4">$1</h4>');
+    html = html.replace(/^\s*###\s+(.*)/gm, '<h3 class="markdown-h3">$1</h3>');
+    html = html.replace(/^\s*##\s+(.*)/gm, '<h2 class="markdown-h2">$1</h2>');
+    html = html.replace(/^\s*#\s+(.*)/gm, '<h1 class="markdown-h1">$1</h1>');
+    
     // 3. Parse blockquotes / alerts (e.g. > [!NOTE], > text)
     html = html.replace(/^&gt;\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n([\s\S]*?)(?=\n\n|\n&gt;|\n\n|$)/gm, (match, type, content) => {
         return `<div class="markdown-alert markdown-alert-${type.toLowerCase()}"><strong>${type}</strong>:<br/>${content.trim()}</div>`;
@@ -77,7 +83,7 @@ function renderMarkdown(text) {
         .replace(/\*([^*]+)\*/g, '<em>$1</em>');
     
     // 6. Parse bulleted lists
-    html = html.replace(/^\s*-\s+(.*)/gm, '<li>$1</li>');
+    html = html.replace(/^\s*[-*•]\s+(.*)/gm, '<li>$1</li>');
     html = html.replace(/((?:<li>.*<\/li>(?:\r?\n|$))+)/g, '<ul class="markdown-list">$1</ul>');
     
     // 7. Parse numbered lists
@@ -93,6 +99,11 @@ function renderMarkdown(text) {
         .replace(/<\/table><br\/>/g, '</table>')
         .replace(/<\/div><br\/>/g, '</div>')
         .replace(/<\/ul><br\/>/g, '</ul>')
+        .replace(/<\/ol><br\/>/g, '</ol>')
+        .replace(/<\/h1><br\/>/g, '</h1>')
+        .replace(/<\/h2><br\/>/g, '</h2>')
+        .replace(/<\/h3><br\/>/g, '</h3>')
+        .replace(/<\/h4><br\/>/g, '</h4>')
         .replace(/<li(.*?)<\/li><br\/>/g, '<li$1</li>');
         
     // 9. Restore Mermaid blocks
