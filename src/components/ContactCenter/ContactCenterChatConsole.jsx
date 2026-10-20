@@ -8154,38 +8154,56 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         </div>
 
                                         {/* 2. DATOS DETECTADOS POR LA IA */}
-                                        {aiSummaryData.datos_paciente && (
-                                            <div style={{
-                                                background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                                padding: '10px', borderRadius: '8px',
-                                                border: `1px solid ${rightCardBorder}`
-                                            }}>
-                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase', marginBottom: '6px' }}>
-                                                    Datos Aportados por el Paciente
+                                        {aiSummaryData.datos_paciente && (() => {
+                                            const isDateHourArtifact = (val) => {
+                                                if (!val) return false;
+                                                const clean = String(val).replace(/\D/g, '');
+                                                return /^(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])(?:[01]\d|2[0-3])(?:00|15|30|45)$/.test(clean);
+                                            };
+
+                                            const verifiedDni = crmForm.dni || selectedChat?.dni || selectedChat?.customFields?.dni;
+                                            const rawAiDni = aiSummaryData.datos_paciente?.dni;
+                                            const displayDni = (verifiedDni && verifiedDni !== 'A verificar')
+                                                ? verifiedDni
+                                                : (!isDateHourArtifact(rawAiDni) ? rawAiDni : null) || '—';
+
+                                            const displayObraSocial = aiSummaryData.datos_paciente.obra_social || crmForm.obraSocial || selectedChat?.customFields?.obraSocial || selectedChat?.obra_social || '—';
+                                            const displayNacimiento = aiSummaryData.datos_paciente.fecha_nacimiento || crmForm.fechaNacimiento || selectedChat?.customFields?.fechaNacimiento || selectedChat?.fecha_nacimiento || '—';
+                                            const displayDepto = aiSummaryData.datos_paciente.departamento || selectedChat?.departamento || '—';
+
+                                            return (
+                                                <div style={{
+                                                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
+                                                    padding: '10px', borderRadius: '8px',
+                                                    border: `1px solid ${rightCardBorder}`
+                                                }}>
+                                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase', marginBottom: '6px' }}>
+                                                        Datos Aportados por el Paciente
+                                                    </div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.74rem' }}>
+                                                        <div>
+                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>DNI</span>
+                                                            <strong style={{ color: themeCardText }}>{displayDni}</strong>
+                                                        </div>
+                                                        <div>
+                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
+                                                            <strong style={{ color: themeCardText }}>
+                                                                {displayObraSocial}
+                                                                {aiSummaryData.datos_paciente.plan_obra_social && !displayObraSocial.includes(aiSummaryData.datos_paciente.plan_obra_social) ? ` (${aiSummaryData.datos_paciente.plan_obra_social})` : ''}
+                                                            </strong>
+                                                        </div>
+                                                        <div>
+                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
+                                                            <strong style={{ color: themeCardText }}>{displayNacimiento}</strong>
+                                                        </div>
+                                                        <div>
+                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Dpto / Localidad</span>
+                                                            <strong style={{ color: themeCardText }}>{displayDepto}</strong>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.74rem' }}>
-                                                    <div>
-                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>DNI</span>
-                                                        <strong style={{ color: themeCardText }}>{aiSummaryData.datos_paciente.dni || '—'}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
-                                                        <strong style={{ color: themeCardText }}>
-                                                            {aiSummaryData.datos_paciente.obra_social || '—'}
-                                                            {aiSummaryData.datos_paciente.plan_obra_social && !aiSummaryData.datos_paciente.obra_social?.includes(aiSummaryData.datos_paciente.plan_obra_social) ? ` (${aiSummaryData.datos_paciente.plan_obra_social})` : ''}
-                                                        </strong>
-                                                    </div>
-                                                    <div>
-                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
-                                                        <strong style={{ color: themeCardText }}>{aiSummaryData.datos_paciente.fecha_nacimiento || '—'}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Dpto / Localidad</span>
-                                                        <strong style={{ color: themeCardText }}>{aiSummaryData.datos_paciente.departamento || '—'}</strong>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                                            );
+                                        })()}
 
                                         {/* 3. DOCTOR DETECTADO & PARÁMETROS DE ATENCIÓN */}
                                         {(() => {

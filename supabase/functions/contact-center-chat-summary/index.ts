@@ -304,6 +304,10 @@ REGLAS CRÍTICAS DE EXTRACCIÓN:
    NUNCA coloques al médico solicitante de la orden médica en "doctor_detectado.nombre_aproximado".
    El campo "doctor_detectado.nombre_aproximado" DEBE SER ÚNICA Y EXCLUSIVAMENTE el profesional médico o especialista por el cual el PACIENTE pregunte o solicite turno explícitamente en el texto de sus mensajes en el chat (por ejemplo, si el paciente escribe "quiero turno con el Dr. Correa" o "con la Dra. Gómez").
    Si el paciente solo envió la orden médica para autorizar o coordinar un turno del estudio prescripto y NO pidió expresamente a ningún médico en sus mensajes de texto, "doctor_detectado.nombre_aproximado" DEBE SER estrictamente null.
+8. REGLA ESTRICTA SOBRE DNI Y FECHAS/HORARIOS:
+   - Si la ficha registrada ya posee un DNI válido (${conv?.dni}), DEBES mantener ese DNI en "datos_paciente.dni" a menos que el paciente en el chat haya informado explícitamente una corrección o DNI diferente.
+   - NUNCA inventes o concatenes fechas y horas de turnos (como 'el día 21/10 a las 13 hs', '21/10 10 am', etc.) para formar un DNI. '21101300' o cualquier combinación similar de día, mes y hora NO es un DNI.
+   - Un DNI argentino es estrictamente un número de 7 u 8 dígitos provisto explícitamente por el paciente para identificarse. Si el paciente no brindó su documento en el chat y no figura en la ficha, deja "datos_paciente.dni": null.
 
 Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura exacta:
 {
@@ -570,6 +574,28 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
             }
         }
 
+        // Sanitizar y validar DNI aportado por IA
+        const isDateHourArtifact = (val: any) => {
+            if (!val) return false;
+            const clean = String(val).replace(/\D/g, '');
+            // Detecta concatenaciones DDMMHHMM (ej: 21101300 -> 21/10 13:00)
+            return /^(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])(?:[01]\d|2[0-3])(?:00|15|30|45)$/.test(clean);
+        };
+
+        if (parsed.datos_paciente) {
+            let aiDni = parsed.datos_paciente.dni ? String(parsed.datos_paciente.dni).trim() : null;
+            if (aiDni && isDateHourArtifact(aiDni)) {
+                console.warn(`[chat-summary] Descartando DNI espurio/artefacto de fecha y hora: ${aiDni}`);
+                aiDni = null;
+            }
+            // Si la conversación ya tiene un DNI verificado en conv.dni, preservarlo prioritariamente
+            if (conv?.dni && conv.dni !== 'A verificar' && !/^[A-Za-z]/.test(conv.dni)) {
+                parsed.datos_paciente.dni = String(conv.dni).trim();
+            } else {
+                parsed.datos_paciente.dni = aiDni;
+            }
+        }
+
         const finalSummary = {
             ...(conv?.ai_summary || {}),
             ...parsed,
@@ -587,7 +613,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
         if (parsed.datos_paciente?.nombre_completo && (!conv?.nombre_completo || conv?.nombre_completo.includes('@') || conv?.nombre_completo.startsWith('Paciente'))) {
             updates.nombre_completo = parsed.datos_paciente.nombre_completo;
         }
-        if (parsed.datos_paciente?.dni && (!conv?.dni || conv?.dni === 'A verificar')) {
+        if (parsed.datos_paciente?.dni && (!conv?.dni || conv?.dni === 'A verificar') && !isDateHourArtifact(parsed.datos_paciente.dni)) {
             updates.dni = parsed.datos_paciente.dni;
         }
         if (parsed.datos_paciente?.obra_social && (!conv?.obra_social || conv?.obra_social === 'A consultar' || conv?.obra_social.toLowerCase().includes('particular'))) {
