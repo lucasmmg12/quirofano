@@ -1007,7 +1007,6 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         <thead>
                             <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', color: '#475569', textAlign: 'left' }}>
                                 <th style={{ padding: '10px 12px', fontWeight: 800 }}>Colaboradora</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800 }}>Estado / FTE</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Piso Garantizado</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Msjs (50%)</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Turnos (25%)</th>
@@ -1036,31 +1035,20 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                     {agReal.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                                                 </div>
                                                 <div>
-                                                    <div style={{ fontWeight: 800 }}>{agReal.name}</div>
+                                                    <div style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span>{agReal.name}</span>
+                                                        {agReal.fte < 1.0 && (
+                                                            <span style={{
+                                                                fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px',
+                                                                background: '#FEF3C7', color: '#92400E', fontWeight: 700, border: '1px solid #FDE68A'
+                                                            }}>
+                                                                {Math.round(agReal.fte * 100)}% FTE
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div style={{ fontSize: '0.66rem', color: '#94A3B8' }}>{agReal.salusKey}</div>
                                                 </div>
                                             </div>
-                                        </td>
-
-                                        {/* Control FTE / Estado */}
-                                        <td style={{ padding: '12px' }}>
-                                            <select
-                                                value={agReal.fte}
-                                                onChange={(e) => handleFteChange(agReal.id, e.target.value)}
-                                                style={{
-                                                    padding: '3px 6px', borderRadius: '6px',
-                                                    border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700,
-                                                    background: agReal.fte === 1.0 ? '#F0FDF4' : '#FFFBEB',
-                                                    color: agReal.fte === 1.0 ? '#166534' : '#92400E'
-                                                }}
-                                            >
-                                                <option value="1.0">100% FTE (Pleno)</option>
-                                                <option value="0.75">75% FTE</option>
-                                                <option value="0.5">50% FTE (Curva/Lic)</option>
-                                                <option value="0.25">25% FTE</option>
-                                                <option value="0.15">15% FTE (Cese)</option>
-                                                <option value="0">0% (Inactiva)</option>
-                                            </select>
                                         </td>
 
                                         {/* Piso Garantizado */}
@@ -1235,7 +1223,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         </tbody>
                         <tfoot>
                             <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
-                                <td colSpan="2" style={{ padding: '12px', color: '#0F2942' }}>
+                                <td style={{ padding: '12px', color: '#0F2942' }}>
                                     TOTALES CONSOLIDADOS DEL EQUIPO
                                 </td>
                                 <td style={{ padding: '12px', textAlign: 'right', color: '#475569' }}>
