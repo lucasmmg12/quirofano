@@ -2464,7 +2464,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 Evolución Mensual: Automatización Bot vs Asesoras Humanas y Costos Meta
                             </h3>
                             <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                Comparativa histórica de los últimos 6 meses (Regla Meta: 1.000 msgs gratis/mes, luego $0.026 USD/msg saliente)
+                                Evolución histórica desde el inicio operativo en Octubre 2026 (Regla Meta: 1.000 msgs gratis/mes, luego $0.026 USD/msg saliente)
                             </p>
                         </div>
                     </div>
@@ -2498,8 +2498,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 formatter={(val, name) => [`${val.toLocaleString('es-AR')} msgs`, name]}
                             />
                             <Legend wrapperStyle={{ fontSize: '0.74rem', paddingTop: '6px' }} />
-                            <Bar dataKey="bot" name="Bot Sanatorio (Automatizado)" stackId="a" fill="#38BDF8" radius={[0, 0, 0, 0]} />
-                            <Bar dataKey="agentes" name="Asesoras Humanas" stackId="a" fill="#0F2942" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="bot" name="Bot Sanatorio (Automatizado)" stackId="a" fill="#38BDF8" maxBarSize={60} radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="agentes" name="Asesoras Humanas" stackId="a" fill="#0F2942" maxBarSize={60} radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
