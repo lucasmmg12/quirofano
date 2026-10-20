@@ -3125,49 +3125,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 </div>
 
-                {/* ── CUMPLIMIENTO DE SLA POR ASESORA ── */}
-                {metrics.byAgentList && metrics.byAgentList.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
-                            Cumplimiento de SLA (&lt; 15 min) por Asesora
-                        </span>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '8px' }}>
-                            {metrics.byAgentList.map(ag => (
-                                <div key={ag.id} style={{
-                                    background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '8px',
-                                    padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <div style={{
-                                            width: '28px', height: '28px', borderRadius: '50%',
-                                            background: '#EFF6FF', color: '#0284C7', fontWeight: 800, fontSize: '0.72rem',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                        }}>
-                                            {ag.name.substring(0, 2).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F2942' }}>{ag.name}</div>
-                                            <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                {ag.avgResponseTimeMin > 0 ? `Promedio: ${ag.avgResponseTimeMin}m` : 'Respuesta inmediata'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <span style={{
-                                            fontSize: '0.74rem', fontWeight: 800,
-                                            color: (ag.slaCumplimientoPct || 100) >= 85 ? '#059669' : '#D97706',
-                                            background: (ag.slaCumplimientoPct || 100) >= 85 ? '#ECFDF5' : '#FFFBEB',
-                                            padding: '2px 8px', borderRadius: '6px',
-                                            border: `1px solid ${(ag.slaCumplimientoPct || 100) >= 85 ? '#A7F3D0' : '#FDE68A'}`
-                                        }}>
-                                            {ag.slaCumplimientoPct || 100}% SLA
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
