@@ -163,12 +163,6 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F2942' }}>
                                 Informe de Capacidad Instalada & Cuellos de Botella
                             </h3>
-                            <span style={{
-                                background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA',
-                                padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase'
-                            }}>
-                                Auditoría Operativa
-                            </span>
                         </div>
                         <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
                             Evaluación cuantitativa de carga vs dotación de asesoras, análisis de tiempos de espera y contención por Asistente Virtual
