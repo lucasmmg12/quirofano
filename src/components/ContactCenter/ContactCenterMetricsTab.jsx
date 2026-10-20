@@ -899,10 +899,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             assignedAgentName.includes((ag.name || '').toLowerCase())
                         ) {
                             matchedAssignedAgentId = ag.id;
-                            // NUNCA contabilizar en asesoras si el chat fue cerrado masivamente sin interacción
-                            if (!isMassClosureOrSweep) {
-                                agentDataMap[ag.id].assignedCount++;
-                            }
                             break;
                         }
                     }
@@ -1016,6 +1012,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
                         if (actualResolvedAgId && agentDataMap[actualResolvedAgId]) {
                             agentDataMap[actualResolvedAgId].resolvedCount++;
+                            agentDataMap[actualResolvedAgId].assignedCount++;
                             const matchedCat = MOTIVOS_FINALIZACION_CATALOGO.find(m => r.includes(m.key.toLowerCase()));
                             const reasonLabel = matchedCat ? matchedCat.label : (c.resolution_reason || 'Otro / Consulta Respondida');
                             agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] = (agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] || 0) + 1;
@@ -1076,6 +1073,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     }
                 } else {
                     activeCount++;
+                    // Conversaciones activas en curso asignadas a la asesora
+                    if (matchedAssignedAgentId && !isMassClosureOrSweep && agentDataMap[matchedAssignedAgentId]) {
+                        agentDataMap[matchedAssignedAgentId].assignedCount++;
+                    }
                 }
 
                 // ── 4. DETECCIÓN DE ABANDONO EN COLA ──
@@ -1413,7 +1414,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         dailyChartData,
                         reasonsChartData,
                         totalAtendidos: a.responseTimesMin.length,
-                        assignedCount: a.assignedCount || a.resolvedCount || a.conversationsCount || a.responseTimesMin.length
+                        assignedCount: Math.max(a.assignedCount || 0, a.resolvedCount || 0)
                     };
                 })
                 .sort((a, b) => (b.conversationsCount || 0) - (a.conversationsCount || 0));
@@ -2385,7 +2386,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     Distribución de Conversaciones del Equipo
                                 </h3>
                                 <p style={{ margin: '1px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
-                                    Casos asignados y finalizados por operadora · {periodLabel}
+                                    Atención humana: {pieAsesorasData.reduce((s, a) => s + (convPieMetric === 'asignadas' ? a.assignedCount : a.resolvedCount), 0).toLocaleString('es-AR')} {convPieMetric === 'asignadas' ? 'asignadas' : 'finalizadas'} de {(metrics.totalConversations || 0).toLocaleString('es-AR')} totales ingresadas · {periodLabel}
                                 </p>
                             </div>
                         </div>
@@ -2461,11 +2462,14 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                                 textAlign: 'center', pointerEvents: 'none'
                             }}>
-                                <div style={{ fontSize: '0.58rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                <div style={{ fontSize: '0.54rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
                                     {convPieMetric === 'asignadas' ? 'Asignadas' : 'Finalizadas'}
                                 </div>
                                 <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0F2942', lineHeight: 1 }}>
                                     {pieAsesorasData.reduce((s, a) => s + a.value, 0).toLocaleString('es-AR')}
+                                </div>
+                                <div style={{ fontSize: '0.5rem', color: '#64748B', fontWeight: 600, marginTop: '2px' }}>
+                                    de {(metrics.totalConversations || 0).toLocaleString('es-AR')}
                                 </div>
                             </div>
                         </div>
@@ -2503,6 +2507,29 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 </div>
                             ))}
                         </div>
+                    </div>
+
+                    {/* BANNER INFORMATIVO: CONVERSACIONES TOTALES INGRESADAS VS EQUIPO */}
+                    <div style={{
+                        marginTop: '2px',
+                        padding: '6px 10px',
+                        background: '#F8FAFC',
+                        borderRadius: '8px',
+                        border: '1px solid #E2E8F0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.66rem',
+                        color: '#64748B',
+                        flexWrap: 'wrap',
+                        gap: '6px'
+                    }}>
+                        <span>
+                            🤖 <strong>{Math.max(0, (metrics.totalConversations || 0) - pieAsesorasData.reduce((s, a) => s + a.assignedCount, 0)).toLocaleString('es-AR')}</strong> auto-gestión bot Dora / barridos
+                        </span>
+                        <span style={{ color: '#0284C7', fontWeight: 700 }}>
+                            👩‍⚕️ <strong>{pieAsesorasData.reduce((s, a) => s + a.assignedCount, 0).toLocaleString('es-AR')}</strong> derivadas a asesoras ({pieAsesorasData.reduce((s, a) => s + a.resolvedCount, 0).toLocaleString('es-AR')} resueltas)
+                        </span>
                     </div>
                 </div>
             </div>
