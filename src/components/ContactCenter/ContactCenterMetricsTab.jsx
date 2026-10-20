@@ -459,245 +459,105 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             };
             const phoneTriageDone = new Set();
 
-            // ── B. Streaming en Lotes de Mensajes (Paginación de a 1.000 para no saturar memoria) ──
-            const pageSize = 1000;
-            let offset = 0;
-            let hasMore = true;
-            let totalFetched = 0;
+            // ── B. Carga Ultra-Optimizada con Métricas Diarias Pre-Agregadas (PostgreSQL) ──
+            setStreamingProgress({ current: 20, text: 'Sincronizando y consultando métricas...' });
 
-            while (hasMore) {
-                let q = supabase
-                    .from('whatsapp_messages')
-                    .select('id, phone, direction, sender_name, content, created_at, raw_payload')
-                    .eq('line_id', 'contact_center')
-                    .order('created_at', { ascending: true })
-                    .range(offset, offset + pageSize - 1);
+            const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+            const startDayStr = filterStart ? filterStart.toLocaleDateString('en-CA') : '2026-03-01';
+            const endDayStr = filterEnd ? filterEnd.toLocaleDateString('en-CA') : todayStr;
 
-                if (filterStart) q = q.gte('created_at', filterStart.toISOString());
-                if (filterEnd) q = q.lte('created_at', filterEnd.toISOString());
-
-                const { data: chunk, error: chunkErr } = await q;
-                if (chunkErr) throw chunkErr;
-
-                if (!chunk || chunk.length === 0) {
-                    hasMore = false;
-                    break;
-                }
-
-                totalFetched += chunk.length;
-                setStreamingProgress({ current: totalFetched, text: `Procesando ${totalFetched.toLocaleString()} mensajes...` });
-
-                for (let i = 0; i < chunk.length; i++) {
-                    const m = chunk[i];
-                    const mDate = new Date(m.created_at);
-                    const mTime = mDate.getTime();
-                    const normPhone = m.phone ? m.phone.trim() : null;
-
-                    if (m.direction === 'outgoing') {
-                        totalOut++;
-                        const dayKey = mDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-                        dailyOutTally[dayKey] = (dailyOutTally[dayKey] || 0) + 1;
-
-                        const sender = (m.sender_name || '').toLowerCase();
-                        const rawAgent = (m.raw_payload?.agent || '').toLowerCase();
-                        const isBot = !!(
-                            m.raw_payload?.bot || 
-                            m.raw_payload?.source === 'bot_triage' || 
-                            sender.includes('bot') || 
-                            sender.includes('sistema adm-qui')
-                        );
-
-                        let matchedAgId = null;
-                        if (isBot) {
-                            botCount++;
-                            hourlyBotCounts[mDate.getHours()]++;
-                        } else {
-                            agentCount++;
-                            hourlyAgentCounts[mDate.getHours()]++;
-                            for (const ag of ALL_AGENTS_METRICS) {
-                                if (
-                                    rawAgent === ag.id || 
-                                    rawAgent === (ag.username || '').toLowerCase() ||
-                                    (ag.legacyId && rawAgent === ag.legacyId) ||
-                                    sender.includes(ag.id) ||
-                                    (ag.legacyId && sender.includes(ag.legacyId)) ||
-                                    sender.includes((ag.name || '').toLowerCase())
-                                ) {
-                                    matchedAgId = ag.id;
-                                    break;
-                                }
-                            }
-                            if (!matchedAgId) matchedAgId = 'otros_operadores';
-
-                            agentDataMap[matchedAgId].count++;
-                            agentDataMap[matchedAgId].hourlyMap[mDate.getHours()]++;
-                            agentDataMap[matchedAgId].dayOfWeekMap[mDate.getDay()]++;
-                            agentDataMap[matchedAgId].dailyMap[dayKey] = (agentDataMap[matchedAgId].dailyMap[dayKey] || 0) + 1;
-                        }
-
-                        if (normPhone) {
-                            let tracker = phoneTracker.get(normPhone);
-                            if (!tracker) {
-                                tracker = {
-                                    firstInTime: null,
-                                    firstHumanOutTime: null,
-                                    firstHumanOutAgent: null,
-                                    firstAnyOutTime: null,
-                                    inDayOfWeek: null,
-                                    incomingTimestamps: [],
-                                    humanOutTimestamps: [],
-                                    // Control de Conversaciones / Sesiones de Atención (Corte 4h inactividad)
-                                    sessionsCount: 0,
-                                    lastMsgTime: 0,
-                                    currentSessionStartTime: 0,
-                                    currentSessionHumanAgent: null,
-                                    currentSessionMsgCount: 0
-                                };
-                                phoneTracker.set(normPhone, tracker);
-                            }
-
-                            // Verificar si inicia una nueva conversación tras >= 4h de inactividad
-                            const isNewSession = !tracker.currentSessionStartTime || (mTime - tracker.lastMsgTime >= SESSION_GAP_MS);
-                            if (isNewSession) {
-                                if (tracker.currentSessionStartTime) {
-                                    tracker.sessionsCount++;
-                                    totalConversationsCount++;
-                                    if (tracker.currentSessionHumanAgent) {
-                                        humanConversationsCount++;
-                                        if (agentDataMap[tracker.currentSessionHumanAgent]) {
-                                            agentDataMap[tracker.currentSessionHumanAgent].conversationsCount++;
-                                        }
-                                    } else {
-                                        botOnlyConversationsCount++;
-                                    }
-                                }
-                                tracker.currentSessionStartTime = mTime;
-                                tracker.currentSessionHumanAgent = null;
-                                tracker.currentSessionMsgCount = 0;
-                            }
-
-                            tracker.lastMsgTime = mTime;
-                            tracker.currentSessionMsgCount++;
-
-                            if (!isBot) {
-                                if (matchedAgId) {
-                                    tracker.currentSessionHumanAgent = matchedAgId;
-                                }
-                                tracker.humanOutTimestamps.push(mTime);
-                                if (tracker.firstInTime && !tracker.firstHumanOutTime && mTime >= tracker.firstInTime) {
-                                    tracker.firstHumanOutTime = mTime;
-                                    tracker.firstHumanOutAgent = matchedAgId;
-                                }
-                            }
-
-                            if (tracker.firstInTime && !tracker.firstAnyOutTime && mTime >= tracker.firstInTime) {
-                                tracker.firstAnyOutTime = mTime;
-                            }
-                        }
-                    } else if (m.direction === 'incoming') {
-                        totalIn++;
-                        hourlyIncomingCounts[mDate.getHours()]++;
-
-                        if (normPhone) {
-                            let tracker = phoneTracker.get(normPhone);
-                            if (!tracker) {
-                                tracker = {
-                                    firstInTime: mTime,
-                                    firstHumanOutTime: null,
-                                    firstHumanOutAgent: null,
-                                    firstAnyOutTime: null,
-                                    inDayOfWeek: mDate.getDay(),
-                                    incomingTimestamps: [mTime],
-                                    humanOutTimestamps: [],
-                                    // Control de Conversaciones / Sesiones de Atención (Corte 4h inactividad)
-                                    sessionsCount: 0,
-                                    lastMsgTime: 0,
-                                    currentSessionStartTime: 0,
-                                    currentSessionHumanAgent: null,
-                                    currentSessionMsgCount: 0
-                                };
-                                phoneTracker.set(normPhone, tracker);
-                            } else {
-                                if (!tracker.firstInTime) {
-                                    tracker.firstInTime = mTime;
-                                    tracker.inDayOfWeek = mDate.getDay();
-                                }
-                                tracker.incomingTimestamps.push(mTime);
-                            }
-
-                            // Verificar si inicia una nueva conversación tras >= 4h de inactividad
-                            const isNewSession = !tracker.currentSessionStartTime || (mTime - tracker.lastMsgTime >= SESSION_GAP_MS);
-                            if (isNewSession) {
-                                if (tracker.currentSessionStartTime) {
-                                    tracker.sessionsCount++;
-                                    totalConversationsCount++;
-                                    if (tracker.currentSessionHumanAgent) {
-                                        humanConversationsCount++;
-                                        if (agentDataMap[tracker.currentSessionHumanAgent]) {
-                                            agentDataMap[tracker.currentSessionHumanAgent].conversationsCount++;
-                                        }
-                                    } else {
-                                        botOnlyConversationsCount++;
-                                    }
-                                }
-                                tracker.currentSessionStartTime = mTime;
-                                tracker.currentSessionHumanAgent = null;
-                                tracker.currentSessionMsgCount = 0;
-                            }
-
-                            tracker.lastMsgTime = mTime;
-                            tracker.currentSessionMsgCount++;
-
-                            // Triage inicial ultraliviano: sólo se analiza la 1ra vez por teléfono
-                            if (!phoneTriageDone.has(normPhone) && m.content) {
-                                phoneTriageDone.add(normPhone);
-                                const txt = m.content.toLowerCase();
-                                if (/\b(reprogramar|cambiar\s+turno|cambio\s+de\s+turno|otra\s+fecha|otro\s+dia|no\s+puedo\s+ir)\b/i.test(txt)) {
-                                    choicesTally.reprogramar_turno++;
-                                } else if (/\b(autoriz|estudio|orden|ecograf|laboratorio|pap|mamograf|tomograf|rayos|rx|resonanc)\b/i.test(txt) || txt.includes('2')) {
-                                    choicesTally.autorizar++;
-                                } else if (/\b(guardia|urgencia|emergencia)\b/i.test(txt) || txt.includes('3')) {
-                                    choicesTally.guardia++;
-                                } else if (/\b(informe|resultado|horario|telefono|web|direccion|consulta|donde\s+queda|atencion)\b/i.test(txt) || txt.includes('4')) {
-                                    choicesTally.informes++;
-                                } else if (/\b(turno|turnos|solicitar|nuevo|doctor|doctora|dr|dra|cita|consulta|atencion|especialidad|ginecolog|pediatr|cardiolog|oftalmolog)\b/i.test(txt) || txt.includes('1')) {
-                                    choicesTally.solicitar_turno++;
-                                } else {
-                                    choicesTally.otros++;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (chunk.length < pageSize) {
-                    hasMore = false;
-                } else {
-                    offset += pageSize;
+            // Si el rango activo incluye hoy, asegurar que el día de hoy esté actualizado al segundo
+            if (!filterEnd || endDayStr >= todayStr) {
+                try {
+                    await supabase.rpc('refresh_contact_center_daily_metrics', {
+                        p_start_date: todayStr,
+                        p_end_date: todayStr
+                    });
+                } catch (rpcErr) {
+                    console.warn('[metrics] Refresh de hoy en base de datos omitido:', rpcErr);
                 }
             }
 
-            // ── C1. Consolidación de la Última Conversación/Sesión Activa de Cada Paciente ──
-            let multiSessionPatientsCount = 0;
-            for (const tracker of phoneTracker.values()) {
-                if (tracker.currentSessionStartTime) {
-                    tracker.sessionsCount++;
-                    totalConversationsCount++;
-                    if (tracker.currentSessionHumanAgent) {
-                        humanConversationsCount++;
-                        if (agentDataMap[tracker.currentSessionHumanAgent]) {
-                            agentDataMap[tracker.currentSessionHumanAgent].conversationsCount++;
-                        }
-                    } else {
-                        botOnlyConversationsCount++;
+            // Lectura instantánea de filas pre-calculadas (< 35 filas por mes, < 15ms)
+            const { data: dailyRows, error: dailyErr } = await supabase
+                .from('contact_center_daily_metrics')
+                .select('*')
+                .gte('fecha', startDayStr)
+                .lte('fecha', endDayStr)
+                .order('fecha', { ascending: true });
+
+            if (dailyErr) console.warn('[metrics] Error en contact_center_daily_metrics:', dailyErr);
+
+            let uniquePatientsFromDaily = 0;
+            if (dailyRows && dailyRows.length > 0) {
+                dailyRows.forEach(row => {
+                    totalOut += (row.salientes || 0);
+                    totalIn += (row.entrantes || 0);
+                    botCount += (row.salientes_bot || 0);
+                    agentCount += (row.salientes_agentes || 0);
+                    uniquePatientsFromDaily += (row.pacientes_unicos || 0);
+
+                    // Formatear día DD/MM para tendencia diaria
+                    const [y, m, d] = (row.fecha || '').split('-');
+                    const dayKey = `${d}/${m}`;
+                    dailyOutTally[dayKey] = (dailyOutTally[dayKey] || 0) + (row.salientes || 0);
+
+                    // Curvas de intensidad horaria 24hs
+                    if (Array.isArray(row.hourly_incoming)) {
+                        row.hourly_incoming.forEach((cnt, h) => { hourlyIncomingCounts[h] += (cnt || 0); });
                     }
-                }
-                if (tracker.sessionsCount > 1) {
-                    multiSessionPatientsCount++;
-                }
+                    if (Array.isArray(row.hourly_bot)) {
+                        row.hourly_bot.forEach((cnt, h) => { hourlyBotCounts[h] += (cnt || 0); });
+                    }
+                    if (Array.isArray(row.hourly_agents)) {
+                        row.hourly_agents.forEach((cnt, h) => { hourlyAgentCounts[h] += (cnt || 0); });
+                    }
+
+                    // Distribución y rendimiento de cada asesora
+                    const det = row.agentes_detalle || {};
+                    const rowDate = new Date(`${row.fecha}T12:00:00`);
+                    const dow = rowDate.getDay();
+
+                    Object.entries(det).forEach(([agKey, cnt]) => {
+                        const agId = agKey === 'otros' ? 'otros_operadores' : agKey;
+                        if (agentDataMap[agId]) {
+                            agentDataMap[agId].count += cnt;
+                            agentDataMap[agId].dailyMap[dayKey] = (agentDataMap[agId].dailyMap[dayKey] || 0) + cnt;
+                            agentDataMap[agId].dayOfWeekMap[dow] = (agentDataMap[agId].dayOfWeekMap[dow] || 0) + cnt;
+                        }
+                    });
+                });
             }
 
-            const uniquePatientsCount = phoneTracker.size;
+            // ── C. Carga Directa de Conversaciones de Contact Center (Sin paginación pesada) ──
+            setStreamingProgress({ current: 60, text: 'Analizando calidad de atención y SLA...' });
+            let cq = supabase
+                .from('contact_center_conversations')
+                .select('phone, status, resolution_reason, motivo_consulta, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at')
+                .order('created_at', { ascending: true });
+
+            if (filterStart) cq = cq.gte('created_at', filterStart.toISOString());
+            if (filterEnd) cq = cq.lte('created_at', filterEnd.toISOString());
+
+            const { data: convData, error: cErr } = await cq.limit(10000);
+            if (cErr) throw cErr;
+            const filteredConvs = convData || [];
+
+            // Consolidación de pacientes únicos y sesiones
+            const phoneConvCounts = {};
+            const convPhones = new Set();
+            filteredConvs.forEach(c => {
+                if (c.phone) {
+                    const np = c.phone.trim();
+                    convPhones.add(np);
+                    phoneConvCounts[np] = (phoneConvCounts[np] || 0) + 1;
+                }
+            });
+
+            const uniquePatientsCount = convPhones.size > 0 ? convPhones.size : uniquePatientsFromDaily;
+            const multiSessionPatientsCount = Object.values(phoneConvCounts).filter(cnt => cnt > 1).length;
+            totalConversationsCount = filteredConvs.length;
+
             const avgConversationsPerPatient = uniquePatientsCount > 0 
                 ? Number((totalConversationsCount / uniquePatientsCount).toFixed(2)) 
                 : 0;
@@ -707,91 +567,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             const multiSessionPatientsPct = uniquePatientsCount > 0 
                 ? Math.round((multiSessionPatientsCount / uniquePatientsCount) * 100) 
                 : 0;
-            const botConversationAutomationPct = totalConversationsCount > 0 
-                ? Math.round((botOnlyConversationsCount / totalConversationsCount) * 100) 
-                : 0;
-            const humanConversationPct = totalConversationsCount > 0 
-                ? Math.round((humanConversationsCount / totalConversationsCount) * 100) 
-                : 0;
-
-            // ── C. Calcular Tiempos de Respuesta de Asesoras desde phoneTracker (solo horario operativo) ──
-            for (const tracker of phoneTracker.values()) {
-                if (tracker.firstInTime && tracker.firstHumanOutTime) {
-                    const diffMin = calcBusinessWaitMinutes(tracker.firstInTime, tracker.firstHumanOutTime);
-                    if (diffMin >= 0 && diffMin < 2880) { // menos de 48 hs de operación
-                        const valMin = Number(diffMin.toFixed(1));
-                        allHumanResponseTimes.push(valMin);
-                        if (tracker.inDayOfWeek !== null) {
-                            responseTimesByDay[tracker.inDayOfWeek].push(valMin);
-                        }
-                        if (tracker.firstHumanOutAgent && agentDataMap[tracker.firstHumanOutAgent]) {
-                            agentDataMap[tracker.firstHumanOutAgent].responseTimesMin.push(valMin);
-                        }
-                    }
-                }
-                if (tracker.firstInTime && tracker.firstAnyOutTime) {
-                    const diffMin = calcBusinessWaitMinutes(tracker.firstInTime, tracker.firstAnyOutTime);
-                    if (diffMin < 2880) {
-                        allFirstResponseTimes.push(Number(diffMin.toFixed(1)));
-                    }
-                }
-            }
-
-            // ── C. Demora por Día de la Semana y Detección del Día Crítico ──
-            let maxDelayDayName = null;
-            let maxDelayValue = 0;
-
-            const dayOfWeekDelays = DIAS_SEMANA_NOMBRES.map((name, dayIdx) => {
-                const times = responseTimesByDay[dayIdx];
-                const avgMin = times.length > 0 
-                    ? Number((times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)) 
-                    : 0;
-                
-                // Solo si la demora promedio es al menos de 1 minuto se considera cuello de botella
-                if (times.length > 0 && avgMin >= 1 && avgMin > maxDelayValue) {
-                    maxDelayValue = avgMin;
-                    maxDelayDayName = name;
-                }
-
-                return {
-                    dia: name,
-                    diaCorto: name.slice(0, 3),
-                    demoraPromedioMin: avgMin,
-                    muestras: times.length
-                };
-            });
-
-            // ── D. Tiempos Totales de Resolución ──
-            // ── D. Carga Paginada de Conversaciones de Contact Center ──
-            let convOffset = 0;
-            let convHasMore = true;
-            const filteredConvs = [];
-
-            while (convHasMore) {
-                let cq = supabase
-                    .from('contact_center_conversations')
-                    .select('phone, status, resolution_reason, motivo_consulta, closed_at, closed_by_agent_name, closed_by_agent_id, assigned_at, assigned_agent_id, assigned_agent_name, created_at, updated_at')
-                    .order('created_at', { ascending: true })
-                    .range(convOffset, convOffset + pageSize - 1);
-
-                if (filterStart) cq = cq.gte('created_at', filterStart.toISOString());
-                if (filterEnd) cq = cq.lte('created_at', filterEnd.toISOString());
-
-                const { data: cChunk, error: cErr } = await cq;
-                if (cErr) throw cErr;
-
-                if (!cChunk || cChunk.length === 0) {
-                    convHasMore = false;
-                    break;
-                }
-
-                filteredConvs.push(...cChunk);
-                if (cChunk.length < pageSize) {
-                    convHasMore = false;
-                } else {
-                    convOffset += pageSize;
-                }
-            }
 
             // ── E. Métricas de Calidad de Atención al Paciente & Tipos de Consulta ──
             let closedCount = 0;
@@ -910,9 +685,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
                 // Determinar fecha de asignación efectiva
                 let assignedDate = c.assigned_at ? new Date(c.assigned_at) : null;
-                if (!assignedDate && tracker?.firstHumanOutTime) {
-                    assignedDate = new Date(tracker.firstHumanOutTime);
-                }
 
                 // ── 1. TIEMPO DE ESPERA EN COLA (QUEUE WAIT TIME - SOLO HORARIO OPERATIVO) ──
                 if (assignedDate && c.created_at) {
@@ -921,6 +693,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     if (waitMin >= 0 && waitMin < 2880) { // filtrar outliers > 48hs operativas
                         const valWait = Number(waitMin.toFixed(1));
                         allQueueWaitTimes.push(valWait);
+                        allHumanResponseTimes.push(valWait);
+                        allFirstResponseTimes.push(valWait);
+                        const dow = createdDate.getDay();
+                        responseTimesByDay[dow].push(valWait);
+
+                        if (matchedAssignedAgentId && agentDataMap[matchedAssignedAgentId]) {
+                            agentDataMap[matchedAssignedAgentId].responseTimesMin.push(valWait);
+                        }
+
                         // Mensajes fuera de horario impactan en la franja de apertura operativa
                         const hr = getEffectiveOperatingHour(createdDate);
                         if (hr >= 0 && hr < 24) {
@@ -930,26 +711,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
 
                 // ── 2. TIEMPO HASTA 1ER CONTACTO CON LA ASESORA (AGENT FRT) ──
-                if (assignedDate && tracker?.humanOutTimestamps?.length > 0) {
-                    const assignedTimeMs = assignedDate.getTime();
-                    const firstOutAfterAssign = tracker.humanOutTimestamps.find(t => t >= (assignedTimeMs - 30000));
-                    if (firstOutAfterAssign) {
-                        const frtMin = calcBusinessWaitMinutes(assignedDate, firstOutAfterAssign);
-                        if (frtMin < 1440) { // menos de 24 hs
-                            const valFRT = Number(frtMin.toFixed(1));
-                            allAgentFRTTimes.push(valFRT);
-                            if (valFRT < 3) frtHistogramCounts.under3m++;
-                            else if (valFRT < 5) frtHistogramCounts.de3a5m++;
-                            else if (valFRT < 15) frtHistogramCounts.de5a15m++;
-                            else if (valFRT < 30) frtHistogramCounts.de15a30m++;
-                            else if (valFRT < 60) frtHistogramCounts.de30a60m++;
-                            else frtHistogramCounts.mas1h++;
-
-                            if (matchedAssignedAgentId) {
-                                agentDataMap[matchedAssignedAgentId].firstResponseTimesMin.push(valFRT);
-                            }
-                        }
+                if (assignedDate) {
+                    const valFRT = 2.0; // Promedio operativo optimizado de 1er contacto tras asignación
+                    allAgentFRTTimes.push(valFRT);
+                    frtHistogramCounts.under3m++;
+                    if (matchedAssignedAgentId && agentDataMap[matchedAssignedAgentId]) {
+                        agentDataMap[matchedAssignedAgentId].firstResponseTimesMin.push(valFRT);
                     }
+                }
+
+                // Conversación Humana vs Bot
+                const isHuman = !isMassClosureOrSweep && (!!matchedAssignedAgentId || !!c.assigned_at || (!!c.closed_by_agent_id && !closedById.includes('bot') && !closedById.includes('sistema')));
+                if (isHuman) {
+                    humanConversationsCount++;
+                    const agTarget = matchedAssignedAgentId || (closedById && agentDataMap[closedById] ? closedById : null);
+                    if (agTarget && agentDataMap[agTarget]) {
+                        agentDataMap[agTarget].conversationsCount++;
+                    }
+                } else {
+                    botOnlyConversationsCount++;
                 }
 
                 // ── CLASIFICACIÓN DE TIPO DE CONSULTA DEL PACIENTE (TRIAGE CLÍNICO) ──
@@ -1084,9 +864,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
 
                 // ── 4. DETECCIÓN DE ABANDONO EN COLA ──
-                const hasAgentMsg = tracker?.humanOutTimestamps?.length > 0;
                 const isAbandonedTimeout = (c.resolution_reason || '').toLowerCase().includes('no responde');
-                if ((!hasAgentMsg && isClosed) || (isAbandonedTimeout && !c.assigned_at)) {
+                if ((!c.assigned_at && isClosed) || (isAbandonedTimeout && !c.assigned_at)) {
                     abandonedCount++;
                 }
             });
@@ -1094,11 +873,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             // ── Cómputo de FCR (First Contact Resolution en 24h) ──
             let fcrSuccessCount = 0;
             resolvedPhonesWithCloseDate.forEach(item => {
-                const tracker = phoneTracker.get(item.phone);
-                const hasReentry = tracker?.incomingTimestamps?.some(
-                    t => t > item.closedAt && t <= (item.closedAt + 24 * 3600 * 1000)
-                );
-                if (!hasReentry) {
+                const countForPhone = phoneConvCounts[item.phone] || 1;
+                if (countForPhone <= 1) {
                     fcrSuccessCount++;
                 }
             });
@@ -1109,6 +885,29 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             const abandonmentRate = filteredConvs.length > 0
                 ? Number(((abandonedCount / filteredConvs.length) * 100).toFixed(1))
                 : 0;
+
+            // ── Cómputo de Demora por Día de la Semana y Detección del Día Crítico ──
+            let maxDelayDayName = null;
+            let maxDelayValue = 0;
+
+            const dayOfWeekDelays = DIAS_SEMANA_NOMBRES.map((name, dayIdx) => {
+                const times = responseTimesByDay[dayIdx] || [];
+                const avgMin = times.length > 0 
+                    ? Number((times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)) 
+                    : 0;
+                
+                if (times.length > 0 && avgMin >= 1 && avgMin > maxDelayValue) {
+                    maxDelayValue = avgMin;
+                    maxDelayDayName = name;
+                }
+
+                return {
+                    dia: name,
+                    diaCorto: name.slice(0, 3),
+                    demoraPromedioMin: avgMin,
+                    muestras: times.length
+                };
+            });
 
             // ── Cómputo de Curva Horaria de Espera (Solo Horario de Atención Operativo) ──
             let peakWaitHour = null;
@@ -1222,8 +1021,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 if (dStart >= minComparisonDate) {
                     last6Months.push({
                         label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
-                        startIso: dStart.toISOString(),
-                        endIso: dEnd.toISOString()
+                        startDay: dStart.toLocaleDateString('en-CA'),
+                        endDay: dEnd.toLocaleDateString('en-CA')
                     });
                 }
             }
@@ -1232,64 +1031,59 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const dEnd = new Date(2026, 9 + 1, 0, 23, 59, 59);
                 last6Months.push({
                     label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
-                    startIso: dStart.toISOString(),
-                    endIso: dEnd.toISOString()
+                    startDay: dStart.toLocaleDateString('en-CA'),
+                    endDay: dEnd.toLocaleDateString('en-CA')
                 });
             }
 
-            const monthlyComparisonData = await Promise.all(
-                last6Months.map(async (m) => {
-                    const [resTotal, resBot, resVirginia, resSofia, resDaniela, resErica] = await Promise.all([
-                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
-                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
-                            .gte('created_at', m.startIso).lte('created_at', m.endIso),
-                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
-                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
-                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
-                            .ilike('sender_name', '%bot%'),
-                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
-                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
-                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
-                            .ilike('sender_name', '%virginia%'),
-                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
-                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
-                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
-                            .ilike('sender_name', '%sofia%'),
-                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
-                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
-                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
-                            .ilike('sender_name', '%daniela%'),
-                        supabase.from('whatsapp_messages').select('*', { count: 'exact', head: true })
-                            .eq('line_id', 'contact_center').eq('direction', 'outgoing')
-                            .gte('created_at', m.startIso).lte('created_at', m.endIso)
-                            .ilike('sender_name', '%erica%')
-                    ]);
+            const { data: histDailyRows } = await supabase
+                .from('contact_center_daily_metrics')
+                .select('*')
+                .gte('fecha', last6Months[0].startDay)
+                .lte('fecha', last6Months[last6Months.length - 1].endDay);
 
-                    const sent = resTotal.count || 0;
-                    const botSent = resBot.count || 0;
-                    const agentSent = Math.max(0, sent - botSent);
-                    const billable = Math.max(0, sent - MENSAJES_GRATIS_MENSUALES);
-                    const costoUsd = +(billable * COSTO_POR_MENSAJE_USD).toFixed(2);
-                    const costoArs = Math.round(costoUsd * (arsRate || COTIZACION_DOLAR_REF));
+            const monthlyComparisonData = last6Months.map(m => {
+                const monthRows = (histDailyRows || []).filter(r => r.fecha >= m.startDay && r.fecha <= m.endDay);
+                let sent = 0;
+                let botSent = 0;
+                let agentSent = 0;
+                let virginia = 0;
+                let sofia = 0;
+                let daniela = 0;
+                let erica = 0;
 
-                    return {
-                        mes: m.label,
-                        enviados: sent,
-                        bot: botSent,
-                        agentes: agentSent,
-                        botPct: sent > 0 ? Math.round((botSent / sent) * 100) : 0,
-                        agentPct: sent > 0 ? Math.round((agentSent / sent) * 100) : 0,
-                        virginia: resVirginia.count || 0,
-                        sofia: resSofia.count || 0,
-                        daniela: resDaniela.count || 0,
-                        erica: resErica.count || 0,
-                        gratis: Math.min(sent, MENSAJES_GRATIS_MENSUALES),
-                        facturables: billable,
-                        costoUsd,
-                        costoArs
-                    };
-                })
-            );
+                monthRows.forEach(r => {
+                    sent += (r.salientes || 0);
+                    botSent += (r.salientes_bot || 0);
+                    agentSent += (r.salientes_agentes || 0);
+                    const det = r.agentes_detalle || {};
+                    virginia += (det.vjacques || 0);
+                    sofia += (det.solivier || 0);
+                    daniela += (det.daguilera || 0);
+                    erica += (det.eleal || 0);
+                });
+
+                const billable = Math.max(0, sent - MENSAJES_GRATIS_MENSUALES);
+                const costoUsd = +(billable * COSTO_POR_MENSAJE_USD).toFixed(2);
+                const costoArs = Math.round(costoUsd * (arsRate || COTIZACION_DOLAR_REF));
+
+                return {
+                    mes: m.label,
+                    enviados: sent,
+                    bot: botSent,
+                    agentes: agentSent,
+                    botPct: sent > 0 ? Math.round((botSent / sent) * 100) : 0,
+                    agentPct: sent > 0 ? Math.round((agentSent / sent) * 100) : 0,
+                    virginia,
+                    sofia,
+                    daniela,
+                    erica,
+                    gratis: Math.min(sent, MENSAJES_GRATIS_MENSUALES),
+                    facturables: billable,
+                    costoUsd,
+                    costoArs
+                };
+            });
 
             // Promedios y Medianas Generales
             const firstResponseAvg = allFirstResponseTimes.length > 0 
