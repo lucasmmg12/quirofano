@@ -50,12 +50,87 @@ const MOTIVOS_FINALIZACION_CATALOGO = [
 
 const DIAS_SEMANA_NOMBRES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
+// ─── HORARIOS DE ATENCIÓN CONTACT CENTER SANATORIO ARGENTINO ───
+// Lunes a Viernes: 07:00 a 21:00 hs (14 hs / día)
+// Sábados: 08:00 a 12:00 hs (4 hs / día)
+// Domingos: Cerrado (0 hs operativas)
+// Los mensajes recibidos fuera de este horario NO suman demora mientras el centro está cerrado.
+export function calcBusinessWaitMinutes(startDate, endDate) {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) return 0;
+
+    let totalMs = 0;
+    const cur = new Date(start);
+    cur.setHours(0, 0, 0, 0);
+
+    const endDay = new Date(end);
+    endDay.setHours(0, 0, 0, 0);
+
+    while (cur.getTime() <= endDay.getTime()) {
+        const dayOfWeek = cur.getDay(); // 0 = Dom, 1 = Lun, ..., 6 = Sab
+        let openH = null;
+        let closeH = null;
+
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+            openH = 7;
+            closeH = 21;
+        } else if (dayOfWeek === 6) {
+            openH = 8;
+            closeH = 12;
+        }
+
+        if (openH !== null && closeH !== null) {
+            const openTime = new Date(cur);
+            openTime.setHours(openH, 0, 0, 0);
+            const closeTime = new Date(cur);
+            closeTime.setHours(closeH, 0, 0, 0);
+
+            const effectiveStart = Math.max(start.getTime(), openTime.getTime());
+            const effectiveEnd = Math.min(end.getTime(), closeTime.getTime());
+
+            if (effectiveEnd > effectiveStart) {
+                totalMs += (effectiveEnd - effectiveStart);
+            }
+        }
+        cur.setDate(cur.getDate() + 1);
+    }
+    return Number((totalMs / 60000).toFixed(1));
+}
+
+// Determina en qué franja horaria operativa impacta el mensaje en la curva horaria.
+// Si ingresó fuera del horario de atención (noche o fin de semana), impacta en la apertura operativa (07:00 o 08:00).
+export function getEffectiveOperatingHour(date) {
+    const d = new Date(date);
+    const day = d.getDay(); // 0 = Dom, 1 = Lun, ..., 6 = Sab
+    const h = d.getHours();
+    
+    // Domingo (cerrado) -> turno de apertura del Lunes a las 07:00
+    if (day === 0) return 7;
+    
+    // Sábado: abierto de 08:00 a 12:00
+    if (day === 6) {
+        if (h < 8) return 8; // madrugada previa
+        if (h >= 12) return 7; // posterior al cierre del sábado -> pasa al Lunes 07:00
+        return h;
+    }
+    
+    // Lunes a Viernes: abierto de 07:00 a 21:00
+    if (h < 7) return 7; // noche/madrugada previa -> apertura 07:00
+    if (h >= 21) return 7; // posterior al cierre -> apertura del día siguiente 07:00
+    return h;
+}
+
 export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentivos }) {
     const [loading, setLoading] = useState(true);
     const [streamingProgress, setStreamingProgress] = useState(null);
     
     // Selector de vista: 'operativo' | 'ia_tokens'
     const [activeMetricsView, setActiveMetricsView] = useState('operativo');
+
+    // Modo de visualización de la curva horaria: 'operativo' (07:00 a 21:00 hs) | '24hs'
+    const [waitCurveMode, setWaitCurveMode] = useState('operativo');
 
     // Selector de mes a mes (Formato 'YYYY-MM')
     const getCurrentMonthKey = () => {
@@ -621,11 +696,11 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 ? Math.round((humanConversationsCount / totalConversationsCount) * 100) 
                 : 0;
 
-            // ── C. Calcular Tiempos de Respuesta de Asesoras desde phoneTracker ──
+            // ── C. Calcular Tiempos de Respuesta de Asesoras desde phoneTracker (solo horario operativo) ──
             for (const tracker of phoneTracker.values()) {
                 if (tracker.firstInTime && tracker.firstHumanOutTime) {
-                    const diffMin = (tracker.firstHumanOutTime - tracker.firstInTime) / 60000;
-                    if (diffMin >= 0 && diffMin < 2880) { // menos de 48 hs
+                    const diffMin = calcBusinessWaitMinutes(tracker.firstInTime, tracker.firstHumanOutTime);
+                    if (diffMin >= 0 && diffMin < 2880) { // menos de 48 hs de operación
                         const valMin = Number(diffMin.toFixed(1));
                         allHumanResponseTimes.push(valMin);
                         if (tracker.inDayOfWeek !== null) {
@@ -637,7 +712,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     }
                 }
                 if (tracker.firstInTime && tracker.firstAnyOutTime) {
-                    const diffMin = Math.max(0, (tracker.firstAnyOutTime - tracker.firstInTime) / 60000);
+                    const diffMin = calcBusinessWaitMinutes(tracker.firstInTime, tracker.firstAnyOutTime);
                     if (diffMin < 2880) {
                         allFirstResponseTimes.push(Number(diffMin.toFixed(1)));
                     }
@@ -825,14 +900,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     assignedDate = new Date(tracker.firstHumanOutTime);
                 }
 
-                // ── 1. TIEMPO DE ESPERA EN COLA (QUEUE WAIT TIME) ──
+                // ── 1. TIEMPO DE ESPERA EN COLA (QUEUE WAIT TIME - SOLO HORARIO OPERATIVO) ──
                 if (assignedDate && c.created_at) {
                     const createdDate = new Date(c.created_at);
-                    const waitMin = (assignedDate - createdDate) / 60000;
-                    if (waitMin >= 0 && waitMin < 2880) { // filtrar outliers > 48hs
+                    const waitMin = calcBusinessWaitMinutes(createdDate, assignedDate);
+                    if (waitMin >= 0 && waitMin < 2880) { // filtrar outliers > 48hs operativas
                         const valWait = Number(waitMin.toFixed(1));
                         allQueueWaitTimes.push(valWait);
-                        const hr = createdDate.getHours();
+                        // Mensajes fuera de horario impactan en la franja de apertura operativa
+                        const hr = getEffectiveOperatingHour(createdDate);
                         if (hr >= 0 && hr < 24) {
                             hourlyWaitMap[hr].push(valWait);
                         }
@@ -844,7 +920,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     const assignedTimeMs = assignedDate.getTime();
                     const firstOutAfterAssign = tracker.humanOutTimestamps.find(t => t >= (assignedTimeMs - 30000));
                     if (firstOutAfterAssign) {
-                        const frtMin = Math.max(0, (firstOutAfterAssign - assignedTimeMs) / 60000);
+                        const frtMin = calcBusinessWaitMinutes(assignedDate, firstOutAfterAssign);
                         if (frtMin < 1440) { // menos de 24 hs
                             const valFRT = Number(frtMin.toFixed(1));
                             allAgentFRTTimes.push(valFRT);
@@ -933,7 +1009,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             // AHT Neto: solo duraciones de atención humana activa razonables (< 180 min)
                             if (assignedDate && c.closed_at) {
                                 const closedDate = new Date(c.closed_at);
-                                const handleMin = (closedDate - assignedDate) / 60000;
+                                const handleMin = calcBusinessWaitMinutes(assignedDate, closedDate);
                                 if (handleMin >= 0 && handleMin <= 180) {
                                     const valHandle = Number(handleMin.toFixed(1));
                                     allAgentHandleTimes.push(valHandle);
@@ -943,10 +1019,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         }
                     }
 
-                    // Tiempos de resolución total histórica (desde created_at hasta closed_at)
+                    // Tiempos de resolución total histórica (desde created_at hasta closed_at en horario operativo)
                     let totalResMin = null;
                     if (c.created_at && c.closed_at) {
-                        totalResMin = Math.round((new Date(c.closed_at) - new Date(c.created_at)) / 60000);
+                        totalResMin = Math.round(calcBusinessWaitMinutes(c.created_at, c.closed_at));
                     }
 
                     // Clasificación para Histograma SLA & Inactividad +24h (se excluyen de tiempos y métricas activas)
@@ -1015,19 +1091,22 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 ? Number(((abandonedCount / filteredConvs.length) * 100).toFixed(1))
                 : 0;
 
-            // ── Cómputo de Curva Horaria de Espera ──
+            // ── Cómputo de Curva Horaria de Espera (Solo Horario de Atención Operativo) ──
             let peakWaitHour = null;
             let peakWaitValMin = 0;
             const hourlyWaitCurveData = hourlyWaitMap.map((times, hour) => {
                 const avg = times.length > 0 ? Number((times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)) : 0;
-                if (avg > peakWaitValMin && times.length >= 2) {
+                const isOp = hour >= 7 && hour <= 21;
+                // Solo evaluar pico de demora en franjas operativas reales (07:00 a 21:00 hs) para evitar cuellos de botella ficticios
+                if (isOp && avg > peakWaitValMin && times.length >= 2) {
                     peakWaitValMin = avg;
                     peakWaitHour = `${hour.toString().padStart(2, '0')}:00 hs`;
                 }
                 return {
                     hora: `${hour.toString().padStart(2, '0')}:00`,
                     esperaMin: avg,
-                    casos: times.length
+                    casos: times.length,
+                    isOperatingHour: isOp
                 };
             });
 
@@ -1322,7 +1401,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 if (!isClosedOrArchived(c)) {
                     queueAging.totalActivas++;
                     const lastActivity = new Date(c.updated_at || c.created_at).getTime();
-                    const waitMin = Math.max(0, (currentTimeMs - lastActivity) / 60000);
+                    const waitMin = calcBusinessWaitMinutes(lastActivity, currentTimeMs);
                     if (waitMin <= 15) queueAging.menos15m++;
                     else if (waitMin <= 60) queueAging.de15ma1h++;
                     else if (waitMin <= 240) queueAging.de1ha4h++;
@@ -2958,35 +3037,95 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     Curva Horaria de Demora del Paciente (Minutos de Espera en Cola según Hora de Ingreso)
                                 </h4>
                                 <p style={{ margin: '1px 0 0', fontSize: '0.72rem', color: '#64748B' }}>
-                                    Permite detectar en qué franjas horarias se generan los cuellos de botella para reasignar turnos de operadoras
+                                    Permite detectar en qué franjas horarias se generan los cuellos de botella · Horario de Atención: Lun a Vie 07:00–21:00 hs, Sáb 08:00–12:00 hs (mensajes fuera de horario no computan demora hasta la apertura)
                                 </p>
                             </div>
                         </div>
 
-                        {metrics.patientQuality?.peakWaitHour && (
-                            <span style={{
-                                fontSize: '0.72rem', fontWeight: 800, padding: '4px 10px', borderRadius: '20px',
-                                background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '6px'
-                            }}>
-                                <AlertTriangle size={13} />
-                                Pico de Demora: {metrics.patientQuality.peakWaitHour} (~{metrics.patientQuality.peakWaitValMin} min)
-                            </span>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* Toggle Selector de Franja: Operativa vs 24hs */}
+                            <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '2px', borderRadius: '6px', fontSize: '0.7rem' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setWaitCurveMode('operativo')}
+                                    style={{
+                                        border: 'none',
+                                        background: waitCurveMode === 'operativo' ? '#FFFFFF' : 'transparent',
+                                        color: waitCurveMode === 'operativo' ? '#0284C7' : '#64748B',
+                                        fontWeight: waitCurveMode === 'operativo' ? 800 : 500,
+                                        padding: '3px 9px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        boxShadow: waitCurveMode === 'operativo' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    Horario Operativo (07-21 hs)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setWaitCurveMode('24hs')}
+                                    style={{
+                                        border: 'none',
+                                        background: waitCurveMode === '24hs' ? '#FFFFFF' : 'transparent',
+                                        color: waitCurveMode === '24hs' ? '#0284C7' : '#64748B',
+                                        fontWeight: waitCurveMode === '24hs' ? 800 : 500,
+                                        padding: '3px 9px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        boxShadow: waitCurveMode === '24hs' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    24 Horas
+                                </button>
+                            </div>
+
+                            {metrics.patientQuality?.peakWaitHour && (
+                                <span style={{
+                                    fontSize: '0.72rem', fontWeight: 800, padding: '4px 10px', borderRadius: '20px',
+                                    background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', display: 'flex', alignItems: 'center', gap: '6px'
+                                }}>
+                                    <AlertTriangle size={13} />
+                                    Pico de Demora: {metrics.patientQuality.peakWaitHour} (~{metrics.patientQuality.peakWaitValMin} min)
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     <div style={{ width: '100%', height: '210px' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={metrics.patientQuality?.hourlyWaitCurve || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <BarChart 
+                                data={(waitCurveMode === 'operativo' 
+                                    ? (metrics.patientQuality?.hourlyWaitCurve || []).filter(d => d.isOperatingHour)
+                                    : (metrics.patientQuality?.hourlyWaitCurve || [])
+                                )} 
+                                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                                <XAxis dataKey="hora" tick={{ fontSize: 10, fill: '#64748B' }} interval={1} />
+                                <XAxis 
+                                    dataKey="hora" 
+                                    tick={{ fontSize: 10, fill: '#64748B' }} 
+                                    interval={waitCurveMode === 'operativo' ? 0 : 1} 
+                                />
                                 <YAxis tick={{ fontSize: 10, fill: '#64748B' }} unit="m" allowDecimals={false} />
                                 <Tooltip 
                                     cursor={{ fill: 'rgba(2, 132, 199, 0.06)', radius: 4 }}
                                     contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem' }}
-                                    formatter={(val, name, item) => [`${val} minutos promedio (${item.payload.casos || 0} pacientes)`, 'Espera en Cola']}
+                                    formatter={(val, name, item) => [
+                                        item.payload.isOperatingHour 
+                                            ? `${val} minutos promedio (${item.payload.casos || 0} pacientes)`
+                                            : (item.payload.casos > 0 
+                                                ? `0 min operativos · Servicio Cerrado (${item.payload.casos} msgs recibidos fuera de horario se computan en apertura)` 
+                                                : '0 min · Servicio Cerrado'),
+                                        'Demora en Cola'
+                                    ]}
                                 />
                                 <Bar dataKey="esperaMin" name="Minutos de Espera" radius={[4, 4, 0, 0]}>
-                                    {(metrics.patientQuality?.hourlyWaitCurve || []).map((entry, index) => (
+                                    {(waitCurveMode === 'operativo' 
+                                        ? (metrics.patientQuality?.hourlyWaitCurve || []).filter(d => d.isOperatingHour)
+                                        : (metrics.patientQuality?.hourlyWaitCurve || [])
+                                    ).map((entry, index) => (
                                         <Cell 
                                             key={`bar-${index}`} 
                                             fill={entry.esperaMin >= 15 ? '#DC2626' : (entry.esperaMin >= 8 ? '#D97706' : '#0284C7')} 
@@ -3012,7 +3151,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 &gt; 15 min (Refuerzo necesario)
                             </span>
                         </div>
-                        <span>Cómputo en base a {metrics.patientQuality?.totalQueuedCases || 0} esperas registradas</span>
+                        <span>
+                            {waitCurveMode === 'operativo' ? 'Franja operativa activa (07:00 a 21:00 hs) · ' : 'Vista 24 hs completa · '}
+                            Cómputo en base a {metrics.patientQuality?.totalQueuedCases || 0} esperas registradas (excluye tiempo inhábil)
+                        </span>
                     </div>
                 </div>
 
