@@ -1851,22 +1851,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         Informe Mensual
                     </button>
 
-                    <button
-                        type="button"
-                        onClick={loadMetrics}
-                        disabled={loading}
-                        title="Actualizar métricas"
-                        style={{
-                            padding: '8px 14px', borderRadius: '8px', border: 'none',
-                            background: '#0284C7', color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                            cursor: loading ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
-                        }}
-                    >
-                        <RefreshCw size={13} className={loading ? 'spin' : ''} />
-                        Actualizar
-                    </button>
                 </div>
             </div>
 
