@@ -332,7 +332,7 @@ export default function ContactCenterConfigTab({ currentUser, activeAgent, addTo
     const approxTokens = Math.round(systemPrompt.length / 4);
 
     return (
-        <div style={{ maxWidth: '1300px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ width: '100%', maxWidth: '100%', margin: '0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
             {/* Header Card */}
             <div style={{

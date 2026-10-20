@@ -11,7 +11,7 @@
  * Versión del árbol: BOT_TREE_VERSION (subir el número cuando cambie la estructura de fábrica).
  */
 
-export const BOT_TREE_VERSION = 2;
+export const BOT_TREE_VERSION = 3;
 
 export const BOT_TREE_CATEGORIES = {
     inicio: { label: 'Inicio y Saludo', color: '#0284C7', bg: '#E0F2FE', border: '#BAE6FD' },
@@ -21,6 +21,7 @@ export const BOT_TREE_CATEGORIES = {
     autorizaciones: { label: 'Autorizaciones', color: '#0891B2', bg: '#CFFAFE', border: '#A5F3FC' },
     estudios: { label: 'Informes y Estudios Web', color: '#D97706', bg: '#FEF3C7', border: '#FDE68A' },
     guardia: { label: 'Guardias 24 hs (Sede 01)', color: '#DC2626', bg: '#FEE2E2', border: '#FECACA' },
+    prevencion: { label: 'Chequeo & Prevenir', color: '#BE185D', bg: '#FDF2F8', border: '#FBCFE8' },
     administracion: { label: 'Presupuestos & Aranceles', color: '#0D9488', bg: '#CCFBF1', border: '#99F6E4' },
     derivacion: { label: 'Derivación / Handoff', color: '#7C3AED', bg: '#F3E8FF', border: '#DDD6FE' },
     ia: { label: 'Motor IA Clínico (GPT-5.5)', color: '#DB2777', bg: '#FCE7F3', border: '#FBCFE8' }
@@ -56,7 +57,7 @@ export const DEFAULT_BOT_TREE_NODES = [
 Podés responder con el número (*1*, *2*, *3*, *4* o *5*) o escribirnos tu consulta.
 💡 _Si en cualquier momento deseás volver, escribí *"Menú"* o *"Atrás"*._`,
         availableTags: ['{bot_name}', '{nombre}'],
-        childrenIds: ['nodo_turnos_triage', 'nodo_mis_turnos', 'nodo_autorizaciones', 'nodo_guardia_24hs', 'nodo_operador_handoff', 'nodo_estudios_menu', 'nodo_presupuestos', 'nodo_consulta_libre']
+        childrenIds: ['nodo_turnos_triage', 'nodo_mis_turnos', 'nodo_autorizaciones', 'nodo_guardia_24hs', 'nodo_operador_handoff', 'nodo_chequeo_preventivo', 'nodo_programa_prevenir', 'nodo_estudios_menu', 'nodo_presupuestos', 'nodo_consulta_libre']
     },
 
     // -------------------------------------------------------------
@@ -509,6 +510,85 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
 • *Cirugía General* (Guardia pasiva especializada)
 • *Urología* (Guardia pasiva especializada)`,
         availableTags: ['{bot_name}'],
+        childrenIds: []
+    },
+
+    // -------------------------------------------------------------
+    // CHEQUEO PREVENTIVO DE SALUD / CONTROL MUJER / CHEQUEO ANUAL
+    // -------------------------------------------------------------
+    {
+        id: 'nodo_chequeo_preventivo',
+        parentId: 'root_saludo',
+        level: 2,
+        order: 5.1,
+        category: 'prevencion',
+        title: '5.1 Chequeo Preventivo / Control Mujer / Chequeo Anual',
+        patientTrigger: 'Paciente consulta por chequeo ("Chequeo anual", "Control mujer", "Chequeo preventivo", "Circuito de estudios")',
+        patientExamples: ['Quiero hacerme el chequeo anual', 'Turno para control mujer', 'Chequeo preventivo de salud', 'Info de chequeo anual'],
+        systemAction: 'Informa circuito integral en una sola jornada (mañanas en ayunas, ~4 hs), sedes Santa Fe y San Luis, estudios incluidos y deriva a la línea de WhatsApp exclusiva: https://wa.me/message/SEB4YT5AWGNBN1',
+        nodeType: 'bot_response',
+        botResponse: `¡Hola {nombre}! 🏥 Para coordinar turnos e información del *Chequeo Preventivo de Salud*, *Control Mujer* o *Chequeo Anual*, contamos con una línea exclusiva de atención directa personalizada:
+
+📲 *Comunicate directamente por WhatsApp aquí:*
+👉 https://wa.me/message/SEB4YT5AWGNBN1
+
+🕒 *¿Cómo funciona el circuito?*
+• Se realiza de *lunes a viernes por la mañana* (ingreso a partir de las 7:30 hs en ayunas).
+• Es un circuito completo y coordinado en una sola jornada (aproximadamente 4 horas de duración, sin traslados ni demoras).
+
+🏢 *Sedes disponibles:*
+• *Sede Santa Fe* (Santa Fe 263 Este)
+• *Sede San Luis* (San Luis 432 Oeste)
+
+🩺 *¿Qué estudios incluye?*
+• Análisis de laboratorio completos (sangre y orina)
+• Evaluación cardiológica con Electrocardiograma (ECG)
+• Radiografía de tórax y ecografías de control
+• Estudios complementarios según edad y perfil (mamografía, etc.)
+• Consulta médica clínica integral de apertura y cierre
+
+🌐 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html
+
+💬 *Para coordinar tu fecha y turno, por favor escribinos al enlace anterior:* https://wa.me/message/SEB4YT5AWGNBN1 (un asesor especializado coordinará todos tus estudios juntos).
+
+${FOOTER}`,
+        availableTags: ['{bot_name}', '{nombre}'],
+        childrenIds: []
+    },
+
+    // -------------------------------------------------------------
+    // PROGRAMA PREVENIR (OBRA SOCIAL PROVINCIA - OSP)
+    // -------------------------------------------------------------
+    {
+        id: 'nodo_programa_prevenir',
+        parentId: 'root_saludo',
+        level: 2,
+        order: 5.2,
+        category: 'prevencion',
+        title: '5.2 Programa Prevenir (OSP)',
+        patientTrigger: 'Paciente consulta por el Programa Prevenir ("Prevenir", "Programa prevenir", "Detección precoz OSP")',
+        patientExamples: ['Prevenir', 'Quiero turno para el programa prevenir', 'Afiliada OSP prevenir', 'Control de mamas prevenir'],
+        systemAction: 'Informa alcance del programa OSP en Sede Santa Fe (Ginecología, Mamografía digital bilateral, PAP) y deriva a la línea exclusiva de WhatsApp: https://wa.me/message/SEB4YT5AWGNBN1',
+        nodeType: 'bot_response',
+        botResponse: `¡Hola {nombre}! 🏥 Para coordinar turnos e información del *Programa Prevenir* de Obra Social Provincia (OSP), contamos con una línea exclusiva de atención directa personalizada:
+
+📲 *Comunicate directamente por WhatsApp aquí:*
+👉 https://wa.me/message/SEB4YT5AWGNBN1
+
+🩺 *¿De qué se trata el Programa Prevenir?*
+Es un circuito coordinado para la detección precoz del cáncer de mama y cuello uterino destinado a afiliadas de OSP.
+
+📋 *¿Qué incluye?*
+• Consulta con especialista en Ginecología
+• Mamografía digital bilateral y PAP
+• Se realiza de manera integrada en *Sede Santa Fe* (Santa Fe 263 Este).
+
+👉 Más información: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html
+
+💬 *Para coordinar tu turno, por favor escribinos al enlace anterior:* https://wa.me/message/SEB4YT5AWGNBN1 (un asesor del programa coordinará tu fecha y requisitos).
+
+${FOOTER}`,
+        availableTags: ['{bot_name}', '{nombre}'],
         childrenIds: []
     },
 

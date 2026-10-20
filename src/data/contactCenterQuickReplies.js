@@ -117,7 +117,28 @@ export const DEFAULT_QUICK_REPLIES = Object.freeze([
         agentId: 'eleal'
     },
 
-    // Respuestas médicas de Contact Center (según panel institucional)
+    // Respuestas médicas y de prevención de Contact Center (según panel institucional)
+    {
+        id: 'chequeo',
+        shortcut: 'chequeo',
+        title: 'Chequeo Preventivo de Salud / Control Mujer',
+        content: 'Para coordinar turnos e información del *Chequeo Preventivo de Salud*, *Control Mujer* o *Chequeo Anual*, contamos con una línea exclusiva de WhatsApp:\n\n📲 *WhatsApp exclusivo:* https://wa.me/message/SEB4YT5AWGNBN1\n\n🕒 *Circuito:* Lunes a viernes por la mañana en ayunas (~4 hs de duración en una sola jornada, sin traslados ni demoras).\n🏢 *Sedes:* Sede Santa Fe (Santa Fe 263 Este) y Sede San Luis (San Luis 432 Oeste).\n🩺 *Incluye:* Laboratorio completo, ECG y evaluación cardiológica, RX de tórax, ecografías, mamografía/estudios complementarios y consulta clínica integral.',
+        category: 'general'
+    },
+    {
+        id: 'controlmujer',
+        shortcut: 'controlmujer',
+        title: 'Control Mujer (Línea Exclusiva)',
+        content: 'Para coordinar turnos e información del *Control Mujer* / *Chequeo Preventivo*, podés comunicarte directamente con la línea exclusiva de WhatsApp:\n\n📲 https://wa.me/message/SEB4YT5AWGNBN1\n\nUn asesor especializado coordinará todos tus estudios en una sola mañana.',
+        category: 'general'
+    },
+    {
+        id: 'prevenir',
+        shortcut: 'prevenir',
+        title: 'Programa Prevenir (OSP)',
+        content: 'Para coordinar turnos e información del *Programa Prevenir (OSP)*, podés comunicarte directamente con la línea exclusiva de WhatsApp:\n\n📲 https://wa.me/message/SEB4YT5AWGNBN1\n\n🩺 *Incluye:* Consulta ginecológica, Mamografía digital bilateral y PAP en *Sede Santa Fe* (Santa Fe 263 Este).',
+        category: 'general'
+    },
     {
         id: 'psiquiatras',
         shortcut: 'psiquiatras',

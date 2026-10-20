@@ -3014,7 +3014,14 @@ DIRECTIVAS PRINCIPALES:
    - Indícalo siempre con cordialidad y claridad como una alternativa ágil y disponible en todo momento.
 15. DISTINCIÓN ESTRICTA ENTRE DNI Y FECHAS/HORAS DE TURNOS:
    - NUNCA inventes o concatenes números de fecha y hora de citas (como 'el día 21/10 a las 13 hs', '21/10 10 am', etc.) para inventar un DNI. '21101300' o combinaciones similares de DDMMHHMM NO son números de documento.
-   - El DNI es estrictamente el número provisto explícitamente por el paciente para su identificación o el que consta en su ficha registrada.`;
+   - El DNI es estrictamente el número provisto explícitamente por el paciente para su identificación o el que consta en su ficha registrada.
+16. CHEQUEO PREVENTIVO DE SALUD, CONTROL MUJER Y PROGRAMA PREVENIR (OSP) - DERIVACIÓN EXCLUSIVA:
+   - Si el paciente consulta por "Chequeo Preventivo de Salud", "Chequeo Anual", "Control Mujer" o "Programa Prevenir" (afiliadas OSP):
+   - Informa cordialmente que contamos con una línea exclusiva de atención personalizada para coordinar el circuito integral de estudios.
+   - Brinda OBLIGATORIAMENTE el enlace directo de WhatsApp oficial:
+     👉 https://wa.me/message/SEB4YT5AWGNBN1
+   - Recuerda que el Chequeo Preventivo / Control Mujer se realiza por la mañana en ayunas (ingreso 7:30 hs) en Sede Santa Fe (Santa Fe 263 Este) o Sede San Luis (San Luis 432 Oeste) y dura aproximadamente 4 horas en una sola jornada sin demoras.
+   - Para el Programa Prevenir (OSP), incluye consulta ginecológica, mamografía bilateral y PAP en Sede Santa Fe.`;
 
 export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá en breve.\\n💡 _Si deseás consultar otra opción o reiniciar la atención, podés escribir *\"Menú\"* en cualquier momento._\\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
 
