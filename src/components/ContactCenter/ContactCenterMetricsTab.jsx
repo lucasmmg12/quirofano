@@ -140,16 +140,21 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey);
     const [showMonthlyReportModal, setShowMonthlyReportModal] = useState(false);
 
-    // Opciones de los últimos 12 meses para selector y reportes mes a mes
+    // Opciones para selector y reportes mes a mes (inicia operativamente en Octubre 2026)
     const monthOptions = useMemo(() => {
         const list = [];
         const now = new Date();
+        const minStartDate = new Date(2026, 9, 1); // 1 de Octubre de 2026
         for (let i = 0; i < 12; i++) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            if (d < minStartDate) break;
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             const labelRaw = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
             const label = labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1);
             list.push({ key, label, year: d.getFullYear(), month: d.getMonth() });
+        }
+        if (list.length === 0) {
+            list.push({ key: '2026-10', label: 'Octubre de 2026', year: 2026, month: 9 });
         }
         return list;
     }, []);
@@ -1177,10 +1182,23 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             });
 
             // ── H. Comparativa Histórica Mes a Mes (Bot vs Agentes + Desglose por Asesora: 0 Bytes RAM) ──
+            // El sistema de Contact Center WhatsApp comenzó sus operaciones en Octubre 2026 (meses previos no sumaban datos)
+            const minComparisonDate = new Date(2026, 9, 1, 0, 0, 0); // 1 de Octubre de 2026
             const last6Months = [];
             for (let i = 5; i >= 0; i--) {
                 const dStart = new Date(now.getFullYear(), now.getMonth() - i, 1, 0, 0, 0);
                 const dEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+                if (dStart >= minComparisonDate) {
+                    last6Months.push({
+                        label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
+                        startIso: dStart.toISOString(),
+                        endIso: dEnd.toISOString()
+                    });
+                }
+            }
+            if (last6Months.length === 0) {
+                const dStart = new Date(2026, 9, 1, 0, 0, 0);
+                const dEnd = new Date(2026, 9 + 1, 0, 23, 59, 59);
                 last6Months.push({
                     label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
                     startIso: dStart.toISOString(),
