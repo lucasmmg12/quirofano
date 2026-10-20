@@ -345,63 +345,7 @@ export default function AgentShiftSummaryModal({
                         </div>
                     ) : (
                         <>
-                            {/* ── DIAGNÓSTICO DESTACADO DEL TURNO ── */}
-                            <div style={{
-                                background: '#FFFFFF',
-                                borderRadius: '12px',
-                                padding: '16px 20px',
-                                border: `1px solid ${score.color}30`,
-                                borderLeft: `5px solid ${score.color}`,
-                                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '16px'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                    <div style={{
-                                        width: '42px',
-                                        height: '42px',
-                                        borderRadius: '10px',
-                                        background: `${score.color}15`,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        flexShrink: 0
-                                    }}>
-                                        <Sparkles size={22} color={score.color} />
-                                    </div>
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.05em' }}>
-                                                {selectedAgent?.id === 'todos' ? 'Diagnóstico General de la Jornada' : 'Diagnóstico General del Turno'}
-                                            </span>
-                                            <span style={{
-                                                fontSize: '0.7rem',
-                                                fontWeight: 800,
-                                                padding: '2px 8px',
-                                                borderRadius: '6px',
-                                                background: `${score.color}20`,
-                                                color: score.color
-                                            }}>
-                                                {score.nivel}
-                                            </span>
-                                        </div>
-                                        <p style={{ margin: 0, fontSize: '0.82rem', color: '#1E293B', lineHeight: 1.4, fontWeight: 500 }}>
-                                            {score.diagnostico}
-                                        </p>
-                                    </div>
-                                </div>
 
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B', display: 'block' }}>
-                                        {selectedAgent?.id === 'todos' ? 'Alcance' : 'Operadora'}
-                                    </span>
-                                    <span style={{ fontSize: '0.92rem', fontWeight: 800, color: selectedAgent?.color || '#0284C7' }}>
-                                        {selectedAgent?.fullName || selectedAgent?.name}
-                                    </span>
-                                </div>
-                            </div>
 
                             {/* ── 5 KPIS HERO DEL FINAL DE TURNO ── */}
                             <div style={{
