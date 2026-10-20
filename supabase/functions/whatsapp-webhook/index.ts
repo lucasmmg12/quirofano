@@ -1989,21 +1989,21 @@ function getContactCenterScheduleInfo(now: Date = new Date()): {
     const currentMin = hour * 60 + min;
 
     let isOpen = false;
-    let nextOpeningText = 'el próximo día hábil a partir de las 7:00 hs';
+    let nextOpeningText = 'el próximo día hábil a partir de las 7:30 hs';
 
     if (day >= 1 && day <= 5) {
-        // Lunes a Viernes: 7:00 a 21:00 hs (420 a 1260 minutos)
-        if (currentMin >= 420 && currentMin < 1260) {
+        // Lunes a Viernes: 7:30 a 21:00 hs (450 a 1260 minutos)
+        if (currentMin >= 450 && currentMin < 1260) {
             isOpen = true;
-        } else if (currentMin < 420) {
-            nextOpeningText = 'hoy a partir de las 7:00 hs';
+        } else if (currentMin < 450) {
+            nextOpeningText = 'hoy a partir de las 7:30 hs';
         } else {
             // Pasadas las 21:00 hs
             if (day === 5) {
                 // Viernes a la noche -> Sábado 8:00 hs
                 nextOpeningText = 'mañana sábado a partir de las 8:00 hs';
             } else {
-                nextOpeningText = 'mañana a partir de las 7:00 hs';
+                nextOpeningText = 'mañana a partir de las 7:30 hs';
             }
         }
     } else if (day === 6) {
@@ -2013,12 +2013,12 @@ function getContactCenterScheduleInfo(now: Date = new Date()): {
         } else if (currentMin < 480) {
             nextOpeningText = 'hoy sábado a partir de las 8:00 hs';
         } else {
-            // Sábado después de las 12:00 hs -> Lunes 7:00 hs
-            nextOpeningText = 'el próximo lunes a partir de las 7:00 hs';
+            // Sábado después de las 12:00 hs -> Lunes 7:30 hs
+            nextOpeningText = 'el próximo lunes a partir de las 7:30 hs';
         }
     } else {
-        // Domingo -> Lunes 7:00 hs
-        nextOpeningText = 'el próximo lunes a partir de las 7:00 hs';
+        // Domingo -> Lunes 7:30 hs
+        nextOpeningText = 'el próximo lunes a partir de las 7:30 hs';
     }
 
     return { isOpen, nextOpeningText };
@@ -2031,7 +2031,7 @@ function isContactCenterOpen(now: Date = new Date()): boolean {
 function getAfterHoursMessage(nextOpeningText: string): string {
     return `¡Hola! 🏥 Te informamos que en este momento nuestro equipo de atención se encuentra *fuera del horario laboral*.\n\n` +
         `⏰ *Nuestros horarios de atención son:*\n` +
-        `• *Lunes a Viernes:* 7:00 a 21:00 hs\n` +
+        `• *Lunes a Viernes:* 7:30 a 21:00 hs\n` +
         `• *Sábados:* 8:00 a 12:00 hs\n` +
         `_(Domingos y Feriados cerrado)_\n\n` +
         `Tu mensaje quedó registrado y un asesor te responderá *${nextOpeningText}* en nuestro horario habitual.\n\n` +
@@ -2047,7 +2047,7 @@ function getDelayWaitNoticeMessage(): string {
         `📲 *Gestión de Turnos Online:*\n` +
         `Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo desde la página web del Sanatorio:\n` +
         `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
-        `⏰ *Horarios de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
+        `⏰ *Horarios de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
         `💡 _Si deseás volver a consultar opciones con el menú virtual, podés escribir *"Menú"* en cualquier momento._`;
 }
 
@@ -2130,7 +2130,7 @@ async function refreshQueueAndHandoffConfig(supabaseClient: any): Promise<number
 function getAgentHandoffNotice(queueCountOverride?: number): string {
     const open = isContactCenterOpen();
     if (!open) {
-        return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un agente te responderá al inicio del próximo día hábil.\n\n📲 *Gestión de Turnos Online 24 hs:*\nRecordá que también podés autogestionar tu turno médico desde la página web del Sanatorio:\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
+        return `🕒 *Fuera de horario de atención:*\nNuestro horario de Contact Center es de Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\nTu mensaje quedó registrado y un agente te responderá al inicio del próximo día hábil.\n\n📲 *Gestión de Turnos Online 24 hs:*\nRecordá que también podés autogestionar tu turno médico desde la página web del Sanatorio:\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n🚨 *Guardias 24 hs:* Sede 01 (San Luis 432 Oeste) activa para urgencias.`;
     }
 
     const count = typeof queueCountOverride === 'number' ? queueCountOverride : currentQueueCount;
@@ -2141,14 +2141,14 @@ function getAgentHandoffNotice(queueCountOverride?: number): string {
         if (cachedHandoffSettings?.delayMessage && cachedHandoffSettings.delayMessage.trim().length > 10) {
             return cachedHandoffSettings.delayMessage.replace(/\{cola\}/g, String(count));
         }
-        return `⚠️ *Aviso de Demora:* En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.\n\n📲 *Gestión de Turnos Online:*\nRecordá que desde la página del Sanatorio también podés autogestionar tu turno de forma inmediata:\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n⏰ *Horario de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
+        return `⚠️ *Aviso de Demora:* En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.\n\n📲 *Gestión de Turnos Online:*\nRecordá que desde la página del Sanatorio también podés autogestionar tu turno de forma inmediata:\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
     }
 
     // Flujo normal sin demoras críticas
     if (cachedHandoffSettings?.normalMessage && cachedHandoffSettings.normalMessage.trim().length > 10) {
         return cachedHandoffSettings.normalMessage.replace(/\{cola\}/g, String(count));
     }
-    return `👩‍⚕️ Un agente te responderá a la brevedad. \n⏰ *Horario de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
+    return `👩‍⚕️ Un agente te responderá en breve.\n💡 _Si deseás consultar otra opción o reiniciar la atención, podés escribir *"Menú"* en cualquier momento._\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
 }
 
 /**
@@ -2439,7 +2439,7 @@ DIRECTIVAS PRINCIPALES:
    - Si el paciente pregunta por un turno ya agendado y NO tenemos su DNI, pídeselo amablemente ("Por favor indícanos el número de DNI del paciente, sin puntos ni espacios").
    - Si ya figuran turnos en sus datos arriba, confírmale los detalles (día, hora, profesional, sede).
 4. PEDIDO DE AGENTE O HORARIOS DE ATENCIÓN (MÁXIMA PRIORIDAD):
-   - Horario de atención de agentes (Contact Center): Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+   - Horario de atención de agentes (Contact Center): Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
    - Guardias 24 hs: Sede 01 (San Luis 432 Oeste) activa para urgencias.
    - Si el paciente pide que lo atienda una persona, un agente, un operador, o manifiesta que el bot no le sirve o no comprende:
      - Confirma con calidez y amabilidad que lo estás comunicando con un agente del equipo de atención e informa el horario de atención.
@@ -2485,6 +2485,9 @@ DIRECTIVAS PRINCIPALES:
    - Cuando nos encontremos fuera del horario de atención, o si se presentan demoras por alta demanda, o si el paciente desea gestionar turnos de forma inmediata sin esperar la respuesta de un agente, recomiéndale e indícale que desde la página oficial de Sanatorio Argentino también puede gestionar su turno médico online las 24 horas:
      👉 https://www.sanatorioargentino.com.ar/turnos-online.html
    - Indícalo siempre con cordialidad y claridad como una alternativa ágil y disponible en todo momento.
+15. DISTINCIÓN ESTRICTA ENTRE DNI Y FECHAS/HORAS DE TURNOS:
+   - NUNCA inventes o concatenes números de fecha y hora de citas (como 'el día 21/10 a las 13 hs', '21/10 10 am', etc.) para inventar un DNI. '21101300' o combinaciones similares de DDMMHHMM NO son números de documento.
+   - El DNI es estrictamente el número provisto explícitamente por el paciente para su identificación o el que consta en su ficha registrada.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -5490,7 +5493,7 @@ async function handleChatbotTriage(
             `¿Sobre qué te gustaría saber? Seleccioná una opción:\n\n` +
             `1️⃣ *Laboratorio* (análisis, extracciones, preparación, resultados) 🩸\n` +
             `2️⃣ *Radiografías / Rayos X* 🩻\n` +
-            `3️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:00 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
+            `3️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:30 a 21 hs, Sáb 8 a 12 hs)_\n\n` +
             `También podés escribirnos directamente tu consulta.\n` +
             `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
         updates.status = 'bot';

@@ -51,7 +51,7 @@ export const DEFAULT_BOT_TREE_NODES = [
 2️⃣ *Consultar mi próximo turno o visita agendada* 📅
 3️⃣ *Autorizaciones y órdenes médicas* 📋
 4️⃣ *Guardia médica 24 horas y urgencias* 🚨
-5️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:00 a 21 hs, Sáb 8 a 12 hs)_
+5️⃣ *Hablar con un agente* 👤 _(Lun a Vie 7:30 a 21 hs, Sáb 8 a 12 hs)_
 
 Podés responder con el número (*1*, *2*, *3*, *4* o *5*) o escribirnos tu consulta.
 💡 _Si en cualquier momento deseás volver, escribí *"Menú"* o *"Atrás"*._`,
@@ -544,7 +544,7 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
         systemAction: 'Transfiere el chat a la cola de agentes (sin_asignar) y pone al bot en pausa.',
         nodeType: 'bot_response',
         botResponse: `👩‍⚕️ Un agente te responderá a la brevedad.
-⏰ *Horario de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
 
 💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`,
         availableTags: ['{nombre}'],
@@ -569,7 +569,7 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
 Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo desde la página web del Sanatorio:
 👉 https://www.sanatorioargentino.com.ar/turnos-online.html
 
-⏰ *Horario de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
 
 💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`,
         availableTags: ['{bot_name}'],
@@ -584,14 +584,14 @@ Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar
         order: 3,
         category: 'derivacion',
         title: '6.C Fuera de Horario de Atención',
-        patientTrigger: 'Paciente escribe fuera de la franja (Lun-Vie fuera de 7:00-21 hs, Sáb fuera de 8-12 hs, Domingos y feriados)',
+        patientTrigger: 'Paciente escribe fuera de la franja (Lun-Vie fuera de 7:30-21 hs, Sáb fuera de 8-12 hs, Domingos y feriados)',
         patientExamples: ['Mensaje a las 23:00 hs o Domingo por la tarde'],
         systemAction: 'Registra el mensaje y notifica cuándo se retoma la atención (máximo un aviso por hora).',
         nodeType: 'bot_response',
         botResponse: `¡Hola! 🏥 Te informamos que en este momento nuestro equipo de atención se encuentra *fuera del horario laboral*.
 
 ⏰ *Nuestros horarios de atención son:*
-• *Lunes a Viernes:* 7:00 a 21:00 hs
+• *Lunes a Viernes:* 7:30 a 21:00 hs
 • *Sábados:* 8:00 a 12:00 hs
 _(Domingos y Feriados cerrado)_
 

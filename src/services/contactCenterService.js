@@ -2966,7 +2966,7 @@ DIRECTIVAS PRINCIPALES:
    - No hay límite mínimo de anticipación y aplica a todas las agendas. NUNCA ofrezcas ni inventes fechas u horarios disponibles: el agente propone las nuevas opciones.
    - Si al confirmar la cancelación el paciente responde que no, infórmale que su turno se mantiene y recordá presentarse 15 minutos antes con DNI y credencial.
 4. PEDIDO DE AGENTE O HORARIOS DE ATENCIÓN (MÁXIMA PRIORIDAD):
-   - Horario de atención de agentes (Contact Center): Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
+   - Horario de atención de agentes (Contact Center): Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.
    - Guardias 24 hs: Sede 01 (San Luis 432 Oeste) activa para urgencias.
    - Si el paciente pide que lo atienda una persona, un agente, un operador, o manifiesta que el bot no le sirve o no comprende:
      - Confirma con calidez y amabilidad que lo estás comunicando con un agente del equipo de atención e informa el horario de atención.
@@ -3007,11 +3007,18 @@ DIRECTIVAS PRINCIPALES:
 13. DISTINCIÓN OBLIGATORIA ENTRE DNI Y FECHA DE NACIMIENTO:
    - NUNCA confundas una fecha de nacimiento (DD/MM/AAAA, ej: 04/07/2002 o 04072002) con un número de DNI.
    - Los DNI argentinos tienen entre 7 y 8 dígitos y NUNCA comienzan con 0 (rango 1.000.000 a 99.999.999, incluyendo serie 90M+ de residentes extranjeros).
-   - Si el paciente en un mensaje posterior envía sus datos personales de admisión (ej: "Ramiro Javier Gutiérrez\n04/07/2002\nDepartamento rawson"), la fecha 04/07/2002 corresponde a su fecha de nacimiento y NUNCA debe sobreescribir ni sustituir el DNI ya informado en el mensaje anterior.`;
+   - Si el paciente en un mensaje posterior envía sus datos personales de admisión (ej: "Ramiro Javier Gutiérrez\\n04/07/2002\\nDepartamento rawson"), la fecha 04/07/2002 corresponde a su fecha de nacimiento y NUNCA debe sobreescribir ni sustituir el DNI ya informado en el mensaje anterior.
+14. GESTIÓN DE TURNOS ONLINE (FUERA DE HORARIO Y ALTA DEMANDA):
+   - Cuando nos encontremos fuera del horario de atención, o si se presentan demoras por alta demanda, o si el paciente desea gestionar turnos de forma inmediata sin esperar la respuesta de un agente, recomiéndale e indícale que desde la página oficial de Sanatorio Argentino también puede gestionar su turno médico online las 24 horas:
+     👉 https://www.sanatorioargentino.com.ar/turnos-online.html
+   - Indícalo siempre con cordialidad y claridad como una alternativa ágil y disponible en todo momento.
+15. DISTINCIÓN ESTRICTA ENTRE DNI Y FECHAS/HORAS DE TURNOS:
+   - NUNCA inventes o concatenes números de fecha y hora de citas (como 'el día 21/10 a las 13 hs', '21/10 10 am', etc.) para inventar un DNI. '21101300' o combinaciones similares de DDMMHHMM NO son números de documento.
+   - El DNI es estrictamente el número provisto explícitamente por el paciente para su identificación o el que consta en su ficha registrada.`;
 
-export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá a la brevedad.\n⏰ *Horario de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
+export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá en breve.\\n💡 _Si deseás consultar otra opción o reiniciar la atención, podés escribir *\"Menú\"* en cualquier momento._\\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
 
-export const DEFAULT_HANDOFF_DELAY = `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.\n⏰ *Horario de atención:* Lunes a Viernes de 7:00 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *"Menú"*._`;
+export const DEFAULT_HANDOFF_DELAY = `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras. Un asesor te responderá a la brevedad por orden de llegada.\\n\\n📲 *Gestión de Turnos Online:*\\nSi deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo las 24 hs desde la página oficial del Sanatorio:\\n👉 https://www.sanatorioargentino.com.ar/turnos-online.html\\n\\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\\n\\n💡 _Si deseás volver a consultar con el asistente virtual en cualquier momento, escribí *\"Menú\"*._`;
 
 /**
  * Obtiene la configuración activa del chatbot desde app_config y el estado de la cola
@@ -3081,7 +3088,7 @@ export async function fetchChatbotConfig() {
             systemPrompt: DEFAULT_CHATBOT_SYSTEM_PROMPT,
             model: 'gpt-5.4-mini',
             temperature: '0.3',
-            botName: 'Dora',
+            botName: 'Betina',
             handoffNormal: DEFAULT_HANDOFF_NORMAL,
             handoffDelay: DEFAULT_HANDOFF_DELAY,
             delayThreshold: 5,
@@ -3100,7 +3107,7 @@ export async function saveChatbotConfig({
     systemPrompt,
     model = 'gpt-5.4-mini',
     temperature = '0.3',
-    botName = 'Dora',
+    botName = 'Betina',
     handoffNormal = DEFAULT_HANDOFF_NORMAL,
     handoffDelay = DEFAULT_HANDOFF_DELAY,
     delayThreshold = 5,
