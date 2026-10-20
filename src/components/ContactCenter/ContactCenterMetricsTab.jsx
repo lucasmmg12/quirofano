@@ -346,9 +346,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             }
 
             // ── Cargar Snapshot de Métricas y Turnos SALUS para el período seleccionado ──
-            const targetMonthKey = timeRange === 'last_month' 
-                ? (() => { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })()
-                : (selectedMonth || getCurrentMonthKey());
+            let targetMonthKey = selectedMonth || getCurrentMonthKey();
+            if (timeRange === 'last_month') {
+                const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                targetMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            } else if (timeRange === 'custom' && customStartDate) {
+                targetMonthKey = customStartDate.slice(0, 7);
+            } else if ((timeRange === 'today' || timeRange === 'week') && filterStart) {
+                targetMonthKey = `${filterStart.getFullYear()}-${String(filterStart.getMonth() + 1).padStart(2, '0')}`;
+            }
 
             const salusDataByAgent = {};
             try {
@@ -1170,7 +1176,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             // ── G. Tendencia Diaria de Mensajes y Gasto ──
             let runningOut = 0;
-            const dailyTrendData = Object.entries(dailyOutTally).map(([fecha, enviados]) => {
+            const dailyTrendData = Object.entries(dailyOutTally)
+                .sort(([a], [b]) => {
+                    const [d1, m1] = a.split('/').map(Number);
+                    const [d2, m2] = b.split('/').map(Number);
+                    return (m1 - m2) || (d1 - d2);
+                })
+                .map(([fecha, enviados]) => {
                 runningOut += enviados;
                 const billableAcc = Math.max(0, runningOut - MENSAJES_GRATIS_MENSUALES);
                 const costoAccUsd = +(billableAcc * COSTO_POR_MENSAJE_USD).toFixed(2);
@@ -1359,9 +1371,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         .map(([motivo, cantidad]) => ({ motivo, cantidad }))
                         .sort((x, y) => y.cantidad - x.cantidad);
 
-                    // 4. Métricas oficiales de turnos en SALUS
-                    const salusAg = salusDataByAgent[a.id] || {};
-                    const turnosSalus = salusAg.turnos !== undefined ? salusAg.turnos : (a.resolvedReasons?.['Turno Coordinado'] || 0);
+                    // 4. Métricas oficiales de turnos en SALUS (en meses completos usa snapshot oficial; en rangos acotados como Hoy/Semana usa turnos del período)
+                    const isFullMonthView = timeRange === 'this_month' || timeRange === 'last_month';
+                    const salusAg = isFullMonthView ? (salusDataByAgent[a.id] || {}) : {};
+                    const turnosSalus = (isFullMonthView && salusAg.turnos !== undefined) 
+                        ? salusAg.turnos 
+                        : (a.resolvedReasons?.['Turno Coordinado'] || 0);
                     const citasTotalesSalus = salusAg.citasTotales || 0;
                     const asistidasSalus = salusAg.asistidas || 0;
                     const asistenciaPctSalus = salusAg.asistenciaPct || 0;
@@ -1417,12 +1432,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             // Envejecimiento de la cola de chats activos (Queue Aging)
             const currentTimeMs = Date.now();
+            const referenceTimeMs = (filterEnd && filterEnd.getTime() < currentTimeMs) ? filterEnd.getTime() : currentTimeMs;
             const queueAging = { menos15m: 0, de15ma1h: 0, de1ha4h: 0, mas4h: 0, totalActivas: 0 };
             filteredConvs.forEach(c => {
                 if (!isClosedOrArchived(c)) {
                     queueAging.totalActivas++;
                     const lastActivity = new Date(c.updated_at || c.created_at).getTime();
-                    const waitMin = calcBusinessWaitMinutes(lastActivity, currentTimeMs);
+                    const waitMin = calcBusinessWaitMinutes(lastActivity, referenceTimeMs);
                     if (waitMin <= 15) queueAging.menos15m++;
                     else if (waitMin <= 60) queueAging.de15ma1h++;
                     else if (waitMin <= 240) queueAging.de1ha4h++;
@@ -1659,6 +1675,17 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
                                 Plataforma Sanatorio Argentino · Línea WhatsApp Oficial y Análisis Operativo
                             </p>
+                            <span 
+                                title="Período temporal activo gobernando todas las métricas del tablero"
+                                style={{
+                                    fontSize: '0.68rem', fontWeight: 800, color: '#0369A1', background: '#E0F2FE',
+                                    border: '1px solid #BAE6FD', padding: '2px 8px', borderRadius: '12px',
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                }}
+                            >
+                                <Calendar size={11} color="#0284C7" />
+                                {periodLabel}
+                            </span>
                             {(metrics.patientQuality?.archivedOver24hCount || 0) > 0 && (
                                 <span 
                                     title="Total de casos cerrados automáticamente por inactividad (+24hs sin respuesta) o barridos"
@@ -2374,7 +2401,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     Distribución de Conversaciones del Equipo
                                 </h3>
                                 <p style={{ margin: '1px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
-                                    Casos asignados y finalizados por operadora en el período
+                                    Casos asignados y finalizados por operadora · {periodLabel}
                                 </p>
                             </div>
                         </div>
@@ -2527,13 +2554,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
                             background: '#EFF6FF', color: '#0284C7', border: '1px solid #BFDBFE'
                         }}>
-                            🤖 Bot: {metrics.monthlyComparison?.[metrics.monthlyComparison.length - 1]?.botPct || 0}% de Automatización
+                            🤖 Bot: {botPct}% ({periodLabel})
                         </span>
                         <span style={{
                             fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
                             background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0'
                         }}>
-                            👩‍⚕️ Asesoras: {metrics.monthlyComparison?.[metrics.monthlyComparison.length - 1]?.agentPct || 0}% Atención Humana
+                            👩‍⚕️ Asesoras: {agentPct}% ({periodLabel})
                         </span>
                     </div>
                 </div>
@@ -4335,7 +4362,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         Informe Ejecutivo Mensual · Contact Center
                                     </h3>
                                     <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                                        Sanatorio Argentino · Periodo: {monthOptions.find(m => m.key === selectedMonth)?.label || selectedMonth}
+                                        Sanatorio Argentino · Periodo: {periodLabel}
                                     </p>
                                 </div>
                             </div>
