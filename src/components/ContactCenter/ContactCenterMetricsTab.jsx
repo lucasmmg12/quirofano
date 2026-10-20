@@ -132,6 +132,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     // Modo de visualización de la curva horaria: 'operativo' (07:00 a 21:00 hs) | '24hs'
     const [waitCurveMode, setWaitCurveMode] = useState('operativo');
 
+    // Métrica activa en la distribución de conversaciones del equipo: 'finalizadas' | 'asignadas'
+    const [convPieMetric, setConvPieMetric] = useState('finalizadas');
+
     // Selector de mes a mes (Formato 'YYYY-MM')
     const getCurrentMonthKey = () => {
         const d = new Date();
@@ -1543,32 +1546,39 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
         };
     }, [metrics.agentMessages]);
 
-    // Gráfico de Torta: Distribución de Mensajes Tomados por Asesora (Excluyendo expresamente al Agente Lucas Marinero)
+    // Gráfico de Distribución: Conversaciones Asignadas y Finalizadas por Asesora (solo las 4 asesoras de atención)
     const pieAsesorasData = useMemo(() => {
+        const allowedAgentIds = ['vjacques', 'solivier', 'daguilera', 'eleal', 'virginia', 'sofia', 'daniela', 'erica'];
         const operadoras = (metrics.byAgentList || []).filter(ag => {
+            const id = (ag.id || '').toLowerCase();
             const n = (ag.name || '').toLowerCase();
-            return ag.id !== 'lmarinero' && !n.includes('lucas') && !n.includes('marinero');
+            const isExcluded = id === 'lmarinero' || id === 'otros' || id === 'otros_operadores' || 
+                               n.includes('lucas') || n.includes('marinero') || n.includes('otros') || n.includes('admisión');
+            if (isExcluded) return false;
+            return allowedAgentIds.some(allowed => id.includes(allowed) || n.includes(allowed));
         });
 
-        const totalOperadoras = operadoras.reduce((sum, ag) => sum + (ag.count || 0), 0);
+        const isMetricFinalizadas = convPieMetric === 'finalizadas';
+        const totalMetric = operadoras.reduce((sum, ag) => sum + (isMetricFinalizadas ? (ag.resolvedCount || 0) : (ag.assignedCount || 0)), 0);
 
         return operadoras.map(ag => {
-            const count = ag.count || 0;
-            const pct = totalOperadoras > 0 ? Math.round((count / totalOperadoras) * 100) : 0;
+            const val = isMetricFinalizadas ? (ag.resolvedCount || 0) : (ag.assignedCount || 0);
+            const pct = totalMetric > 0 ? Math.round((val / totalMetric) * 100) : 0;
             return {
                 id: ag.id,
                 name: ag.name,
                 nombreCorto: ag.name.split(' ')[0],
-                value: count,
+                value: val,
                 percentage: pct,
                 color: ag.color || '#0284C7',
                 avatar: ag.avatar || ag.name.substring(0, 2).toUpperCase(),
                 assignedCount: ag.assignedCount || 0,
+                resolvedCount: ag.resolvedCount || 0,
                 avgResponseTimeMin: ag.avgResponseTimeMin || 0,
                 slaCumplimientoPct: ag.slaCumplimientoPct || 100
             };
         });
-    }, [metrics.byAgentList]);
+    }, [metrics.byAgentList, convPieMetric]);
 
     // Resumen de Tipos de Consulta del Paciente (Triage Clínico)
     const inquiryBreakdown = useMemo(() => {
@@ -2348,7 +2358,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     justifyContent: 'space-between',
                     gap: '12px'
                 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{
                                 width: '32px', height: '32px', borderRadius: '8px',
@@ -2359,20 +2369,51 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             </div>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0F2942' }}>
-                                    Distribución de Mensajes del Equipo
+                                    Distribución de Conversaciones del Equipo
                                 </h3>
                                 <p style={{ margin: '1px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
-                                    Volumen despachado por operadora en el período
+                                    Casos asignados y finalizados por operadora en el período
                                 </p>
                             </div>
                         </div>
 
-                        <span style={{
-                            fontSize: '0.64rem', fontWeight: 700, padding: '3px 8px', borderRadius: '20px',
-                            background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0'
-                        }}>
-                            Excluye supervisión (L. Marinero)
-                        </span>
+                        {/* Selector de Métrica: Finalizadas vs Asignadas */}
+                        <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '2px', borderRadius: '6px', fontSize: '0.68rem' }}>
+                            <button
+                                type="button"
+                                onClick={() => setConvPieMetric('finalizadas')}
+                                style={{
+                                    border: 'none',
+                                    background: convPieMetric === 'finalizadas' ? '#FFFFFF' : 'transparent',
+                                    color: convPieMetric === 'finalizadas' ? '#059669' : '#64748B',
+                                    fontWeight: convPieMetric === 'finalizadas' ? 800 : 500,
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    boxShadow: convPieMetric === 'finalizadas' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                Finalizadas
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setConvPieMetric('asignadas')}
+                                style={{
+                                    border: 'none',
+                                    background: convPieMetric === 'asignadas' ? '#FFFFFF' : 'transparent',
+                                    color: convPieMetric === 'asignadas' ? '#0284C7' : '#64748B',
+                                    fontWeight: convPieMetric === 'asignadas' ? 800 : 500,
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    boxShadow: convPieMetric === 'asignadas' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                Asignadas
+                            </button>
+                        </div>
                     </div>
 
                     {/* GRÁFICO DE TORTA Y LISTA DE ASESORAS */}
@@ -2396,7 +2437,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     </Pie>
                                     <Tooltip 
                                         formatter={(val, name, item) => [
-                                            `${val.toLocaleString('es-AR')} msgs (${item.payload.percentage}%)`,
+                                            `${val.toLocaleString('es-AR')} ${convPieMetric === 'asignadas' ? 'asignadas' : 'finalizadas'} (${item.payload.percentage}%) · Asig: ${item.payload.assignedCount} / Fin: ${item.payload.resolvedCount}`,
                                             item.payload.name
                                         ]}
                                         contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.72rem' }}
@@ -2407,7 +2448,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
                                 textAlign: 'center', pointerEvents: 'none'
                             }}>
-                                <div style={{ fontSize: '0.62rem', color: '#94A3B8', fontWeight: 600 }}>Total</div>
+                                <div style={{ fontSize: '0.58rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    {convPieMetric === 'asignadas' ? 'Asignadas' : 'Finalizadas'}
+                                </div>
                                 <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0F2942', lineHeight: 1 }}>
                                     {pieAsesorasData.reduce((s, a) => s + a.value, 0).toLocaleString('es-AR')}
                                 </div>
@@ -2419,7 +2462,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             {pieAsesorasData.map((ag) => (
                                 <div key={ag.id} style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    fontSize: '0.72rem', padding: '3px 6px', borderRadius: '6px',
+                                    fontSize: '0.72rem', padding: '4px 8px', borderRadius: '6px',
                                     background: '#F8FAFC'
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2427,11 +2470,19 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         <span style={{ fontWeight: 700, color: '#0F2942' }}>{ag.nombreCorto}</span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <strong style={{ color: '#0F2942' }}>{ag.value.toLocaleString('es-AR')}</strong>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.68rem' }}>
+                                            <span title="Conversaciones Asignadas" style={{ color: '#0284C7' }}>
+                                                <strong>{ag.assignedCount.toLocaleString('es-AR')}</strong> asig.
+                                            </span>
+                                            <span style={{ color: '#CBD5E1' }}>|</span>
+                                            <span title="Conversaciones Finalizadas" style={{ color: '#059669' }}>
+                                                <strong>{ag.resolvedCount.toLocaleString('es-AR')}</strong> fin.
+                                            </span>
+                                        </div>
                                         <span style={{
                                             fontSize: '0.64rem', fontWeight: 800, color: ag.color,
                                             background: '#FFFFFF', padding: '1px 5px', borderRadius: '4px',
-                                            border: `1px solid ${ag.color}40`
+                                            border: `1px solid ${ag.color}40`, minWidth: '32px', textAlign: 'center'
                                         }}>
                                             {ag.percentage}%
                                         </span>
