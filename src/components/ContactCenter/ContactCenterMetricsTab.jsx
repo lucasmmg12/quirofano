@@ -1430,12 +1430,14 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             });
 
+            const totalConvsEntered = filteredConvs.length > 0 ? filteredConvs.length : totalConversationsCount;
+
             setMetrics({
                 totalOutgoing: totalOut,
                 agentMessages: agentCount,
                 botMessages: botCount,
                 totalIncoming: totalIn,
-                totalConversations: totalConversationsCount,
+                totalConversations: totalConvsEntered,
                 uniquePatientsCount,
                 humanConversationsCount,
                 botOnlyConversationsCount,
@@ -2065,7 +2067,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 </div>
 
-                {/* 2. MENSAJES RECIBIDOS */}
+                {/* 2. CONVERSACIONES INGRESADAS */}
                 <div style={{
                     background: '#FFFFFF', borderRadius: '12px', padding: '18px 20px',
                     border: '1px solid #E2E8F0', boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
@@ -2074,10 +2076,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
                             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                Mensajes Recibidos
+                                Conversaciones Ingresadas
                             </span>
                             <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942', marginTop: '4px' }}>
-                                {loading ? '...' : metrics.totalIncoming.toLocaleString()}
+                                {loading ? '...' : (metrics.totalConversations || 0).toLocaleString('es-AR')}
                             </div>
                         </div>
                         <div style={{
@@ -2088,7 +2090,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         </div>
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#059669', marginTop: '10px', fontWeight: 600 }}>
-                        Mensajes entrantes de pacientes (sin costo)
+                        {metrics.uniquePatientsCount ? `${metrics.uniquePatientsCount.toLocaleString('es-AR')} pacientes únicos` : 'Casos ingresados en el período'}
                     </div>
                 </div>
 
@@ -2197,7 +2199,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 </div>
 
-                {/* 6. CONVERSACIONES TOTALES (SESIONES DE ATENCIÓN) */}
+                {/* 6. PACIENTES ÚNICOS */}
                 <div style={{
                     background: '#FFFFFF', borderRadius: '12px', padding: '18px 20px',
                     border: '1px solid #E2E8F0', boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
@@ -2206,10 +2208,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
                             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                Conversaciones
+                                Pacientes Únicos
                             </span>
                             <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F2942', marginTop: '4px' }}>
-                                {loading ? '...' : (metrics.totalConversations || 0).toLocaleString()}
+                                {loading ? '...' : (metrics.uniquePatientsCount || 0).toLocaleString('es-AR')}
                             </div>
                         </div>
                         <div style={{
@@ -2217,12 +2219,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
                             border: '1px solid #BAE6FD'
                         }}>
-                            <MessageSquare size={18} />
+                            <Users size={18} />
                         </div>
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '10px', display: 'flex', gap: '6px', alignItems: 'center' }}>
                         <span style={{ color: '#0284C7', fontWeight: 700 }}>
-                            {metrics.uniquePatientsCount ? `${metrics.uniquePatientsCount.toLocaleString()} pacientes` : 'Pacientes únicos'}
+                            ~{metrics.avgConversationsPerPatient || 1} casos / paciente
                         </span>
                         <span>•</span>
                         <span style={{ color: '#059669', fontWeight: 700 }}>
