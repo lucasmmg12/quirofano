@@ -147,6 +147,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
         multiSessionPatientsCount: 0,
         multiSessionPatientsPct: 0,
         closedConversationsCount: 0,
+        activeResolvedCount: 0,
+        archivedOver24hCount: 0,
         activeConversationsCount: 0,
         byResolutionReason: {},
         firstMessageChoices: {
@@ -700,6 +702,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             // ── E. Métricas de Calidad de Atención al Paciente & Tipos de Consulta ──
             let closedCount = 0;
+            let activeResolvedCount = 0;
             let activeCount = 0;
             const reasonsMap = {};
             MOTIVOS_FINALIZACION_CATALOGO.forEach(c => { reasonsMap[c.key] = 0; });
@@ -944,12 +947,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     let totalResMin = null;
                     if (c.created_at && c.closed_at) {
                         totalResMin = Math.round((new Date(c.closed_at) - new Date(c.created_at)) / 60000);
-                        if (totalResMin > 0 && totalResMin < 10080) { // menos de 7 días
-                            allResolutionTimes.push(totalResMin);
-                        }
                     }
 
-                    // Clasificación para Histograma SLA & Inactividad +24h
+                    // Clasificación para Histograma SLA & Inactividad +24h (se excluyen de tiempos y métricas activas)
                     const isInactive24h = r.includes('24h') || 
                                           r.includes('inactividad') || 
                                           r.includes('barrido') || 
@@ -959,19 +959,22 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     if (isInactive24h) {
                         archivedOver24hCount++;
                         resHistogramCounts.mas24h++;
-                    } else if (totalResMin !== null && totalResMin >= 0) {
-                        if (totalResMin < 5) resHistogramCounts.under5m++;
-                        else if (totalResMin < 30) resHistogramCounts.de5a30m++;
-                        else if (totalResMin < 60) resHistogramCounts.de30a60m++;
-                        else if (totalResMin < 240) resHistogramCounts.de1a4h++;
-                        else if (totalResMin < 720) resHistogramCounts.de4a12h++;
-                        else if (totalResMin < 1440) resHistogramCounts.de12a24h++;
-                        else {
-                            archivedOver24hCount++;
-                            resHistogramCounts.mas24h++;
-                        }
                     } else {
-                        resHistogramCounts.de5a30m++;
+                        activeResolvedCount++;
+                        // Solo casos resueltos activos (< 24hs) se computan para el tiempo promedio de resolución general
+                        if (totalResMin !== null && totalResMin > 0 && totalResMin < 1440) {
+                            allResolutionTimes.push(totalResMin);
+                        }
+                        if (totalResMin !== null && totalResMin >= 0) {
+                            if (totalResMin < 5) resHistogramCounts.under5m++;
+                            else if (totalResMin < 30) resHistogramCounts.de5a30m++;
+                            else if (totalResMin < 60) resHistogramCounts.de30a60m++;
+                            else if (totalResMin < 240) resHistogramCounts.de1a4h++;
+                            else if (totalResMin < 720) resHistogramCounts.de4a12h++;
+                            else if (totalResMin < 1440) resHistogramCounts.de12a24h++;
+                        } else {
+                            resHistogramCounts.de5a30m++;
+                        }
                     }
 
                     // Guardar para cálculo de First Contact Resolution (FCR)
@@ -1343,6 +1346,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 multiSessionPatientsCount,
                 multiSessionPatientsPct,
                 closedConversationsCount: closedCount,
+                activeResolvedCount,
+                archivedOver24hCount,
                 activeConversationsCount: activeCount,
                 byResolutionReason: reasonsMap,
                 inquiryTypes: inquiryTypesMap,
@@ -1541,9 +1546,24 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F2942' }}>
                             Métricas & Monitoreo Contact Center
                         </h2>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                            Plataforma Sanatorio Argentino · Línea WhatsApp Oficial y Análisis Operativo
-                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px' }}>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                                Plataforma Sanatorio Argentino · Línea WhatsApp Oficial y Análisis Operativo
+                            </p>
+                            {(metrics.patientQuality?.archivedOver24hCount || 0) > 0 && (
+                                <span 
+                                    title="Total de casos cerrados automáticamente por inactividad (+24hs sin respuesta) o barridos"
+                                    style={{
+                                        fontSize: '0.68rem', fontWeight: 800, color: '#475569', background: '#F1F5F9',
+                                        border: '1px solid #CBD5E1', padding: '2px 8px', borderRadius: '12px',
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                    }}
+                                >
+                                    <Clock size={11} color="#64748B" />
+                                    {(metrics.patientQuality?.archivedOver24hCount || 0).toLocaleString('es-AR')} finalizados +24hs
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -2040,7 +2060,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 </div>
 
-                {/* 5. CASOS FINALIZADOS */}
+                {/* 5. CASOS FINALIZADOS ACTIVOS */}
                 <div style={{
                     background: '#FFFFFF', borderRadius: '12px', padding: '18px 20px',
                     border: '1px solid #E2E8F0', boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
@@ -2049,10 +2069,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
                             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                Casos Finalizados
+                                Casos Resueltos Activos
                             </span>
                             <div style={{ fontSize: '2rem', fontWeight: 900, color: '#8B5CF6', marginTop: '4px' }}>
-                                {loading ? '...' : metrics.closedConversationsCount.toLocaleString()}
+                                {loading ? '...' : (metrics.activeResolvedCount || 0).toLocaleString('es-AR')}
                             </div>
                         </div>
                         <div style={{
@@ -2062,8 +2082,11 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             <CheckCircle2 size={18} />
                         </div>
                     </div>
-                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '10px' }}>
-                        {metrics.activeConversationsCount} conversaciones en curso
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                        <span>⚡ En &lt; 24hs de gestión</span>
+                        <span style={{ fontWeight: 700, color: '#475569', background: '#F1F5F9', padding: '2px 6px', borderRadius: '4px' }}>
+                            +{(metrics.patientQuality?.archivedOver24hCount || 0).toLocaleString('es-AR')} inactivos (+24h)
+                        </span>
                     </div>
                 </div>
 
@@ -3055,9 +3078,18 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0369A1', background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '4px 10px', borderRadius: '8px' }}>
                                 ⚡ Resolución Inmediata (&lt; 30m): {(metrics.patientQuality?.resolutionHistogram?.[0]?.pct || 0) + (metrics.patientQuality?.resolutionHistogram?.[1]?.pct || 0)}%
+                            </span>
+                            <span 
+                                title="Conversaciones cerradas por inactividad (+24hs sin respuesta del paciente o barridos de cola)"
+                                style={{
+                                    fontSize: '0.72rem', fontWeight: 800, color: '#475569', background: '#F1F5F9', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                }}
+                            >
+                                <Clock size={12} color="#64748B" />
+                                +24hs Inactivos: {(metrics.patientQuality?.archivedOver24hCount || 0).toLocaleString('es-AR')} casos
                             </span>
                         </div>
                     </div>
@@ -3100,6 +3132,21 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600 }}>{b.pct}% de casos</div>
                             </div>
                         ))}
+                        {/* PÍLDORA INFORMATIVA SEPARADA DE +24H */}
+                        <div style={{
+                            padding: '8px 10px',
+                            borderRadius: '10px',
+                            border: '1.5px dashed #94A3B8',
+                            background: '#F8FAFC',
+                            textAlign: 'center',
+                            opacity: 0.95
+                        }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B' }}>+24 hs (Inactivos)</div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#64748B', margin: '2px 0' }}>
+                                {(metrics.patientQuality?.archivedOver24hCount || 0).toLocaleString('es-AR')}
+                            </div>
+                            <div style={{ fontSize: '0.62rem', color: '#94A3B8', fontWeight: 600 }}>Cierre inactividad</div>
+                        </div>
                     </div>
 
                     {/* ── SECCIÓN COMPLEMENTARIA: VELOCIDAD AL 1ER MENSAJE DE ASESORAS (FRT) ── */}
