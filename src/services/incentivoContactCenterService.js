@@ -264,7 +264,14 @@ export function calcularLiquidacionCompleta({
         const fteCustom = ajustesFte[ag.id] !== undefined ? ajustesFte[ag.id] : ag.fte;
         const fte = Math.max(0, Math.min(1.0, Number(fteCustom)));
 
-        const base = BASE_GARANTIZADA_HISTORICA * fte;
+        // Piso Garantizado (Base):
+        // Érica Leal y todos los agentes activos / en curva de aprendizaje cobran el piso garantizado histórico inamovible ($139.470,59).
+        // El FTE proporcional (ej: 50% en curva de aprendizaje) aplica a las bolsas de incentivos variables (Msjs, Turnos, Asistencia).
+        // Únicamente se prorratea el piso garantizado por FTE en caso de bajas definitivas por días trabajados (ej: Antonella Acosta en septiembre).
+        const base = (ag.id === 'eleal' || ag.estado !== 'BAJA')
+            ? BASE_GARANTIZADA_HISTORICA
+            : BASE_GARANTIZADA_HISTORICA * fte;
+
         const montoMensajes = escalonMensajes.monto * fte;
         const montoTurnos = escalonTurnos.monto * fte;
         const montoAsistencia = (ag.montoAsistencia || 0) * fte;

@@ -1019,8 +1019,8 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         <tbody>
                             {liquidacionReal.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).map((agReal) => {
                                 const agProy = liquidacionProyectada.agentes.find(a => a.id === agReal.id) || agReal;
-                                const maxObjetivoTecho = TECHO_MAXIMO_TOTAL * agReal.fte;
                                 const varObjetivoTecho = MAX_VARIABLE_TOTAL * agReal.fte;
+                                const maxObjetivoTecho = agReal.baseGarantizadaLiquidada + varObjetivoTecho;
 
                                 return (
                                     <tr key={agReal.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s ease' }}>
