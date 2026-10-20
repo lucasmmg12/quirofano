@@ -180,34 +180,50 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
         return () => { isMounted = false; };
     }, [periodo]);
 
-    // Cálculo dinámico de la liquidación
-    const liquidacion = useMemo(() => {
-        let msgs = Number(mensajesManuales) || 0;
-        let datosAUsar = datosSalus;
+    // Factor de proyección para el mes en curso
+    const factorProyeccion = (isCurrentMonth && currentDay > 0) ? (totalDaysInMonth / currentDay) : 1;
 
-        if (isCurrentMonth && octubreModoProyeccion && datosSalus) {
-            const factorProyeccion = currentDay > 0 ? (totalDaysInMonth / currentDay) : 1;
-            msgs = datosSalus.proyeccionConvs || Math.round((Number(mensajesManuales) || 0) * factorProyeccion);
-            datosAUsar = {
-                ...datosSalus,
-                turnosGrupales: {
-                    ...datosSalus.turnosGrupales,
-                    total: datosSalus.proyeccionTurnos || Math.round((datosSalus.turnosGrupales?.total || 0) * factorProyeccion)
-                },
-                agentes: (datosSalus.agentes || []).map(ag => ({
-                    ...ag,
-                    turnos: Math.round((ag.turnos || 0) * factorProyeccion)
-                }))
-            };
-        }
-
+    // 1. Liquidación Real Acumulada a la fecha
+    const liquidacionReal = useMemo(() => {
         return calcularLiquidacionCompleta({
             periodo,
-            mensajesTotales: msgs,
-            datosSalus: datosAUsar,
+            mensajesTotales: Number(mensajesManuales) || 0,
+            datosSalus,
             ajustesFte
         });
-    }, [periodo, mensajesManuales, datosSalus, ajustesFte, octubreModoProyeccion, isCurrentMonth, currentDay, totalDaysInMonth]);
+    }, [periodo, mensajesManuales, datosSalus, ajustesFte]);
+
+    // 2. Liquidación Proyectada (Tendencia a Fin de Mes)
+    const liquidacionProyectada = useMemo(() => {
+        if (!isCurrentMonth || !datosSalus) return liquidacionReal;
+        const msgsProy = datosSalus.proyeccionConvs || Math.round((Number(mensajesManuales) || 0) * factorProyeccion);
+        const turnosProy = datosSalus.proyeccionTurnos || Math.round((datosSalus.turnosGrupales?.total || 0) * factorProyeccion);
+        const datosProy = {
+            ...datosSalus,
+            turnosGrupales: {
+                ...datosSalus.turnosGrupales,
+                total: turnosProy
+            },
+            agentes: (datosSalus.agentes || []).map(ag => ({
+                ...ag,
+                turnos: Math.round((ag.turnos || 0) * factorProyeccion)
+            }))
+        };
+        return calcularLiquidacionCompleta({
+            periodo,
+            mensajesTotales: msgsProy,
+            datosSalus: datosProy,
+            ajustesFte
+        });
+    }, [periodo, mensajesManuales, datosSalus, ajustesFte, isCurrentMonth, factorProyeccion, liquidacionReal]);
+
+    // Cálculo activo para compatibilidad con el resto del tablero
+    const liquidacion = useMemo(() => {
+        return octubreModoProyeccion ? liquidacionProyectada : liquidacionReal;
+    }, [octubreModoProyeccion, liquidacionProyectada, liquidacionReal]);
+
+    // Modo de visualización en la tabla de liquidación: 'comparativa' | 'real' | 'tendencia'
+    const [modoVistaTabla, setModoVistaTabla] = useState('comparativa');
 
     const formatCurrency = (val) => {
         return new Intl.NumberFormat('es-AR', {
@@ -687,9 +703,234 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             </div>
 
             {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* 2.B TABLERO DESTACADO: OBJETIVO 🎯 / REAL 📍 / TENDENCIA 📈        */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                border: '1px solid #E2E8F0',
+                padding: '20px 22px',
+                marginBottom: '18px',
+                boxShadow: '0 2px 8px rgba(0, 59, 113, 0.05)'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '32px', height: '32px', borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #003B71 0%, #0284C7 100%)',
+                            color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            <Target size={18} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                Tablero de Cumplimiento: Objetivo / Real / Tendencia a Fin de Mes
+                                <span style={{
+                                    fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
+                                    background: isCurrentMonth ? '#FEF3C7' : '#F1F5F9',
+                                    color: isCurrentMonth ? '#B45309' : '#475569',
+                                    border: isCurrentMonth ? '1px solid #FDE68A' : '1px solid #CBD5E1'
+                                }}>
+                                    {isCurrentMonth ? `Día ${currentDay} de ${totalDaysInMonth} (${periodMonthName})` : periodMonthName}
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                Monitoreo tridimensional de metas oficiales, producción acumulada y proyección al cierre de jornada.
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Leyenda Visual de los 3 Estados */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#F8FAFC', padding: '6px 14px', borderRadius: '10px', border: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.70rem', fontWeight: 800, color: '#0284C7' }}>
+                            <Target size={13} color="#0284C7" />
+                            <span>🎯 OBJETIVO (Meta)</span>
+                        </div>
+                        <span style={{ color: '#CBD5E1' }}>|</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.70rem', fontWeight: 800, color: '#475569' }}>
+                            <Activity size={13} color="#475569" />
+                            <span>📍 REAL AL DÍA</span>
+                        </div>
+                        <span style={{ color: '#CBD5E1' }}>|</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.70rem', fontWeight: 800, color: '#059669' }}>
+                            <TrendingUp size={13} color="#059669" />
+                            <span>📈 TENDENCIA FIN DE MES</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4 Tarjetas de Alto Impacto con la Triple Métrica */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                    gap: '12px'
+                }}>
+                    {/* Tarjeta 1: Bolsa 1 Mensajes (50%) */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0',
+                        padding: '14px 16px', position: 'relative'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                                Bolsa 1: Conv. Únicas (50%)
+                            </span>
+                            <MessageSquare size={15} color="#0284C7" />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#64748B' }}>🎯 Objetivo Meta:</span>
+                                <strong style={{ color: '#0F2942' }}>7.500 convs <span style={{ color: '#64748B', fontWeight: 500 }}>(Tope 8.500)</span></strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#64748B' }}>📍 Real al Día ({currentDay}):</span>
+                                <strong style={{ color: '#0284C7' }}>{Number(mensajesManuales || 0).toLocaleString('es-AR')} convs</strong>
+                            </div>
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '6px 8px', borderRadius: '8px', background: '#ECFDF5', border: '1px solid #A7F3D0',
+                                marginTop: '4px'
+                            }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46' }}>📈 Tendencia Fin de Mes:</span>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#059669' }}>
+                                        {liquidacionProyectada.bolsaMensajes.total.toLocaleString('es-AR')} convs
+                                    </div>
+                                    <div style={{ fontSize: '0.64rem', color: '#047857', fontWeight: 800 }}>
+                                        Escalón {liquidacionProyectada.bolsaMensajes.escalon}/10 • +{formatCurrency(liquidacionProyectada.bolsaMensajes.montoPorFte)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tarjeta 2: Bolsa 2 Turnos (25%) */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0',
+                        padding: '14px 16px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#7C3AED', textTransform: 'uppercase' }}>
+                                Bolsa 2: Turnos Otorgados (25%)
+                            </span>
+                            <PhoneCall size={15} color="#7C3AED" />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#64748B' }}>🎯 Objetivo Meta:</span>
+                                <strong style={{ color: '#0F2942' }}>3.687 turnos <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 3.052)</span></strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#64748B' }}>📍 Real al Día ({currentDay}):</span>
+                                <strong style={{ color: '#7C3AED' }}>{Number(datosSalus?.turnosGrupales?.total || 0).toLocaleString('es-AR')} turnos</strong>
+                            </div>
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '6px 8px', borderRadius: '8px',
+                                background: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#ECFDF5' : '#FFFBEB',
+                                border: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '1px solid #A7F3D0' : '1px solid #FCD34D',
+                                marginTop: '4px'
+                            }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#065F46' : '#92400E' }}>
+                                    📈 Tendencia Fin de Mes:
+                                </span>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 900, color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#059669' : '#D97706' }}>
+                                        {liquidacionProyectada.bolsaTurnos.total.toLocaleString('es-AR')} turnos
+                                    </div>
+                                    <div style={{ fontSize: '0.64rem', color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#047857' : '#B45309', fontWeight: 800 }}>
+                                        {liquidacionProyectada.bolsaTurnos.total >= 3052 
+                                            ? `Escalón ${liquidacionProyectada.bolsaTurnos.escalon}/10 • +${formatCurrency(liquidacionProyectada.bolsaTurnos.montoPorFte)}`
+                                            : `Faltan ${(3052 - liquidacionProyectada.bolsaTurnos.total).toLocaleString('es-AR')} para piso`}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tarjeta 3: Bolsa 3 Asistencia (25%) */}
+                    <div style={{
+                        background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0',
+                        padding: '14px 16px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>
+                                Bolsa 3: Asistencia (25%)
+                            </span>
+                            <CheckCircle2 size={15} color="#059669" />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#64748B' }}>🎯 Objetivo Meta:</span>
+                                <strong style={{ color: '#0F2942' }}>55.0% <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 50.0%)</span></strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#64748B' }}>📍 Real Promedio Equipo:</span>
+                                <strong style={{ color: '#059669' }}>
+                                    {(liquidacionReal.agentes.reduce((s, a) => s + (a.asistenciaPct || 0), 0) / Math.max(1, liquidacionReal.agentes.length)).toFixed(1)}%
+                                </strong>
+                            </div>
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '6px 8px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #CBD5E1',
+                                marginTop: '4px'
+                            }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569' }}>📈 Estado Asistencia:</span>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F2942' }}>
+                                        Evaluación individual
+                                    </div>
+                                    <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600 }}>
+                                        Paga a partir del 50.0%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tarjeta 4: Total por Asesora 100% FTE */}
+                    <div style={{
+                        background: 'linear-gradient(135deg, #003B71 0%, #0F2942 100%)',
+                        borderRadius: '12px', padding: '14px 16px', color: '#FFFFFF'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#93C5FD', textTransform: 'uppercase' }}>
+                                Liquidación / Asesora (100% FTE)
+                            </span>
+                            <DollarSign size={15} color="#67E8F9" />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#BAE6FD' }}>🎯 Objetivo Techo (100%):</span>
+                                <strong style={{ color: '#FFFFFF' }}>$ 278.941</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                                <span style={{ color: '#BAE6FD' }}>📍 Real Devengado Hoy:</span>
+                                <strong style={{ color: '#FDE047' }}>$ 139.471 <span style={{ color: '#93C5FD', fontWeight: 500 }}>(+$ 0 var)</span></strong>
+                            </div>
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '6px 8px', borderRadius: '8px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+                                marginTop: '4px'
+                            }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#A7F3D0' }}>📈 Tendencia Fin de Mes:</span>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.94rem', fontWeight: 900, color: '#FFFFFF' }}>
+                                        {formatCurrency(liquidacionProyectada.agentes.find(a => a.fte === 1.0)?.totalALiquidar || (BASE_GARANTIZADA_HISTORICA + liquidacionProyectada.bolsaMensajes.montoPorFte + liquidacionProyectada.bolsaTurnos.montoPorFte))}
+                                    </div>
+                                    <div style={{ fontSize: '0.64rem', color: '#67E8F9', fontWeight: 700 }}>
+                                        +{formatCurrency(liquidacionProyectada.agentes.find(a => a.fte === 1.0)?.totalVariable || (liquidacionProyectada.bolsaMensajes.montoPorFte + liquidacionProyectada.bolsaTurnos.montoPorFte))} variable est.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
 
-            {/* TABLA DE LIQUIDACIÓN NOMINAL POR COLABORADORA */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* TABLA DE LIQUIDACIÓN NOMINAL POR COLABORADORA                   */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '16px',
@@ -698,18 +939,67 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                 marginBottom: '20px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
-                        <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: 800, color: '#0F2942' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: 800, color: '#0F2942', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             Desglose de Liquidación Individual por Colaboradora
                         </h3>
                         <p style={{ margin: '3px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                            Cálculo transparente de haberes según 3 bolsas independientes prorrateadas por FTE.
+                            Comparativa transparente entre el Objetivo Oficial, el Real Acumulado al día y la Tendencia a Fin de Mes.
                         </p>
                     </div>
-                    <span style={{ fontSize: '0.72rem', background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontWeight: 700, color: '#475569' }}>
-                        Dotación Evaluada: {liquidacion.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).length} operadoras
-                    </span>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        {/* Selector de Modo de Vista en la Tabla */}
+                        <div style={{
+                            display: 'flex', background: '#F1F5F9', borderRadius: '10px', padding: '3px',
+                            border: '1px solid #E2E8F0'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setModoVistaTabla('comparativa')}
+                                style={{
+                                    padding: '5px 11px', borderRadius: '7px', border: 'none',
+                                    background: modoVistaTabla === 'comparativa' ? '#003B71' : 'transparent',
+                                    color: modoVistaTabla === 'comparativa' ? '#FFFFFF' : '#475569',
+                                    fontWeight: 800, fontSize: '0.70rem', cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                📊 Comparativa (Objetivo / Real / Tendencia)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setModoVistaTabla('real')}
+                                style={{
+                                    padding: '5px 11px', borderRadius: '7px', border: 'none',
+                                    background: modoVistaTabla === 'real' ? '#003B71' : 'transparent',
+                                    color: modoVistaTabla === 'real' ? '#FFFFFF' : '#475569',
+                                    fontWeight: 800, fontSize: '0.70rem', cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                📍 Solo Real Acumulado
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setModoVistaTabla('tendencia')}
+                                style={{
+                                    padding: '5px 11px', borderRadius: '7px', border: 'none',
+                                    background: modoVistaTabla === 'tendencia' ? '#003B71' : 'transparent',
+                                    color: modoVistaTabla === 'tendencia' ? '#FFFFFF' : '#475569',
+                                    fontWeight: 800, fontSize: '0.70rem', cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                📈 Solo Tendencia Fin de Mes
+                            </button>
+                        </div>
+
+                        <span style={{ fontSize: '0.72rem', background: '#F8FAFC', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '8px', fontWeight: 700, color: '#475569' }}>
+                            Dotación Evaluada: {liquidacionReal.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).length} operadoras
+                        </span>
+                    </div>
                 </div>
 
                 <div style={{ overflowX: 'auto' }}>
@@ -728,36 +1018,40 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             </tr>
                         </thead>
                         <tbody>
-                            {liquidacion.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).map((ag) => (
-                                <tr key={ag.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s ease' }}>
-                                    <td style={{ padding: '12px', fontWeight: 700, color: '#0F2942' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={{
-                                                width: '26px', height: '26px', borderRadius: '50%',
-                                                background: '#003B71', color: '#FFFFFF',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontSize: '0.68rem', fontWeight: 800
-                                            }}>
-                                                {ag.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                            </div>
-                                            <div>
-                                                <div>{ag.name}</div>
-                                                <div style={{ fontSize: '0.66rem', color: '#94A3B8' }}>{ag.salusKey}</div>
-                                            </div>
-                                        </div>
-                                    </td>
+                            {liquidacionReal.agentes.filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta'))).map((agReal) => {
+                                const agProy = liquidacionProyectada.agentes.find(a => a.id === agReal.id) || agReal;
+                                const maxObjetivoTecho = TECHO_MAXIMO_TOTAL * agReal.fte;
+                                const varObjetivoTecho = MAX_VARIABLE_TOTAL * agReal.fte;
 
-                                    {/* Control FTE / Estado */}
-                                    <td style={{ padding: '12px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                return (
+                                    <tr key={agReal.id} style={{ borderBottom: '1px solid #F1F5F9', transition: 'background 0.15s ease' }}>
+                                        <td style={{ padding: '12px', fontWeight: 700, color: '#0F2942' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{
+                                                    width: '28px', height: '28px', borderRadius: '50%',
+                                                    background: agReal.fte === 1.0 ? '#003B71' : '#475569', color: '#FFFFFF',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: '0.68rem', fontWeight: 800
+                                                }}>
+                                                    {agReal.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontWeight: 800 }}>{agReal.name}</div>
+                                                    <div style={{ fontSize: '0.66rem', color: '#94A3B8' }}>{agReal.salusKey}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Control FTE / Estado */}
+                                        <td style={{ padding: '12px' }}>
                                             <select
-                                                value={ag.fte}
-                                                onChange={(e) => handleFteChange(ag.id, e.target.value)}
+                                                value={agReal.fte}
+                                                onChange={(e) => handleFteChange(agReal.id, e.target.value)}
                                                 style={{
                                                     padding: '3px 6px', borderRadius: '6px',
                                                     border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700,
-                                                    background: ag.fte === 1.0 ? '#F0FDF4' : '#FFFBEB',
-                                                    color: ag.fte === 1.0 ? '#166534' : '#92400E'
+                                                    background: agReal.fte === 1.0 ? '#F0FDF4' : '#FFFBEB',
+                                                    color: agReal.fte === 1.0 ? '#166534' : '#92400E'
                                                 }}
                                             >
                                                 <option value="1.0">100% FTE (Pleno)</option>
@@ -767,55 +1061,177 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                 <option value="0.15">15% FTE (Cese)</option>
                                                 <option value="0">0% (Inactiva)</option>
                                             </select>
-                                        </div>
-                                    </td>
+                                        </td>
 
-                                    {/* Piso Garantizado */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>
-                                        {formatCurrency(ag.baseGarantizadaLiquidada)}
-                                    </td>
+                                        {/* Piso Garantizado */}
+                                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>
+                                            {formatCurrency(agReal.baseGarantizadaLiquidada)}
+                                        </td>
 
-                                    {/* Bolsa Mensajes */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
-                                        <div>+{formatCurrency(ag.montoMensajes)}</div>
-                                        {ag.mensajesIndividuales > 0 && (
-                                            <div style={{ fontSize: '0.64rem', color: '#0369A1', fontWeight: 700 }}>
-                                                {ag.mensajesIndividuales.toLocaleString()} msjs
+                                        {/* Bolsa Mensajes */}
+                                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                                            {modoVistaTabla === 'real' && (
+                                                <div>
+                                                    <div style={{ fontWeight: 800, color: '#0284C7' }}>+{formatCurrency(agReal.montoMensajes)}</div>
+                                                    <div style={{ fontSize: '0.64rem', color: '#64748B' }}>{agReal.mensajesIndividuales.toLocaleString()} msjs</div>
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'tendencia' && (
+                                                <div>
+                                                    <div style={{ fontWeight: 800, color: '#059669' }}>+{formatCurrency(agProy.montoMensajes)}</div>
+                                                    <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 700 }}>
+                                                        📈 {Math.round(agReal.mensajesIndividuales * factorProyeccion).toLocaleString()} msjs est.
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'comparativa' && (
+                                                <div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        📍 Real: <strong style={{ color: '#0284C7' }}>+{formatCurrency(agReal.montoMensajes)}</strong> ({agReal.mensajesIndividuales.toLocaleString()} msjs)
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
+                                                        📈 Tendencia: +{formatCurrency(agProy.montoMensajes)}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
+
+                                        {/* Bolsa Turnos */}
+                                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                                            {modoVistaTabla === 'real' && (
+                                                <div>
+                                                    <div style={{ fontWeight: 800, color: '#7C3AED' }}>+{formatCurrency(agReal.montoTurnos)}</div>
+                                                    <div style={{ fontSize: '0.64rem', color: '#64748B' }}>{agReal.turnos || 0} turnos</div>
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'tendencia' && (
+                                                <div>
+                                                    <div style={{ fontWeight: 800, color: '#059669' }}>+{formatCurrency(agProy.montoTurnos)}</div>
+                                                    <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 700 }}>
+                                                        📈 {Math.round((agReal.turnos || 0) * factorProyeccion)} turnos est.
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'comparativa' && (
+                                                <div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        📍 Real: <strong style={{ color: '#7C3AED' }}>+{formatCurrency(agReal.montoTurnos)}</strong> ({agReal.turnos || 0} turnos)
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: agProy.montoTurnos > 0 ? '#059669' : '#D97706', marginTop: '2px' }}>
+                                                        📈 Tendencia: +{formatCurrency(agProy.montoTurnos)}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
+
+                                        {/* Asistencia Individual % */}
+                                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                                            <div style={{ fontWeight: 800, color: agReal.asistenciaPct >= 55 ? '#059669' : agReal.asistenciaPct >= 50 ? '#D97706' : '#DC2626' }}>
+                                                {agReal.asistenciaPct}%
                                             </div>
-                                        )}
-                                    </td>
+                                            <div style={{ fontSize: '0.64rem', color: '#94A3B8' }}>
+                                                {agReal.asistidas} de {agReal.evaluables} citas
+                                            </div>
+                                            {modoVistaTabla === 'comparativa' && (
+                                                <div style={{ fontSize: '0.62rem', color: '#0284C7', fontWeight: 700, marginTop: '1px' }}>
+                                                    🎯 Meta: 55%
+                                                </div>
+                                            )}
+                                        </td>
 
-                                    {/* Bolsa Turnos */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#7C3AED' }}>
-                                        +{formatCurrency(ag.montoTurnos)}
-                                    </td>
+                                        {/* Bolsa Asistencia Individual $ */}
+                                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                                            {modoVistaTabla === 'real' && (
+                                                <div style={{ fontWeight: 800, color: '#059669' }}>+{formatCurrency(agReal.montoAsistencia)}</div>
+                                            )}
+                                            {modoVistaTabla === 'tendencia' && (
+                                                <div style={{ fontWeight: 800, color: '#059669' }}>+{formatCurrency(agProy.montoAsistencia)}</div>
+                                            )}
+                                            {modoVistaTabla === 'comparativa' && (
+                                                <div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        📍 Real: <strong>+{formatCurrency(agReal.montoAsistencia)}</strong>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.70rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
+                                                        📈 Proy: +{formatCurrency(agProy.montoAsistencia)}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
 
-                                    {/* Asistencia Individual % */}
-                                    <td style={{ padding: '12px', textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 800, color: ag.asistenciaPct >= 55 ? '#059669' : ag.asistenciaPct >= 50 ? '#D97706' : '#DC2626' }}>
-                                            {ag.asistenciaPct}%
-                                        </div>
-                                        <div style={{ fontSize: '0.64rem', color: '#94A3B8' }}>
-                                            {ag.asistidas} de {ag.evaluables} citas
-                                        </div>
-                                    </td>
+                                        {/* Total Variable */}
+                                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                                            {modoVistaTabla === 'real' && (
+                                                <div style={{ fontWeight: 800, color: '#2563EB', fontSize: '0.85rem' }}>
+                                                    +{formatCurrency(agReal.totalVariable)}
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'tendencia' && (
+                                                <div style={{ fontWeight: 900, color: '#059669', fontSize: '0.85rem' }}>
+                                                    +{formatCurrency(agProy.totalVariable)}
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'comparativa' && (
+                                                <div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        📍 Real: <strong style={{ color: '#2563EB' }}>+{formatCurrency(agReal.totalVariable)}</strong>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.78rem', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
+                                                        📈 Proy: +{formatCurrency(agProy.totalVariable)}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
 
-                                    {/* Bolsa Asistencia Individual $ */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
-                                        +{formatCurrency(ag.montoAsistencia)}
-                                    </td>
-
-                                    {/* Total Variable */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#2563EB' }}>
-                                        +{formatCurrency(ag.totalVariable)}
-                                    </td>
-
-                                    {/* TOTAL A LIQUIDAR */}
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#003B71', fontSize: '0.90rem' }}>
-                                        {formatCurrency(ag.totalALiquidar)}
-                                    </td>
-                                </tr>
-                            ))}
+                                        {/* TOTAL A LIQUIDAR (QUE SE NOTE BIEN) */}
+                                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                                            {modoVistaTabla === 'real' && (
+                                                <div style={{ fontWeight: 900, color: '#003B71', fontSize: '0.92rem' }}>
+                                                    {formatCurrency(agReal.totalALiquidar)}
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'tendencia' && (
+                                                <div style={{
+                                                    background: '#ECFDF5', padding: '4px 8px', borderRadius: '8px',
+                                                    border: '1px solid #A7F3D0', display: 'inline-block'
+                                                }}>
+                                                    <div style={{ fontWeight: 900, color: '#059669', fontSize: '0.92rem' }}>
+                                                        {formatCurrency(agProy.totalALiquidar)}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.62rem', color: '#065F46', fontWeight: 800 }}>
+                                                        +{formatCurrency(agProy.totalVariable)} variable
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {modoVistaTabla === 'comparativa' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                                                    {/* Real al día */}
+                                                    <div style={{ fontSize: '0.70rem', color: '#475569' }}>
+                                                        📍 Real hoy: <strong style={{ color: '#0F2942' }}>{formatCurrency(agReal.totalALiquidar)}</strong>
+                                                    </div>
+                                                    {/* Tendencia a fin de mes (Badge Destacado) */}
+                                                    <div style={{
+                                                        background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                                                        padding: '4px 8px', borderRadius: '8px', border: '1px solid #A7F3D0',
+                                                        textAlign: 'right'
+                                                    }}>
+                                                        <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#065F46' }}>
+                                                            📈 {formatCurrency(agProy.totalALiquidar)}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.62rem', color: '#047857', fontWeight: 800 }}>
+                                                            Tendencia a Fin de Mes
+                                                        </div>
+                                                    </div>
+                                                    {/* Objetivo Techo */}
+                                                    <div style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600 }}>
+                                                        🎯 Objetivo Techo: {formatCurrency(maxObjetivoTecho)}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                         <tfoot>
                             <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
@@ -823,16 +1239,54 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                     TOTALES CONSOLIDADOS DEL EQUIPO
                                 </td>
                                 <td style={{ padding: '12px', textAlign: 'right', color: '#475569' }}>
-                                    {formatCurrency(liquidacion.totalesEquipo.baseTotal)}
+                                    {formatCurrency(liquidacionReal.totalesEquipo.baseTotal)}
                                 </td>
                                 <td colSpan="4" style={{ padding: '12px', textAlign: 'right', color: '#64748B' }}>
-                                    Total Productividad Variable:
+                                    {modoVistaTabla === 'comparativa' ? 'Productividad Variable (Real ➔ Proyectada):' : 'Productividad Variable:'}
                                 </td>
-                                <td style={{ padding: '12px', textAlign: 'right', color: '#2563EB', fontWeight: 900 }}>
-                                    +{formatCurrency(liquidacion.totalesEquipo.variableTotal)}
+                                <td style={{ padding: '12px', textAlign: 'right' }}>
+                                    {modoVistaTabla === 'real' && (
+                                        <span style={{ color: '#2563EB', fontWeight: 900, fontSize: '0.88rem' }}>
+                                            +{formatCurrency(liquidacionReal.totalesEquipo.variableTotal)}
+                                        </span>
+                                    )}
+                                    {modoVistaTabla === 'tendencia' && (
+                                        <span style={{ color: '#059669', fontWeight: 900, fontSize: '0.88rem' }}>
+                                            +{formatCurrency(liquidacionProyectada.totalesEquipo.variableTotal)}
+                                        </span>
+                                    )}
+                                    {modoVistaTabla === 'comparativa' && (
+                                        <div>
+                                            <div style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                                                📍 +{formatCurrency(liquidacionReal.totalesEquipo.variableTotal)}
+                                            </div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 900, color: '#059669' }}>
+                                                📈 +{formatCurrency(liquidacionProyectada.totalesEquipo.variableTotal)}
+                                            </div>
+                                        </div>
+                                    )}
                                 </td>
-                                <td style={{ padding: '12px', textAlign: 'right', color: '#003B71', fontSize: '1.05rem', fontWeight: 900 }}>
-                                    {formatCurrency(liquidacion.totalesEquipo.liquidacionTotal)}
+                                <td style={{ padding: '12px', textAlign: 'right' }}>
+                                    {modoVistaTabla === 'real' && (
+                                        <span style={{ color: '#003B71', fontSize: '1.05rem', fontWeight: 900 }}>
+                                            {formatCurrency(liquidacionReal.totalesEquipo.liquidacionTotal)}
+                                        </span>
+                                    )}
+                                    {modoVistaTabla === 'tendencia' && (
+                                        <span style={{ color: '#059669', fontSize: '1.05rem', fontWeight: 900 }}>
+                                            {formatCurrency(liquidacionProyectada.totalesEquipo.liquidacionTotal)}
+                                        </span>
+                                    )}
+                                    {modoVistaTabla === 'comparativa' && (
+                                        <div>
+                                            <div style={{ fontSize: '0.70rem', color: '#64748B' }}>
+                                                📍 {formatCurrency(liquidacionReal.totalesEquipo.liquidacionTotal)}
+                                            </div>
+                                            <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#059669' }}>
+                                                📈 {formatCurrency(liquidacionProyectada.totalesEquipo.liquidacionTotal)}
+                                            </div>
+                                        </div>
+                                    )}
                                 </td>
                             </tr>
                         </tfoot>
