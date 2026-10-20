@@ -3592,19 +3592,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             </div>
                                         </div>
 
-                                        {/* PÍLDORA: CONVERSACIONES FINALIZADAS */}
-                                        <div 
-                                            title="Conversaciones finalizadas y resueltas activamente por la asesora"
-                                            style={{
-                                                padding: '4px 9px', borderRadius: '6px', background: '#ECFDF5',
-                                                color: '#065F46', fontSize: '0.72rem', fontWeight: 800, border: '1px solid #A7F3D0',
-                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                            }}
-                                        >
-                                            <CheckCircle2 size={12} color="#059669" />
-                                            {(ag.resolvedCount || 0).toLocaleString('es-AR')} finalizadas
-                                        </div>
-
                                         {/* BADGE DESTACADO: TURNOS SALUS */}
                                         <div 
                                             title="Cantidad oficial de turnos médicos agendados en SALUS durante el período"
