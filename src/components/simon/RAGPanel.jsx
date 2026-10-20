@@ -184,7 +184,7 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
     const [error, setError] = useState(null)
     const [backendOnline, setBackendOnline] = useState(null)
     const [learningStats, setLearningStats] = useState(null)
-    const [showSidebar, setShowSidebar] = useState(true)
+    const [showSidebar, setShowSidebar] = useState(!isPublic)
     const [showHelp, setShowHelp] = useState(false)
 
     // Smart Guidance Layer
@@ -936,7 +936,7 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
 
     return (
         <div className="rag-container">
-            {showSidebar && (
+            {!isPublic && showSidebar && (
                 <div className="rag-sidebar">
                     <div className="rag-sidebar-header">
                         <button className="btn btn-primary rag-new-chat-btn" onClick={startNewConversation}>
@@ -1024,10 +1024,20 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
             )}
 
             <div className="rag-main-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
+                {isPublic && messages.length > 0 && (
+                    <button
+                        className="simon-public-new-chat-btn"
+                        onClick={startNewConversation}
+                        title="Iniciar una nueva consulta limpia"
+                    >
+                        <Plus size={14} />
+                        <span>Nueva Consulta</span>
+                    </button>
+                )}
                 <div className="rag-chat-area" style={{ display: activeTab === 'chat' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
 
                 <div className="rag-messages">
-                    {!showSidebar && (
+                    {!isPublic && !showSidebar && (
                         <button
                             className="rag-sidebar-toggle-floating"
                             onClick={() => setShowSidebar(true)}

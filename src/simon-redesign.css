@@ -2278,4 +2278,47 @@ body.dark-theme .rag-copy-pill-btn:hover {
   cursor: pointer;
 }
 
+/* Simon Public New Chat Floating Button */
+.simon-public-new-chat-btn {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.dark-theme .simon-public-new-chat-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.simon-public-new-chat-btn:hover {
+  background: #f8fafc;
+  border-color: #2563eb;
+  color: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.14);
+}
+
+body.dark-theme .simon-public-new-chat-btn:hover {
+  background: #0f172a;
+  border-color: #3b82f6;
+  color: #60a5fa;
+}
+
 
