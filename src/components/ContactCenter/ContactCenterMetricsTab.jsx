@@ -754,10 +754,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const isHuman = !isMassClosureOrSweep && (!!matchedAssignedAgentId || !!c.assigned_at || (!!c.closed_by_agent_id && !closedById.includes('bot') && !closedById.includes('sistema')));
                 if (isHuman) {
                     humanConversationsCount++;
-                    const agTarget = matchedAssignedAgentId || (closedById && agentDataMap[closedById] ? closedById : null);
-                    if (agTarget && agentDataMap[agTarget]) {
-                        agentDataMap[agTarget].conversationsCount++;
-                    }
                 } else {
                     botOnlyConversationsCount++;
                 }
@@ -829,6 +825,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         if (actualResolvedAgId && agentDataMap[actualResolvedAgId]) {
                             agentDataMap[actualResolvedAgId].resolvedCount++;
                             agentDataMap[actualResolvedAgId].assignedCount++;
+                            agentDataMap[actualResolvedAgId].conversationsCount++;
                             const matchedCat = MOTIVOS_FINALIZACION_CATALOGO.find(m => r.includes(m.key.toLowerCase()));
                             const reasonLabel = matchedCat ? matchedCat.label : (c.resolution_reason || 'Otro / Consulta Respondida');
                             agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] = (agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] || 0) + 1;
@@ -892,6 +889,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     // Conversaciones activas en curso asignadas a la asesora
                     if (matchedAssignedAgentId && !isMassClosureOrSweep && agentDataMap[matchedAssignedAgentId]) {
                         agentDataMap[matchedAssignedAgentId].assignedCount++;
+                        agentDataMap[matchedAssignedAgentId].conversationsCount++;
                     }
                 }
 
