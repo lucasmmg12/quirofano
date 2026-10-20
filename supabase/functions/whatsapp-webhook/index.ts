@@ -2723,44 +2723,62 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         context?.botStage === 'esperando_datos_nuevo' ||
         context?.botStage === 'esperando_orden_foto';
 
-    // SUBMENÚ "MÁS INFORMACIÓN" (opción 5 del menú de bienvenida)
-    // Se activa si botStage es 'menu_mas_info' O si el último mensaje del bot fue dicho submenú (inmunidad ante latencia de DB)
-    const isLastBotMasInfoMenu =
-        !isWaitingForUserData && (
-            context?.botStage === 'menu_mas_info' ||
-            lastBotContent.includes('más información') ||
-            lastBotContent.includes('mas informacion') ||
-            lastBotContent.includes('sobre qué te gustaría saber') ||
-            lastBotContent.includes('sobre que te gustaria saber') ||
-            lastBotContent.includes('1️⃣ *laboratorio*') ||
-            lastBotContent.includes('1️⃣ laboratorio')
+    // 1. RECONOCIMIENTO DEL MENÚ DE BIENVENIDA / PRINCIPAL
+    // Es el menú institucional raíz con opciones 1: Turno | 2: Mis turnos | 3: Autorizaciones | 4: Guardia | 5: Más info
+    // Posee PRIORIDAD MÁXIMA frente a cualquier submenú.
+    const isLastBotWelcomeMenu = 
+        !isWaitingForUserData &&
+        !lastBotContent.includes('recibimos tu imagen') &&
+        context?.botStage !== 'menu_imagen' && (
+            lastBotContent.includes('en qué podemos ayudarte hoy') ||
+            lastBotContent.includes('en que podemos ayudarte hoy') ||
+            lastBotContent.includes('solicitar un nuevo turno') ||
+            lastBotContent.includes('consultar mi próximo turno') ||
+            lastBotContent.includes('te damos la bienvenida a sanatorio argentino') ||
+            context?.botStage === 'menu_bienvenida' ||
+            (context?.botStage === 'inicio' && !lastBotContent.includes('recibimos tu imagen'))
         );
 
-    const isLastBotImageMenu = !isWaitingForUserData && (
+    // 2. RECONOCIMIENTO DEL MENÚ DE IMAGEN RECIBIDA
+    const isLastBotImageMenu = !isWaitingForUserData && !isLastBotWelcomeMenu && (
         context?.botStage === 'menu_imagen' ||
         lastBotContent.includes('recibimos tu imagen') || 
         lastBotContent.includes('presupuesto o aranceles particulares')
     );
 
-    // GUARDA ESTRICTA DE CONTEXTO: Si el bot está esperando datos específicos del paciente,
-    // o si el último mensaje fue Más Información o Menú de Imagen, los dígitos aislados NO deben disparar opciones del menú principal.
-    const isLastBotWelcomeMenu = 
+    // 3. SUBMENÚ "MÁS INFORMACIÓN" (opción 5 del menú de bienvenida)
+    // Opciones: 1: Laboratorio | 2: Radiografías | 3: Agente
+    // CRÍTICO: NUNCA debe activarse si el último mensaje fue el menú de bienvenida raíz
+    const isLastBotMasInfoMenu =
         !isWaitingForUserData &&
+        !isLastBotWelcomeMenu &&
+        !isLastBotImageMenu && (
+            (context?.botStage === 'menu_mas_info' && !lastBotContent.includes('solicitar un nuevo turno') && !lastBotContent.includes('en qué podemos ayudarte hoy') && !lastBotContent.includes('en que podemos ayudarte hoy')) ||
+            lastBotContent.includes('sobre qué te gustaría saber') ||
+            lastBotContent.includes('sobre que te gustaria saber') ||
+            (lastBotContent.includes('1️⃣ *laboratorio*') && !lastBotContent.includes('solicitar un nuevo turno'))
+        );
+
+    // 4. SUBMENÚ RESOLUCIÓN DE CONSULTA INFORMATIVA (Fase 1 Footer)
+    // Opciones: 1: Sí, todo claro | 2: Necesito hablar con un agente
+    const isLastBotResolutionFooter =
+        !isWaitingForUserData &&
+        !isLastBotWelcomeMenu &&
+        !isLastBotMasInfoMenu && (
+            context?.botStage === 'informacion_respondida' ||
+            lastBotContent.includes('¿pudimos ayudarte con tu consulta?') ||
+            lastBotContent.includes('pudimos ayudarte con tu consulta') ||
+            lastBotContent.includes('sí, todo claro') ||
+            lastBotContent.includes('si, todo claro')
+        );
+
+    // 5. MENÚ DE IDENTIFICACIÓN / DESTINATARIO
+    const isLastBotGreetingMenu = 
+        !isWaitingForUserData &&
+        !isLastBotWelcomeMenu &&
         !isLastBotMasInfoMenu &&
         !isLastBotImageMenu &&
-        context?.botStage !== 'menu_imagen' &&
-        !lastBotContent.includes('más información') &&
-        !lastBotContent.includes('mas informacion') &&
-        !lastBotContent.includes('sobre qué te gustaría saber') &&
-        !lastBotContent.includes('sobre que te gustaria saber') && (
-            context?.botStage === 'menu_bienvenida' ||
-            (context?.botStage === 'inicio' && !lastBotContent.includes('recibimos tu imagen')) ||
-            lastBotContent.includes('consultar mi próximo turno') ||
-            lastBotContent.includes('en qué podemos ayudarte hoy') ||
-            lastBotContent.includes('te damos la bienvenida')
-        );
-    const isLastBotGreetingMenu = 
-        !isWaitingForUserData && (
+        !isLastBotResolutionFooter && (
             context?.botStage === 'menu_opciones' ||
             lastBotContent.includes('otro paciente / familiar') || 
             lastBotContent.includes('el turno o autorización es para mí') ||
@@ -2768,21 +2786,31 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             lastBotContent.includes('estás gestionando para otro paciente')
         );
 
+    // DESPACHO POR DÍGITOS / OPCIONES NUMÉRICAS SEGÚN EL ÁRBOL ACTIVO:
     if (isLastBotMasInfoMenu) {
-        if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(clean)) {
+        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(clean)) {
             return { intent: 'servicio_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
-        if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(clean)) {
+        if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(clean) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(clean)) {
             return { intent: 'radiografia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
         }
-        if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean) || /\b(agente|asesor|asesora|operador|operadora|humano|persona)\b/i.test(clean)) {
+        if (/^(?:3|3️⃣|opci[oó]n\s*3)$/i.test(clean) || /\b(agente|asesor|asesora|operador|operadora|humano|persona)\b/i.test(clean)) {
             return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
         }
         // Texto libre: continúa con la detección por regex / IA
     }
 
-    if (!isWaitingForUserData && !isLastBotMasInfoMenu) {
-        if (/^[1|1️⃣]$/.test(clean) || /^opci[oó]n\s*1$/i.test(clean)) {
+    if (isLastBotResolutionFooter) {
+        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean) || /^(?:s[ií]+|si|gracias|muchas\s+gracias|ok|listo|perfecto|todo\s+claro)$/i.test(clean)) {
+            return { intent: 'agradecimiento_cierre', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
+        }
+        if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(clean) || /\b(agente|asesor|asesora|operador|operadora|humano|persona|hablar\s+con)\b/i.test(clean)) {
+            return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
+        }
+    }
+
+    if (!isWaitingForUserData && !isLastBotMasInfoMenu && !isLastBotResolutionFooter) {
+        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean)) {
             if (isLastBotWelcomeMenu) {
                 return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
             }
@@ -2794,7 +2822,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             }
             return { intent: 'turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
-        if (/^[2|2️⃣]$/.test(clean) || /^opci[oó]n\s*2$/i.test(clean)) {
+        if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(clean)) {
             if (isLastBotWelcomeMenu) {
                 return { intent: 'consultar_turno', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
             }
@@ -2806,7 +2834,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             }
             return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
         }
-        if (/^[3|3️⃣]$/.test(clean) || /^opci[oó]n\s*3$/i.test(clean)) {
+        if (/^(?:3|3️⃣|opci[oó]n\s*3)$/i.test(clean)) {
             if (isLastBotWelcomeMenu) {
                 return { intent: 'autorizacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
             }
@@ -2815,7 +2843,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             }
             return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '3' };
         }
-        if (/^[4|4️⃣]$/.test(clean) || /^opci[oó]n\s*4$/i.test(clean)) {
+        if (/^(?:4|4️⃣|opci[oó]n\s*4)$/i.test(clean)) {
             if (isLastBotWelcomeMenu) {
                 return { intent: 'guardia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
             }
@@ -2824,11 +2852,14 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             }
             return { intent: 'general', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '4' };
         }
-        if ((/^[5|5️⃣]$/.test(clean) || /^opci[oó]n\s*5$/i.test(clean)) && isLastBotWelcomeMenu) {
-            return { intent: 'mas_informacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '5' };
+        if (/^(?:5|5️⃣|opci[oó]n\s*5)$/i.test(clean)) {
+            if (isLastBotWelcomeMenu) {
+                return { intent: 'mas_informacion', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '5' };
+            }
+            return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '5' };
         }
-        if (/^[5|5️⃣]$/.test(clean) || /^opci[oó]n\s*5$/i.test(clean) || /^[0|0️⃣]$/.test(clean) || /^opci[oó]n\s*0$/i.test(clean)) {
-            return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: clean.includes('0') ? '0' : '5' };
+        if (/^(?:0|0️⃣|opci[oó]n\s*0)$/i.test(clean)) {
+            return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '0' };
         }
     }
 
@@ -4901,16 +4932,22 @@ async function handleChatbotTriage(
     // =============================================
     else if (currentStage === 'informacion_respondida') {
         const isConfirmingResolution = 
-            cleanText.trim() === '1' ||
+            /^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(cleanText.trim()) ||
             /^(1|s[ií]+|si|gracias|muchas\s+gracias|much[ií]simas\s+gracias|ok(ey|ay)?|listo|perfecto|joya|de\s+diez|genial|chau|adios|buen[ií]simo|todo\s+claro|ninguna\s+duda|nada\s+m[aá]s)[!.\s]*$/i.test(cleanText) ||
             /\b(todo\s+claro|muchas\s+gracias|gracias|ok\s+gracias|perfecto\s+gracias|listo\s+gracias|resuelto)\b/i.test(cleanText);
 
         const isAskingAgent = 
-            cleanText.trim() === '2' ||
+            /^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(cleanText.trim()) ||
             /\b(no|agente|asesor|asesora|humano|persona|operador|operadora|hablar\s+con\s+alguien|representante)\b/i.test(cleanText);
 
+        const isExplicitResolutionOption = isConfirmingResolution || isAskingAgent;
+
         const isNewAction = 
-            analysis.intent && analysis.intent !== 'info' && analysis.intent !== 'agradecimiento_cierre' && analysis.intent !== 'volver_atras';
+            !isExplicitResolutionOption &&
+            analysis.intent && 
+            analysis.intent !== 'info' && 
+            analysis.intent !== 'agradecimiento_cierre' && 
+            analysis.intent !== 'volver_atras';
 
         if (isConfirmingResolution && !isAskingAgent && !isNewAction) {
             replyText = `¡Nos alegra haberte ayudado! 🏥 Gracias por comunicarte con *Sanatorio Argentino*.\n\n` +
@@ -5511,13 +5548,23 @@ async function handleChatbotTriage(
     }
     // Si la conversación estaba en menu_mas_info y el usuario envió 1 o 2 y por alguna razón
     // no cayó en el intent correspondiente, capturarlo de inmediato antes de cualquier otro flujo:
+    // CRÍTICO: NUNCA interceptar si el último mensaje fue el menú de bienvenida raíz ni si la intención fue turno/consulta/autorización/guardia.
     else if (
-        (currentStage === 'menu_mas_info' || lastBotContent.includes('sobre qué te gustaría saber') || lastBotContent.includes('1️⃣ *laboratorio*')) &&
+        (currentStage === 'menu_mas_info' || lastBotContent.includes('sobre qué te gustaría saber') || lastBotContent.includes('sobre que te gustaria saber') || (lastBotContent.includes('1️⃣ *laboratorio*') && !lastBotContent.includes('solicitar un nuevo turno'))) &&
+        !lastBotContent.includes('solicitar un nuevo turno') &&
+        !lastBotContent.includes('en qué podemos ayudarte hoy') &&
+        !lastBotContent.includes('en que podemos ayudarte hoy') &&
+        currentStage !== 'menu_bienvenida' &&
+        analysis.intent !== 'turno' &&
+        analysis.intent !== 'consultar_turno' &&
+        analysis.intent !== 'autorizacion' &&
+        analysis.intent !== 'guardia' &&
+        analysis.intent !== 'mas_informacion' &&
         analysis.intent !== 'volver_atras' &&
         analysis.intent !== 'saludo_inicial' &&
         !isNavigationBackOrMenu(cleanText)
     ) {
-        if (/^[1|1️⃣]$/.test(cleanText.trim()) || /^opci[oó]n\s*1$/i.test(cleanText.trim()) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(cleanText)) {
+        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(cleanText.trim()) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(cleanText)) {
             updates.motivo_consulta = 'Laboratorio: Atención Presencial y Extracciones';
             replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
                 `⚠️ Las consultas de *Laboratorio* (preparación, ayuno, presupuestos, resultados y extracciones) *no se gestionan por este canal*. Por favor comunicate directamente con el Laboratorio a través de sus líneas de WhatsApp (abajo) 👇\n\n` +
@@ -5535,13 +5582,13 @@ async function handleChatbotTriage(
             nextStage = 'informacion_respondida';
             return await finalizeAndSend(replyText, nextStage, updates);
         }
-        if (/^[2|2️⃣]$/.test(cleanText.trim()) || /^opci[oó]n\s*2$/i.test(cleanText.trim()) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(cleanText)) {
+        if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(cleanText.trim()) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(cleanText)) {
             updates.motivo_consulta = 'Información: Radiografías / RX';
             replyText = getRadiografiaInfoMessage();
             nextStage = 'informacion_respondida';
             return await finalizeAndSend(replyText, nextStage, updates);
         }
-        if (/^[3|3️⃣]$/.test(cleanText.trim()) || /^opci[oó]n\s*3$/i.test(cleanText.trim()) || /\b(agente|asesor|asesora|operador|humano|persona)\b/i.test(cleanText)) {
+        if (/^(?:3|3️⃣|opci[oó]n\s*3)$/i.test(cleanText.trim()) || /\b(agente|asesor|asesora|operador|humano|persona)\b/i.test(cleanText)) {
             // Continúa naturalmente hacia el bloque de derivacion_agente que sigue a continuación
         }
     }
