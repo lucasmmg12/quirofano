@@ -2488,6 +2488,9 @@ DIRECTIVAS PRINCIPALES:
 15. DISTINCIÓN ESTRICTA ENTRE DNI Y FECHAS/HORAS DE TURNOS:
    - NUNCA inventes o concatenes números de fecha y hora de citas (como 'el día 21/10 a las 13 hs', '21/10 10 am', etc.) para inventar un DNI. '21101300' o combinaciones similares de DDMMHHMM NO son números de documento.
    - El DNI es estrictamente el número provisto explícitamente por el paciente para su identificación o el que consta en su ficha registrada.
+16. CHEQUEO ANUAL, CONTROL MUJER, PLAN MUJER Y PROGRAMA PREVENIR (LÍNEA EXCLUSIVA DE WHATSAPP):
+   - Cuando el paciente consulte o solicite turno para "Chequeo anual", "Control mujer", "Plan mujer", "Chequeo preventivo de salud" o "Programa Prevenir (OSP)", debes indicarle OBLIGATORIAMENTE que Sanatorio Argentino cuenta con una línea exclusiva de atención personalizada para coordinar estos circuitos y programas especiales.
+   - Proporciónale SIEMPRE el enlace directo de WhatsApp: 👉 https://wa.me/message/SEB4YT5AWGNBN1 e indícale que escriba directamente a ese número para que un asesor especializado coordine todos sus estudios integrados en una sola jornada.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -2801,10 +2804,10 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     }
 
     if (isLastBotResolutionFooter) {
-        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean) || /^(?:s[ií]+|si|gracias|muchas\s+gracias|ok|listo|perfecto|todo\s+claro)$/i.test(clean)) {
+        if (/(?:^|\n)\s*(?:1|1️⃣|opci[oó]n\s*1)\s*(?:$|\n)/i.test(clean) || /^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean.trim()) || /^(?:s[ií]+|si|gracias|muchas\s+gracias|ok|listo|perfecto|todo\s+claro)$/i.test(clean.trim())) {
             return { intent: 'agradecimiento_cierre', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
-        if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(clean) || /\b(agente|asesor|asesora|operador|operadora|humano|persona|hablar\s+con)\b/i.test(clean)) {
+        if (/(?:^|\n)\s*(?:2|2️⃣|opci[oó]n\s*2)\s*(?:$|\n)/i.test(clean) || /^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(clean.trim()) || /\b(agente|asesor|asesora|operador|operadora|humano|persona|hablar\s+con)\b/i.test(clean)) {
             return { intent: 'derivacion_agente', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '2' };
         }
     }
@@ -2902,8 +2905,8 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'guardia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
 
-    // 2. CHEQUEO PREVENTIVO DE SALUD
-    const isChequeo = /\b(chequeo|chequeos|chequeo\s+preventivo|circuito\s+preventivo|chequeo\s+de\s+salud|control\s+anual|chequeo\s+anual|estudios\s+preventivos)\b/i.test(clean);
+    // 2. CHEQUEO PREVENTIVO DE SALUD / CONTROL MUJER / CHEQUEO ANUAL
+    const isChequeo = /\b(chequeo|chequeos|chequeo\s+preventivo|circuito\s+preventivo|chequeo\s+de\s+salud|control\s+anual|chequeo\s+anual|chequeos\s+anuales|control\s+mujer|plan\s+mujer|circuito\s+mujer|chequeo\s+mujer|estudios\s+preventivos|estudios\s+mujer)\b/i.test(clean);
     if (isChequeo) {
         return { intent: 'chequeo', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
@@ -4937,8 +4940,9 @@ async function handleChatbotTriage(
             /\b(todo\s+claro|muchas\s+gracias|gracias|ok\s+gracias|perfecto\s+gracias|listo\s+gracias|resuelto)\b/i.test(cleanText);
 
         const isAskingAgent = 
+            /(?:^|\n)\s*(?:2|2️⃣|opci[oó]n\s*2)\s*(?:$|\n)/i.test(cleanText) ||
             /^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(cleanText.trim()) ||
-            /\b(no|agente|asesor|asesora|humano|persona|operador|operadora|hablar\s+con\s+alguien|representante)\b/i.test(cleanText);
+            /\b(no|agente|asesor|asesora|humano|persona|operador|operadora|hablar\s+con\s+alguien|representante|alguien)\b/i.test(cleanText);
 
         const isExplicitResolutionOption = isConfirmingResolution || isAskingAgent;
 
@@ -4948,6 +4952,13 @@ async function handleChatbotTriage(
             analysis.intent !== 'info' && 
             analysis.intent !== 'agradecimiento_cierre' && 
             analysis.intent !== 'volver_atras';
+
+        const isFollowUpChequeoOPrevenir = 
+            (Boolean(conv?.motivo_consulta?.toLowerCase().includes('chequeo')) || 
+             Boolean(conv?.motivo_consulta?.toLowerCase().includes('prevenir')) || 
+             Boolean(conv?.motivo_consulta?.toLowerCase().includes('mujer')) ||
+             /\b(chequeo|prevenir|control\s+mujer|plan\s+mujer)\b/i.test(cleanText)) &&
+            /\b(turno|turnos|fecha|viernes|lunes|martes|miercoles|jueves|sabado|hora|horario|disponible|disponibilidad|cuanto|precio|costo)\b/i.test(cleanText);
 
         if (isConfirmingResolution && !isAskingAgent && !isNewAction) {
             replyText = `¡Nos alegra haberte ayudado! 🏥 Gracias por comunicarte con *Sanatorio Argentino*.\n\n` +
@@ -4959,29 +4970,17 @@ async function handleChatbotTriage(
             updates.resolution_reason = `Información brindada por Bot - Resuelto: ${conv?.motivo_consulta || 'Consulta Informativa'}`;
             nextStage = 'resuelto_bot';
             return await finalizeAndSend(replyText, nextStage, updates);
+        } else if (isFollowUpChequeoOPrevenir && !isConfirmingResolution && !isAskingAgent) {
+            replyText = `¡Hola${fullName ? ` *${fullName}*` : ''}! 🏥 Te recordamos que la coordinación de fechas y turnos para el *Chequeo Preventivo / Control Mujer / Programa Prevenir* se realiza de forma directa y personalizada a través de su línea exclusiva de WhatsApp:\n\n` +
+                `📲 *Escribí directamente aquí para coordinar:* \n👉 https://wa.me/message/SEB4YT5AWGNBN1\n\n` +
+                `Allí un asesor coordinará todos tus estudios integrados en una sola jornada.` +
+                getInfoResolutionFooter();
+            updates.bot_active = true;
+            nextStage = 'informacion_respondida';
+            return await finalizeAndSend(replyText, nextStage, updates);
         } else if (isAskingAgent && !isNewAction) {
-            const hasValidDni = Boolean(
-                (paciente?.dni && isValidArgentineDni(String(paciente.dni))) ||
-                (conv?.dni && isValidArgentineDni(String(conv.dni))) ||
-                (updates.dni && isValidArgentineDni(String(updates.dni)))
-            );
-            if (!hasValidDni) {
-                replyText = `¡Entendido! 👤 Para comunicarte con un asesor de Sanatorio Argentino, es indispensable que nos indiques tus datos:\n\n` +
-                    `1️⃣ *Número de DNI* del paciente (7 u 8 dígitos, sin puntos)\n` +
-                    `2️⃣ *Nombre y Apellido*\n` +
-                    `3️⃣ *Motivo de tu consulta*\n\n` +
-                    `_Por favor envíanos estos datos para transferirte con un operador disponible._\n\n` +
-                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                updates.status = 'bot';
-                updates.bot_active = true;
-                updates.bot_stage = 'esperando_datos_agente';
-                nextStage = 'esperando_datos_agente';
-                updates.motivo_consulta = 'Solicitud de Asesor tras info (esperando DNI y motivo)';
-                return await finalizeAndSend(replyText, nextStage, updates);
-            }
-
-            replyText = `¡Entendido! Te comunicamos con un asesor de nuestro equipo para asistirte de forma personalizada. 👤\n\n` +
-                `Por favor detallanos qué consulta o gestión necesitás para que podamos darte una respuesta rápida.\n\n` +
+            replyText = `¡Entendido${fullName ? ` *${fullName}*` : ''}! 👤 Te comunicamos con un asesor de nuestro equipo para asistirte de forma personalizada.\n\n` +
+                `Por favor detallanos qué consulta o gestión necesitás para que el operador te responda a la brevedad.\n\n` +
                 `${getAgentHandoffNotice()}`;
             updates.status = 'sin_asignar';
             updates.bot_active = false;
@@ -5735,6 +5734,21 @@ async function handleChatbotTriage(
         analysis.intent !== 'volver_atras' && 
         analysis.intent !== 'cancelar_turno_online'
     ) {
+        const isRequestingAgentInTurno = 
+            /(?:^|\n)\s*(?:2|2️⃣|opci[oó]n\s*2)\s*(?:$|\n)/i.test(cleanText) && 
+            (lastBotContent.includes('2️⃣') || lastBotContent.includes('hablar con un agente') || lastBotContent.includes('pudimos ayudarte'));
+
+        if (isRequestingAgentInTurno) {
+            replyText = `¡Entendido${fullName ? ` *${fullName}*` : ''}! 👤 Te comunicamos con un asesor de nuestro equipo para asistirte de forma personalizada.\n\n` +
+                `Por favor aguardá un momento mientras te asignamos con un operador.\n\n` +
+                `${getAgentHandoffNotice()}`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            nextStage = 'esperando_agente';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
         // 1. Si el paciente incluyó DNI en la respuesta, verificar en SALUS (Bifurcación de los Dos Caminos)
         if (candidateDni && isValidArgentineDni(candidateDni) && (!paciente || String(paciente.dni) !== String(candidateDni))) {
             const { data: pFound } = await supabase
@@ -6326,125 +6340,62 @@ async function handleChatbotTriage(
         nextStage = 'informacion_respondida';
     }
     // =============================================
-    // FLUJO: CHEQUEO PREVENTIVO DE SALUD
+    // FLUJO: CHEQUEO PREVENTIVO DE SALUD / CONTROL MUJER / CHEQUEO ANUAL
+    // DIRECTIVA INSTITUCIONAL: Coordinación directa vía WhatsApp en https://wa.me/message/SEB4YT5AWGNBN1
     // =============================================
     else if (analysis.intent === 'chequeo') {
-        const isBookingChequeo = /\b(quiero\s+(?:un\s+)?turno|sacar\s+turno|coordinar\s+turno|pedir\s+turno|agendar|anotame|dame\s+turno|solicitar\s+turno|turno\s+para\s+el\s+chequeo|coordinar\s+fecha)\b/i.test(cleanText);
+        updates.motivo_consulta = 'Información / Coordinación: Chequeo Preventivo / Control Mujer';
+        replyText = `¡Hola${fullName ? ` *${fullName}*` : ''}! 🏥 Para coordinar turnos e información del *Chequeo Preventivo de Salud*, *Control Mujer* o *Chequeo Anual*, contamos con una línea exclusiva de atención directa personalizada:\n\n` +
+            `📲 *Comunicate directamente por WhatsApp aquí:* \n👉 https://wa.me/message/SEB4YT5AWGNBN1\n\n` +
+            `🕒 *¿Cómo funciona el circuito?*\n` +
+            `• Se realiza de *lunes a viernes por la mañana* (ingreso a partir de las 7:30 hs en ayunas).\n` +
+            `• Es un circuito completo y coordinado en una sola jornada (aproximadamente 4 horas de duración, sin traslados ni demoras).\n\n` +
+            `🏢 *Sedes disponibles:*\n` +
+            `• *Sede Santa Fe* (Santa Fe 263 Este)\n` +
+            `• *Sede San Luis* (San Luis 432 Oeste)\n\n` +
+            `🩺 *¿Qué estudios incluye?*\n` +
+            `• Análisis de laboratorio completos (sangre y orina)\n` +
+            `• Evaluación cardiológica con Electrocardiograma (ECG)\n` +
+            `• Radiografía de tórax y ecografías de control\n` +
+            `• Estudios complementarios según edad y perfil (mamografía, etc.)\n` +
+            `• Consulta médica clínica integral de apertura y cierre\n\n` +
+            `🌐 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
+            `💬 *Para coordinar tu fecha y turno, por favor escribinos al enlace anterior:* https://wa.me/message/SEB4YT5AWGNBN1 (un asesor especializado coordinará todos tus estudios juntos).` +
+            getInfoResolutionFooter();
 
-        if (!isBookingChequeo) {
-            // CONSULTA INFORMATIVA: El paciente consulta información, días, horarios o cómo funciona el circuito.
-            // NO se envía a los agentes humanos; el bot permanece ACTIVO.
-            updates.motivo_consulta = 'Información: Chequeo Preventivo de Salud';
-            replyText = `¡Hola *${fullName}*! 🏥 Te contamos en detalle cómo funciona el *Circuito de Chequeo Preventivo de Salud*:\n\n` +
-                `🕒 *¿Cuándo y cómo se realiza?*\n` +
-                `• Se realiza de *lunes a viernes por la mañana* (ingreso a partir de las 7:30 hs en ayunas).\n` +
-                `• Es un circuito completo y coordinado en una sola jornada (aproximadamente 4 horas de duración, sin traslados ni demoras).\n\n` +
-                `🏢 *Sedes disponibles:*\n` +
-                `• *Sede Santa Fe* (Santa Fe 263 Este)\n` +
-                `• *Sede San Luis* (San Luis 432 Oeste)\n\n` +
-                `🩺 *¿Qué estudios incluye?*\n` +
-                `• Análisis de laboratorio completos (sangre y orina)\n` +
-                `• Evaluación cardiológica con Electrocardiograma (ECG)\n` +
-                `• Radiografía de tórax y ecografías de control\n` +
-                `• Estudios complementarios según edad y perfil (mamografía, etc.)\n` +
-                `• Consulta médica clínica integral de apertura y cierre\n\n` +
-                `🌐 Más detalles: https://www.sanatorioargentino.com.ar/chequeo-preventivo-de-salud.html\n\n` +
-                `💬 *¿Deseas coordinar un turno para realizarte el circuito?*\n` +
-                `Escribinos *'Quiero coordinar turno'* indicando tu sede de preferencia (*Santa Fe* o *San Luis*).` +
-                getInfoResolutionFooter();
-
-            updates.bot_active = true;
-            nextStage = 'informacion_respondida';
-        } else {
-            // SOLICITUD DE TURNO / COORDINACIÓN: El paciente desea agendar efectivamente
-            updates.motivo_consulta = 'Chequeo Preventivo de Salud (Coordinación)';
-            updates.medico_o_especialidad = 'Circuito Chequeo Preventivo';
-
-            const infoChequeoTurno = `¡Excelente *${fullName}*! 🏥 Te ayudamos a coordinar tu fecha para el *Circuito de Chequeo Preventivo de Salud*.\n\n` +
-                `Por favor indícanos:\n` +
-                `• *Sede de preferencia:* Sede Santa Fe (Santa Fe 263 Este) o Sede San Luis (San Luis 432 Oeste).\n` +
-                `• *Preferencia de fecha o día de la semana* (de lunes a viernes por la mañana).\n\n` +
-                `${getAgentHandoffNotice()}`;
-
-            if (isExistingPatient) {
-                replyText = infoChequeoTurno;
-                updates.status = 'sin_asignar';
-                updates.bot_active = false;
-                nextStage = 'esperando_agente';
-                updates.ai_summary = buildTriageSummary(updates, 'chequeo', analysis.doctorRecord, true, paciente?.edad);
-            } else {
-                const res = await handleNewPatientIntake(
-                    cleanText,
-                    candidateDni,
-                    conv,
-                    phone,
-                    updates,
-                    'chequeo',
-                    analysis.doctorRecord,
-                    doctorDisplay,
-                    infoChequeoTurno,
-                    whatsappName
-                );
-                nextStage = res.nextStage;
-                replyText = res.replyText;
-            }
-        }
+        updates.bot_active = true;
+        nextStage = 'informacion_respondida';
+        updates.ai_summary = {
+            ...(conv?.ai_summary || {}),
+            tipo_tramite: 'Chequeo Preventivo / Control Mujer',
+            canal_derivacion: 'https://wa.me/message/SEB4YT5AWGNBN1'
+        };
     }
     // =============================================
     // FLUJO: PROGRAMA PREVENIR (OSP)
+    // DIRECTIVA INSTITUCIONAL: Coordinación directa vía WhatsApp en https://wa.me/message/SEB4YT5AWGNBN1
     // =============================================
     else if (analysis.intent === 'prevenir') {
-        const isBookingPrevenir = /\b(quiero\s+(?:un\s+)?turno|sacar\s+turno|coordinar\s+turno|pedir\s+turno|agendar|anotame|dame\s+turno|solicitar\s+turno)\b/i.test(cleanText);
+        updates.motivo_consulta = 'Información / Coordinación: Programa Prevenir (OSP)';
+        replyText = `¡Hola${fullName ? ` *${fullName}*` : ''}! 🏥 Para coordinar turnos e información del *Programa Prevenir* de Obra Social Provincia (OSP), contamos con una línea exclusiva de atención directa personalizada:\n\n` +
+            `📲 *Comunicate directamente por WhatsApp aquí:* \n👉 https://wa.me/message/SEB4YT5AWGNBN1\n\n` +
+            `🩺 *¿De qué se trata el Programa Prevenir?*\n` +
+            `Es un circuito coordinado para la detección precoz del cáncer de mama y cuello uterino destinado a afiliadas de OSP.\n\n` +
+            `📋 *¿Qué incluye?*\n` +
+            `• Consulta con especialista en Ginecología\n` +
+            `• Mamografía digital bilateral y PAP\n` +
+            `• Se realiza de manera integrada en *Sede Santa Fe* (Santa Fe 263 Este).\n\n` +
+            `👉 Más información: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
+            `💬 *Para coordinar tu turno, por favor escribinos al enlace anterior:* https://wa.me/message/SEB4YT5AWGNBN1 (un asesor del programa coordinará tu fecha y requisitos).` +
+            getInfoResolutionFooter();
 
-        if (!isBookingPrevenir) {
-            // CONSULTA INFORMATIVA: No se envía a los agentes humanos; el bot permanece ACTIVO
-            updates.motivo_consulta = 'Información: Programa Prevenir (OSP)';
-            replyText = `¡Hola *${fullName}*! 🏥 Te brindamos información sobre el *Programa Prevenir* de Obra Social Provincia (OSP):\n\n` +
-                `🩺 *¿De qué se trata?*\n` +
-                `Es un circuito coordinado para la detección precoz del cáncer de mama y cuello uterino destinado a afiliadas de OSP.\n\n` +
-                `📋 *¿Qué incluye?*\n` +
-                `• Consulta con especialista en Ginecología\n` +
-                `• Mamografía digital bilateral\n` +
-                `• Se realiza de manera integrada en *Sede Santa Fe* (Santa Fe 263 Este).\n\n` +
-                `👉 Más información: https://www.sanatorioargentino.com.ar/especialidades-medicas/programa-prevenir.html\n\n` +
-                `💬 *¿Deseas solicitar turno para el Programa Prevenir?*\n` +
-                `Escribinos *'Quiero turno para Prevenir'* para que un agente te coordine la fecha.` +
-                getInfoResolutionFooter();
-
-            updates.bot_active = true;
-            nextStage = 'informacion_respondida';
-        } else {
-            // SOLICITUD DE TURNO / COORDINACIÓN
-            updates.motivo_consulta = 'Programa Prevenir (OSP) (Coordinación)';
-            updates.medico_o_especialidad = 'Programa Prevenir';
-
-            const infoPrevenirTurno = `¡Excelente *${fullName}*! 🏥 Te ayudamos a coordinar tu turno para el *Programa Prevenir (OSP)* en Sede Santa Fe.\n\n` +
-                `Por favor indícanos tu preferencia de día y horario (mañana o tarde).\n\n` +
-                `${getAgentHandoffNotice()}`;
-
-            if (isExistingPatient) {
-                replyText = infoPrevenirTurno;
-                updates.status = 'sin_asignar';
-                updates.bot_active = false;
-                nextStage = 'esperando_agente';
-                updates.ai_summary = buildTriageSummary(updates, 'prevenir', analysis.doctorRecord, true, paciente?.edad);
-            } else {
-                const res = await handleNewPatientIntake(
-                    cleanText,
-                    candidateDni,
-                    conv,
-                    phone,
-                    updates,
-                    'prevenir',
-                    analysis.doctorRecord,
-                    doctorDisplay,
-                    infoPrevenirTurno,
-                    whatsappName
-                );
-                nextStage = res.nextStage;
-                replyText = res.replyText;
-            }
-        }
+        updates.bot_active = true;
+        nextStage = 'informacion_respondida';
+        updates.ai_summary = {
+            ...(conv?.ai_summary || {}),
+            tipo_tramite: 'Programa Prevenir (OSP)',
+            canal_derivacion: 'https://wa.me/message/SEB4YT5AWGNBN1'
+        };
     }
     // =============================================
     // FLUJO: INFORMES Y RESULTADOS DE LABORATORIO (WEB GLIMS)
@@ -7088,6 +7039,7 @@ async function handleChatbotTriage(
             updates.bot_active = true;
             nextStage = 'esperando_datos_turno';
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
+            return await finalizeAndSend(replyText, nextStage, updates);
         }
     }
     // =============================================
