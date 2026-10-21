@@ -188,7 +188,10 @@ export async function syncTurnosActivos(pool, supabase) {
                     v.FechaCreacion,
                     v.Internet,
                     vn.Comentarios,
-                    vl.Centro
+                    vl.Centro,
+                    vl.[Tipo Visita] as TipoVisita,
+                    vl.[Visita_Especialidad] as Especialidad,
+                    vl.[Cliente] as Cliente
                 FROM Visitas v
                 INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
                 LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
@@ -220,6 +223,9 @@ export async function syncTurnosActivos(pool, supabase) {
                 const agenda = (r.NombreAgenda || 'Turno Web').trim();
                 const id = `online_${r.IdVisita}`;
 
+                const tipoVisitaStr = r.TipoVisita ? String(r.TipoVisita).trim() : null;
+                const especialidadStr = (r.Especialidad || contact.motivo || (agenda && !agenda.includes('(') ? agenda : '') || 'Consulta Médica').trim();
+
                 turnosMap.set(id, {
                     id,
                     dni,
@@ -231,15 +237,15 @@ export async function syncTurnosActivos(pool, supabase) {
                     fecha: fechaStr,
                     hora: horaStr,
                     medico,
-                    especialidad: contact.motivo || agenda || 'Consulta Médica',
+                    especialidad: especialidadStr,
                     sede: resolveSedeFromAgenda({
                         centro: r.Centro,
                         agendaNombre: r.NombreAgenda,
                         tipoAgenda: null
                     }),
-                    obra_social: (contact.mutua || 'Particular / A confirmar').trim(),
-                    tipo_visita: 'Turno Web Online',
-                    motivo: contact.motivo || 'Reserva Online',
+                    obra_social: (contact.mutua || r.Cliente || 'Particular / A confirmar').trim(),
+                    tipo_visita: tipoVisitaStr || 'Turno Web Online',
+                    motivo: tipoVisitaStr || contact.motivo || 'Reserva Online',
                     tipo_agenda: agenda,
                     origen: 'turno_online',
                     asistencia: null,
@@ -286,15 +292,15 @@ export async function syncTurnosActivos(pool, supabase) {
                                 fecha: fTurno,
                                 hora: hTurno,
                                 medico,
-                                especialidad: subTurno.motivo || 'Consulta Online',
+                                especialidad: subTurno.especialidad || subTurno.motivo || 'Consulta Online',
                                 sede: resolveSedeFromAgenda({
                                     centro: subTurno.centro || to.centro,
                                     agendaNombre: subTurno.agenda || to.agenda_nombre,
                                     tipoAgenda: null
                                 }),
                                 obra_social: to.mutua || 'A confirmar',
-                                tipo_visita: subTurno.motivo || 'Turno Web',
-                                motivo: subTurno.motivo || null,
+                                tipo_visita: subTurno.tipoVisita || subTurno.motivo || 'Turno Web',
+                                motivo: subTurno.tipoVisita || subTurno.motivo || null,
                                 tipo_agenda: subTurno.agenda || to.agenda_nombre || 'Online',
                                 origen: 'turno_online',
                                 asistencia: null,

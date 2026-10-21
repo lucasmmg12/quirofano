@@ -95,7 +95,11 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             v.FechaCreacion,
             v.UsuarioCita,
             v.EstadoReprogramacion,
-            vn.Comentarios
+            vn.Comentarios,
+            vl.[Tipo Visita] as TipoVisita,
+            vl.[Visita_Especialidad] as Especialidad,
+            vl.[Centro] as Centro,
+            vl.[Cliente] as Cliente
         FROM Visitas v
         INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
         LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
@@ -130,6 +134,10 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             horaInicio: horaInicioStr,
             horaFin: horaFinStr,
             fechaCreacion: r.FechaCreacion,
+            tipoVisita: r.TipoVisita ? String(r.TipoVisita).trim() : '',
+            especialidad: r.Especialidad ? String(r.Especialidad).trim() : '',
+            centro: r.Centro ? String(r.Centro).trim() : '',
+            cliente: r.Cliente ? String(r.Cliente).trim() : '',
             ...contact
         };
     });
@@ -163,13 +171,54 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             horaInicio: t.horaInicio,
             horaFin: t.horaFin,
             fechaCreacion: t.fechaCreacion,
+            tipoVisita: t.tipoVisita,
+            especialidad: t.especialidad,
             motivo: t.motivo
         });
     }
 
     // Filtrar sólo aquellos que tengan 2 o más turnos (inconsistencias / duplicados)
+    // REGLA DE NEGOCIO: En ecografías y estudios diagnósticos, los pacientes con frecuencia
+    // deben solicitar varios turnos consecutivos o el mismo día para diferentes zonas/estudios
+    // (ej: Abdomen, Mamaria, Tiroides, Ginecológica).
+    // Cuando la agenda o los turnos corresponden a ecografías:
+    // SE DEJAN PASAR siempre que los tipos de visita sean distintos (no repite el mismo estudio el mismo día).
     const duplicados = Object.values(groups)
-        .filter(g => g.turnos.length > 1)
+        .filter(g => {
+            if (g.turnos.length <= 1) return false;
+
+            const isEstudioOImagenes = 
+                /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(g.agenda) ||
+                /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(g.profesional) ||
+                g.turnos.some(t => 
+                    /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(t.tipoVisita) || 
+                    /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(t.especialidad) || 
+                    /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(t.motivo)
+                );
+
+            if (isEstudioOImagenes) {
+                // Verificar si hay turnos con el mismo estudio y la misma fecha
+                const studiesOnDate = {};
+                let hasDuplicateSameStudySameDate = false;
+                for (const t of g.turnos) {
+                    const studyName = (t.tipoVisita || t.motivo || '').trim().toUpperCase();
+                    if (studyName) {
+                        const key = `${t.fechaTurno}_${studyName}`;
+                        if (studiesOnDate[key]) {
+                            hasDuplicateSameStudySameDate = true;
+                            break;
+                        }
+                        studiesOnDate[key] = true;
+                    }
+                }
+                // Si no hay duplicado exacto del mismo estudio en la misma fecha, son estudios complementarios válidos -> DEJAR PASAR
+                if (!hasDuplicateSameStudySameDate) {
+                    return false;
+                }
+            }
+
+            return true;
+        })
         .map(g => {
             // Ordenar turnos por fecha de turno
             g.turnos.sort((a, b) => (a.fechaTurno + a.horaInicio).localeCompare(b.fechaTurno + b.horaInicio));
@@ -291,13 +340,14 @@ export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {
 
             // Consultar en SALUS cuáles de esos idVisita siguen existiendo en la tabla Visitas
             const activeSalusVisitIds = new Set();
+            const activeSalusVisitsMap = new Map();
             if (allSavedVisitIds.size > 0 && sqlPool) {
                 const visitIdList = Array.from(allSavedVisitIds);
                 const BATCH_SIZE = 500;
                 for (let i = 0; i < visitIdList.length; i += BATCH_SIZE) {
                     const batch = visitIdList.slice(i, i + BATCH_SIZE);
                     const checkRes = await sqlPool.request().query(`
-                        SELECT v.id 
+                        SELECT v.id, vl.[Tipo Visita] as TipoVisita, vl.[Visita_Especialidad] as Especialidad
                         FROM Visitas v
                         LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
                         WHERE v.id IN (${batch.join(',')})
@@ -306,6 +356,7 @@ export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {
                     if (checkRes.recordset) {
                         for (const r of checkRes.recordset) {
                             activeSalusVisitIds.add(r.id);
+                            activeSalusVisitsMap.set(r.id, r);
                         }
                     }
                 }
@@ -317,14 +368,51 @@ export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {
 
             for (const row of existingRows) {
                 const rowTurnos = Array.isArray(row.turnos) ? row.turnos : [];
-                const validTurnos = rowTurnos.filter(t => activeSalusVisitIds.has(t.idVisita));
+                const validTurnos = rowTurnos
+                    .filter(t => activeSalusVisitIds.has(t.idVisita))
+                    .map(t => {
+                        const salusData = activeSalusVisitsMap.get(t.idVisita);
+                        return {
+                            ...t,
+                            tipoVisita: salusData?.TipoVisita ? String(salusData.TipoVisita).trim() : (t.tipoVisita || ''),
+                            especialidad: salusData?.Especialidad ? String(salusData.Especialidad).trim() : (t.especialidad || '')
+                        };
+                    });
+
+                // Si es un caso de ecografías o estudios válidos y distintos (mismo día y consecutivos): DEJARLO PASAR
+                const isRowEco = 
+                    /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(row.agenda_nombre) ||
+                    /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(row.prestador_nombre) ||
+                    validTurnos.some(t => 
+                        /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(t.tipoVisita) || 
+                        /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(t.especialidad) || 
+                        /ECO|ECOGRAF|MAMOGRAF|DENSITOM|RADIOLOG|RAYOS|TOMOGRAF|RESONAN|IMAGEN/i.test(t.motivo)
+                    );
+
+                if (isRowEco) {
+                    const studiesOnDate = {};
+                    let hasDupEco = false;
+                    for (const t of validTurnos) {
+                        const sName = (t.tipoVisita || t.motivo || '').trim().toUpperCase();
+                        if (sName) {
+                            const k = `${t.fechaTurno}_${sName}`;
+                            if (studiesOnDate[k]) { hasDupEco = true; break; }
+                            studiesOnDate[k] = true;
+                        }
+                    }
+                    if (!hasDupEco) {
+                        // Caso de ecografías legítimas consecutivas: eliminar alerta de conflicto en Supabase
+                        toDeleteIds.push(row.id);
+                        continue;
+                    }
+                }
 
                 if (validTurnos.length < 2) {
                     // Ya no tiene duplicados (se eliminaron todos o quedó solo 1 turno en SALUS)
-                    // Opción A: eliminar el registro obsoleto de la tabla
+                    // Eliminar el registro obsoleto de la tabla
                     toDeleteIds.push(row.id);
-                } else if (validTurnos.length !== rowTurnos.length) {
-                    // Tenía por ej. 5 turnos y borraron 2 en SALUS (quedan 3) -> actualizar array con turnos sobrevivientes
+                } else if (validTurnos.length !== rowTurnos.length || validTurnos.some((vt, idx) => vt.tipoVisita !== rowTurnos[idx]?.tipoVisita)) {
+                    // Actualizar array con turnos sobrevivientes y enriquecidos con tipoVisita
                     toUpdateCases.push({
                         id: row.id,
                         turnos: validTurnos,

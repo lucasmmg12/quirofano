@@ -936,6 +936,26 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                         <div style={{ fontSize: '0.8rem', color: '#475569' }}>
                                                             Agenda: <span style={{ fontWeight: 700 }}>{t.agenda}</span>
                                                         </div>
+                                                        {t.tipoVisita && (
+                                                            <div style={{
+                                                                marginTop: '6px',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                padding: '3px 9px',
+                                                                borderRadius: '6px',
+                                                                background: '#EFF6FF',
+                                                                border: '1px solid #BFDBFE',
+                                                                fontSize: '0.78rem',
+                                                                fontWeight: 700,
+                                                                color: '#1E40AF'
+                                                            }}>
+                                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', color: '#2563EB' }}>
+                                                                    Estudio:
+                                                                </span>
+                                                                <span>{t.tipoVisita}</span>
+                                                            </div>
+                                                        )}
                                                         {t.motivo && (
                                                             <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '4px' }}>
                                                                 Motivo: {t.motivo}

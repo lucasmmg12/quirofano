@@ -2262,13 +2262,20 @@ function formatTurnosActivosReply(turnos: any[], pacienteNombre?: string, isOthe
         ? `¡Hola! 🏥 Encontramos la próxima cita agendada para *${pacienteNombre}*${pacienteDni ? ` (DNI: *${pacienteDni}*)` : ''} en *Sanatorio Argentino*:\n\n`
         : `¡Hola *${firstName}*! 🏥 Encontramos tu próxima cita agendada en *Sanatorio Argentino*:\n\n`;
 
-    const turnosAMostrar = turnos.slice(0, 2);
+    const turnosAMostrar = turnos.slice(0, 5);
     for (let i = 0; i < turnosAMostrar.length; i++) {
         const t = turnosAMostrar[i];
         const num = turnosAMostrar.length > 1 ? `*Turno ${i + 1}:*\n` : '';
         reply += `${num}📅 *Fecha:* ${formatFechaAmigable(t.fecha)}\n`;
         reply += `⏰ *Horario:* ${t.hora} hs\n`;
-        reply += `🩺 *Especialidad:* ${t.especialidad || t.tipo_visita || 'Consulta Médica'}\n`;
+        if (t.tipo_visita && t.tipo_visita !== 'Turno Web Online') {
+            reply += `🔬 *Estudio / Consulta:* ${t.tipo_visita}\n`;
+            if (t.especialidad && t.especialidad !== 'Consulta Médica' && !t.tipo_visita.toLowerCase().includes(t.especialidad.toLowerCase())) {
+                reply += `🩺 *Especialidad:* ${t.especialidad}\n`;
+            }
+        } else {
+            reply += `🩺 *Especialidad:* ${t.especialidad || 'Consulta Médica'}\n`;
+        }
         reply += `👨‍⚕️ *Profesional:* ${t.medico || 'Profesional Asignado'}\n`;
         if (t.sede && String(t.sede).trim() !== '') {
             reply += `🏢 *Sede:* ${String(t.sede).trim()}\n`;
