@@ -87,22 +87,16 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
             .in('key', keysToTry);
 
         if (!error && Array.isArray(rows) && rows.length > 0) {
-            // Prioridad 1: Clave histórica exacta de la fecha solicitada
-            const exactHist = rows.find(r => r.key === `cc_turnos_contact_center_${targetDate}`);
-            if (exactHist?.value) {
-                const parsed = typeof exactHist.value === 'string' ? JSON.parse(exactHist.value) : exactHist.value;
-                if (parsed && Array.isArray(parsed.agentes)) {
-                    return parsed;
-                }
-            }
+            // Ordenar de más reciente a más antiguo según updated_at para priorizar la data más fresca
+            const sortedRows = [...rows].sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
-            // Prioridad 2: Claves de hoy si la fecha solicitada es hoy (o si el payload coincide con targetDate)
-            for (const k of ['cc_turnos_contact_center_hoy', 'cc_turnos_hoy']) {
-                const row = rows.find(r => r.key === k);
+            for (const row of sortedRows) {
                 if (row?.value) {
                     const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-                    if (parsed && (!parsed.fecha || parsed.fecha === targetDate || isToday) && Array.isArray(parsed.agentes)) {
-                        return parsed;
+                    if (parsed && Array.isArray(parsed.agentes)) {
+                        if (!parsed.fecha || parsed.fecha === targetDate || (isToday && parsed.fecha === currentToday)) {
+                            return parsed;
+                        }
                     }
                 }
             }
@@ -314,8 +308,9 @@ export async function getAgentDailyShiftMetrics({
             const salusId = (a.id || '').toLowerCase();
             return (
                 salusId === (agentId || '').toLowerCase() ||
+                (agentId === 'daguilera' && (salusId === 'daguilera' || salusName.includes('aguilera') || salusName.includes('daniela'))) ||
                 (cleanFirstName && salusName.includes(normalizeAgentName(cleanFirstName))) ||
-                (normalizedAgentName && salusName.includes(normalizedAgentName))
+                (normalizedAgentName && (salusName.includes(normalizedAgentName) || normalizedAgentName.includes(salusName)))
             );
         });
         turnosSalusCount = agSalus ? agSalus.turnos : 0;

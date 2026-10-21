@@ -164,8 +164,12 @@ export const CONTACT_CENTER_AGENTS = [
         username: 'daguilera', 
         legacyId: 'daniela', 
         name: 'Daniela Aguilera', 
-        fullName: 'Daniela Aguilera', 
-        aliases: ['daguilera', 'daniela', 'aguilera', 'daniela aguilera'],
+        fullName: 'Ana Daniela Romina Aguilera Cardozo', 
+        aliases: [
+            'daguilera', 'daniela', 'aguilera', 'daniela aguilera',
+            'ana daniela', 'ana aguilera', 'ana daniela romina aguilera cardozo',
+            'aguilera cardozo, daniela romina', 'aguilera cardozo', 'daniela romina'
+        ],
         role: 'Atención al Paciente', 
         color: '#E11D48', 
         avatar: 'DA' 

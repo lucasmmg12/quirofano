@@ -56,6 +56,10 @@ const SALUS_AGENTS_MAP = {
     'ACOSTA ESQUIVEL, MARIA ANTONELLA': { id: 'macosta', name: 'Antonella Acosta' },
     'JACQUES SORIA, VIRGINIA': { id: 'vjacques', name: 'Virginia Jacques' },
     'AGUILERA CARDOZO, DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera' },
+    'AGUILERA CARDOZO, ANA DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera' },
+    'AGUILERA, ANA DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera' },
+    'AGUILERA, DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera' },
+    'AGUILERA, DANIELA': { id: 'daguilera', name: 'Daniela Aguilera' },
     'LEAL, ERICA': { id: 'eleal', name: 'Erica Leal' },
     'LEAL,ERICA': { id: 'eleal', name: 'Erica Leal' }
 };

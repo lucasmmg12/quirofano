@@ -9,6 +9,10 @@ const SALUS_AGENTS_MAP = {
     'ACOSTA ESQUIVEL, MARIA ANTONELLA': { id: 'macosta', name: 'Antonella Acosta', shortName: 'Antonella', role: 'Baja Septiembre' },
     'JACQUES SORIA, VIRGINIA': { id: 'vjacques', name: 'Virginia Jacques', shortName: 'Virginia', role: 'Senior' },
     'AGUILERA CARDOZO, DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
+    'AGUILERA CARDOZO, ANA DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
+    'AGUILERA, ANA DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
+    'AGUILERA, DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
+    'AGUILERA, DANIELA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
     'LEAL, ERICA': { id: 'eleal', name: 'Erica Leal', shortName: 'Erica', role: 'Curva 50%' },
     'LEAL,ERICA': { id: 'eleal', name: 'Erica Leal', shortName: 'Erica', role: 'Curva 50%' }
 };
