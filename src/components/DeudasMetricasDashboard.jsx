@@ -8,9 +8,14 @@ import {
     DollarSign, TrendingUp, Users, CheckCircle2,
     Calendar, ArrowUpRight, ArrowDownRight, Activity,
     RefreshCw, Filter, ShieldCheck, ChevronRight, User, Phone,
-    RotateCcw, Sparkles, Info
+    RotateCcw, Sparkles, Info, FileSpreadsheet, Download
 } from 'lucide-react';
-import { fetchMetricasAvanzadasDeudas, getRangoFechasPreset, CATEGORIAS_DEUDOR } from '../services/deudaService';
+import {
+    fetchMetricasAvanzadasDeudas,
+    getRangoFechasPreset,
+    CATEGORIAS_DEUDOR,
+    descargarInformeCobranzasExcel
+} from '../services/deudaService';
 
 export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
     const [loading, setLoading] = useState(true);
@@ -20,6 +25,25 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
     // Fechas para rango personalizado
     const [customFrom, setCustomFrom] = useState('');
     const [customTo, setCustomTo] = useState('');
+    const [exportingExcel, setExportingExcel] = useState(false);
+
+    const handleExportExcel = async () => {
+        setExportingExcel(true);
+        try {
+            addToast?.('Generando informe Excel de auditoría...', 'info');
+            const fileName = await descargarInformeCobranzasExcel({
+                preset: periodoPreset,
+                fechaDesde: customFrom,
+                fechaHasta: customTo
+            });
+            addToast?.(`Excel generado con éxito: ${fileName}`, 'success');
+        } catch (err) {
+            console.error('Error al generar Excel de cobranzas:', err);
+            addToast?.('Error al generar archivo Excel', 'error');
+        } finally {
+            setExportingExcel(false);
+        }
+    };
 
     const loadData = async (opts = {}) => {
         const preset = opts.preset !== undefined ? opts.preset : periodoPreset;
@@ -235,6 +259,31 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                             <RefreshCw size={13} className={loading ? 'rag-spin' : ''} />
                             <span style={{ display: 'inline-block' }}>{loading ? 'Calculando...' : 'Actualizar'}</span>
                         </button>
+
+                        <button
+                            type="button"
+                            onClick={handleExportExcel}
+                            disabled={exportingExcel || loading}
+                            title="Descargar informe oficial en Excel con detalle de pacientes cobrados, planes y gestores"
+                            style={{
+                                border: '1px solid #16a34a',
+                                background: '#16a34a',
+                                borderRadius: '7px',
+                                padding: '5px 10px',
+                                cursor: 'pointer',
+                                color: '#ffffff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                boxShadow: '0 2px 6px rgba(22,163,74,0.25)',
+                                transition: 'all 0.15s'
+                            }}
+                        >
+                            <FileSpreadsheet size={13} />
+                            <span>{exportingExcel ? 'Generando...' : 'Exportar Excel'}</span>
+                        </button>
                     </div>
                 </div>
 
@@ -408,6 +457,32 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                         </strong>
                                     </div>
                                 )}
+                                <button
+                                    type="button"
+                                    onClick={handleExportExcel}
+                                    disabled={exportingExcel}
+                                    title="Descargar archivo Excel con detalle de pacientes, deudas y planes"
+                                    style={{
+                                        marginTop: '6px',
+                                        padding: '4px 8px',
+                                        background: '#f0fdf4',
+                                        color: '#15803d',
+                                        border: '1px solid #bbf7d0',
+                                        borderRadius: '6px',
+                                        fontSize: '0.67rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '5px',
+                                        width: '100%',
+                                        transition: 'all 0.15s'
+                                    }}
+                                >
+                                    <FileSpreadsheet size={12} color="#16a34a" />
+                                    <span>{exportingExcel ? 'Generando Excel...' : 'Descargar detalle en Excel (.xlsx)'}</span>
+                                </button>
                             </div>
                         </div>
 

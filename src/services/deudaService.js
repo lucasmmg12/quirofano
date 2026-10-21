@@ -3,6 +3,7 @@
  * CRUD para pacientes deudores, facturas, seguimiento e importaciones
  */
 import { supabase } from '../lib/supabase';
+import { generarExcelCobranzas } from '../utils/deudaCobranzasExcelExporter';
 
 // ─── Categorías de deudor ───
 export const CATEGORIAS_DEUDOR = {
@@ -1300,6 +1301,247 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         evolucionDeudaTotal,
         topDeudores,
     };
+}
+
+/**
+ * Genera y descarga el Excel oficial de Auditoría de Cobranzas del Sanatorio Argentino
+ * Incluye pacientes cobrados, planes vigentes, deuda restante, gestores y movimientos de caja
+ */
+export async function descargarInformeCobranzasExcel(filtros = {}) {
+    const { preset = 'este_mes', fechaDesde = null, fechaHasta = null } = filtros;
+    const rango = getRangoFechasPreset(preset, fechaDesde, fechaHasta);
+    const { fechaDesde: effDesde, fechaHasta: effHasta, label: periodoLabel } = rango;
+
+    // 1. Obtener todos los pacientes
+    const { data: pacientes = [] } = await supabase
+        .from('deudas_pacientes')
+        .select('*');
+
+    const pacientesMap = {};
+    pacientes.forEach(p => { pacientesMap[p.id] = p; });
+
+    // 2. Obtener todos los seguimientos
+    const { data: seguimientos = [] } = await supabase
+        .from('deudas_seguimiento')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+    // 3. Obtener todos los planes de pago y sus cuotas
+    const { data: planes = [] } = await supabase
+        .from('deudas_planes_pago')
+        .select('*, cuotas:deudas_cuotas(*)');
+
+    const planesPorPaciente = {};
+    planes.forEach(pl => {
+        if (!planesPorPaciente[pl.paciente_id]) planesPorPaciente[pl.paciente_id] = [];
+        planesPorPaciente[pl.paciente_id].push(pl);
+    });
+
+    // 4. Identificar pagos y armar cobros por paciente
+    const movimientosCaja = [];
+    const cobrosPorPaciente = {}; // pacId -> { totalPeriodo, totalHistorico, ultimoCobroFecha, ultimoComprobante, ultimoOperador }
+
+    seguimientos.forEach(s => {
+        if (s.tipo === 'pago' && s.monto > 0) {
+            const pac = pacientesMap[s.paciente_id];
+            const pacNombre = pac ? pac.nombre : 'Paciente Desconocido';
+            const pacNhc = pac ? (pac.nhc || 'S/D') : 'S/D';
+            const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
+            const sDateTime = s.created_at ? s.created_at.replace('T', ' ').substring(0, 16) : '';
+            const monto = Number(s.monto);
+
+            if (!cobrosPorPaciente[s.paciente_id]) {
+                cobrosPorPaciente[s.paciente_id] = {
+                    totalPeriodo: 0,
+                    totalHistorico: 0,
+                    ultimoCobroFecha: sDate,
+                    ultimoComprobante: s.descripcion || '',
+                    ultimoOperador: s.usuario || '',
+                };
+            }
+            cobrosPorPaciente[s.paciente_id].totalHistorico += monto;
+
+            const inRange = effDesde && effHasta 
+                ? (sDate >= effDesde && sDate <= effHasta)
+                : true;
+
+            if (inRange) {
+                cobrosPorPaciente[s.paciente_id].totalPeriodo += monto;
+                cobrosPorPaciente[s.paciente_id].ultimoCobroFecha = sDate;
+                if (s.usuario) cobrosPorPaciente[s.paciente_id].ultimoOperador = s.usuario;
+                if (s.descripcion) cobrosPorPaciente[s.paciente_id].ultimoComprobante = s.descripcion;
+
+                movimientosCaja.push({
+                    fecha: sDateTime,
+                    paciente: pacNombre,
+                    nhc: pacNhc,
+                    monto,
+                    concepto: 'Cuota / Pago a cuenta',
+                    medio: s.descripcion?.includes('[') ? s.descripcion.split('[')[1]?.split(']')[0] : 'Transferencia / Efectivo',
+                    comprobante: s.descripcion?.includes('Ref:') ? s.descripcion.split('Ref:')[1]?.split('—')[0]?.trim() : (s.descripcion || '-'),
+                    usuario: s.usuario || 'Sistema',
+                    detalle: s.descripcion || ''
+                });
+            }
+        }
+    });
+
+    // Sumar pacientes con deuda_cancelada que no tengan pago duplicado en seguimiento
+    const pacIdsConPagoSeg = new Set(
+        seguimientos.filter(s => s.tipo === 'pago' && s.monto > 0).map(s => s.paciente_id)
+    );
+
+    pacientes.forEach(p => {
+        if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
+            const cancDate = p.deuda_cancelada_at.substring(0, 10);
+            const cancDateTime = p.deuda_cancelada_at.replace('T', ' ').substring(0, 16);
+            const montoCanc = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+
+            if (!cobrosPorPaciente[p.id]) {
+                cobrosPorPaciente[p.id] = {
+                    totalPeriodo: 0,
+                    totalHistorico: 0,
+                    ultimoCobroFecha: cancDate,
+                    ultimoComprobante: 'Cancelación 100% Deuda',
+                    ultimoOperador: p.deuda_cancelada_por || 'Administración',
+                };
+            }
+
+            if (!pacIdsConPagoSeg.has(p.id)) {
+                cobrosPorPaciente[p.id].totalHistorico += montoCanc;
+
+                const inRange = effDesde && effHasta
+                    ? (cancDate >= effDesde && cancDate <= effHasta)
+                    : true;
+
+                if (inRange) {
+                    cobrosPorPaciente[p.id].totalPeriodo += montoCanc;
+                    cobrosPorPaciente[p.id].ultimoCobroFecha = cancDate;
+                    if (p.deuda_cancelada_por) cobrosPorPaciente[p.id].ultimoOperador = p.deuda_cancelada_por;
+
+                    movimientosCaja.push({
+                        fecha: cancDateTime,
+                        paciente: p.nombre,
+                        nhc: p.nhc || 'S/D',
+                        monto: montoCanc,
+                        concepto: 'Cancelación Total (100%)',
+                        medio: 'Liquidación / Pago Total',
+                        comprobante: 'Cancelación Definitiva',
+                        usuario: p.deuda_cancelada_por || 'Administración',
+                        detalle: `Cancelación al 100% de la cuenta por $${montoCanc}`
+                    });
+                }
+            }
+        }
+    });
+
+    // Tracking de primera fecha de gestión por paciente
+    const patientFirstGestion = {};
+    seguimientos.forEach(s => {
+        if (!patientFirstGestion[s.paciente_id]) {
+            patientFirstGestion[s.paciente_id] = s.created_at ? s.created_at.substring(0, 10) : '';
+        }
+    });
+
+    // Armar lista consolidada de Pacientes Cobrados
+    const pacientesCobradosList = [];
+
+    Object.entries(cobrosPorPaciente).forEach(([pacId, cobroInfo]) => {
+        if (cobroInfo.totalPeriodo <= 0) return; // Solo incluir los que tuvieron cobro en este período
+
+        const p = pacientesMap[pacId];
+        if (!p) return;
+
+        // Evaluar planes de pago
+        const pacPlanes = planesPorPaciente[pacId] || [];
+        const planActivo = pacPlanes.find(pl => pl.estado === 'activo') || pacPlanes[0] || null;
+
+        let tienePlan = false;
+        let detallePlan = 'Sin plan activo';
+        let saldoPlan = 0;
+
+        if (planActivo) {
+            tienePlan = planActivo.estado === 'activo';
+            const cuotasTotales = planActivo.cuotas || [];
+            const cuotasPagadas = cuotasTotales.filter(c => c.pagada).length;
+            const cuotasPendientes = cuotasTotales.length - cuotasPagadas;
+            saldoPlan = cuotasTotales.filter(c => !c.pagada).reduce((s, c) => s + Number(c.monto || 0), 0);
+            detallePlan = `Plan ${planActivo.estado.toUpperCase()}: ${cuotasTotales.length} cuotas ($${Math.round(planActivo.monto_cuota || 0)}) · ${cuotasPagadas} pagadas / ${cuotasPendientes} pendientes`;
+        }
+
+        // Tipo de cobro
+        let tipoCobro = 'Cuota / Pago parcial';
+        if (p.categoria === 'deuda_cancelada') {
+            tipoCobro = 'Cancelación 100% (Deuda Saldada)';
+        } else if (tienePlan) {
+            tipoCobro = 'Cuotas de Plan Vigente';
+        }
+
+        // Deuda vigente
+        const deudaVigente = p.categoria === 'deuda_cancelada' ? 0 : Number(p.deuda_total);
+
+        pacientesCobradosList.push({
+            id: p.id,
+            nombre: p.nombre,
+            nhc: p.nhc,
+            telefono: p.telefono,
+            obraSocial: p.obra_social,
+            cobradoPeriodo: cobroInfo.totalPeriodo,
+            cobradoHistorico: cobroInfo.totalHistorico,
+            tipoCobro,
+            categoria: p.categoria,
+            categoriaLabel: CATEGORIAS_DEUDOR[p.categoria]?.label || p.categoria,
+            deudaOriginal: Number(p.deuda_total) + cobroInfo.totalHistorico,
+            deudaVigente,
+            tienePlan,
+            detallePlan,
+            saldoPlan,
+            gestionadoPor: cobroInfo.ultimoOperador || p.deuda_cancelada_por || 'Sistema',
+            fechaCobro: cobroInfo.ultimoCobroFecha,
+            fechaInicioGestion: patientFirstGestion[p.id] || (p.ultimo_contacto_at ? p.ultimo_contacto_at.substring(0, 10) : '-'),
+            observaciones: cobroInfo.ultimoComprobante
+        });
+    });
+
+    // Ordenar de mayor a menor monto cobrado en el período
+    pacientesCobradosList.sort((a, b) => b.cobradoPeriodo - a.cobradoPeriodo);
+    movimientosCaja.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+    // Resumen
+    const totalCobradoPeriodo = pacientesCobradosList.reduce((s, p) => s + p.cobradoPeriodo, 0);
+    const montoCanceladas = pacientesCobradosList
+        .filter(p => p.categoria === 'deuda_cancelada')
+        .reduce((s, p) => s + p.cobradoPeriodo, 0);
+    const cantCanceladas = pacientesCobradosList.filter(p => p.categoria === 'deuda_cancelada').length;
+    const montoCuotas = totalCobradoPeriodo - montoCanceladas;
+    const cantConPlan = pacientesCobradosList.filter(p => p.tienePlan).length;
+    const saldoDeudaPendiente = pacientesCobradosList.reduce((s, p) => s + p.deudaVigente, 0);
+
+    // Totales históricos
+    const totalHistoricoCobrado = Object.values(cobrosPorPaciente).reduce((s, c) => s + c.totalHistorico, 0);
+    const totalHistoricoCanceladasMonto = pacientes
+        .filter(p => p.categoria === 'deuda_cancelada')
+        .reduce((s, p) => s + Number(p.deuda_total || 0), 0);
+    const totalHistoricoCanceladasCount = pacientes.filter(p => p.categoria === 'deuda_cancelada').length;
+
+    const resumen = {
+        totalCobradoPeriodo,
+        montoCanceladas,
+        cantCanceladas,
+        montoCuotas,
+        cantConPlan,
+        saldoDeudaPendiente,
+        totalHistoricoCobrado,
+        totalHistoricoCanceladasMonto,
+        totalHistoricoCanceladasCount
+    };
+
+    return await generarExcelCobranzas({
+        periodoLabel,
+        pacientesCobrados: pacientesCobradosList,
+        movimientosCaja,
+        resumen
+    });
 }
 
 
