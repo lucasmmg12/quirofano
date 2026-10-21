@@ -19,9 +19,10 @@ async function safeFetch(url, options) {
 
 // === Chat ===
 
-export async function sendRAGMessage(question, conversationId = null, userId = null) {
+export async function sendRAGMessage(question, conversationId = null, userId = null, attachments = null) {
     const body = { question, conversation_id: conversationId };
     if (userId) body.user_id = userId;
+    if (attachments && attachments.length > 0) body.attachments = attachments;
 
     const headers = { 'Content-Type': 'application/json' };
     if (userId) headers['X-User-Id'] = userId;

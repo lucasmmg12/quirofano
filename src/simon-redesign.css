@@ -2278,63 +2278,76 @@ body.dark-theme .rag-copy-pill-btn:hover {
   cursor: pointer;
 }
 
-/* Simon Public New Chat Floating Button */
-.simon-public-new-chat-btn {
-  position: absolute;
-  top: 14px;
-  right: 20px;
-  z-index: 20;
+/* Simon Public New Chat Button in Header */
+.simon-topbar-new-chat-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
-  font-size: 0.8rem;
-  font-weight: 600;
+  gap: 5px;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-body.dark-theme .simon-public-new-chat-btn {
-  background: #1e293b;
-  border-color: #334155;
-  color: #f1f5f9;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-.simon-public-new-chat-btn:hover {
-  background: #f8fafc;
-  border-color: #2563eb;
   color: #2563eb;
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.14);
+  font-size: 0.72rem;
+  font-weight: 700;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.08);
 }
 
-body.dark-theme .simon-public-new-chat-btn:hover {
-  background: #0f172a;
+.simon-topbar-new-chat-btn:hover {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.22);
+}
+
+body.dark-theme .simon-topbar-new-chat-btn {
+  background: #1e3a8a;
   border-color: #3b82f6;
-  color: #60a5fa;
+  color: #93c5fd;
+}
+
+body.dark-theme .simon-topbar-new-chat-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
 }
 
 /* ===============================================
-   Fondo de Pantalla Institucional Sanatorio Argentino
-   Marca de agua muy transparente para no interferir con los textos
+   Fondo de Pantalla Institucional Sanatorio Argentino & Layout Viewport Fix
    =============================================== */
 .rag-container {
   height: 100% !important;
-  border: none;
-  border-radius: 0;
-  background: var(--simon-bg, #ffffff);
+  max-height: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: var(--simon-bg, #ffffff) !important;
+  display: flex !important;
+  flex-direction: row !important;
+  overflow: hidden !important;
 }
 
-.rag-main-area,
+.rag-main-area {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  position: relative !important;
+  background-color: var(--simon-bg, #ffffff);
+}
+
 .rag-chat-area {
-  position: relative;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  position: relative !important;
   background-color: var(--simon-bg, #ffffff);
 }
 
@@ -2350,7 +2363,7 @@ body.dark-theme .simon-public-new-chat-btn:hover {
   background-position: center center;
   background-repeat: no-repeat;
   background-attachment: fixed;
-  opacity: 0.055; /* Muy transparente: marca de agua sutil y elegante */
+  opacity: 0.055;
   pointer-events: none;
   z-index: 0;
 }
@@ -2363,13 +2376,188 @@ body.dark-theme .rag-chat-area::before {
 .rag-messages {
   position: relative;
   z-index: 1;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding: 20px 24px !important;
 }
 
-.rag-input-area,
-.rag-input-container,
-.rag-input-wrapper {
-  position: relative;
-  z-index: 2;
+/* Fixed input area - cleanly docked, never cut off */
+.rag-input-area {
+  flex-shrink: 0 !important;
+  padding: 8px 20px 14px 20px !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, var(--simon-bg, #ffffff) 30%) !important;
+  border-top: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 20 !important;
+  margin-bottom: 2px !important;
 }
+
+body.dark-theme .rag-input-area {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, #0f172a 30%) !important;
+}
+
+/* Multimodal: Attachment Chip Preview & Buttons */
+.rag-attachment-preview-bar {
+  width: 100%;
+  max-width: 820px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  animation: fadeInAttachment 0.2s ease-out;
+}
+
+@keyframes fadeInAttachment {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rag-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-size: 0.78rem;
+  color: #1e293b;
+  max-width: 320px;
+}
+
+body.dark-theme .rag-attachment-chip {
+  background: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+.rag-attachment-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+.rag-attachment-remove {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.rag-attachment-remove:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.rag-attach-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 7px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s;
+  flex-shrink: 0;
+}
+
+.rag-attach-btn:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+}
+
+body.dark-theme .rag-attach-btn {
+  color: #94a3b8;
+}
+
+body.dark-theme .rag-attach-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+/* Drag and Drop Overlay */
+.rag-drag-overlay {
+  position: absolute;
+  inset: 12px;
+  border: 2px dashed #2563eb;
+  border-radius: 16px;
+  background: rgba(239, 246, 255, 0.92);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #1e40af;
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+  animation: fadeInAttachment 0.2s ease-out;
+}
+
+body.dark-theme .rag-drag-overlay {
+  background: rgba(15, 23, 42, 0.94);
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+/* User Message Attachment Thumbnail in Bubble */
+.rag-msg-user-attachment {
+  margin-bottom: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 260px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: transform 0.2s;
+}
+
+.rag-msg-user-attachment:hover {
+  transform: scale(1.02);
+}
+
+.rag-msg-user-attachment img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Document Interpreted Card in Assistant Bubble */
+.rag-doc-interpreted-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-size: 0.82rem;
+  color: #166534;
+}
+
+body.dark-theme .rag-doc-interpreted-card {
+  background: #064e3b22;
+  border-color: #065f46;
+  color: #a7f3d0;
+}
+
 
 

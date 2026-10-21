@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    ChevronRight, Sun, Moon, Laptop, Monitor, LogIn, CheckCircle2, AlertTriangle, Info, X
+    ChevronRight, Sun, Moon, Laptop, Monitor, LogIn, CheckCircle2, AlertTriangle, Info, X, Plus
 } from 'lucide-react';
 import RAGPanel from './RAGPanel.jsx';
 import SystemOutageReporter from '../SystemOutageReporter.jsx';
@@ -20,6 +20,13 @@ export default function PublicSimonChat() {
     const [uiScale, setUiScale] = useState(() => localStorage.getItem('ui_scale_preference') || 'auto');
     // Sistema de notificaciones toast
     const [toasts, setToasts] = useState([]);
+    // Key de sesión para reiniciar chat limpiamente
+    const [chatResetKey, setChatResetKey] = useState(1);
+
+    const handleNewChat = () => {
+        setChatResetKey(k => k + 1);
+        addToast('Nueva consulta iniciada', 'info');
+    };
 
     const addToast = (message, type = 'info') => {
         const id = Date.now();
@@ -93,6 +100,16 @@ export default function PublicSimonChat() {
                 </div>
 
                 <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {/* Botón Nueva Consulta Institucional */}
+                    <button
+                        onClick={handleNewChat}
+                        className="simon-topbar-new-chat-btn"
+                        title="Iniciar una nueva consulta limpia"
+                    >
+                        <Plus size={13} />
+                        <span>Nueva Consulta</span>
+                    </button>
+
                     {/* Botón Reportar Problema */}
                     <SystemOutageReporter
                         currentUser={{ nombre: 'Usuario Público Simón' }}
@@ -186,13 +203,18 @@ export default function PublicSimonChat() {
 
             {/* Panel Principal Simon IA (RAG) con historial general protegido */}
             <main style={{
-                flex: 1,
+                flex: '1 1 0%',
+                minHeight: 0,
                 height: 'calc(100vh - 38px)',
                 width: '100%',
                 overflow: 'hidden',
-                position: 'relative'
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column'
             }}>
                 <RAGPanel
+                    key={chatResetKey}
+                    resetTrigger={chatResetKey}
                     isPublic={true}
                     hideHistory={true}
                     initialUser="invitado_publico"

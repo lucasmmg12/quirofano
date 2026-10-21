@@ -8,7 +8,7 @@ import {
     Download, FolderPlus, ArrowLeft, Home, Folder,
     Lightbulb, GraduationCap, HelpCircle, Shield, FileWarning,
     Info, ThumbsUp, ThumbsDown, Eye, Calendar, ExternalLink, Pencil, Save,
-    Copy, Check
+    Copy, Check, Paperclip, Image as ImageIcon
 } from 'lucide-react'
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
@@ -171,7 +171,7 @@ function extractContentAndQuestions(rawContent, role) {
     return { mainContent: mainContent.trim(), relatedQuestions };
 }
 
-export default function RAGPanel({ addToast, isPublic = false, hideHistory = false, initialUser = null }) {
+export default function RAGPanel({ addToast, isPublic = false, hideHistory = false, initialUser = null, resetTrigger = null }) {
     // State
     const [activeTab, setActiveTab] = useState('chat') // 'chat' | 'documents'
     const [conversations, setConversations] = useState([])
@@ -186,6 +186,11 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
     const [learningStats, setLearningStats] = useState(null)
     const [showSidebar, setShowSidebar] = useState(!isPublic)
     const [showHelp, setShowHelp] = useState(false)
+
+    // Multimodal attachments state
+    const [attachments, setAttachments] = useState([])
+    const [isDragging, setIsDragging] = useState(false)
+    const chatAttachmentInputRef = useRef(null)
 
     // Smart Guidance Layer
     const [suggestions, setSuggestions] = useState({ categories: [], top_queries: [] })
@@ -461,28 +466,99 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
         }
     }
 
+    useEffect(() => {
+        if (resetTrigger) {
+            startNewConversation();
+        }
+    }, [resetTrigger]);
+
     // Start new conversation
     function startNewConversation() {
         setActiveConversation(null)
         setMessages([])
         setError(null)
         setInputValue('')
+        setAttachments([])
     }
 
-    // Send message
+    // Multimodal file processing
+    const handleChatAttachmentSelect = (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        processIncomingFiles(files);
+        if (chatAttachmentInputRef.current) chatAttachmentInputRef.current.value = '';
+    };
+
+    const processIncomingFiles = (files) => {
+        files.forEach(file => {
+            if (file.size > 20 * 1024 * 1024) {
+                if (addToast) addToast(`El archivo ${file.name} supera el límite de 20MB`, 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (loadEvent) => {
+                const fullDataUrl = loadEvent.target.result;
+                const base64Data = fullDataUrl.includes(',') ? fullDataUrl.split(',')[1] : fullDataUrl;
+                setAttachments(prev => [
+                    ...prev,
+                    {
+                        name: file.name,
+                        mime_type: file.type || 'image/jpeg',
+                        size: file.size,
+                        data: base64Data,
+                        previewUrl: fullDataUrl,
+                        isImage: (file.type || '').startsWith('image/')
+                    }
+                ]);
+                if (addToast) addToast(`Adjunto: ${file.name}`, 'info');
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const handlePaste = (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        const imageFiles = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file' && (items[i].type || '').startsWith('image/')) {
+                const blob = items[i].getAsFile();
+                if (blob) {
+                    const namedFile = new File([blob], `captura_${Date.now()}.png`, { type: blob.type });
+                    imageFiles.push(namedFile);
+                }
+            }
+        }
+        if (imageFiles.length > 0) {
+            processIncomingFiles(imageFiles);
+        }
+    };
+
+    const removeAttachment = (index) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Send message (Supports text + multimodal attachments)
     async function handleSend() {
-        if (!inputValue.trim() || isLoading) return
+        if ((!inputValue.trim() && attachments.length === 0) || isLoading) return
 
         const question = inputValue.trim()
+        const attachedToSend = [...attachments]
         setInputValue('')
+        setAttachments([])
         setError(null)
 
-        const userMsg = { role: 'user', content: question, created_at: new Date().toISOString() }
+        const userMsg = {
+            role: 'user',
+            content: question || 'Interpreta esta imagen y verifica las normativas correspondientes.',
+            attachments: attachedToSend,
+            created_at: new Date().toISOString()
+        }
         setMessages(prev => [...prev, userMsg])
         setIsLoading(true)
 
         try {
-            const result = await sendRAGMessage(question, activeConversation)
+            const result = await sendRAGMessage(question, activeConversation, currentUser, attachedToSend)
 
             if (!activeConversation && result.conversation_id) {
                 setActiveConversation(result.conversation_id)
@@ -505,6 +581,7 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                     content: result.answer,
                     sources: result.sources,
                     pipeline_info: result.pipeline,
+                    interpreted_doc: result.interpreted_doc,
                     created_at: new Date().toISOString(),
                 }
                 setMessages(prev => [...prev, assistantMsg])
@@ -1023,18 +1100,26 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                 </div>
             )}
 
-            <div className="rag-main-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
-                {isPublic && messages.length > 0 && (
-                    <button
-                        className="simon-public-new-chat-btn"
-                        onClick={startNewConversation}
-                        title="Iniciar una nueva consulta limpia"
-                    >
-                        <Plus size={14} />
-                        <span>Nueva Consulta</span>
-                    </button>
-                )}
-                <div className="rag-chat-area" style={{ display: activeTab === 'chat' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="rag-main-area" style={{ flex: '1 1 0%', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+                <div
+                    className="rag-chat-area"
+                    style={{ display: activeTab === 'chat' ? 'flex' : 'none', flex: '1 1 0%', minHeight: 0, height: '100%', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        const files = Array.from(e.dataTransfer.files || []);
+                        if (files.length) processIncomingFiles(files);
+                    }}
+                >
+                    {isDragging && (
+                        <div className="rag-drag-overlay">
+                            <Upload size={38} />
+                            <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>Soltá las imágenes o documentos aquí</div>
+                            <div style={{ fontSize: '0.82rem', opacity: 0.85 }}>Órdenes médicas, recetas, carnets de obras sociales o informes</div>
+                        </div>
+                    )}
 
                 <div className="rag-messages">
                     {!isPublic && !showSidebar && (
@@ -1091,6 +1176,40 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                     </div>
                                 )}
                                 <div className="rag-message-content">
+                                    {/* Adjuntos del usuario */}
+                                    {msg.attachments && msg.attachments.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                                            {msg.attachments.map((att, attIdx) => (
+                                                att.isImage || (att.mime_type && att.mime_type.startsWith('image/')) ? (
+                                                    <div
+                                                        key={attIdx}
+                                                        className="rag-msg-user-attachment"
+                                                        onClick={() => window.open(att.previewUrl || `data:${att.mime_type};base64,${att.data}`, '_blank')}
+                                                        title="Clic para abrir en tamaño completo"
+                                                    >
+                                                        <img src={att.previewUrl || `data:${att.mime_type};base64,${att.data}`} alt={att.name} />
+                                                    </div>
+                                                ) : (
+                                                    <div key={attIdx} className="rag-attachment-chip" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'rgba(255,255,255,0.4)' }}>
+                                                        <FileText size={16} />
+                                                        <span>{att.name}</span>
+                                                    </div>
+                                                )
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Tarjeta de Documento Interpretado */}
+                                    {msg.interpreted_doc && (
+                                        <div className="rag-doc-interpreted-card">
+                                            <FileText size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#16a34a' }} />
+                                            <div>
+                                                <strong style={{ color: '#15803d' }}>Documento interpretado (GPT-5.4 Vision):</strong>
+                                                <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>{msg.interpreted_doc.summary}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {(() => {
                                         const { mainContent, relatedQuestions } = extractContentAndQuestions(msg.content, msg.role);
                                         return (
@@ -1339,7 +1458,53 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                 )}
 
                 <div className="rag-input-area">
+                    {/* Multimodal Preview Bar */}
+                    {attachments.length > 0 && (
+                        <div className="rag-attachment-preview-bar">
+                            {attachments.map((att, idx) => (
+                                <div key={idx} className="rag-attachment-chip">
+                                    {att.isImage ? (
+                                        <img src={att.previewUrl} alt={att.name} className="rag-attachment-thumb" />
+                                    ) : (
+                                        <FileText size={18} color="#2563eb" style={{ flexShrink: 0 }} />
+                                    )}
+                                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                                        <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+                                        <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{(att.size / 1024).toFixed(1)} KB</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="rag-attachment-remove"
+                                        onClick={() => removeAttachment(idx)}
+                                        title="Eliminar adjunto"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     <div className="rag-input-wrapper">
+                        {/* Botón Clip para Adjuntar Imagen / PDF */}
+                        <button
+                            type="button"
+                            className="rag-attach-btn"
+                            onClick={() => chatAttachmentInputRef.current?.click()}
+                            title="Adjuntar imagen o PDF (orden médica, carnet, receta)"
+                            disabled={isLoading}
+                        >
+                            <Paperclip size={18} />
+                        </button>
+                        <input
+                            type="file"
+                            ref={chatAttachmentInputRef}
+                            onChange={handleChatAttachmentSelect}
+                            accept="image/jpeg,image/png,image/webp,application/pdf"
+                            multiple
+                            style={{ display: 'none' }}
+                        />
+
                         <textarea
                             ref={chatInputRef}
                             className="rag-input"
@@ -1352,17 +1517,18 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                 if (e.key === 'Escape') setShowAutocomplete(false);
                                 handleKeyPress(e);
                             }}
+                            onPaste={handlePaste}
                             onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
                             onFocus={() => { if (inputValue.trim().length >= 2) setShowAutocomplete(true); }}
-                            placeholder="Escribí tu pregunta sobre normativas, obras sociales o procedimientos..."
+                            placeholder={attachments.length > 0 ? "Escribí tu consulta sobre el archivo adjunto o envialo para interpretar..." : "Escribí tu pregunta sobre normativas, obras sociales o pegá una imagen..."}
                             rows={1}
                             disabled={isLoading}
                         />
                         <button
                             className="rag-send-btn"
                             onClick={handleSend}
-                            disabled={!inputValue.trim() || isLoading}
-                            title="Enviar pregunta (Enter)"
+                            disabled={(!inputValue.trim() && attachments.length === 0) || isLoading}
+                            title="Enviar consulta (Enter)"
                         >
                             {isLoading ? <Loader2 size={18} className="rag-spin" /> : <Send size={18} />}
                         </button>
