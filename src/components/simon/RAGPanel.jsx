@@ -8,7 +8,8 @@ import {
     Download, FolderPlus, ArrowLeft, Home, Folder,
     Lightbulb, GraduationCap, HelpCircle, Shield, FileWarning,
     Info, ThumbsUp, ThumbsDown, Eye, Calendar, ExternalLink, Pencil, Save,
-    Copy, Check, Paperclip, Image as ImageIcon
+    Copy, Check, Paperclip, Image as ImageIcon, ChevronDown, ChevronUp,
+    CheckCircle2, DollarSign, Camera
 } from 'lucide-react'
 import {
     sendRAGMessage, listRAGConversations, getRAGConversationMessages,
@@ -284,6 +285,7 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
     const [learningStats, setLearningStats] = useState(null)
     const [showSidebar, setShowSidebar] = useState(!isPublic)
     const [showHelp, setShowHelp] = useState(false)
+    const [showGuide, setShowGuide] = useState(false) // Desplegable de guía en 1 renglón
 
     // Multimodal attachments state
     const [attachments, setAttachments] = useState([])
@@ -1274,22 +1276,149 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                                 Consultá normativas, aranceles, convenios y expedientes del Sanatorio Argentino en tiempo real.
                             </p>
 
-                            <div className="simon-guide-box">
-                                <div className="simon-guide-box-header">
-                                    <Lightbulb size={16} color="#2563eb" />
-                                    <span>¿Cómo formular tu consulta para mejores respuestas?</span>
-                                </div>
-                                <ul className="simon-guide-list">
-                                    <li>
-                                        <strong>Obra Social / Convenio:</strong> Ej. <em>"¿Qué prácticas bioquímicas avala OSDE?"</em>
-                                    </li>
-                                    <li>
-                                        <strong>Procedimientos y Aranceles:</strong> Ej. <em>"¿Cuál es el costo del bisturí armónico en código 042?"</em>
-                                    </li>
-                                    <li>
-                                        <strong>Criterios de Internación:</strong> Ej. <em>"¿Cuáles son las reglas de internación en Medisalud?"</em>
-                                    </li>
-                                </ul>
+                            <div className={`simon-guide-box ${showGuide ? 'open' : 'collapsed'}`}>
+                                <button
+                                    type="button"
+                                    className="simon-guide-toggle-row"
+                                    onClick={() => setShowGuide(prev => !prev)}
+                                    title={showGuide ? 'Ocultar guía' : 'Abrir guía interactiva de consultas'}
+                                >
+                                    <div className="simon-guide-toggle-left">
+                                        <div className="simon-guide-icon-pill">
+                                            <Lightbulb size={15} color="#2563eb" />
+                                        </div>
+                                        <span className="simon-guide-toggle-title">
+                                            ¿Cómo formular tu consulta para mejores respuestas?
+                                        </span>
+                                    </div>
+                                    <div className="simon-guide-toggle-right">
+                                        <span className="simon-guide-toggle-hint hide-mobile">
+                                            {showGuide ? 'Cerrar guía' : 'Ver guía y ejemplos'}
+                                        </span>
+                                        <div className={`simon-guide-chevron ${showGuide ? 'open' : ''}`}>
+                                            <ChevronDown size={15} />
+                                        </div>
+                                    </div>
+                                </button>
+
+                                {showGuide && (
+                                    <div className="simon-guide-content">
+                                        {/* Grilla visual de temas */}
+                                        <div className="simon-guide-grid">
+                                            {/* Tarjeta 1: Obras Sociales */}
+                                            <div className="simon-guide-card">
+                                                <div className="simon-guide-card-header">
+                                                    <Shield size={16} color="#2563eb" />
+                                                    <span>Obras Sociales y Convenios</span>
+                                                </div>
+                                                <p className="simon-guide-card-desc">
+                                                    Consultá planes habilitados, convenios activos y requisitos de autorización previa.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    className="simon-guide-sample-btn"
+                                                    onClick={() => {
+                                                        setInputValue("¿Qué planes de Nobis recibimos?");
+                                                        chatInputRef.current?.focus();
+                                                    }}
+                                                    title="Probar este ejemplo en el chat"
+                                                >
+                                                    <Sparkles size={11} />
+                                                    <span>Ej: "¿Qué planes de Nobis recibimos?"</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Tarjeta 2: Multimodal (Fotos y Órdenes) */}
+                                            <div className="simon-guide-card">
+                                                <div className="simon-guide-card-header">
+                                                    <Paperclip size={16} color="#059669" />
+                                                    <span>Lectura de Órdenes y Carnets</span>
+                                                </div>
+                                                <p className="simon-guide-card-desc">
+                                                    Arrastrá o pegá una foto de orden médica, receta o credencial. Simón extrae los datos y valida normativas.
+                                                </p>
+                                                <div className="simon-guide-badge-multimodal">
+                                                    <Camera size={13} />
+                                                    <span>Arrastrá o usá el botón de clip 📎</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Tarjeta 3: Aranceles y Códigos */}
+                                            <div className="simon-guide-card">
+                                                <div className="simon-guide-card-header">
+                                                    <DollarSign size={16} color="#d97706" />
+                                                    <span>Aranceles, Nomenclador y Módulos</span>
+                                                </div>
+                                                <p className="simon-guide-card-desc">
+                                                    Valores de códigos ASOG, módulos quirúrgicos e insumos especiales (bisturí armónico, mallas).
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    className="simon-guide-sample-btn"
+                                                    onClick={() => {
+                                                        setInputValue("¿Cuál es el costo del bisturí armónico en código 042?");
+                                                        chatInputRef.current?.focus();
+                                                    }}
+                                                    title="Probar este ejemplo en el chat"
+                                                >
+                                                    <Sparkles size={11} />
+                                                    <span>Ej: "¿Cuál es el costo del bisturí armónico?"</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Tarjeta 4: Criterios de Internación */}
+                                            <div className="simon-guide-card">
+                                                <div className="simon-guide-card-header">
+                                                    <BookOpen size={16} color="#7c3aed" />
+                                                    <span>Criterios de Internación y Guardia</span>
+                                                </div>
+                                                <p className="simon-guide-card-desc">
+                                                    Reglas de ingreso programado, días de estada, acompañantes y coberturas de urgencias.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    className="simon-guide-sample-btn"
+                                                    onClick={() => {
+                                                        setInputValue("¿Cuáles son las reglas de internación en Medisalud?");
+                                                        chatInputRef.current?.focus();
+                                                    }}
+                                                    title="Probar este ejemplo en el chat"
+                                                >
+                                                    <Sparkles size={11} />
+                                                    <span>Ej: "¿Cuáles son las reglas de internación en Medisalud?"</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Bloque Gráfico: Recomendaciones vs Evitar */}
+                                        <div className="simon-guide-dos-donts">
+                                            <div className="simon-guide-column">
+                                                <div className="simon-guide-col-title dos">
+                                                    <CheckCircle2 size={13} />
+                                                    <span>Recomendado</span>
+                                                </div>
+                                                <div className="simon-guide-item">
+                                                    <span>• Nombrá la Obra Social específica y el plan (ej: <em>"Nobis plan N500"</em>).</span>
+                                                </div>
+                                                <div className="simon-guide-item">
+                                                    <span>• Fotos claras, derechas y con buena iluminación de órdenes o carnets.</span>
+                                                </div>
+                                            </div>
+                                            <div className="simon-guide-column">
+                                                <div className="simon-guide-col-title donts">
+                                                    <AlertCircle size={13} />
+                                                    <span>A Evitar</span>
+                                                </div>
+                                                <div className="simon-guide-item">
+                                                    <span>• Palabras sueltas sin contexto (ej: solo <em>"Planes"</em> o <em>"Nobis"</em>).</span>
+                                                </div>
+                                                <div className="simon-guide-item">
+                                                    <span>• Imágenes borrosas, cortadas o sin datos visibles del afiliado.</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (

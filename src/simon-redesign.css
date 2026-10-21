@@ -589,44 +589,308 @@ body.dark-theme {
   max-width: 800px;
 }
 
-/* Guide Box - Full Width */
+/* Guide Box - Single Line Collapsible & Rich Dropdown */
 .simon-guide-box {
   width: 100%;
-  max-width: 100%;
-  background: #f8fafc;
+  max-width: 820px;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-left: 4px solid #2563eb;
-  border-radius: 14px;
-  padding: 20px 24px;
-  text-align: left;
-  margin-bottom: 0;
+  border-radius: 12px;
+  margin: 10px auto 0;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
 }
 
-.simon-guide-box-header {
+.simon-guide-box:hover {
+  border-color: #cbd5e1;
+}
+
+.simon-guide-box.open {
+  border-color: #bfdbfe;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.08);
+}
+
+body.dark-theme .simon-guide-box {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+body.dark-theme .simon-guide-box.open {
+  border-color: #1e40af;
+}
+
+.simon-guide-toggle-row {
+  width: 100%;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  gap: 12px;
+  transition: background 0.15s ease;
+}
+
+.simon-guide-toggle-row:hover {
+  background: #f8fafc;
+}
+
+body.dark-theme .simon-guide-toggle-row:hover {
+  background: #0f172a;
+}
+
+.simon-guide-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.simon-guide-icon-pill {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+body.dark-theme .simon-guide-icon-pill {
+  background: rgba(37, 99, 235, 0.2);
+}
+
+.simon-guide-toggle-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.dark-theme .simon-guide-toggle-title {
+  color: #f1f5f9;
+}
+
+.simon-guide-toggle-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.simon-guide-toggle-hint {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #2563eb;
+  padding: 3px 8px;
+  background: #eff6ff;
+  border-radius: 12px;
+  border: 1px solid #dbeafe;
+}
+
+body.dark-theme .simon-guide-toggle-hint {
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.simon-guide-chevron {
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.simon-guide-chevron.open {
+  transform: rotate(180deg);
+  color: #2563eb;
+}
+
+.simon-guide-content {
+  padding: 14px 16px 16px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+body.dark-theme .simon-guide-content {
+  border-top-color: #334155;
+}
+
+.simon-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .simon-guide-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.simon-guide-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.simon-guide-card:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+body.dark-theme .simon-guide-card {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+.simon-guide-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
   font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 12px;
+  color: #1e293b;
 }
 
-.simon-guide-list {
+body.dark-theme .simon-guide-card-header {
+  color: #f1f5f9;
+}
+
+.simon-guide-card-desc {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: #64748b;
   margin: 0;
-  padding-left: 20px;
-  color: #334155;
-  font-size: 0.875rem;
-  line-height: 1.8;
 }
 
-.simon-guide-list li {
-  margin-bottom: 8px;
+body.dark-theme .simon-guide-card-desc {
+  color: #94a3b8;
 }
 
-.simon-guide-list li:last-child {
-  margin-bottom: 0;
+.simon-guide-sample-btn {
+  margin-top: 4px;
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.74rem;
+  color: #2563eb;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-style: italic;
+}
+
+.simon-guide-sample-btn:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  border-style: solid;
+}
+
+body.dark-theme .simon-guide-sample-btn {
+  background: #1e293b;
+  border-color: #475569;
+  color: #93c5fd;
+}
+
+.simon-guide-badge-multimodal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+body.dark-theme .simon-guide-badge-multimodal {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* Good vs Bad Practices Section */
+.simon-guide-dos-donts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+body.dark-theme .simon-guide-dos-donts {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+@media (max-width: 640px) {
+  .simon-guide-dos-donts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.simon-guide-column {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.simon-guide-col-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.simon-guide-col-title.dos {
+  color: #16a34a;
+}
+
+.simon-guide-col-title.donts {
+  color: #dc2626;
+}
+
+.simon-guide-item {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #475569;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+body.dark-theme .simon-guide-item {
+  color: #94a3b8;
 }
 
 /* Input Area Container - Centered Floating Capsule (ChatGPT Style) */
