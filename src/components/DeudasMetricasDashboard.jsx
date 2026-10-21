@@ -423,7 +423,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                         Deuda Gestionada vs. Deuda Cobrada (Mes a Mes)
                                     </h3>
                                     <span style={chartSubStyle}>
-                                        Comparativa mensual de montos abordados en gestión frente a dinero efectivamente cobrado
+                                        Criterio Cosecha: capital incorporado al inicio de gestión frente a dinero efectivamente cobrado en cada mes
                                     </span>
                                 </div>
                             </div>
