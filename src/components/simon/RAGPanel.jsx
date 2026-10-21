@@ -171,12 +171,110 @@ function extractContentAndQuestions(rawContent, role) {
     return { mainContent: mainContent.trim(), relatedQuestions };
 }
 
+// Rate Limiter for Public Users (5 queries per 60 minutes)
+const PUBLIC_QUERY_LIMIT = 5;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+
+function getPublicClientIdentifier() {
+    try {
+        let id = localStorage.getItem('simon_public_client_id');
+        if (!id) {
+            id = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+            localStorage.setItem('simon_public_client_id', id);
+            document.cookie = `simon_pci=${id};path=/;max-age=31536000;SameSite=Lax`;
+        }
+        return id;
+    } catch {
+        return 'dev_public_fallback';
+    }
+}
+
+function getPublicRateLimitStatus(clientIp = '') {
+    try {
+        const id = getPublicClientIdentifier();
+        const storageKey = `simon_pql_${id}`;
+        const raw = localStorage.getItem(storageKey);
+        let timestamps = raw ? JSON.parse(raw) : [];
+        const now = Date.now();
+
+        // Si tenemos IP detectada, fusionar consultas del dispositivo y de la IP
+        if (clientIp) {
+            const ipKey = `simon_pql_ip_${clientIp.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            const ipRaw = localStorage.getItem(ipKey);
+            if (ipRaw) {
+                const ipTimestamps = JSON.parse(ipRaw);
+                timestamps = Array.from(new Set([...timestamps, ...ipTimestamps]));
+            }
+        }
+
+        // Mantener solo consultas dentro de los últimos 60 minutos
+        timestamps = timestamps.filter(t => typeof t === 'number' && (now - t) < RATE_LIMIT_WINDOW_MS);
+        localStorage.setItem(storageKey, JSON.stringify(timestamps));
+        if (clientIp) {
+            const ipKey = `simon_pql_ip_${clientIp.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            localStorage.setItem(ipKey, JSON.stringify(timestamps));
+        }
+
+        const used = timestamps.length;
+        const remaining = Math.max(0, PUBLIC_QUERY_LIMIT - used);
+        const isBlocked = remaining === 0;
+        let minutesUntilReset = 0;
+        if (isBlocked && timestamps.length > 0) {
+            const oldest = Math.min(...timestamps);
+            minutesUntilReset = Math.max(1, Math.ceil((oldest + RATE_LIMIT_WINDOW_MS - now) / 60000));
+        }
+        return { used, remaining, isBlocked, minutesUntilReset };
+    } catch {
+        return { used: 0, remaining: PUBLIC_QUERY_LIMIT, isBlocked: false, minutesUntilReset: 0 };
+    }
+}
+
+function recordPublicQuery(clientIp = '') {
+    try {
+        const id = getPublicClientIdentifier();
+        const storageKey = `simon_pql_${id}`;
+        const raw = localStorage.getItem(storageKey);
+        let timestamps = raw ? JSON.parse(raw) : [];
+        const now = Date.now();
+        timestamps = timestamps.filter(t => typeof t === 'number' && (now - t) < RATE_LIMIT_WINDOW_MS);
+        timestamps.push(now);
+
+        localStorage.setItem(storageKey, JSON.stringify(timestamps));
+        if (clientIp) {
+            const ipKey = `simon_pql_ip_${clientIp.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            localStorage.setItem(ipKey, JSON.stringify(timestamps));
+        }
+    } catch (e) {
+        console.warn('Error recording public query rate limit:', e);
+    }
+}
+
 export default function RAGPanel({ addToast, isPublic = false, hideHistory = false, initialUser = null, resetTrigger = null }) {
     // State
     const [activeTab, setActiveTab] = useState('chat') // 'chat' | 'documents'
     const [conversations, setConversations] = useState([])
     const [activeConversation, setActiveConversation] = useState(null)
     const [messages, setMessages] = useState([])
+
+    // Control de límite para usuarios públicos (5 por hora)
+    const [clientIp, setClientIp] = useState('');
+    const [rateLimitInfo, setRateLimitInfo] = useState(() => isPublic ? getPublicRateLimitStatus('') : { used: 0, remaining: 5, isBlocked: false, minutesUntilReset: 0 });
+
+    useEffect(() => {
+        if (!isPublic) return;
+        // Detección no bloqueante de IP pública del usuario
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => {
+                if (data?.ip) {
+                    setClientIp(data.ip);
+                    setRateLimitInfo(getPublicRateLimitStatus(data.ip));
+                }
+            })
+            .catch(() => {
+                setRateLimitInfo(getPublicRateLimitStatus(''));
+            });
+    }, [isPublic]);
     const [inputValue, setInputValue] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [isUploading, setIsUploading] = useState(false)
@@ -542,6 +640,20 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
     async function handleSend() {
         if ((!inputValue.trim() && attachments.length === 0) || isLoading) return
 
+        // Control de límite para usuarios públicos (5 consultas por hora)
+        if (isPublic) {
+            const limit = getPublicRateLimitStatus(clientIp);
+            if (limit.isBlocked) {
+                setRateLimitInfo(limit);
+                const errMsg = `Has alcanzado el límite de ${PUBLIC_QUERY_LIMIT} consultas por hora para usuarios públicos. Podrás volver a consultar en ${limit.minutesUntilReset} min.`;
+                if (addToast) addToast(errMsg, 'warning');
+                setError(errMsg);
+                return;
+            }
+            recordPublicQuery(clientIp);
+            setRateLimitInfo(getPublicRateLimitStatus(clientIp));
+        }
+
         const question = inputValue.trim()
         const attachedToSend = [...attachments]
         setInputValue('')
@@ -800,6 +912,18 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
     }
 
     function handleSuggestionClick(suggestion) {
+        if (isPublic) {
+            const limit = getPublicRateLimitStatus(clientIp);
+            if (limit.isBlocked) {
+                setRateLimitInfo(limit);
+                const errMsg = `Has alcanzado el límite de ${PUBLIC_QUERY_LIMIT} consultas por hora para usuarios públicos. Podrás volver a consultar en ${limit.minutesUntilReset} min.`;
+                if (addToast) addToast(errMsg, 'warning');
+                setError(errMsg);
+                return;
+            }
+            recordPublicQuery(clientIp);
+            setRateLimitInfo(getPublicRateLimitStatus(clientIp));
+        }
         setInputValue(suggestion)
         setTimeout(() => {
             setInputValue('')
@@ -1134,12 +1258,15 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                     {messages.length === 0 && !isLoading ? (
                         <div className="rag-welcome">
                             <div className="simon-welcome-hero">
-                                <div className="simon-welcome-avatar-glow">
-                                    <Brain size={40} color="#ffffff" />
+                                <div className="simon-welcome-avatar-glow" style={{ overflow: 'hidden' }}>
+                                    <img 
+                                        src="/beto.jpg" 
+                                        alt="Beto IA" 
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} 
+                                    />
                                 </div>
                                 <div className="simon-welcome-titles">
                                     <h3>Simon IA</h3>
-                                    <span className="simon-welcome-badge">Asistente Institucional RAG</span>
                                 </div>
                             </div>
 
@@ -1170,8 +1297,12 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                             <div key={i} className={`rag-message ${msg.role}`}>
                                 {msg.role === 'assistant' && (
                                     <div className="rag-message-avatar">
-                                        <div className="rag-avatar-simon-container">
-                                            <Brain size={18} />
+                                        <div className="rag-avatar-simon-container" style={{ overflow: 'hidden' }}>
+                                            <img 
+                                                src="/beto.jpg" 
+                                                alt="Beto IA" 
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} 
+                                            />
                                         </div>
                                     </div>
                                 )}
@@ -1430,8 +1561,12 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                     {isLoading && (
                         <div className="rag-message assistant thinking">
                             <div className="rag-message-avatar">
-                                <div className="rag-avatar-simon-container">
-                                    <Brain size={18} />
+                                <div className="rag-avatar-simon-container" style={{ overflow: 'hidden' }}>
+                                    <img 
+                                        src="/beto.jpg" 
+                                        alt="Beto IA" 
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} 
+                                    />
                                 </div>
                             </div>
                             <div className="rag-message-content">
@@ -1485,6 +1620,16 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                         </div>
                     )}
 
+                    {/* Banner de Límite para usuarios públicos */}
+                    {isPublic && rateLimitInfo.isBlocked && (
+                        <div className="simon-public-limit-banner">
+                            <AlertCircle size={16} style={{ flexShrink: 0, color: '#f59e0b' }} />
+                            <div>
+                                <strong>Límite de consultas públicas alcanzado:</strong> Has utilizado tus {PUBLIC_QUERY_LIMIT} consultas gratuitas de esta hora. Podrás volver a consultar en <strong>{rateLimitInfo.minutesUntilReset} minutos</strong>.
+                            </div>
+                        </div>
+                    )}
+
                     <div className="rag-input-wrapper">
                         {/* Botón Clip para Adjuntar Imagen / PDF */}
                         <button
@@ -1492,7 +1637,7 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                             className="rag-attach-btn"
                             onClick={() => chatAttachmentInputRef.current?.click()}
                             title="Adjuntar imagen o PDF (orden médica, carnet, receta)"
-                            disabled={isLoading}
+                            disabled={isLoading || (isPublic && rateLimitInfo.isBlocked)}
                         >
                             <Paperclip size={18} />
                         </button>
@@ -1520,15 +1665,19 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                             onPaste={handlePaste}
                             onBlur={() => setTimeout(() => setShowAutocomplete(false), 200)}
                             onFocus={() => { if (inputValue.trim().length >= 2) setShowAutocomplete(true); }}
-                            placeholder={attachments.length > 0 ? "Escribí tu consulta sobre el archivo adjunto o envialo para interpretar..." : "Escribí tu pregunta sobre normativas, obras sociales o pegá una imagen..."}
+                            placeholder={
+                                isPublic && rateLimitInfo.isBlocked
+                                    ? `Límite por hora alcanzado (${PUBLIC_QUERY_LIMIT}/${PUBLIC_QUERY_LIMIT}). Disponible en ${rateLimitInfo.minutesUntilReset} min.`
+                                    : (attachments.length > 0 ? "Escribí tu consulta sobre el archivo adjunto o envialo para interpretar..." : "Escribí tu pregunta sobre normativas, obras sociales o pegá una imagen...")
+                            }
                             rows={1}
-                            disabled={isLoading}
+                            disabled={isLoading || (isPublic && rateLimitInfo.isBlocked)}
                         />
                         <button
                             className="rag-send-btn"
                             onClick={handleSend}
-                            disabled={(!inputValue.trim() && attachments.length === 0) || isLoading}
-                            title="Enviar consulta (Enter)"
+                            disabled={(!inputValue.trim() && attachments.length === 0) || isLoading || (isPublic && rateLimitInfo.isBlocked)}
+                            title={isPublic && rateLimitInfo.isBlocked ? `Límite por hora alcanzado (${rateLimitInfo.minutesUntilReset}m)` : "Enviar consulta (Enter)"}
                         >
                             {isLoading ? <Loader2 size={18} className="rag-spin" /> : <Send size={18} />}
                         </button>
@@ -1557,6 +1706,18 @@ export default function RAGPanel({ addToast, isPublic = false, hideHistory = fal
                             );
                         })()}
                     </div>
+
+                    {/* Badge contador para usuarios públicos */}
+                    {isPublic && (
+                        <div className={`simon-public-rate-badge ${rateLimitInfo.isBlocked ? 'blocked' : ''}`}>
+                            <Clock size={12} />
+                            <span>
+                                {rateLimitInfo.isBlocked
+                                    ? `Límite por hora alcanzado (${PUBLIC_QUERY_LIMIT}/${PUBLIC_QUERY_LIMIT}) · Disponible en ${rateLimitInfo.minutesUntilReset} min`
+                                    : `${rateLimitInfo.remaining} de ${PUBLIC_QUERY_LIMIT} consultas disponibles esta hora`}
+                            </span>
+                        </div>
+                    )}
                     <div className="rag-input-hint">
                         💡 Respuestas basadas en documentación oficial del Sanatorio Argentino · Presioná <strong>Enter</strong> para enviar
                     </div>
