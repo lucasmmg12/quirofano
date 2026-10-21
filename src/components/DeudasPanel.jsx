@@ -28,6 +28,7 @@ import ChatWindow from './ChatWindow';
 import * as XLSX from 'xlsx';
 import LibreDeDeudaSubmodulo from './LibreDeDeudaSubmodulo';
 import DeudasMetricasDashboard from './DeudasMetricasDashboard';
+import { SkeletonTablePanel } from './SkeletonLoader';
 
 const VIEWS = { LIST: 'list', DETAIL: 'detail', LIBRE_DEUDA: 'libre_deuda' };
 
