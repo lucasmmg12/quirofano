@@ -26,8 +26,8 @@ import { parseDeudaExcel } from '../utils/deudaExcelParser';
 import { subscribeToAllIncoming } from '../services/chatService';
 import ChatWindow from './ChatWindow';
 import * as XLSX from 'xlsx';
-import { SkeletonTablePanel } from './SkeletonLoader';
 import LibreDeDeudaSubmodulo from './LibreDeDeudaSubmodulo';
+import DeudasMetricasDashboard from './DeudasMetricasDashboard';
 
 const VIEWS = { LIST: 'list', DETAIL: 'detail', LIBRE_DEUDA: 'libre_deuda' };
 
@@ -648,6 +648,74 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // RENDER
     // ═══════════════════════════════════════
 
+    if (activeSubmodule === 'metricas') {
+        return (
+            <div style={{ padding: '20px 28px' }}>
+                {/* NAVEGACIÓN SUBMÓDULOS DEUDAS */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '2px solid #E2E8F0', paddingBottom: '8px' }}>
+                    <button
+                        onClick={() => { setActiveSubmodule('gestion'); setView(VIEWS.LIST); }}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeSubmodule === 'gestion' ? '#0D3B66' : 'transparent',
+                            color: activeSubmodule === 'gestion' ? '#fff' : '#64748B',
+                            fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s'
+                        }}
+                    >
+                        <DollarSign size={16} /> Gestión de Deudas
+                    </button>
+                    <button
+                        onClick={() => { setActiveSubmodule('metricas'); }}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeSubmodule === 'metricas' ? '#0D3B66' : 'transparent',
+                            color: activeSubmodule === 'metricas' ? '#fff' : '#64748B',
+                            fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s'
+                        }}
+                    >
+                        <BarChart3 size={16} /> Métricas & Evolución
+                    </button>
+                    <button
+                        onClick={() => { setActiveSubmodule('libre_deuda'); setView(VIEWS.LIBRE_DEUDA); }}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeSubmodule === 'libre_deuda' ? '#0D3B66' : 'transparent',
+                            color: activeSubmodule === 'libre_deuda' ? '#fff' : '#64748B',
+                            fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s'
+                        }}
+                    >
+                        <FileText size={16} /> Libre de Deuda
+                    </button>
+                </div>
+
+                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                        <h2 style={{ ...st.headerTitle, fontSize: '1.4rem' }}>Dashboard de Métricas y Recupero de Deudas</h2>
+                        <span style={st.headerSub}>Monitoreo de deuda gestionada, efectividad de cobranzas y evolución temporal del pasivo</span>
+                    </div>
+                    <button
+                        onClick={() => { setActiveSubmodule('gestion'); setView(VIEWS.LIST); }}
+                        style={{ ...st.btnSmall, background: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1' }}
+                    >
+                        <ArrowLeft size={14} /> Volver a la Lista
+                    </button>
+                </div>
+
+                <DeudasMetricasDashboard
+                    onSelectPatient={(p) => {
+                        const fullDeudor = deudores.find(d => d.id === p.id) || p;
+                        openDetail(fullDeudor);
+                        setActiveSubmodule('gestion');
+                    }}
+                    addToast={addToast}
+                />
+            </div>
+        );
+    }
+
     if (view === VIEWS.LIBRE_DEUDA || activeSubmodule === 'libre_deuda') {
         return (
             <LibreDeDeudaSubmodulo
@@ -686,6 +754,18 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         }}
                     >
                         <DollarSign size={16} /> Gestión de Deudas
+                    </button>
+                    <button
+                        onClick={() => { setActiveSubmodule('metricas'); }}
+                        style={{
+                            padding: '8px 16px', borderRadius: '10px', border: 'none',
+                            background: activeSubmodule === 'metricas' ? '#0D3B66' : 'transparent',
+                            color: activeSubmodule === 'metricas' ? '#fff' : '#64748B',
+                            fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s'
+                        }}
+                    >
+                        <BarChart3 size={16} /> Métricas & Evolución
                     </button>
                     <button
                         onClick={() => { setActiveSubmodule('libre_deuda'); setView(VIEWS.LIBRE_DEUDA); }}
@@ -852,7 +932,19 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     </div>
                 )}
 
-                {/* MÉTRICAS EXPANDIDAS — TOP 10 Y KPIs */}
+                {/* MÉTRICAS EXPANDIDAS — GRÁFICOS Y ANALÍTICAS */}
+                {showMetricas && (
+                    <div style={{ marginBottom: '24px' }}>
+                        <DeudasMetricasDashboard
+                            onSelectPatient={(p) => {
+                                const fullDeudor = deudores.find(d => d.id === p.id) || p;
+                                openDetail(fullDeudor);
+                            }}
+                            addToast={addToast}
+                        />
+                    </div>
+                )}
+
                 {showMetricas && metricas && (
                     <div style={st.metricasPanel}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
