@@ -930,7 +930,67 @@ export async function createCertificadoLibreDeuda(certData) {
  * 3. Evolución temporal de la Deuda Total mes a mes.
  * 4. Ranking de pacientes con mayor deuda (Top Deudores).
  */
+/**
+ * Resuelve las fechas de inicio y fin para los presets temporales de métricas
+ */
+export function getRangoFechasPreset(preset = 'todos', fechaDesde = null, fechaHasta = null) {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1; // 1-12
+    const monthNamesEs = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    if (preset === 'este_mes') {
+        const mStr = String(curMonth).padStart(2, '0');
+        const lastDay = new Date(curYear, curMonth, 0).getDate();
+        return {
+            preset: 'este_mes',
+            fechaDesde: `${curYear}-${mStr}-01`,
+            fechaHasta: `${curYear}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+            label: `Este Mes (${monthNamesEs[curMonth - 1]} ${curYear})`
+        };
+    }
+
+    if (preset === 'mes_anterior') {
+        const prevDate = new Date(curYear, curMonth - 2, 1);
+        const prevYear = prevDate.getFullYear();
+        const prevMonth = prevDate.getMonth() + 1;
+        const mStr = String(prevMonth).padStart(2, '0');
+        const lastDay = new Date(prevYear, prevMonth, 0).getDate();
+        return {
+            preset: 'mes_anterior',
+            fechaDesde: `${prevYear}-${mStr}-01`,
+            fechaHasta: `${prevYear}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+            label: `Mes Anterior (${monthNamesEs[prevMonth - 1]} ${prevYear})`
+        };
+    }
+
+    if (preset === 'personalizado') {
+        return {
+            preset: 'personalizado',
+            fechaDesde: fechaDesde || `${curYear}-01-01`,
+            fechaHasta: fechaHasta || `${curYear}-12-31`,
+            label: fechaDesde && fechaHasta
+                ? `Personalizado (${fechaDesde} al ${fechaHasta})`
+                : 'Período Personalizado'
+        };
+    }
+
+    return {
+        preset: 'todos',
+        fechaDesde: null,
+        fechaHasta: null,
+        label: 'Todo el Histórico'
+    };
+}
+
 export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
+    const { preset = 'todos', fechaDesde = null, fechaHasta = null } = filtros;
+    const rango = getRangoFechasPreset(preset, fechaDesde, fechaHasta);
+    const { fechaDesde: effDesde, fechaHasta: effHasta } = rango;
+
     // 1. Obtener todos los pacientes de deudas
     let queryPacientes = supabase
         .from('deudas_pacientes')
@@ -974,30 +1034,82 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
 
     // Tracking de primera gestión por paciente
     const patientFirstGestion = {};
+    const patientHasGestionInRange = new Set();
+    const patientHasPaymentInRange = new Set();
+
     seguimientos.forEach(s => {
+        const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
+        const ym = s.created_at ? s.created_at.substring(0, 7) : '';
+
         if (!patientFirstGestion[s.paciente_id]) {
-            patientFirstGestion[s.paciente_id] = s.created_at.substring(0, 7);
+            patientFirstGestion[s.paciente_id] = ym;
+        }
+
+        // Chequear si el seguimiento cae dentro del período filtrado
+        if (effDesde && effHasta) {
+            if (sDate >= effDesde && sDate <= effHasta) {
+                patientHasGestionInRange.add(s.paciente_id);
+                if (s.tipo === 'pago' && s.monto > 0) {
+                    patientHasPaymentInRange.add(s.paciente_id);
+                }
+            }
+        } else {
+            patientHasGestionInRange.add(s.paciente_id);
+            if (s.tipo === 'pago' && s.monto > 0) {
+                patientHasPaymentInRange.add(s.paciente_id);
+            }
         }
     });
 
     // Identificar pacientes gestionados
-    const pacientesGestionadosList = pacientes.filter(p => 
-        p.categoria !== 'sin_gestionar' || 
-        p.ultimo_contacto_at || 
-        patientFirstGestion[p.id]
-    );
+    const pacientesGestionadosList = pacientes.filter(p => {
+        if (effDesde && effHasta) {
+            // En modo con filtro de fechas: revisa si tuvo acción o último contacto en el rango
+            if (patientHasGestionInRange.has(p.id)) return true;
+            if (p.ultimo_contacto_at) {
+                const cDate = p.ultimo_contacto_at.substring(0, 10);
+                if (cDate >= effDesde && cDate <= effHasta) return true;
+            }
+            if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
+                const cancDate = p.deuda_cancelada_at.substring(0, 10);
+                if (cancDate >= effDesde && cancDate <= effHasta) return true;
+            }
+            return false;
+        }
+
+        // En modo "Todos": cualquier paciente no virgen de gestión
+        return (
+            p.categoria !== 'sin_gestionar' || 
+            p.ultimo_contacto_at || 
+            patientFirstGestion[p.id]
+        );
+    });
 
     const totalDeudaGestionada = pacientesGestionadosList.reduce((acc, p) => acc + Number(p.deuda_total), 0);
     const totalPacientes = pacientes.length;
     const countGestionados = pacientesGestionadosList.length;
     const porcentajeGestionado = totalPacientes > 0 ? Math.round((countGestionados / totalPacientes) * 100) : 0;
 
-    // Calcular cobros por mes
+    // Calcular cobros por mes (y total cobrado filtrado)
     const cobradoPorMes = {};
+    let totalDeudaCobrada = 0;
+
     seguimientos.forEach(s => {
         if (s.tipo === 'pago' && s.monto > 0) {
-            const ym = s.created_at.substring(0, 7);
-            cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + Number(s.monto);
+            const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
+            const ym = s.created_at ? s.created_at.substring(0, 7) : '';
+            const monto = Number(s.monto);
+
+            cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+
+            // Filtro por fecha para el KPI de Cobro Efectivo
+            if (effDesde && effHasta) {
+                if (sDate >= effDesde && sDate <= effHasta) {
+                    totalDeudaCobrada += monto;
+                }
+            } else {
+                totalDeudaCobrada += monto;
+            }
         }
     });
 
@@ -1010,16 +1122,22 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     pacientes.forEach(p => {
         if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
             if (!pacIdsWithSegPayment.has(p.id)) {
+                const cancDate = p.deuda_cancelada_at.substring(0, 10);
                 const ym = p.deuda_cancelada_at.substring(0, 7);
                 const monto = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
                 if (monto > 0) {
                     cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                    if (effDesde && effHasta) {
+                        if (cancDate >= effDesde && cancDate <= effHasta) {
+                            totalDeudaCobrada += monto;
+                        }
+                    } else {
+                        totalDeudaCobrada += monto;
+                    }
                 }
             }
         }
     });
-
-    const totalDeudaCobrada = Object.values(cobradoPorMes).reduce((a, b) => a + b, 0);
 
     // Calcular deuda gestionada por mes
     const gestionadoPorMes = {};
@@ -1057,13 +1175,24 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
 
     const sortedMonths = Array.from(allMonthsSet).sort().filter(m => m >= '2026-05' && m <= '2026-12');
 
+    // Determinamos qué meses están dentro del período filtrado para resaltarlos o enfocarlos
+    const targetYmStart = effDesde ? effDesde.substring(0, 7) : null;
+    const targetYmEnd = effHasta ? effHasta.substring(0, 7) : null;
+
     // 1. Datos para Gráfico de Barras: Deuda Cobrada vs Deuda Gestionada mes a mes
-    const barrasMesAMes = sortedMonths.map(ym => ({
-        rawMes: ym,
-        mes: formatMonthLabel(ym),
-        deudaGestionada: Math.round(gestionadoPorMes[ym] || 0),
-        deudaCobrada: Math.round(cobradoPorMes[ym] || 0),
-    }));
+    const barrasMesAMes = sortedMonths.map(ym => {
+        const inPeriod = targetYmStart && targetYmEnd 
+            ? (ym >= targetYmStart && ym <= targetYmEnd)
+            : true;
+
+        return {
+            rawMes: ym,
+            mes: formatMonthLabel(ym),
+            deudaGestionada: Math.round(gestionadoPorMes[ym] || 0),
+            deudaCobrada: Math.round(cobradoPorMes[ym] || 0),
+            inPeriod
+        };
+    });
 
     // 2. Datos para Gráfico de Líneas: Evolución de la Deuda Total
     let acumuladoDeuda = 0;
@@ -1071,12 +1200,17 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         const originada = deudaPorMes[ym] || 0;
         const cobrada = cobradoPorMes[ym] || 0;
         acumuladoDeuda = Math.max(0, acumuladoDeuda + originada - cobrada);
+        const inPeriod = targetYmStart && targetYmEnd 
+            ? (ym >= targetYmStart && ym <= targetYmEnd)
+            : true;
+
         return {
             rawMes: ym,
             mes: formatMonthLabel(ym),
             deudaTotal: Math.round(acumuladoDeuda),
             cobradaMes: Math.round(cobrada),
             incorporadaMes: Math.round(originada),
+            inPeriod
         };
     });
 
@@ -1095,6 +1229,7 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             categoria: p.categoria,
             obraSocial: p.obra_social || 'Particular / S.D.',
             telefono: p.telefono,
+            gestionadoEnPeriodo: patientHasGestionInRange.has(p.id) || (effDesde && effHasta ? false : true),
         }));
 
     // Métricas globales
@@ -1110,6 +1245,7 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         : 0;
 
     return {
+        periodo: rango,
         totalPacientes,
         countGestionados,
         porcentajeGestionado,
