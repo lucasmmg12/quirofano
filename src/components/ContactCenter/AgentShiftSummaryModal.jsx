@@ -31,7 +31,10 @@ export default function AgentShiftSummaryModal({
     myAssignedChatsCount = 0,
     onOpenChatWithPhone
 }) {
-    const [selectedAgent, setSelectedAgent] = useState(initialAgent || activeAgent);
+    const isSupervisorUser = !activeAgent || activeAgent.id === 'lmarinero' || activeAgent.role?.toLowerCase().includes('supervisor');
+    const defaultInitialAgent = initialAgent || (isSupervisorUser ? ALL_AGENTS_OPTION : activeAgent);
+
+    const [selectedAgent, setSelectedAgent] = useState(defaultInitialAgent);
     const [selectedDate, setSelectedDate] = useState(() => initialDate || getLocalDateString());
     const [loading, setLoading] = useState(true);
     const [metrics, setMetrics] = useState(null);
@@ -47,6 +50,8 @@ export default function AgentShiftSummaryModal({
         if (isOpen) {
             if (initialAgent) {
                 setSelectedAgent(initialAgent);
+            } else if (isSupervisorUser) {
+                setSelectedAgent(ALL_AGENTS_OPTION);
             }
             if (initialDate) {
                 setSelectedDate(initialDate);
@@ -55,7 +60,7 @@ export default function AgentShiftSummaryModal({
                 setSelectedCategoriaModal(initialCategoriaModal);
             }
         }
-    }, [isOpen, initialAgent?.id, initialDate, initialCategoriaModal]);
+    }, [isOpen, initialAgent?.id, initialDate, initialCategoriaModal, isSupervisorUser]);
 
     // Cargar métricas al abrir o cambiar de agente / fecha
     const loadMetrics = async (agent = selectedAgent, date = selectedDate) => {

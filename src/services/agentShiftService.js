@@ -73,57 +73,57 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
     const targetDate = dateStr || currentToday;
     const isToday = targetDate === currentToday;
 
-    // 1. Si es la fecha de hoy, consulta prioritaria a Supabase app_config con key cc_turnos_contact_center_hoy
-    if (isToday) {
-        try {
-            const { data: row } = await supabase
-                .from('app_config')
-                .select('value, updated_at')
-                .eq('key', 'cc_turnos_contact_center_hoy')
-                .maybeSingle();
+    // 1. Consulta optimizada en batch a Supabase (claves hoy, específica de fecha y fallback general)
+    try {
+        const keysToTry = [
+            `cc_turnos_contact_center_${targetDate}`,
+            'cc_turnos_contact_center_hoy',
+            'cc_turnos_hoy'
+        ];
 
-            if (row?.value) {
-                const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-                if (parsed && (!parsed.fecha || parsed.fecha === targetDate) && Array.isArray(parsed.agentes) && parsed.agentes.length > 0) {
+        const { data: rows, error } = await supabase
+            .from('app_config')
+            .select('key, value, updated_at')
+            .in('key', keysToTry);
+
+        if (!error && Array.isArray(rows) && rows.length > 0) {
+            // Prioridad 1: Clave histórica exacta de la fecha solicitada
+            const exactHist = rows.find(r => r.key === `cc_turnos_contact_center_${targetDate}`);
+            if (exactHist?.value) {
+                const parsed = typeof exactHist.value === 'string' ? JSON.parse(exactHist.value) : exactHist.value;
+                if (parsed && Array.isArray(parsed.agentes)) {
                     return parsed;
                 }
             }
-        } catch (err) {
-            console.warn('[agentShiftService] Error leyendo cc_turnos_contact_center_hoy:', err);
-        }
-    }
 
-    // 2. Consulta histórica en Supabase app_config por fecha específica (cc_turnos_contact_center_YYYY-MM-DD)
-    try {
-        const { data: histRow } = await supabase
-            .from('app_config')
-            .select('value, updated_at')
-            .eq('key', `cc_turnos_contact_center_${targetDate}`)
-            .maybeSingle();
-
-        if (histRow?.value) {
-            const parsedHist = typeof histRow.value === 'string' ? JSON.parse(histRow.value) : histRow.value;
-            if (parsedHist && Array.isArray(parsedHist.agentes) && parsedHist.agentes.length > 0) {
-                return parsedHist;
+            // Prioridad 2: Claves de hoy si la fecha solicitada es hoy (o si el payload coincide con targetDate)
+            for (const k of ['cc_turnos_contact_center_hoy', 'cc_turnos_hoy']) {
+                const row = rows.find(r => r.key === k);
+                if (row?.value) {
+                    const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+                    if (parsed && (!parsed.fecha || parsed.fecha === targetDate || isToday) && Array.isArray(parsed.agentes)) {
+                        return parsed;
+                    }
+                }
             }
         }
     } catch (err) {
-        console.warn(`[agentShiftService] Error leyendo cc_turnos_contact_center_${targetDate}:`, err);
+        console.warn(`[agentShiftService] Error leyendo turnos de Supabase app_config (${targetDate}):`, err);
     }
 
-    // 3. Intento HTTP directo al sync-server (si estamos en red local / localhost o hay sync disponible)
+    // 2. Intento HTTP directo al sync-server (solo si estamos en red local / dev / localhost)
     const base = getSalusSyncBaseUrl();
     if (base) {
         try {
             const url = `${base}/api/salus/turnos-agentes-hoy?fecha=${targetDate}`;
             const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-            const timeoutId = controller ? setTimeout(() => controller.abort(), 5000) : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
             const res = await fetch(url, { signal: controller ? controller.signal : undefined });
             if (timeoutId) clearTimeout(timeoutId);
             if (res.ok) {
                 const json = await res.json();
                 if (json.success && json.data) {
-                    // Guardar asíncronamente en Supabase para persistir en Vercel
+                    // Guardar asíncronamente en Supabase para persistir en Vercel y otras PCs
                     try {
                         supabase.from('app_config').upsert({
                             key: `cc_turnos_contact_center_${targetDate}`,
@@ -138,26 +138,6 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
                 }
             }
         } catch (_) {}
-    }
-
-    // 4. Fallback a cc_turnos_hoy solo si la fecha solicitada es hoy
-    if (isToday) {
-        try {
-            const { data: row } = await supabase
-                .from('app_config')
-                .select('value, updated_at')
-                .eq('key', 'cc_turnos_hoy')
-                .maybeSingle();
-
-            if (row?.value) {
-                const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-                if (!parsed.fecha || parsed.fecha === targetDate) {
-                    return parsed;
-                }
-            }
-        } catch (err) {
-            console.warn('[agentShiftService] Error leyendo app_config cc_turnos_hoy:', err);
-        }
     }
 
     return { fecha: targetDate, total: 0, agentes: [] };

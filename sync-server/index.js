@@ -4527,9 +4527,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
         // 5b. TURNOS DIARIOS CONTACT CENTER (Final de Turno y Mapeo DNI con SALUS - Inicio y cada 3 min)
         async function syncTurnosDiariosCiclo() {
-            if (syncInProgress) return;
             try {
-                await syncTurnosDiariosContactCenterToSupabase();
                 await syncTurnosContactCenter();
                 await syncWhatsAppCancellations();
             } catch (e) {
