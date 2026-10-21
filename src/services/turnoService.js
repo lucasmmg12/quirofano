@@ -28,18 +28,19 @@ export async function crearTurno(tipoTramite, dni = null) {
     const boxAsignado = await getBoxBalanceado();
     // Si no hay boxes disponibles, el turno se crea sin box (admin asigna después)
 
-    // 3. Buscar nombre del paciente si tiene DNI
+    // 3. Buscar nombre del paciente en el padrón maestro si tiene DNI
     let nombrePaciente = null;
-    if (dni && dni.trim()) {
+    const cleanDni = dni ? String(dni).trim().replace(/\D/g, '') : null;
+    if (cleanDni) {
         const { data: paciente } = await supabase
             .from('hospital_pacientes')
-            .select('id_paciente, dni')
-            .eq('dni', dni.trim())
+            .select('id_paciente, dni, nombre')
+            .eq('dni', cleanDni)
             .limit(1)
-            .single();
-        // No importa si no lo encuentra, el DNI queda guardado
-        if (paciente) {
-            nombrePaciente = null; // hospital_pacientes no tiene nombre, podrÃ­a buscarse en surgeries
+            .maybeSingle();
+
+        if (paciente?.nombre) {
+            nombrePaciente = paciente.nombre;
         }
     }
 
