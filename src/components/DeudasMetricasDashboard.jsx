@@ -8,7 +8,7 @@ import {
     DollarSign, TrendingUp, Users, CheckCircle2,
     Calendar, ArrowUpRight, ArrowDownRight, Activity,
     RefreshCw, Filter, ShieldCheck, ChevronRight, User, Phone,
-    RotateCcw, Sparkles
+    RotateCcw, Sparkles, Info
 } from 'lucide-react';
 import { fetchMetricasAvanzadasDeudas, getRangoFechasPreset, CATEGORIAS_DEUDOR } from '../services/deudaService';
 
@@ -368,6 +368,30 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                 <ArrowUpRight size={14} />
                                 <span>{isFilteredPeriod ? 'Recaudado durante el período seleccionado' : 'Ingreso total recuperado al Sanatorio'}</span>
                             </div>
+                            {/* Desglose explicativo de composición del cobro */}
+                            <div style={{
+                                marginTop: '8px',
+                                paddingTop: '8px',
+                                borderTop: '1px dashed #bbf7d0',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '3px',
+                                fontSize: '0.70rem',
+                                color: '#166534'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: '#15803d' }}>• Cancelaciones 100% ({data.countDeudasCanceladas || 0}):</span>
+                                    <strong style={{ color: '#166534', fontFamily: 'monospace', fontSize: '0.74rem' }}>
+                                        {formatMoney(data.montoDeudasCanceladas || 0)}
+                                    </strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: '#15803d' }}>• Cuotas y pagos en curso:</span>
+                                    <strong style={{ color: '#166534', fontFamily: 'monospace', fontSize: '0.74rem' }}>
+                                        {formatMoney(data.montoCobrosCuotasYSeg || 0)}
+                                    </strong>
+                                </div>
+                            </div>
                         </div>
 
                         {/* 3. Deuda Activa Pendiente */}
@@ -416,7 +440,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '20px' }}>
                         {/* GRÁFICO 1: Barras Mes a Mes (Deuda Cobrada vs Deuda Gestionada) */}
                         <div style={chartContainerStyle}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                 <div>
                                     <h3 style={chartTitleStyle}>
                                         <Calendar size={16} color="#2563eb" />
@@ -425,6 +449,41 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                     <span style={chartSubStyle}>
                                         Criterio Cosecha: capital incorporado al inicio de gestión frente a dinero efectivamente cobrado en cada mes
                                     </span>
+                                </div>
+                            </div>
+
+                            {/* Banner Explicativo Clínico para usuarios y auditores */}
+                            <div style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                padding: '10px 12px',
+                                marginBottom: '14px',
+                                fontSize: '0.73rem',
+                                color: '#334155',
+                                lineHeight: '1.45'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
+                                    <Info size={14} color="#0284c7" />
+                                    <span>¿Cómo interpretar este gráfico?</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px' }}>
+                                    <div style={{ background: '#ffffff', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontWeight: 700, color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                                            <span>🟢 Deuda Cobrada (Caja Real del Mes)</span>
+                                        </div>
+                                        <div style={{ color: '#475569' }}>
+                                            Total de dinero <strong>percibido efectivamente en ese mes</strong>. Suma cancelaciones 100% + cuotas y pagos de convenios activos.
+                                        </div>
+                                    </div>
+                                    <div style={{ background: '#ffffff', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ fontWeight: 700, color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+                                            <span>🔵 Deuda Gestionada (Criterio Cosecha)</span>
+                                        </div>
+                                        <div style={{ color: '#475569' }}>
+                                            Capital de pacientes que <strong>iniciaron contacto/gestión en ese mes</strong>. Permite evaluar la cosecha y efectividad posterior de cobranza.
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 

@@ -1090,9 +1090,12 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     const countGestionados = pacientesGestionadosList.length;
     const porcentajeGestionado = totalPacientes > 0 ? Math.round((countGestionados / totalPacientes) * 100) : 0;
 
-    // Calcular cobros por mes (y total cobrado filtrado)
+    // Calcular cobros por mes (y total cobrado filtrado con desglose didáctico)
     const cobradoPorMes = {};
     let totalDeudaCobrada = 0;
+    let montoDeudasCanceladas = 0;
+    let countDeudasCanceladas = 0;
+    let montoCobrosCuotasYSeg = 0;
 
     seguimientos.forEach(s => {
         if (s.tipo === 'pago' && s.monto > 0) {
@@ -1106,9 +1109,11 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             if (effDesde && effHasta) {
                 if (sDate >= effDesde && sDate <= effHasta) {
                     totalDeudaCobrada += monto;
+                    montoCobrosCuotasYSeg += monto;
                 }
             } else {
                 totalDeudaCobrada += monto;
+                montoCobrosCuotasYSeg += monto;
             }
         }
     });
@@ -1130,9 +1135,13 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
                     if (effDesde && effHasta) {
                         if (cancDate >= effDesde && cancDate <= effHasta) {
                             totalDeudaCobrada += monto;
+                            montoDeudasCanceladas += monto;
+                            countDeudasCanceladas++;
                         }
                     } else {
                         totalDeudaCobrada += monto;
+                        montoDeudasCanceladas += monto;
+                        countDeudasCanceladas++;
                     }
                 }
             }
@@ -1251,6 +1260,9 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         porcentajeGestionado,
         totalDeudaGestionada,
         totalDeudaCobrada,
+        montoDeudasCanceladas,
+        countDeudasCanceladas,
+        montoCobrosCuotasYSeg,
         totalDeudaActiva,
         deudoresActivos,
         tasaRecuperacionGestionada,
