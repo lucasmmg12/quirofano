@@ -37,6 +37,7 @@ antigravity-awesome-skills/
 # Import scripts and migration payloads (may contain sensitive data)
 import_pacientes.mjs
 migrate_body.json
+fonts/
 
 # Temp patch scripts
 patch_surgery.*
