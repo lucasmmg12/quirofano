@@ -1148,19 +1148,46 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         }
     });
 
-    // Calcular deuda gestionada por mes
+    // Totales históricos acumulados de toda la vida del sistema
+    const totalHistoricoCanceladasMonto = pacientes
+        .filter(p => p.categoria === 'deuda_cancelada')
+        .reduce((s, p) => s + Number(p.deuda_total || 0), 0);
+    const totalHistoricoCanceladasCount = pacientes.filter(p => p.categoria === 'deuda_cancelada').length;
+    const totalHistoricoCobrado = Object.values(cobradoPorMes).reduce((a, b) => a + b, 0);
+
+    // Calcular deuda gestionada/abordada por mes (100% coherente con el filtro de períodos y KPI)
     const gestionadoPorMes = {};
-    pacientes.forEach(p => {
-        let ym = patientFirstGestion[p.id];
-        if (!ym && p.ultimo_contacto_at) {
-            ym = p.ultimo_contacto_at.substring(0, 7);
-        }
-        if (!ym && p.categoria !== 'sin_gestionar' && p.updated_at) {
-            ym = p.updated_at.substring(0, 7);
-        }
+    const pacientesPorMesGestion = {};
+
+    seguimientos.forEach(s => {
+        const ym = s.created_at ? s.created_at.substring(0, 7) : '';
         if (ym) {
-            gestionadoPorMes[ym] = (gestionadoPorMes[ym] || 0) + Number(p.deuda_total);
+            if (!pacientesPorMesGestion[ym]) pacientesPorMesGestion[ym] = new Set();
+            pacientesPorMesGestion[ym].add(s.paciente_id);
         }
+    });
+
+    pacientes.forEach(p => {
+        if (p.ultimo_contacto_at) {
+            const ym = p.ultimo_contacto_at.substring(0, 7);
+            if (ym) {
+                if (!pacientesPorMesGestion[ym]) pacientesPorMesGestion[ym] = new Set();
+                pacientesPorMesGestion[ym].add(p.id);
+            }
+        }
+        if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
+            const ym = p.deuda_cancelada_at.substring(0, 7);
+            if (ym) {
+                if (!pacientesPorMesGestion[ym]) pacientesPorMesGestion[ym] = new Set();
+                pacientesPorMesGestion[ym].add(p.id);
+            }
+        }
+    });
+
+    Object.entries(pacientesPorMesGestion).forEach(([ym, pacSet]) => {
+        const pacList = pacientes.filter(p => pacSet.has(p.id));
+        const sum = pacList.reduce((s, p) => s + Number(p.deuda_total), 0);
+        gestionadoPorMes[ym] = sum;
     });
 
     // Calcular deuda originada / incorporada por mes (para evolución de stock)
@@ -1266,6 +1293,9 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         totalDeudaActiva,
         deudoresActivos,
         tasaRecuperacionGestionada,
+        totalHistoricoCobrado,
+        totalHistoricoCanceladasMonto,
+        totalHistoricoCanceladasCount,
         barrasMesAMes,
         evolucionDeudaTotal,
         topDeudores,

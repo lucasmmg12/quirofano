@@ -1078,7 +1078,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 {datePreset === 'todos'
                                                     ? 'Todos los períodos — Mostrando todas las deudas que fueron pagadas por pacientes'
                                                     : datePreset === 'este_mes'
-                                                        ? `Junio ${new Date().getFullYear()} — Deudas que fueron pagadas ESTE MES (independientemente de cuándo se originó la deuda)`
+                                                        ? `${new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })} — Deudas que fueron pagadas ESTE MES (independientemente de cuándo se originó la deuda)`
                                                         : datePreset === 'mes_pasado'
                                                             ? 'Mes pasado — Deudas que fueron pagadas el mes anterior'
                                                             : 'Período personalizado — Deudas pagadas en el rango seleccionado'

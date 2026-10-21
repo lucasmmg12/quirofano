@@ -391,6 +391,23 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                         {formatMoney(data.montoCobrosCuotasYSeg || 0)}
                                     </strong>
                                 </div>
+                                {isFilteredPeriod && data.totalHistoricoCobrado > 0 && (
+                                    <div style={{
+                                        marginTop: '4px',
+                                        paddingTop: '4px',
+                                        borderTop: '1px dotted #86efac',
+                                        fontSize: '0.65rem',
+                                        color: '#15803d',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}>
+                                        <span>🌐 Histórico Sanatorio:</span>
+                                        <strong style={{ color: '#166534' }}>
+                                            {formatMoney(data.totalHistoricoCobrado)} ({formatMoney(data.totalHistoricoCanceladasMonto)} en {data.totalHistoricoCanceladasCount} canceladas)
+                                        </strong>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
