@@ -788,16 +788,18 @@ body.dark-theme .rag-send-btn:disabled {
 .rag-message {
   display: flex;
   gap: 16px;
-  margin-bottom: 24px;
-  width: 100%;
-  max-width: 800px;
+  margin: 0 auto 24px auto !important;
+  width: 100% !important;
+  max-width: 860px !important;
   box-sizing: border-box;
 }
 
 /* User Message Styling - Sleek Right-Aligned Capsule (ChatGPT Style) */
 .rag-message.user {
   justify-content: flex-end;
-  margin-left: auto;
+  margin: 0 auto 20px auto !important;
+  max-width: 860px !important;
+  width: 100% !important;
 }
 
 .rag-message.user .rag-avatar-user-badge {
@@ -831,7 +833,9 @@ body.dark-theme .rag-message.user .rag-message-content {
 /* Assistant Message Styling - Seamless Open Stream (Zero Boxed Cards) */
 .rag-message.assistant {
   justify-content: flex-start;
-  margin-right: auto;
+  margin: 0 auto 28px auto !important;
+  max-width: 860px !important;
+  width: 100% !important;
 }
 
 .rag-avatar-simon-container {
@@ -2379,7 +2383,12 @@ body.dark-theme .rag-chat-area::before {
   flex: 1 1 0% !important;
   min-height: 0 !important;
   overflow-y: auto !important;
-  padding: 20px 24px !important;
+  padding: 24px 20px 40px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 /* Fixed input area - cleanly docked, never cut off */
