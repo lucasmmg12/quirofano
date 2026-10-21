@@ -15,7 +15,7 @@ import {
 import { SkeletonCardGrid } from './SkeletonLoader';
 import { exportMetricasToExcel, generateMetricasPdf } from '../utils/metricsReport';
 import {
-    fetchColaActiva, fetchAtendidosHoy, fetchMetricasPorRango,
+    fetchColaActiva, fetchAtendidosHoy, fetchAtendidosPorRango, fetchMetricasPorRango,
     llamarTurno, iniciarAtencion, finalizarAtencion,
     cancelarTurno, derivarTurno, cambiarTramiteTurno, subscribeToCola, fetchTurnoConfig,
     devolverAEspera
@@ -86,10 +86,46 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [derivNotif, setDerivNotif] = useState(null); // { turnoNum, fromBox, toBox }
     const prevColaRef = useRef([]); // para detectar derivaciones comparando snapshots
 
+    // Helper para formatear YYYY-MM-DD para inputs de fecha
+    const toDateInputString = (d) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     // Rango de fechas para métricas
     const [metricasRango, setMetricasRango] = useState('hoy'); // hoy, ayer, semana, mes, custom
-    const [customStart, setCustomStart] = useState('');
-    const [customEnd, setCustomEnd] = useState('');
+    const [customStart, setCustomStart] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        return toDateInputString(d);
+    });
+    const [customEnd, setCustomEnd] = useState(() => toDateInputString(new Date()));
+
+    const handleSelectRango = (rango) => {
+        if (rango === 'custom') {
+            if (!customStart) {
+                const d = new Date();
+                d.setDate(d.getDate() - 7);
+                setCustomStart(toDateInputString(d));
+            }
+            if (!customEnd) {
+                setCustomEnd(toDateInputString(new Date()));
+            }
+        }
+        setMetricasRango(rango);
+    };
+
+    const rangoLabel = useMemo(() => {
+        switch (metricasRango) {
+            case 'ayer': return 'Ayer';
+            case 'semana': return 'Últimos 7 días';
+            case 'mes': return 'Últimos 30 días';
+            case 'custom': return customStart ? `${customStart} al ${customEnd || 'hoy'}` : 'Personalizado';
+            default: return 'Hoy';
+        }
+    }, [metricasRango, customStart, customEnd]);
 
     const empleadoNombre = currentUser?.nombre || 'Administrador';
     const empleadoBox = boxFilter || 1;
@@ -99,29 +135,40 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
         try {
             // Calcular fechas del filtro
             let start = new Date();
-            start.setHours(0,0,0,0);
+            start.setHours(0, 0, 0, 0);
             let end = null;
             
             if (metricasRango === 'ayer') {
                 start.setDate(start.getDate() - 1);
+                start.setHours(0, 0, 0, 0);
                 end = new Date(start);
-                end.setHours(23,59,59,999);
+                end.setHours(23, 59, 59, 999);
             } else if (metricasRango === 'semana') {
                 start.setDate(start.getDate() - 7);
+                start.setHours(0, 0, 0, 0);
             } else if (metricasRango === 'mes') {
-                start.setMonth(start.getMonth() - 1);
-            } else if (metricasRango === 'custom' && customStart) {
-                start = new Date(customStart + 'T00:00:00');
+                start.setDate(start.getDate() - 30);
+                start.setHours(0, 0, 0, 0);
+            } else if (metricasRango === 'custom') {
+                if (customStart) {
+                    start = new Date(`${customStart}T00:00:00`);
+                } else {
+                    start.setDate(start.getDate() - 7);
+                    start.setHours(0, 0, 0, 0);
+                }
                 if (customEnd) {
-                    end = new Date(customEnd + 'T23:59:59');
+                    end = new Date(`${customEnd}T23:59:59.999`);
                 }
             }
+
+            const startIso = start.toISOString();
+            const endIso = end ? end.toISOString() : null;
 
             const [cfgData, colaData, atendidosData, metricasData] = await Promise.all([
                 fetchTurnoConfig(),
                 fetchColaActiva(),
-                fetchAtendidosHoy(),
-                fetchMetricasPorRango(start.toISOString(), end ? end.toISOString() : null),
+                fetchAtendidosPorRango(startIso, endIso),
+                fetchMetricasPorRango(startIso, endIso),
             ]);
             setConfig(cfgData);
             setCola(colaData);
@@ -452,7 +499,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             {[{id:'hoy', label:'Hoy'}, {id:'ayer', label:'Ayer'}, {id:'semana', label:'7 días'}, {id:'mes', label:'30 días'}, {id:'custom', label:'Custom'}].map(tab => (
                                 <button
                                     key={tab.id}
-                                    onClick={() => setMetricasRango(tab.id)}
+                                    onClick={() => handleSelectRango(tab.id)}
                                     style={{
                                         padding: '2px 8px', borderRadius: '12px', fontSize: '0.7rem', border: 'none', cursor: 'pointer',
                                         background: metricasRango === tab.id ? '#DBEAFE' : 'transparent',
@@ -480,20 +527,50 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     onChange={e => setCustomEnd(e.target.value)} 
                                     style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #CBD5E1', outline: 'none' }}
                                 />
+                                <button
+                                    onClick={loadData}
+                                    style={{
+                                        padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600,
+                                        borderRadius: '6px', border: 'none', background: '#2563EB',
+                                        color: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
+                                    }}
+                                >
+                                    Aplicar
+                                </button>
                             </div>
                         )}
                         {/* Quick stats */}
                         {metricas && (
                             <div style={s.quickStats}>
-                                <div style={s.quickStat}>
-                                    <span style={s.quickStatLabel}>Esperando</span>
-                                    <span style={{ ...s.quickStatValue, color: '#F59E0B' }}>{metricas.esperando}</span>
-                                </div>
-                                <div style={s.quickStatDivider} />
-                                <div style={s.quickStat}>
-                                    <span style={s.quickStatLabel}>Atendidos</span>
-                                    <span style={{ ...s.quickStatValue, color: '#16A34A' }}>{metricas.atendidos}</span>
-                                </div>
+                                {metricasRango === 'hoy' ? (
+                                    <>
+                                        <div style={s.quickStat}>
+                                            <span style={s.quickStatLabel}>Esperando</span>
+                                            <span style={{ ...s.quickStatValue, color: '#F59E0B' }}>
+                                                {cola.filter(t => t.estado === 'esperando').length}
+                                            </span>
+                                        </div>
+                                        <div style={s.quickStatDivider} />
+                                        <div style={s.quickStat}>
+                                            <span style={s.quickStatLabel}>Atendidos</span>
+                                            <span style={{ ...s.quickStatValue, color: '#16A34A' }}>{metricas.atendidos}</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div style={s.quickStat}>
+                                            <span style={s.quickStatLabel}>Total</span>
+                                            <span style={{ ...s.quickStatValue, color: '#0F172A' }}>{metricas.total}</span>
+                                        </div>
+                                        <div style={s.quickStatDivider} />
+                                        <div style={s.quickStat}>
+                                            <span style={s.quickStatLabel}>Atendidos</span>
+                                            <span style={{ ...s.quickStatValue, color: '#16A34A' }}>
+                                                {metricas.atendidos} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#15803D' }}>({metricas.tasaAtencion}%)</span>
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
                                 <div style={s.quickStatDivider} />
                                 <div style={s.quickStat}>
                                     <span style={s.quickStatLabel}>T. Prom.</span>
@@ -504,6 +581,15 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     <span style={s.quickStatLabel}>Espera Prom.</span>
                                     <span style={{ ...s.quickStatValue, color: '#8B5CF6' }}>{metricas.esperaPromedio}m</span>
                                 </div>
+                                {metricasRango !== 'hoy' && metricas.cancelados > 0 && (
+                                    <>
+                                        <div style={s.quickStatDivider} />
+                                        <div style={s.quickStat}>
+                                            <span style={s.quickStatLabel}>Cancelados</span>
+                                            <span style={{ ...s.quickStatValue, color: '#EF4444' }}>{metricas.cancelados}</span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -519,7 +605,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             <BarChart3 size={14} /> {showMetricas ? 'Ocultar' : 'Métricas'}
                         </button>
                         <button onClick={() => setShowAtendidos(p => !p)} style={s.actionBtnSmall}>
-                            <CheckCircle size={14} /> {showAtendidos ? 'Ocultar' : 'Atendidos'} ({atendidos.length})
+                            <CheckCircle size={14} /> {showAtendidos ? 'Ocultar' : 'Atendidos'} ({metricas?.atendidos ?? atendidos.length})
                         </button>
                         <button onClick={loadData} style={s.actionBtnSmall}>
                             <RefreshCw size={14} /> Actualizar
@@ -619,7 +705,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                 <Clock size={16} /> Filtro de Fechas:
                             </div>
                             {['hoy', 'ayer', 'semana', 'mes'].map(r => (
-                                <button key={r} onClick={() => setMetricasRango(r)}
+                                <button key={r} onClick={() => handleSelectRango(r)}
                                     style={{ 
                                         padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
                                         background: metricasRango === r ? '#3b82f6' : 'rgba(255,255,255,0.8)',
@@ -630,7 +716,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     {r === 'semana' ? 'Últimos 7 días' : r === 'mes' ? 'Últimos 30 días' : r}
                                 </button>
                             ))}
-                            <button onClick={() => setMetricasRango('custom')}
+                            <button onClick={() => handleSelectRango('custom')}
                                 style={{ 
                                     padding: '6px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
                                     background: metricasRango === 'custom' ? '#8b5cf6' : 'rgba(255,255,255,0.8)',
@@ -644,12 +730,22 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
                                     <span style={{ color: '#64748b' }}>-</span>
                                     <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none' }} />
+                                    <button
+                                        onClick={loadData}
+                                        style={{
+                                            padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                            background: '#2563EB', color: '#ffffff', fontWeight: 600,
+                                            fontSize: '13px', cursor: 'pointer'
+                                        }}
+                                    >
+                                        Aplicar
+                                    </button>
                                 </div>
                             )}
 
                             {/* Botones de Exportación */}
                             <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto' }}>
-                                <button onClick={() => exportMetricasToExcel(metricas, config, metricasRango)}
+                                <button onClick={() => exportMetricasToExcel(metricas, config, rangoLabel)}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '6px',
                                         padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '13px',
@@ -657,7 +753,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                                     }}>
                                     <FileSpreadsheet size={16} /> Excel
                                 </button>
-                                <button onClick={() => generateMetricasPdf(metricas, metricasRango, 'charts-panel-export')}
+                                <button onClick={() => generateMetricasPdf(metricas, rangoLabel, 'charts-panel-export')}
                                     style={{
                                         display: 'flex', alignItems: 'center', gap: '6px',
                                         padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '13px',
@@ -669,7 +765,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                         </div>
 
                         <div id="charts-panel-export" style={{ background: 'transparent' }}>
-                            <ChartsPanel metricas={metricas} config={config} />
+                            <ChartsPanel metricas={metricas} config={config} metricasRango={metricasRango} />
                         </div>
                     </div>
                 </div>
@@ -761,12 +857,17 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 </div>
             </div>
 
-            {/* ═══ ATENDIDOS HOY ═══ */}
+            {/* ═══ ATENDIDOS ═══ */}
             {showAtendidos && (
                 <div style={s.atendidosPanel}>
-                    <h3 style={s.metricasTitle}><CheckCircle size={16} style={{ color: '#16A34A' }} /> Atendidos Hoy</h3>
+                    <h3 style={s.metricasTitle}>
+                        <CheckCircle size={16} style={{ color: '#16A34A' }} /> Atendidos ({rangoLabel})
+                        <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748B', marginLeft: '8px' }}>
+                            ({atendidos.length} registros)
+                        </span>
+                    </h3>
                     {atendidos.length === 0 ? (
-                        <p style={{ color: '#94A3B8', textAlign: 'center' }}>Sin atenciones registradas hoy</p>
+                        <p style={{ color: '#94A3B8', textAlign: 'center' }}>Sin atenciones registradas en el período ({rangoLabel})</p>
                     ) : (
                         <div style={s.atendidosTable}>
                             <div style={s.atTableHead}>

@@ -10,21 +10,24 @@ export function exportMetricasToExcel(metricas, config, rangoNombre) {
     // Mapear datos crudos a formato legible
     const data = metricas.turnosRaw.map(t => {
         const tramiteLabel = config.find(c => c.tipo_tramite === t.tipo_tramite)?.label || t.tipo_tramite;
-        const espera = t.llamado_at ? Math.round((new Date(t.llamado_at) - new Date(t.created_at)) / 60000) : '';
-        const atencion = t.hora_inicio && t.hora_fin ? Math.round((new Date(t.hora_fin) - new Date(t.hora_inicio)) / 60000) : '';
+        const espera = t.llamado_at && t.created_at ? Math.round((new Date(t.llamado_at) - new Date(t.created_at)) / 60000) : '';
+        const finAtencion = t.finalizado_at || t.hora_fin;
+        const inicioAtencion = t.llamado_at || t.hora_inicio;
+        const atencion = finAtencion && inicioAtencion ? Math.round((new Date(finAtencion) - new Date(inicioAtencion)) / 60000) : '';
 
         return {
             'Nro. Turno': t.numero_turno,
             'Paciente (DNI)': t.paciente_dni || 'N/A',
             'Trámite': tramiteLabel,
             'Estado': t.estado,
+            'Atendido Por': t.atendido_por || 'N/A',
             'Box Asignado': t.box_asignado === 99 ? 'UCI' : (t.box_asignado || 'N/A'),
-            'Fecha Creación': new Date(t.created_at).toLocaleString(),
-            'Llamado': t.llamado_at ? new Date(t.llamado_at).toLocaleString() : '',
-            'Finalizado': t.hora_fin ? new Date(t.hora_fin).toLocaleString() : '',
-            'Espera (min)': espera,
-            'Atención (min)': atencion,
-            'Derivado a': t.derivado_a_box || ''
+            'Fecha Creación': new Date(t.created_at).toLocaleString('es-AR'),
+            'Llamado': t.llamado_at ? new Date(t.llamado_at).toLocaleString('es-AR') : '',
+            'Finalizado': finAtencion ? new Date(finAtencion).toLocaleString('es-AR') : '',
+            'Espera (min)': espera !== '' ? espera : '',
+            'Atención (min)': atencion !== '' ? atencion : '',
+            'Motivo Cancelación': t.motivo_cancelacion || ''
         };
     });
 

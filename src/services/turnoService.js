@@ -253,65 +253,210 @@ export function subscribeToCola(callback) {
     };
 }
 
-// â”€â”€â”€ MÃ©tricas del dÃ­a â”€â”€â”€
+// ——— Helper: Paginación para superar el límite de 1000 filas de PostgREST ———
+async function fetchAllRows(tableName, filterFn) {
+    const PAGE_SIZE = 1000;
+    let all = [];
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        let query = supabase
+            .from(tableName)
+            .select('*')
+            .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        query = filterFn(query);
+        const { data, error } = await query;
+        if (error) {
+            console.error(`Error fetching page ${page} from ${tableName}:`, error);
+            throw error;
+        }
+
+        if (!data || data.length === 0) {
+            hasMore = false;
+        } else {
+            all = all.concat(data);
+            if (data.length < PAGE_SIZE) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+        }
+    }
+    return all;
+}
+
+// ——— Atendidos por Rango ———
+export async function fetchAtendidosPorRango(inicioIso, finIso = null) {
+    let query = supabase
+        .from('turnos_cola')
+        .select('*')
+        .eq('estado', 'atendido')
+        .gte('created_at', inicioIso)
+        .order('finalizado_at', { ascending: false });
+
+    if (finIso) {
+        query = query.lte('created_at', finIso);
+    }
+
+    const { data, error } = await query.limit(500);
+    if (error) {
+        console.error('Error fetching atendidos por rango:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// ——— Métricas del día ———
 export async function fetchMetricasHoy() {
     return fetchMetricasPorRango(getTodayStart());
 }
 
-// ─── Métricas por Rango de Fechas ───
+// ─── Métricas por Rango de Fechas (Paginadas y Enriquecidas) ───
 export async function fetchMetricasPorRango(inicioIso, finIso = null) {
-    let qTurnos = supabase.from('turnos_cola').select('*').gte('created_at', inicioIso);
-    let qAtenciones = supabase.from('turnos_atencion').select('*').gte('created_at', inicioIso);
+    const [turnos, atenciones] = await Promise.all([
+        fetchAllRows('turnos_cola', q => {
+            let res = q.gte('created_at', inicioIso);
+            if (finIso) res = res.lte('created_at', finIso);
+            return res.order('created_at', { ascending: true });
+        }),
+        fetchAllRows('turnos_atencion', q => {
+            let res = q.gte('created_at', inicioIso);
+            if (finIso) res = res.lte('created_at', finIso);
+            return res.order('created_at', { ascending: true });
+        })
+    ]);
 
-    if (finIso) {
-        qTurnos = qTurnos.lte('created_at', finIso);
-        qAtenciones = qAtenciones.lte('created_at', finIso);
-    }
+    const total = turnos.length;
+    const atendidos = turnos.filter(t => t.estado === 'atendido').length;
+    const esperando = turnos.filter(t => t.estado === 'esperando').length;
+    const enAtencion = turnos.filter(t => t.estado === 'en_atencion' || t.estado === 'llamando').length;
+    const cancelados = turnos.filter(t => t.estado === 'cancelado').length;
 
-    const { data: turnos } = await qTurnos;
-    const { data: atenciones } = await qAtenciones;
+    const tasaAtencion = total > 0 ? Math.round((atendidos / total) * 100) : 0;
+    const tasaCancelacion = total > 0 ? Math.round((cancelados / total) * 100) : 0;
 
-    const total = turnos?.length || 0;
-    const atendidos = turnos?.filter(t => t.estado === 'atendido').length || 0;
-    const esperando = turnos?.filter(t => t.estado === 'esperando').length || 0;
-    const enAtencion = turnos?.filter(t => t.estado === 'en_atencion' || t.estado === 'llamando').length || 0;
-
-    // Tiempo promedio de atenciÃ³n (en minutos)
-    const tiemposAtencion = (atenciones || [])
+    // Tiempo promedio de atención (en minutos)
+    const tiemposAtencion = atenciones
         .filter(a => a.hora_inicio && a.hora_fin)
-        .map(a => (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000);
+        .map(a => (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000)
+        .filter(mins => mins >= 0 && mins < 240); // Descartar errores extremos (> 4h)
+
     const tiempoPromedio = tiemposAtencion.length > 0
         ? tiemposAtencion.reduce((s, t) => s + t, 0) / tiemposAtencion.length
         : 0;
 
-    // Tiempo promedio de espera (created_at -> llamado_at), ignorando outliers > 45 min
-    const tiemposEspera = (turnos || [])
-        .filter(t => t.estado === 'atendido' && t.llamado_at)
-        .map(t => (new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
-        .filter(mins => mins <= 45);
-    const esperaPromedio = tiemposEspera.length > 0
-        ? tiemposEspera.reduce((s, t) => s + t, 0) / tiemposEspera.length
+    // Tiempos de espera reales (created_at -> llamado_at) para turnos atendidos
+    const turnosConEspera = turnos
+        .filter(t => t.estado === 'atendido' && t.llamado_at && t.created_at)
+        .map(t => {
+            const esperaMin = (new Date(t.llamado_at) - new Date(t.created_at)) / 60000;
+            return {
+                ...t,
+                esperaMin: Math.max(0, esperaMin)
+            };
+        })
+        .filter(t => t.esperaMin < 300); // Filtro de cordura sanitaria (< 5 horas)
+
+    const tiemposEsperaValidos = turnosConEspera.map(t => t.esperaMin);
+    const esperaPromedio = tiemposEsperaValidos.length > 0
+        ? tiemposEsperaValidos.reduce((s, t) => s + t, 0) / tiemposEsperaValidos.length
         : 0;
+
+    const esperaMax = tiemposEsperaValidos.length > 0
+        ? Math.max(...tiemposEsperaValidos)
+        : 0;
+
+    // Mediana de espera
+    let esperaMediana = 0;
+    if (tiemposEsperaValidos.length > 0) {
+        const sorted = [...tiemposEsperaValidos].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        esperaMediana = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    // Cumplimiento SLA: <= 15m (Meta Sanatorio), 15-25m (Moderado), > 25m (Crítico)
+    const slaRapido = tiemposEsperaValidos.filter(m => m <= 15).length;
+    const slaModerado = tiemposEsperaValidos.filter(m => m > 15 && m <= 25).length;
+    const slaCritico = tiemposEsperaValidos.filter(m => m > 25).length;
+    const slaCumplimiento = tiemposEsperaValidos.length > 0
+        ? Math.round((slaRapido / tiemposEsperaValidos.length) * 100)
+        : 100;
+
+    // Distribución por Hora del Día (07h a 20h)
+    const porHoraMap = {};
+    for (let h = 7; h <= 20; h++) {
+        porHoraMap[h] = { hora: `${h}:00`, total: 0, atendidos: 0, esperaSuma: 0, esperaCount: 0 };
+    }
+
+    turnos.forEach(t => {
+        const h = new Date(t.created_at).getHours();
+        if (porHoraMap[h]) {
+            porHoraMap[h].total++;
+            if (t.estado === 'atendido') {
+                porHoraMap[h].atendidos++;
+            }
+        }
+    });
+
+    turnosConEspera.forEach(t => {
+        const h = new Date(t.created_at).getHours();
+        if (porHoraMap[h]) {
+            porHoraMap[h].esperaSuma += t.esperaMin;
+            porHoraMap[h].esperaCount++;
+        }
+    });
+
+    const porHora = Object.values(porHoraMap).map(item => ({
+        hora: item.hora,
+        total: item.total,
+        atendidos: item.atendidos,
+        esperaPromedio: item.esperaCount > 0 ? Math.round((item.esperaSuma / item.esperaCount) * 10) / 10 : 0
+    }));
 
     // Por tipo de trámite
     const porTipo = {};
-    (turnos || []).forEach(t => {
-        if (!porTipo[t.tipo_tramite]) porTipo[t.tipo_tramite] = { total: 0, atendidos: 0 };
-        porTipo[t.tipo_tramite].total++;
-        if (t.estado === 'atendido') porTipo[t.tipo_tramite].atendidos++;
+    turnos.forEach(t => {
+        const tipo = t.tipo_tramite || 'GENERAL';
+        if (!porTipo[tipo]) {
+            porTipo[tipo] = { total: 0, atendidos: 0, cancelados: 0, esperaSuma: 0, esperaCount: 0 };
+        }
+        porTipo[tipo].total++;
+        if (t.estado === 'atendido') porTipo[tipo].atendidos++;
+        if (t.estado === 'cancelado') porTipo[tipo].cancelados++;
     });
 
-    // Por empleado
+    turnosConEspera.forEach(t => {
+        const tipo = t.tipo_tramite || 'GENERAL';
+        if (porTipo[tipo]) {
+            porTipo[tipo].esperaSuma += t.esperaMin;
+            porTipo[tipo].esperaCount++;
+        }
+    });
+
+    Object.keys(porTipo).forEach(tipo => {
+        porTipo[tipo].esperaPromedio = porTipo[tipo].esperaCount > 0
+            ? Math.round((porTipo[tipo].esperaSuma / porTipo[tipo].esperaCount) * 10) / 10
+            : 0;
+    });
+
+    // Por empleado / operador
     const porEmpleado = {};
-    (atenciones || []).filter(a => a.hora_fin).forEach(a => {
-        if (!porEmpleado[a.empleado_nombre]) {
-            porEmpleado[a.empleado_nombre] = { cantidad: 0, tiempoTotal: 0 };
+    atenciones.filter(a => a.hora_fin).forEach(a => {
+        const nombre = a.empleado_nombre || 'Sin Asignar';
+        if (!porEmpleado[nombre]) {
+            porEmpleado[nombre] = { cantidad: 0, tiempoTotal: 0 };
         }
-        porEmpleado[a.empleado_nombre].cantidad++;
+        porEmpleado[nombre].cantidad++;
         if (a.hora_inicio && a.hora_fin) {
-            porEmpleado[a.empleado_nombre].tiempoTotal +=
-                (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000;
+            porEmpleado[nombre].tiempoTotal += (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000;
         }
+    });
+
+    Object.keys(porEmpleado).forEach(nombre => {
+        const emp = porEmpleado[nombre];
+        emp.tiempoPromedio = emp.cantidad > 0 ? Math.round((emp.tiempoTotal / emp.cantidad) * 10) / 10 : 0;
     });
 
     return {
@@ -319,16 +464,28 @@ export async function fetchMetricasPorRango(inicioIso, finIso = null) {
         atendidos,
         esperando,
         enAtencion,
+        cancelados,
+        tasaAtencion,
+        tasaCancelacion,
         tiempoPromedio: Math.round(tiempoPromedio * 10) / 10,
         esperaPromedio: Math.round(esperaPromedio * 10) / 10,
+        esperaMax: Math.round(esperaMax * 10) / 10,
+        esperaMediana: Math.round(esperaMediana * 10) / 10,
+        sla: {
+            cumplimiento: slaCumplimiento,
+            rapido: slaRapido,
+            moderado: slaModerado,
+            critico: slaCritico
+        },
+        porHora,
         porTipo,
         porEmpleado,
-        turnosRaw: turnos || [],
-        atencionesRaw: atenciones || []
+        turnosRaw: turnos,
+        atencionesRaw: atenciones
     };
 }
 
-// â”€â”€â”€ Helper â”€â”€â”€
+// ——— Helper ———
 function getTodayStart() {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -338,7 +495,6 @@ function getTodayStart() {
 export async function fetchTurnosHistoricos(dias = 30) {
     const fecha = new Date();
     fecha.setDate(fecha.getDate() - dias);
-    fecha.setHours(0,0,0,0);
-    const { data } = await supabase.from('turnos_cola').select('created_at').gte('created_at', fecha.toISOString());
-    return data || [];
+    fecha.setHours(0, 0, 0, 0);
+    return fetchAllRows('turnos_cola', q => q.gte('created_at', fecha.toISOString()).order('created_at', { ascending: true }));
 }
