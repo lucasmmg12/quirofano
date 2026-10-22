@@ -269,6 +269,7 @@ export function calcularLiquidacionCompleta({
     ajustesFte = {}
 }) {
     const dotacionEvaluada = 4; // Dotación evaluada activa del equipo (4 operadoras)
+    const escalonMensajes = calculateEscalon(mensajesTotales || 0, 'mensajes');
     const escalonTurnosGrupal = calculateEscalon(datosSalus?.turnosGrupales?.total || 0, 'turnos');
 
     const listaAgentes = (datosSalus?.agentes || []).map(ag => {
