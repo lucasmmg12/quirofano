@@ -1015,14 +1015,21 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                             {modoVistaTabla === 'real' && (
                                                 <div>
                                                     <div style={{ fontWeight: 800, color: '#7C3AED' }}>+{formatCurrency(agReal.montoTurnos)}</div>
-                                                    <div style={{ fontSize: '0.64rem', color: '#64748B' }}>{agReal.turnos || 0} turnos</div>
+                                                    <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                        <strong>{agReal.turnos || 0} turnos dados</strong> ({Math.round(((agReal.turnos || 0) / Math.max(1, datosSalus?.turnosGrupales?.total || 1)) * 100)}% eq.)
+                                                    </div>
+                                                    {isCurrentMonth && agReal.montoTurnos === 0 && (
+                                                        <div style={{ fontSize: '0.60rem', color: '#94A3B8' }}>
+                                                            En curso ({datosSalus?.turnosGrupales?.total?.toLocaleString('es-AR') || 0} / 3.052 piso)
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                             {modoVistaTabla === 'tendencia' && (
                                                 <div>
                                                     <div style={{ fontWeight: 800, color: '#059669' }}>+{formatCurrency(agProy.montoTurnos)}</div>
                                                     <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 700 }}>
-                                                        📈 {Math.round((agReal.turnos || 0) * factorProyeccion)} turnos est.
+                                                        📈 {agProy.turnos || Math.round((agReal.turnos || 0) * factorProyeccion)} turnos est.
                                                     </div>
                                                 </div>
                                             )}
@@ -1032,7 +1039,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                         📍 Real: <strong style={{ color: '#7C3AED' }}>+{formatCurrency(agReal.montoTurnos)}</strong> ({agReal.turnos || 0} turnos)
                                                     </div>
                                                     <div style={{ fontSize: '0.72rem', fontWeight: 800, color: agProy.montoTurnos > 0 ? '#059669' : '#D97706', marginTop: '2px' }}>
-                                                        📈 Tendencia: +{formatCurrency(agProy.montoTurnos)}
+                                                        📈 Proy: +{formatCurrency(agProy.montoTurnos)} ({agProy.turnos || Math.round((agReal.turnos || 0) * factorProyeccion)} turnos)
                                                     </div>
                                                 </div>
                                             )}
@@ -1040,16 +1047,22 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
                                         {/* Asistencia Individual % */}
                                         <td style={{ padding: '12px', textAlign: 'right' }}>
-                                            <div style={{ fontWeight: 800, color: agReal.asistenciaPct >= 55 ? '#059669' : agReal.asistenciaPct >= 50 ? '#D97706' : '#DC2626' }}>
+                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: agReal.asistenciaPct >= 55 ? '#059669' : agReal.asistenciaPct >= 50 ? '#D97706' : '#DC2626' }}>
                                                 {agReal.asistenciaPct}%
                                             </div>
-                                            <div style={{ fontSize: '0.64rem', color: '#94A3B8' }}>
-                                                {agReal.asistidas} de {agReal.evaluables} citas
+                                            <div style={{ fontSize: '0.64rem', color: '#334155', fontWeight: 600 }}>
+                                                {agReal.asistidas} de {agReal.evaluables} citas evaluadas
                                             </div>
-                                            {modoVistaTabla === 'comparativa' && (
-                                                <div style={{ fontSize: '0.62rem', color: '#0284C7', fontWeight: 700, marginTop: '1px' }}>
-                                                    🎯 Meta: 55%
+                                            {isCurrentMonth ? (
+                                                <div style={{ fontSize: '0.60rem', color: '#0284C7', marginTop: '1px', fontWeight: 500 }}>
+                                                    📅 A hoy (excluye citas futuras)
                                                 </div>
+                                            ) : (
+                                                modoVistaTabla === 'comparativa' && (
+                                                    <div style={{ fontSize: '0.62rem', color: '#0284C7', fontWeight: 700, marginTop: '1px' }}>
+                                                        🎯 Meta: 55%
+                                                    </div>
+                                                )
                                             )}
                                         </td>
 

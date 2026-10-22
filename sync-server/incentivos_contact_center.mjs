@@ -106,6 +106,15 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     const periodoIso = `${year}-${startMonthStr}`;
     const agentNamesSql = Object.keys(SALUS_AGENTS_MAP).map(a => `'${a}'`).join(',');
 
+    const currentMonthIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const isCurrentMonth = periodoIso === currentMonthIso;
+    const todayStr = now.toISOString().substring(0, 10).replace(/-/g, ''); // YYYYMMDD
+
+    // Si es mes actual, solo evaluar citas cuya fecha de visita ya ocurrió hasta hoy (las citas futuras no pueden ser ausencias)
+    const fechaVisitaEndFilter = isCurrentMonth
+        ? `AND [Fecha Visita] <= '${todayStr}'`
+        : `AND [Fecha Visita] < '${endDate}'`;
+
     // 1. TURNOS CREADOS (Bolsa 2 Grupal)
     const turnosQuery = `
         SELECT 
@@ -120,17 +129,28 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     `;
 
     // 2. ASISTENCIA EFECTIVA (Bolsa 3 Individual)
+    // Se priorizan siempre las que efectivamente se han hecho: presente, sobreturno, urgencia, internado
+    // Y se cuentan únicamente las ausencias explícitas (las citas futuras o sin registrar no penalizan como ausencias)
     const asistenciaQuery = `
         SELECT 
             [Usuario Creacion Nombre] AS Agente,
             COUNT(DISTINCT [idVisita]) AS TotalCitas,
-            SUM(CASE WHEN LOWER([Asistencia]) LIKE '%asist%' OR LOWER([Asistencia]) LIKE '%realiz%' OR LOWER([Asistencia]) = 'presente' THEN 1 ELSE 0 END) AS Asistidas,
-            SUM(CASE WHEN [Asistencia] IS NULL OR LOWER([Asistencia]) LIKE '%injustificada%' OR LOWER([Asistencia]) LIKE '%ausen%' THEN 1 ELSE 0 END) AS Ausencias,
+            SUM(CASE WHEN LOWER([Asistencia]) LIKE '%asist%' 
+                       OR LOWER([Asistencia]) LIKE '%realiz%' 
+                       OR LOWER([Asistencia]) = 'presente' 
+                       OR LOWER([Asistencia]) = 'sobreturno' 
+                       OR LOWER([Asistencia]) = 'urgencia' 
+                       OR LOWER([Asistencia]) LIKE '%internad%' 
+                     THEN 1 ELSE 0 END) AS Asistidas,
+            SUM(CASE WHEN LOWER([Asistencia]) LIKE '%injustificada%' 
+                       OR LOWER([Asistencia]) LIKE '%ausen%' 
+                     THEN 1 ELSE 0 END) AS Ausencias,
             SUM(CASE WHEN LOWER([Asistencia]) LIKE '%justificada%' AND LOWER([Asistencia]) NOT LIKE '%injustificada%' THEN 1 ELSE 0 END) AS Justificadas,
-            SUM(CASE WHEN LOWER([Asistencia]) LIKE '%anulad%' OR LOWER([Asistencia]) LIKE '%cancel%' OR LOWER([Asistencia]) LIKE '%susp%' THEN 1 ELSE 0 END) AS Anuladas
+            SUM(CASE WHEN LOWER([Asistencia]) LIKE '%anulad%' OR LOWER([Asistencia]) LIKE '%cancel%' OR LOWER([Asistencia]) LIKE '%susp%' THEN 1 ELSE 0 END) AS Anuladas,
+            SUM(CASE WHEN [Asistencia] IS NULL THEN 1 ELSE 0 END) AS SinRegistrar
         FROM [SALUS].[dbo].[VLISE_Visitas]
         WHERE [Fecha Visita] >= '${startDate}'
-          AND [Fecha Visita] <  '${endDate}'
+          ${fechaVisitaEndFilter}
           AND [Usuario Creacion Nombre] IN (${agentNamesSql})
           AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
         GROUP BY [Usuario Creacion Nombre]
@@ -143,11 +163,11 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
 
     // Consolidar por colaboradora canónica
     const agentesMap = {
-        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0 },
-        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0 },
-        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0 },
-        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', rol: 'Curva de Aprendizaje (50%)', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0 },
-        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', rol: 'Baja en Septiembre', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0 }
+        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
+        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
+        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
+        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', rol: 'Curva de Aprendizaje (50%)', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
+        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', rol: 'Baja en Septiembre', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 }
     };
 
     // Agregar turnos creados
@@ -167,14 +187,38 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             agentesMap[meta.id].ausencias += row.Ausencias;
             agentesMap[meta.id].justificadas += row.Justificadas;
             agentesMap[meta.id].anuladas += row.Anuladas;
+            agentesMap[meta.id].sinRegistrar += (row.SinRegistrar || 0);
         }
     }
 
+    // Días hábiles y proyección inteligente para el mes
+    const totalDaysInMonth = new Date(year, month, 0).getDate();
+    const currentDay = isCurrentMonth ? now.getDate() : totalDaysInMonth;
+
+    let diasHabilesTotales = 0;
+    let diasHabilesTranscurridos = 0;
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+        const testDate = new Date(year, month - 1, d);
+        const dayOfWeek = testDate.getDay();
+        const isLaborable = dayOfWeek !== 0 && dayOfWeek !== 6;
+        if (isLaborable) {
+            diasHabilesTotales++;
+            if (d <= currentDay) {
+                diasHabilesTranscurridos++;
+            }
+        }
+    }
+    diasHabilesTranscurridos = Math.max(1, diasHabilesTranscurridos);
+    const factorHabiles = isCurrentMonth ? (diasHabilesTotales / diasHabilesTranscurridos) : 1.0;
+
     // Calcular totales grupales y métricas individuales
     const totalTurnosGrupal = Object.values(agentesMap).reduce((acc, a) => acc + a.turnos, 0);
+    const turnosProyectadosGrupal = Math.round(totalTurnosGrupal * factorHabiles);
     const escalonTurnos = calculateEscalon(totalTurnosGrupal, 'turnos');
+    const escalonTurnosProy = calculateEscalon(turnosProyectadosGrupal, 'turnos');
 
     const listaAgentes = Object.values(agentesMap).map(ag => {
+        // Evaluables = Asistidas efectivas + Ausencias injustificadas reales
         const evaluables = ag.asistidas + ag.ausencias;
         const asistenciaPct = evaluables > 0 
             ? Math.round(((ag.asistidas / evaluables) * 100) * 100) / 100 
@@ -202,6 +246,8 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             escalonAsistencia: escalonAsistencia.escalon,
             montoAsistencia: escalonAsistencia.monto,
             montoTurnos: escalonTurnos.monto,
+            turnosProyectados: Math.round(ag.turnos * factorHabiles),
+            montoTurnosProyectado: escalonTurnosProy.monto,
             baseGarantizada: INCENTIVO_TIERS.baseGarantizada,
             estado,
             fte
@@ -210,17 +256,28 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
 
     // Calcular total de turnos grupales de la dotación activa
     const totalTurnosActivos = listaAgentes.reduce((acc, a) => acc + a.turnos, 0);
+    const totalTurnosProyectados = Math.round(totalTurnosActivos * factorHabiles);
     const escalonTurnosActivos = calculateEscalon(totalTurnosActivos, 'turnos');
+    const escalonTurnosActivosProy = calculateEscalon(totalTurnosProyectados, 'turnos');
 
     return {
         periodo: periodoIso,
         startDate,
         endDate,
+        isCurrentMonth,
+        currentDay,
+        totalDaysInMonth,
+        diasHabilesTranscurridos,
+        diasHabilesTotales,
+        factorHabiles: Math.round(factorHabiles * 1000) / 1000,
         config: INCENTIVO_TIERS,
         turnosGrupales: {
             total: totalTurnosActivos,
+            proyeccion: totalTurnosProyectados,
             escalon: escalonTurnosActivos.escalon,
+            escalonProyectado: escalonTurnosActivosProy.escalon,
             montoPorAgente: escalonTurnosActivos.monto,
+            montoProyectadoPorAgente: escalonTurnosActivosProy.monto,
             meta: INCENTIVO_TIERS.bolsas.turnos.meta,
             tope: INCENTIVO_TIERS.bolsas.turnos.tope,
             progresoPct: escalonTurnosActivos.progresoPct

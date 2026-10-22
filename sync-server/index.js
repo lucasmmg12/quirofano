@@ -737,10 +737,26 @@ app.get('/api/salus/paciente-historial-clinico', async (req, res) => {
 app.get('/api/salus/incentivos-contact-center', async (req, res) => {
     try {
         const pool = await getPool();
-        const { periodo } = req.query; // '2026-08', '2026-09', etc.
-        console.log(`🏆 [Incentivos Contact Center] Calculando métricas de productividad para período: ${periodo || 'actual'}...`);
+        const periodo = req.query.periodo || new Date().toISOString().substring(0, 7);
+        console.log(`🏆 [Incentivos Contact Center] Calculando métricas de productividad para período: ${periodo}...`);
         const data = await getIncentivosContactCenter(pool, { periodo });
-        res.json({ success: true, ...data });
+
+        // Guardar snapshot actualizado en Supabase app_config para acceso Cloud-First
+        try {
+            await supabase.from('app_config').upsert({
+                key: `cc_incentivo_${periodo}`,
+                value: JSON.stringify({ ...data, synced_at: new Date().toISOString() }),
+                label: `Métricas de Incentivos Contact Center ${periodo}`,
+                category: 'incentivos_contact_center',
+                updated_at: new Date().toISOString(),
+                updated_by: 'salus_sync_server'
+            });
+            console.log(`🏆 [Incentivos] Snapshot de ${periodo} actualizado en Supabase.`);
+        } catch (supaErr) {
+            console.warn(`⚠️ [Incentivos] No se pudo guardar snapshot en Supabase:`, supaErr.message);
+        }
+
+        res.json({ success: true, ...data, data });
     } catch (err) {
         console.error('❌ Error calculando incentivos del Contact Center:', err.message);
         res.status(500).json({ success: false, error: err.message });
@@ -4036,17 +4052,6 @@ export async function syncIncentivosContactCenterToSupabase(periodo) {
     }
 }
 
-// ── Endpoint HTTP de Incentivos del Contact Center ──
-app.get('/api/salus/incentivos-contact-center', async (req, res) => {
-    try {
-        const periodo = req.query.periodo || new Date().toISOString().substring(0, 7);
-        const data = await syncIncentivosContactCenterToSupabase(periodo);
-        res.json({ success: true, data });
-    } catch (err) {
-        console.error('Error calculando incentivos de SALUS:', err.message);
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
 
 // ── Sincronizador de Turnos Diarios por Agente (Final de Turno) ──
 export async function syncTurnosDiariosContactCenterToSupabase(fecha = null) {
