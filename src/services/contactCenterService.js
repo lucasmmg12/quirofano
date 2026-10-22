@@ -164,7 +164,7 @@ export const CONTACT_CENTER_AGENTS = [
         username: 'daguilera', 
         legacyId: 'daniela', 
         name: 'Daniela Aguilera', 
-        fullName: 'Ana Daniela Romina Aguilera Cardozo', 
+        fullName: 'Daniela Aguilera', 
         aliases: [
             'daguilera', 'daniela', 'aguilera', 'daniela aguilera',
             'ana daniela', 'ana aguilera', 'ana daniela romina aguilera cardozo',

@@ -408,7 +408,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             ALL_AGENTS_METRICS.forEach(ag => {
                 agentDataMap[ag.id] = {
                     id: ag.id,
-                    name: ag.fullName || ag.name,
+                    name: ag.name || ag.fullName,
                     role: ag.role || 'Atención al Paciente',
                     color: ag.color,
                     avatar: ag.avatar,
