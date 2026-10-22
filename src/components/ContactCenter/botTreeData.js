@@ -527,9 +527,7 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
         patientExamples: ['Pediatra', 'Turno pediatra', 'Control de niño sano', 'Pediatra para mi hijo'],
         systemAction: 'Informa que Sanatorio Argentino no cuenta con consultorio pediátrico ambulatorio ni control de niño sano, únicamente guardia médica de 24 hs por orden de llegada en Sede 1 (San Luis 432 Oeste) y Sede 2 (San Luis 433 Oeste). Cierra la consulta de forma automática.',
         nodeType: 'bot_response',
-        botResponse: `Hola, soy Sofia de Sanatorio Argentino de la *Prov. De San Juan*, gracias por tu contacto. Te escribo por tu consulta realizada:
-
-🏥 *No contamos con consultorio pediátrico*, solo guardia de 24 hs por orden de llegada en:
+        botResponse: `🏥 *No contamos con consultorio pediátrico*, solo guardia de 24 hs por orden de llegada en:
 📍 *Sede 1:* Calle San Luis 432 Oeste
 📍 *Sede 2:* Calle San Luis 433 Oeste
 

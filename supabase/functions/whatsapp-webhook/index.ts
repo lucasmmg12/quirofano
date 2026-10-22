@@ -5750,8 +5750,7 @@ async function handleChatbotTriage(
         updates.closed_at = new Date().toISOString();
         updates.closed_by_agent_name = 'Bot Sanatorio';
 
-        replyText = `Hola, soy Sofia de Sanatorio Argentino de la *Prov. De San Juan*, gracias por tu contacto. Te escribo por tu consulta realizada:\n\n` +
-            `🏥 *No contamos con consultorio pediátrico*, solo guardia de 24 hs por orden de llegada en:\n` +
+        replyText = `🏥 *No contamos con consultorio pediátrico*, solo guardia de 24 hs por orden de llegada en:\n` +
             `📍 *Sede 1:* Calle San Luis 432 Oeste\n` +
             `📍 *Sede 2:* Calle San Luis 433 Oeste\n\n` +
             `⚠️ _No se realiza control de niño sano._\n\n` +
