@@ -29,7 +29,7 @@ export const INCENTIVO_CONFIG = {
         },
         turnos: {
             nombre: 'Turnos Otorgados',
-            alcance: 'Grupal',
+            alcance: 'Individual (Obj. Grupal ÷ 4)',
             ponderacion: 0.25,
             maxMonto: 34867.65,
             base: 3052,
@@ -76,9 +76,13 @@ export const MENSAJES_INDIVIDUALES_AGOSTO = {
 /**
  * Tabla oficial de escalones progresivos (0 a 10)
  */
-export function getEscalonesInfo(tipo) {
+export function getEscalonesInfo(tipo, dotacion = 4) {
     const b = INCENTIVO_CONFIG.bolsas[tipo];
     if (!b) return [];
+
+    const div = (tipo === 'turnos' && dotacion > 1) ? Number(dotacion) : 1;
+    const base = b.base / div;
+    const paso = b.paso / div;
 
     const escalones = [];
     for (let i = 0; i <= 10; i++) {
@@ -90,8 +94,8 @@ export function getEscalonesInfo(tipo) {
             desde = i === 0 ? 0 : b.base + (i - 1) * b.paso;
             hasta = i === 10 ? Infinity : b.base + i * b.paso - 1;
         } else if (tipo === 'turnos') {
-            desde = i === 0 ? 0 : b.base + (i - 1) * b.paso;
-            hasta = i === 10 ? Infinity : b.base + i * b.paso - 1;
+            desde = i === 0 ? 0 : Math.round(base + (i - 1) * paso);
+            hasta = i === 10 ? Infinity : Math.round(base + i * paso - 1);
         } else if (tipo === 'asistencia') {
             desde = i === 0 ? 0 : b.base + (i - 1) * b.paso;
             hasta = i === 10 ? 100 : b.base + i * b.paso - 0.01;
@@ -111,32 +115,39 @@ export function getEscalonesInfo(tipo) {
 
 /**
  * Calcula el escalón alcanzado (0 a 10) dado un valor numérico
+ * Para turnos: si dotacion > 1 (ej: 4), divide los umbrales grupales (3.052 base, 127 paso, 4.324 tope)
+ * para evaluar el desempeño individual de cada colaboradora.
  */
-export function calculateEscalon(valor, tipo) {
+export function calculateEscalon(valor, tipo, dotacion = 1) {
     const b = INCENTIVO_CONFIG.bolsas[tipo];
     if (!b || valor === null || valor === undefined) {
         return { escalon: 0, monto: 0, progresoPct: 0 };
     }
 
     const num = Number(valor);
-    if (isNaN(num) || num < b.base + (tipo === 'asistencia' ? 1.0 : tipo === 'turnos' ? 127 : 200)) {
+    const div = (tipo === 'turnos' && dotacion > 1) ? Number(dotacion) : 1;
+    const base = b.base / div;
+    const paso = b.paso / div;
+    const tope = b.tope / div;
+
+    if (isNaN(num) || num < base) {
         return { 
             escalon: 0, 
             monto: 0, 
-            progresoPct: Math.min(100, Math.round((num / b.base) * 100)) 
+            progresoPct: Math.min(100, Math.round((num / base) * 100)) 
         };
     }
 
     let escalon = 0;
     if (tipo === 'asistencia') {
-        escalon = Math.floor(num - b.base);
+        escalon = Math.floor(num - base);
     } else {
-        escalon = Math.floor((num - b.base) / b.paso);
+        escalon = Math.floor((num - base) / paso) + 1;
     }
 
     escalon = Math.max(0, Math.min(10, escalon));
     const monto = Math.round(escalon * b.montoPaso * 100) / 100;
-    const progresoPct = Math.min(100, Math.round((num / b.tope) * 100));
+    const progresoPct = Math.min(100, Math.round((num / tope) * 100));
 
     return { escalon, monto, progresoPct };
 }
@@ -257,8 +268,8 @@ export function calcularLiquidacionCompleta({
     datosSalus,
     ajustesFte = {}
 }) {
-    const escalonMensajes = calculateEscalon(mensajesTotales, 'mensajes');
-    const escalonTurnos = calculateEscalon(datosSalus?.turnosGrupales?.total || 0, 'turnos');
+    const dotacionEvaluada = 4; // Dotación evaluada activa del equipo (4 operadoras)
+    const escalonTurnosGrupal = calculateEscalon(datosSalus?.turnosGrupales?.total || 0, 'turnos');
 
     const listaAgentes = (datosSalus?.agentes || []).map(ag => {
         const fteCustom = ajustesFte[ag.id] !== undefined ? ajustesFte[ag.id] : ag.fte;
@@ -273,7 +284,10 @@ export function calcularLiquidacionCompleta({
             : BASE_GARANTIZADA_HISTORICA * fte;
 
         const montoMensajes = escalonMensajes.monto * fte;
-        const montoTurnos = escalonTurnos.monto * fte;
+
+        // Bolsa Turnos: individual pero con objetivo grupal dividido en las 4 operadoras (Piso 763 / Meta 922)
+        const escalonTurnosIndiv = calculateEscalon(ag.turnos || 0, 'turnos', dotacionEvaluada);
+        const montoTurnos = escalonTurnosIndiv.monto * fte;
         const montoAsistencia = (ag.montoAsistencia || 0) * fte;
 
         const totalVariable = montoMensajes + montoTurnos + montoAsistencia;
@@ -288,6 +302,7 @@ export function calcularLiquidacionCompleta({
             ...ag,
             fte,
             mensajesIndividuales: mensajesIndiv,
+            escalonTurnos: escalonTurnosIndiv.escalon,
             baseGarantizadaLiquidada: Math.round(base * 100) / 100,
             montoMensajes: Math.round(montoMensajes * 100) / 100,
             montoTurnos: Math.round(montoTurnos * 100) / 100,
@@ -313,9 +328,9 @@ export function calcularLiquidacionCompleta({
         },
         bolsaTurnos: {
             total: datosSalus?.turnosGrupales?.total || 0,
-            escalon: escalonTurnos.escalon,
-            montoPorFte: escalonTurnos.monto,
-            progresoPct: escalonTurnos.progresoPct,
+            escalon: escalonTurnosGrupal.escalon,
+            montoPorFte: escalonTurnosGrupal.monto,
+            progresoPct: escalonTurnosGrupal.progresoPct,
             meta: INCENTIVO_CONFIG.bolsas.turnos.meta,
             tope: INCENTIVO_CONFIG.bolsas.turnos.tope
         },

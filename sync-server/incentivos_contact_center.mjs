@@ -54,24 +54,29 @@ export const INCENTIVO_TIERS = {
 /**
  * Calcula el escalón alcanzado (0 a 10) y el monto correspondiente.
  */
-export function calculateEscalon(valor, tipo) {
+export function calculateEscalon(valor, tipo, dotacion = 1) {
     const config = INCENTIVO_TIERS.bolsas[tipo];
     if (!config) return { escalon: 0, monto: 0, progresoPct: 0 };
 
-    if (valor < config.base + (tipo === 'turnos' ? 127 : tipo === 'mensajes' ? 200 : 1.0)) {
-        return { escalon: 0, monto: 0, progresoPct: Math.min(100, Math.round((valor / config.base) * 100)) };
+    const div = (tipo === 'turnos' && dotacion > 1) ? Number(dotacion) : 1;
+    const base = config.base / div;
+    const paso = config.paso / div;
+    const tope = config.tope / div;
+
+    if (valor < base) {
+        return { escalon: 0, monto: 0, progresoPct: Math.min(100, Math.round((valor / base) * 100)) };
     }
 
     let escalon = 0;
     if (tipo === 'asistencia') {
-        escalon = Math.floor(valor - config.base);
+        escalon = Math.floor(valor - base);
     } else {
-        escalon = Math.floor((valor - config.base) / config.paso);
+        escalon = Math.floor((valor - base) / paso) + 1;
     }
 
     escalon = Math.max(0, Math.min(10, escalon));
     const monto = Math.round((escalon * config.montoPaso) * 100) / 100;
-    const progresoPct = Math.min(100, Math.round((valor / config.tope) * 100));
+    const progresoPct = Math.min(100, Math.round((valor / tope) * 100));
 
     return { escalon, monto, progresoPct };
 }
@@ -239,15 +244,22 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             }
         }
 
+        const dotacion = 4;
+        const escalonTurnosIndiv = calculateEscalon(ag.turnos, 'turnos', dotacion);
+        const turnosProyIndiv = Math.round(ag.turnos * factorHabiles);
+        const escalonTurnosProyIndiv = calculateEscalon(turnosProyIndiv, 'turnos', dotacion);
+
         return {
             ...ag,
             evaluables,
             asistenciaPct,
             escalonAsistencia: escalonAsistencia.escalon,
             montoAsistencia: escalonAsistencia.monto,
-            montoTurnos: escalonTurnos.monto,
-            turnosProyectados: Math.round(ag.turnos * factorHabiles),
-            montoTurnosProyectado: escalonTurnosProy.monto,
+            escalonTurnos: escalonTurnosIndiv.escalon,
+            montoTurnos: escalonTurnosIndiv.monto,
+            turnosProyectados: turnosProyIndiv,
+            escalonTurnosProyectado: escalonTurnosProyIndiv.escalon,
+            montoTurnosProyectado: escalonTurnosProyIndiv.monto,
             baseGarantizada: INCENTIVO_TIERS.baseGarantizada,
             estado,
             fte

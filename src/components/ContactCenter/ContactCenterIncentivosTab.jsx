@@ -204,10 +204,13 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 ...datosSalus.turnosGrupales,
                 total: turnosProy
             },
-            agentes: (datosSalus.agentes || []).map(ag => ({
-                ...ag,
-                turnos: Math.round((ag.turnos || 0) * factorProyeccion)
-            }))
+            agentes: (datosSalus.agentes || []).map(ag => {
+                const turnosIndiv = ag.turnosProyectados || Math.round((ag.turnos || 0) * factorProyeccion);
+                return {
+                    ...ag,
+                    turnos: turnosIndiv
+                };
+            })
         };
         return calcularLiquidacionCompleta({
             periodo,
@@ -736,18 +739,18 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#7C3AED', textTransform: 'uppercase' }}>
-                                Bolsa 2: Turnos Otorgados (25%)
+                                Bolsa 2: Turnos (25%) • Indiv. s/ Obj. Grupal ÷ 4
                             </span>
                             <PhoneCall size={15} color="#7C3AED" />
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                                <span style={{ color: '#64748B' }}>🎯 Objetivo Meta:</span>
-                                <strong style={{ color: '#0F2942' }}>3.687 turnos <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 3.052)</span></strong>
+                                <span style={{ color: '#64748B' }}>🎯 Meta por Operadora:</span>
+                                <strong style={{ color: '#0F2942' }}>922 turnos <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 763 / Grupal 3.687)</span></strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                                <span style={{ color: '#64748B' }}>📍 Real al Día ({currentDay}):</span>
-                                <strong style={{ color: '#7C3AED' }}>{Number(datosSalus?.turnosGrupales?.total || 0).toLocaleString('es-AR')} turnos</strong>
+                                <span style={{ color: '#64748B' }}>📍 Real Total Equipo ({currentDay} d):</span>
+                                <strong style={{ color: '#7C3AED' }}>{Number(datosSalus?.turnosGrupales?.total || 0).toLocaleString('es-AR')} turnos <span style={{ color: '#64748B', fontWeight: 500 }}>({Math.round((datosSalus?.turnosGrupales?.total || 0) / 4)} prom/op.)</span></strong>
                             </div>
                             <div style={{
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -757,16 +760,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 marginTop: '4px'
                             }}>
                                 <span style={{ fontSize: '0.72rem', fontWeight: 800, color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#065F46' : '#92400E' }}>
-                                    📈 Tendencia Fin de Mes:
+                                    📈 Tendencia Total Equipo:
                                 </span>
                                 <div style={{ textAlign: 'right' }}>
                                     <div style={{ fontSize: '0.88rem', fontWeight: 900, color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#059669' : '#D97706' }}>
                                         {liquidacionProyectada.bolsaTurnos.total.toLocaleString('es-AR')} turnos
                                     </div>
-                                    <div style={{ fontSize: '0.64rem', color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#047857' : '#B45309', fontWeight: 800 }}>
-                                        {liquidacionProyectada.bolsaTurnos.total >= 3052 
-                                            ? `Escalón ${liquidacionProyectada.bolsaTurnos.escalon}/10 • +${formatCurrency(liquidacionProyectada.bolsaTurnos.montoPorFte)}`
-                                            : `Faltan ${(3052 - liquidacionProyectada.bolsaTurnos.total).toLocaleString('es-AR')} para piso`}
+                                    <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 700 }}>
+                                        ~{Math.round(liquidacionProyectada.bolsaTurnos.total / 4)} turnos/op. est.
                                     </div>
                                 </div>
                             </div>
@@ -935,7 +936,10 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 <th style={{ padding: '10px 12px', fontWeight: 800 }}>Colaboradora</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Piso Garantizado</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Msjs (50%)</th>
-                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Turnos (25%)</th>
+                                <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>
+                                    <div>+ Bolsa Turnos (25%)</div>
+                                    <div style={{ fontSize: '0.60rem', fontWeight: 600, color: '#7C3AED' }}>Indiv. (Obj. ÷ 4)</div>
+                                </th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Asistencia Individual</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>+ Bolsa Asoc. (25%)</th>
                                 <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>Total Variable</th>
@@ -1020,15 +1024,17 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                     </div>
                                                     {isCurrentMonth && agReal.montoTurnos === 0 && (
                                                         <div style={{ fontSize: '0.60rem', color: '#94A3B8' }}>
-                                                            En curso ({datosSalus?.turnosGrupales?.total?.toLocaleString('es-AR') || 0} / 3.052 piso)
+                                                            En curso ({agReal.turnos || 0} / 763 piso indiv.)
                                                         </div>
                                                     )}
                                                 </div>
                                             )}
                                             {modoVistaTabla === 'tendencia' && (
                                                 <div>
-                                                    <div style={{ fontWeight: 800, color: '#059669' }}>+{formatCurrency(agProy.montoTurnos)}</div>
-                                                    <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 700 }}>
+                                                    <div style={{ fontWeight: 800, color: agProy.montoTurnos > 0 ? '#059669' : '#475569' }}>
+                                                        +{formatCurrency(agProy.montoTurnos)}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.64rem', color: agProy.montoTurnos > 0 ? '#059669' : '#64748B', fontWeight: 700 }}>
                                                         📈 {agProy.turnos || Math.round((agReal.turnos || 0) * factorProyeccion)} turnos est.
                                                     </div>
                                                 </div>
@@ -1039,7 +1045,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                         📍 Real: <strong style={{ color: '#7C3AED' }}>+{formatCurrency(agReal.montoTurnos)}</strong> ({agReal.turnos || 0} turnos)
                                                     </div>
                                                     <div style={{ fontSize: '0.72rem', fontWeight: 800, color: agProy.montoTurnos > 0 ? '#059669' : '#D97706', marginTop: '2px' }}>
-                                                        📈 Proy: +{formatCurrency(agProy.montoTurnos)} ({agProy.turnos || Math.round((agReal.turnos || 0) * factorProyeccion)} turnos)
+                                                        📈 Tendencia: +{formatCurrency(agProy.montoTurnos)} ({agProy.turnos || Math.round((agReal.turnos || 0) * factorProyeccion)} turnos)
                                                     </div>
                                                 </div>
                                             )}
