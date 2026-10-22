@@ -39,8 +39,24 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
     const pool = await sql.connect(SQL_CONFIG);
 
     try {
-        const hasta = fechaHasta || new Date().toISOString().substring(0, 10);
-        const desde = fechaDesde || '2022-01-01';
+        let hasta = (fechaHasta || '').toString().trim() || new Date().toISOString().substring(0, 10);
+        let desde = (fechaDesde || '').toString().trim() || '2022-01-01';
+
+        // Validar formato YYYY-MM-DD y rango razonable de año para evitar error MSSQL out-of-range
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(desde) || parseInt(desde.substring(0, 4), 10) < 2000 || parseInt(desde.substring(0, 4), 10) > 2099) {
+            console.warn(`[getDxIAnalytics] fechaDesde fuera de rango o parcial: "${fechaDesde}". Normalizando a 2026-10-01`);
+            desde = '2026-10-01';
+        }
+        if (!dateRegex.test(hasta) || parseInt(hasta.substring(0, 4), 10) < 2000 || parseInt(hasta.substring(0, 4), 10) > 2099) {
+            console.warn(`[getDxIAnalytics] fechaHasta fuera de rango o parcial: "${fechaHasta}". Normalizando a 2026-10-31`);
+            hasta = '2026-10-31';
+        }
+        if (desde > hasta) {
+            const tmp = desde;
+            desde = hasta;
+            hasta = tmp;
+        }
 
         console.log(`[getDxIAnalytics] Consultando SALUS en un solo pase desde ${desde} hasta ${hasta}...`);
         const t0 = Date.now();

@@ -14,6 +14,7 @@ import {
     Download, 
     Filter, 
     ChevronRight, 
+    ChevronLeft,
     ArrowUpRight, 
     AlertCircle, 
     CheckCircle2, 
@@ -104,9 +105,108 @@ export default function DiagnosticoImagenesDashboard({
         hospitalizacion: true
     });
 
-    // Rango efectivo (supeditado al filtro superior del Telar)
-    const effectiveDesde = fechaDesde || '2022-01-01';
-    const effectiveHasta = fechaHasta || new Date().toISOString().substring(0, 10);
+    // Rango efectivo y sincronización de fechas
+    const [localDesde, setLocalDesde] = useState(() => fechaDesde || '2026-10-01');
+    const [localHasta, setLocalHasta] = useState(() => fechaHasta || '2026-10-31');
+
+    useEffect(() => {
+        if (fechaDesde && fechaHasta) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(fechaDesde) && /^\d{4}-\d{2}-\d{2}$/.test(fechaHasta)) {
+                setLocalDesde(fechaDesde);
+                setLocalHasta(fechaHasta);
+            }
+        }
+    }, [fechaDesde, fechaHasta]);
+
+    const effectiveDesde = useMemo(() => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(localDesde) && parseInt(localDesde.substring(0, 4), 10) >= 2000) {
+            return localDesde;
+        }
+        return '2026-10-01';
+    }, [localDesde]);
+
+    const effectiveHasta = useMemo(() => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(localHasta) && parseInt(localHasta.substring(0, 4), 10) >= 2000) {
+            return localHasta;
+        }
+        return '2026-10-31';
+    }, [localHasta]);
+
+    const changePeriod = (d, h, presetName = 'personalizado') => {
+        setLocalDesde(d);
+        setLocalHasta(h);
+        if (onCustomDateChange) {
+            onCustomDateChange(d, h);
+        }
+        if (onDatePresetChange && presetName) {
+            onDatePresetChange(presetName);
+        }
+    };
+
+    // Generar lista de meses disponibles desde 2022 hasta el corriente
+    const availableMonths = useMemo(() => {
+        const list = [];
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        for (let y = currentYear; y >= 2022; y--) {
+            const maxM = y === currentYear ? currentMonth : 11;
+            for (let m = maxM; m >= 0; m--) {
+                const pad = (n) => String(n).padStart(2, '0');
+                const dStart = new Date(y, m, 1);
+                const dEnd = new Date(y, m + 1, 0);
+                const val = `${y}-${pad(m + 1)}`;
+                const monthName = dStart.toLocaleDateString('es-AR', { month: 'long' });
+                const capitalized = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+                list.push({
+                    key: val,
+                    label: `${capitalized} ${y}`,
+                    desde: `${y}-${pad(m + 1)}-01`,
+                    hasta: `${y}-${pad(m + 1)}-${pad(dEnd.getDate())}`
+                });
+            }
+        }
+        return list;
+    }, []);
+
+    const activeMonthKey = useMemo(() => {
+        return effectiveDesde.substring(0, 7);
+    }, [effectiveDesde]);
+
+    const handlePreviousMonth = () => {
+        const [yStr, mStr] = (activeMonthKey || '2026-10').split('-');
+        let y = parseInt(yStr, 10);
+        let m = parseInt(mStr, 10) - 1; // 0-based
+        m--; // mes anterior
+        if (m < 0) {
+            m = 11;
+            y--;
+        }
+        const pad = (n) => String(n).padStart(2, '0');
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        changePeriod(`${y}-${pad(m + 1)}-01`, `${y}-${pad(m + 1)}-${pad(lastDay)}`, 'personalizado');
+    };
+
+    const handleNextMonth = () => {
+        const [yStr, mStr] = (activeMonthKey || '2026-10').split('-');
+        let y = parseInt(yStr, 10);
+        let m = parseInt(mStr, 10) - 1; // 0-based
+        m++; // mes siguiente
+        if (m > 11) {
+            m = 0;
+            y++;
+        }
+        const pad = (n) => String(n).padStart(2, '0');
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        changePeriod(`${y}-${pad(m + 1)}-01`, `${y}-${pad(m + 1)}-${pad(lastDay)}`, 'personalizado');
+    };
+
+    const handleSelectMonth = (monthKey) => {
+        const item = availableMonths.find(m => m.key === monthKey);
+        if (item) {
+            changePeriod(item.desde, item.hasta, 'personalizado');
+        }
+    };
 
     // ─── CARGA DE DATOS (CON CACHÉ Y SALUS DIRECTO) ───
     const loadDxIData = async (forceRefresh = false) => {
@@ -960,6 +1060,203 @@ export default function DiagnosticoImagenesDashboard({
                 </div>
             </div>
 
+            {/* ─── NAVEGADOR DE PERÍODO CLÍNICO Y SELECTOR MES A MES ─── */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1.5px solid #BFDBFE',
+                padding: '12px 18px',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                boxShadow: '0 2px 6px rgba(37,99,235,0.06)'
+            }}>
+                {/* Lado Izquierdo: Controles de navegación mes a mes */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: '#EFF6FF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: COLOR_PRIMARY
+                    }}>
+                        <Calendar size={18} />
+                    </div>
+
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
+                        Período:
+                    </span>
+
+                    {/* Botón Mes Anterior */}
+                    <button
+                        onClick={handlePreviousMonth}
+                        title="Ir al mes anterior"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#F8FAFC',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#1E293B',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <ChevronLeft size={16} />
+                        Mes Anterior
+                    </button>
+
+                    {/* Selector de Mes Central Desplegable */}
+                    <div style={{ position: 'relative' }}>
+                        <select
+                            value={activeMonthKey}
+                            onChange={(e) => handleSelectMonth(e.target.value)}
+                            style={{
+                                background: '#EFF6FF',
+                                border: '1.5px solid #3B82F6',
+                                borderRadius: '8px',
+                                padding: '6px 28px 6px 12px',
+                                fontSize: '0.84rem',
+                                fontWeight: 800,
+                                color: COLOR_PRIMARY,
+                                cursor: 'pointer',
+                                outline: 'none',
+                                appearance: 'none',
+                                WebkitAppearance: 'none'
+                            }}
+                        >
+                            {availableMonths.map(m => (
+                                <option key={m.key} value={m.key}>
+                                    📅 {m.label}
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDown size={14} color={COLOR_PRIMARY} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    </div>
+
+                    {/* Botón Mes Siguiente */}
+                    <button
+                        onClick={handleNextMonth}
+                        title="Ir al mes siguiente"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#F8FAFC',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            color: '#1E293B',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        Mes Siguiente
+                        <ChevronRight size={16} />
+                    </button>
+
+                    {/* Rango de Fechas Exacto */}
+                    <div style={{
+                        fontSize: '0.74rem',
+                        color: '#64748B',
+                        background: '#F1F5F9',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        marginLeft: '4px'
+                    }}>
+                        {effectiveDesde} al {effectiveHasta}
+                    </div>
+                </div>
+
+                {/* Lado Derecho: Presets Rápidos */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, marginRight: '4px' }}>
+                        Acceso Rápido:
+                    </span>
+                    {[
+                        {
+                            label: 'Este Mes',
+                            action: () => {
+                                const now = new Date();
+                                const y = now.getFullYear();
+                                const m = String(now.getMonth() + 1).padStart(2, '0');
+                                const last = new Date(y, now.getMonth() + 1, 0).getDate();
+                                changePeriod(`${y}-${m}-01`, `${y}-${m}-${last}`, 'este_mes');
+                            }
+                        },
+                        {
+                            label: 'Mes Anterior',
+                            action: () => {
+                                const now = new Date();
+                                const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                                const y = prev.getFullYear();
+                                const m = String(prev.getMonth() + 1).padStart(2, '0');
+                                const last = new Date(y, prev.getMonth() + 1, 0).getDate();
+                                changePeriod(`${y}-${m}-01`, `${y}-${m}-${last}`, 'mes_anterior');
+                            }
+                        },
+                        {
+                            label: 'Últimos 3 Meses',
+                            action: () => {
+                                const now = new Date();
+                                const prev = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+                                const y1 = prev.getFullYear();
+                                const m1 = String(prev.getMonth() + 1).padStart(2, '0');
+                                const y2 = now.getFullYear();
+                                const m2 = String(now.getMonth() + 1).padStart(2, '0');
+                                const last = new Date(y2, now.getMonth() + 1, 0).getDate();
+                                changePeriod(`${y1}-${m1}-01`, `${y2}-${m2}-${last}`, 'personalizado');
+                            }
+                        },
+                        {
+                            label: 'Año 2026',
+                            action: () => {
+                                changePeriod('2026-01-01', '2026-12-31', 'personalizado');
+                            }
+                        },
+                        {
+                            label: 'Histórico (2022-Hoy)',
+                            action: () => {
+                                const today = new Date().toISOString().substring(0, 10);
+                                changePeriod('2022-01-01', today, 'personalizado');
+                            }
+                        }
+                    ].map(p => (
+                        <button
+                            key={p.label}
+                            type="button"
+                            onClick={p.action}
+                            style={{
+                                border: '1px solid #E2E8F0',
+                                background: '#FFFFFF',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                color: '#475569',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#EFF6FF'; e.currentTarget.style.color = COLOR_PRIMARY; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.color = '#475569'; }}
+                        >
+                            {p.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             {/* ─── PESTAÑAS SELECTORAS DE MODALIDAD (ECO, RX, MAM, TC, DE) ─── */}
             <div style={{
                 display: 'flex',
@@ -1706,7 +2003,7 @@ export default function DiagnosticoImagenesDashboard({
                         </div>
 
                         {/* Contenedor del Gráfico Recharts */}
-                        <div style={{ width: '100%', height: '300px', marginTop: '6px' }}>
+                        <div style={{ width: '100%', height: '300px', marginTop: '6px', minWidth: 0, position: 'relative' }}>
                             {loading ? (
                                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', gap: '8px' }}>
                                     <RefreshCw className="animate-spin" size={18} color={COLOR_PRIMARY} />
@@ -1719,7 +2016,7 @@ export default function DiagnosticoImagenesDashboard({
                                     <span style={{ fontSize: '0.75rem' }}>Verifique el rango de fechas seleccionado en la barra superior</span>
                                 </div>
                             ) : (
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height={290} minWidth={0} minHeight={240}>
                                     <LineChart data={progressionChartData} margin={{ top: 12, right: 18, left: -10, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                         <XAxis 
