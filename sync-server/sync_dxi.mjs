@@ -118,15 +118,15 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             FROM #TempDxI
             GROUP BY Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
 
-            -- Set 1: Prestadores que la Realizan
-            SELECT Modalidad, Agenda, Responsable AS PrestadorRealiza, COUNT(*) AS Cantidad
+            -- Set 1: Prestadores que la Realizan (con EstadoAsistencia para priorizar efectivos)
+            SELECT Modalidad, Agenda, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, Responsable;
+            GROUP BY Modalidad, Agenda, Responsable, EstadoAsistencia;
 
-            -- Set 2: Prestadores que la Solicitan
-            SELECT Modalidad, Agenda, Solicitante AS PrestadorSolicita, COUNT(*) AS Cantidad
+            -- Set 2: Prestadores que la Solicitan (con EstadoAsistencia)
+            SELECT Modalidad, Agenda, Solicitante AS PrestadorSolicita, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, Solicitante;
+            GROUP BY Modalidad, Agenda, Solicitante, EstadoAsistencia;
 
             -- Set 3: Prestadores que la Informan (solo estudios firmados/informados)
             SELECT Modalidad, Agenda, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
@@ -134,10 +134,10 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             WHERE EstaInformado = 1
             GROUP BY Modalidad, Agenda, Responsable;
 
-            -- Set 4: Obras Sociales
-            SELECT Modalidad, Agenda, ObraSocial, COUNT(*) AS Cantidad
+            -- Set 4: Obras Sociales (con EstadoAsistencia)
+            SELECT Modalidad, Agenda, ObraSocial, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, ObraSocial;
+            GROUP BY Modalidad, Agenda, ObraSocial, EstadoAsistencia;
 
             -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia)
             SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, COUNT(*) AS Cantidad

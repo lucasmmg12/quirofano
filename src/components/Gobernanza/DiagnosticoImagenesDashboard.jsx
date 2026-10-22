@@ -291,19 +291,25 @@ export default function DiagnosticoImagenesDashboard({
 
     // ─── PROCESAMIENTO Y AGREGACIÓN DE DATOS FILTRADOS ───
 
-    // 1. Resumen de conteos globales por modalidad
+    // Estados que representan estudios efectivamente realizados (criterio clínico y asistencial)
+    const ESTADOS_EFECTIVOS = useMemo(() => new Set(['Presente', 'Internado', 'Urgencia', 'Sobreturno']), []);
+
+    // 1. Resumen de conteos globales por modalidad (priorizando estudios efectivamente realizados)
     const modalidadCounts = useMemo(() => {
         if (!data?.agendas) return {};
         const counts = { TODAS: 0, ECOGRAFIA: 0, RADIOLOGIA: 0, MAMOGRAFIA: 0, TOMOGRAFIA: 0, DENSITOMETRIA: 0 };
         data.agendas.forEach(row => {
             const cant = row.Cantidad || 0;
-            counts.TODAS += cant;
-            if (counts[row.Modalidad] !== undefined) {
-                counts[row.Modalidad] += cant;
+            // Priorizar conteo de estudios efectivamente realizados
+            if (row.EstadoAsistencia && ESTADOS_EFECTIVOS.has(row.EstadoAsistencia)) {
+                counts.TODAS += cant;
+                if (counts[row.Modalidad] !== undefined) {
+                    counts[row.Modalidad] += cant;
+                }
             }
         });
         return counts;
-    }, [data]);
+    }, [data, ESTADOS_EFECTIVOS]);
 
     // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
     const filteredAgendasRows = useMemo(() => {
@@ -332,6 +338,7 @@ export default function DiagnosticoImagenesDashboard({
                     agenda: r.Agenda,
                     modalidad: r.Modalidad,
                     total: 0,
+                    realizados: 0,
                     ambulatorio: 0,
                     hospitalizacion: 0,
                     presente: 0,
@@ -359,15 +366,23 @@ export default function DiagnosticoImagenesDashboard({
             else if (estado === 'Ausente') item.ausente += cant;
             else item.sinRegistrar += cant;
 
+            // Efectivamente realizados: Presente + Internado + Urgencia + Sobreturno
+            item.realizados = item.presente + item.internado + item.urgencia + item.sobreturno;
+
             item.informados += r.Informados || 0;
             item.pendientes += r.PendientesInforme || 0;
             if (r.Centro) item.centros.add(r.Centro);
         });
 
-        return Array.from(map.values()).sort((a, b) => b.total - a.total);
-    }, [filteredAgendasRows]);
+        // Ordenar priorizando volumen de estudios efectivamente realizados
+        return Array.from(map.values()).sort((a, b) => {
+            if (filterAsistencia === 'Ausente') return b.ausente - a.ausente;
+            if (filterAsistencia === 'Sin Registrar') return b.sinRegistrar - a.sinRegistrar;
+            return b.realizados !== a.realizados ? b.realizados - a.realizados : b.total - a.total;
+        });
+    }, [filteredAgendasRows, filterAsistencia]);
 
-    // 4. Totales del filtro activo
+    // 4. Totales del filtro activo (priorizando estudios efectivamente realizados)
     const totals = useMemo(() => {
         const total = agendasSummaryList.reduce((acc, a) => acc + a.total, 0);
         const ambulatorio = agendasSummaryList.reduce((acc, a) => acc + a.ambulatorio, 0);
@@ -378,42 +393,61 @@ export default function DiagnosticoImagenesDashboard({
         const sobreturno = agendasSummaryList.reduce((acc, a) => acc + (a.sobreturno || 0), 0);
         const ausente = agendasSummaryList.reduce((acc, a) => acc + (a.ausente || 0), 0);
         const sinRegistrar = agendasSummaryList.reduce((acc, a) => acc + (a.sinRegistrar || 0), 0);
+
+        // ESTUDIOS EFECTIVAMENTE REALIZADOS (Presente + Internado + Urgencia + Sobreturno)
+        const realizados = presente + internado + urgencia + sobreturno;
+
         const informados = agendasSummaryList.reduce((acc, a) => acc + a.informados, 0);
         const pendientes = agendasSummaryList.reduce((acc, a) => acc + a.pendientes, 0);
 
+        // Base para porcentajes de efectividad: se calculan sobre el volumen efectivamente realizado
+        const baseEfectiva = realizados > 0 ? realizados : total;
+
         return {
-            total,
+            total, // Total turnos/solicitudes citadas en SALUS
+            realizados, // Total efectivamente realizados (Presente, Internado, Urgencia, Sobreturno)
+            pctRealizados: total > 0 ? ((realizados / total) * 100).toFixed(1) : 0,
             ambulatorio,
             pctAmbulatorio: total > 0 ? ((ambulatorio / total) * 100).toFixed(1) : 0,
             hospitalizacion,
             pctHospitalizacion: total > 0 ? ((hospitalizacion / total) * 100).toFixed(1) : 0,
             presente,
-            pctPresente: total > 0 ? ((presente / total) * 100).toFixed(1) : 0,
+            pctPresente: baseEfectiva > 0 ? ((presente / baseEfectiva) * 100).toFixed(1) : 0,
+            pctPresenteTotal: total > 0 ? ((presente / total) * 100).toFixed(1) : 0,
             internado,
-            pctInternado: total > 0 ? ((internado / total) * 100).toFixed(1) : 0,
+            pctInternado: baseEfectiva > 0 ? ((internado / baseEfectiva) * 100).toFixed(1) : 0,
+            pctInternadoTotal: total > 0 ? ((internado / total) * 100).toFixed(1) : 0,
             urgencia,
-            pctUrgencia: total > 0 ? ((urgencia / total) * 100).toFixed(1) : 0,
+            pctUrgencia: baseEfectiva > 0 ? ((urgencia / baseEfectiva) * 100).toFixed(1) : 0,
+            pctUrgenciaTotal: total > 0 ? ((urgencia / total) * 100).toFixed(1) : 0,
             sobreturno,
-            pctSobreturno: total > 0 ? ((sobreturno / total) * 100).toFixed(1) : 0,
+            pctSobreturno: baseEfectiva > 0 ? ((sobreturno / baseEfectiva) * 100).toFixed(1) : 0,
+            pctSobreturnoTotal: total > 0 ? ((sobreturno / total) * 100).toFixed(1) : 0,
             ausente,
             pctAusente: total > 0 ? ((ausente / total) * 100).toFixed(1) : 0,
             sinRegistrar,
             pctSinRegistrar: total > 0 ? ((sinRegistrar / total) * 100).toFixed(1) : 0,
             informados,
-            pctInformados: total > 0 ? ((informados / total) * 100).toFixed(1) : 0,
+            pctInformados: baseEfectiva > 0 ? Math.min(100, Number(((informados / baseEfectiva) * 100).toFixed(1))) : 0,
             pendientes,
-            pctPendientes: total > 0 ? ((pendientes / total) * 100).toFixed(1) : 0,
             cantAgendas: agendasSummaryList.length
         };
     }, [agendasSummaryList]);
 
-    // 5. Ranking de Prestadores Realizadores (filtrados por modalidad y agenda seleccionada)
+    // 5. Ranking de Prestadores Realizadores (priorizando estudios efectivamente realizados)
     const realizadoresRanking = useMemo(() => {
         if (!data?.realizadores) return [];
         const map = new Map();
         data.realizadores.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+
+            // Si hay filtro puntual de asistencia se respeta; si es TODOS, priorizar efectivamente realizados
+            if (filterAsistencia !== 'TODOS') {
+                if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
+            } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                return false;
+            }
 
             const prest = r.PrestadorRealiza || 'SIN ASIGNAR';
             map.set(prest, (map.get(prest) || 0) + (r.Cantidad || 0));
@@ -427,15 +461,21 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalRealizadores > 0 ? ((cantidad / totalRealizadores) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [data, selectedModalidad, selectedAgenda]);
+    }, [data, selectedModalidad, selectedAgenda, filterAsistencia, ESTADOS_EFECTIVOS]);
 
-    // 6. Ranking de Prestadores Solicitantes (filtrados por modalidad y agenda)
+    // 6. Ranking de Prestadores Solicitantes (priorizando estudios efectivamente realizados)
     const solicitantesRanking = useMemo(() => {
         if (!data?.solicitantes) return [];
         const map = new Map();
         data.solicitantes.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+
+            if (filterAsistencia !== 'TODOS') {
+                if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
+            } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                return false;
+            }
 
             const prest = r.PrestadorSolicita || 'NO ESPECIFICADO';
             map.set(prest, (map.get(prest) || 0) + (r.Cantidad || 0));
@@ -449,7 +489,7 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalSolicitantes > 0 ? ((cantidad / totalSolicitantes) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [data, selectedModalidad, selectedAgenda]);
+    }, [data, selectedModalidad, selectedAgenda, filterAsistencia, ESTADOS_EFECTIVOS]);
 
     // 7. Ranking de Prestadores Informantes (donde Fecha Informado IS NOT NULL)
     const informantesRanking = useMemo(() => {
@@ -473,13 +513,19 @@ export default function DiagnosticoImagenesDashboard({
             .sort((a, b) => b.cantidad - a.cantidad);
     }, [data, selectedModalidad, selectedAgenda]);
 
-    // 8. Obras Sociales más utilizadas
+    // 8. Obras Sociales más utilizadas (priorizando estudios efectivamente realizados)
     const obrasSocialesRanking = useMemo(() => {
         if (!data?.obrasSociales) return [];
         const map = new Map();
         data.obrasSociales.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+
+            if (filterAsistencia !== 'TODOS') {
+                if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
+            } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                return false;
+            }
 
             const os = r.ObraSocial || 'PARTICULAR / SIN FINANCIADOR';
             map.set(os, (map.get(os) || 0) + (r.Cantidad || 0));
@@ -493,7 +539,7 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalOS > 0 ? ((cantidad / totalOS) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [data, selectedModalidad, selectedAgenda]);
+    }, [data, selectedModalidad, selectedAgenda, filterAsistencia, ESTADOS_EFECTIVOS]);
 
     // 9. Centros más utilizados
     const centrosRanking = useMemo(() => {
@@ -597,8 +643,12 @@ export default function DiagnosticoImagenesDashboard({
         data.evolucion.forEach(r => {
             // Filtro de Ámbito
             if (filterAmbito !== 'TODOS' && r.Ambito && r.Ambito !== filterAmbito) return;
-            // Filtro de Asistencia
-            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
+            // Filtro de Asistencia: si no hay filtro puntual activo, priorizar siempre los efectivamente realizados
+            if (filterAsistencia !== 'TODOS') {
+                if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
+            } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                return;
+            }
             // Si hay una modalidad seleccionada puntual (que no sea TODAS)
             if (selectedModalidad !== 'TODAS' && r.Modalidad && r.Modalidad !== selectedModalidad) return;
 
@@ -688,15 +738,16 @@ export default function DiagnosticoImagenesDashboard({
                 ['Origen de Datos:', dataSource === 'salus_live' ? 'SALUS Live SQL Server' : 'Caché Supabase'],
                 [''],
                 ['INDICADORES CLAVE (KPIs)', 'VALOR', 'PORCENTAJE / DETALLE'],
-                ['Total Estudios Realizados', totals.total, '100%'],
-                ['Asistencia Confirmada (Presente)', totals.presente, `${totals.pctPresente}%`],
-                ['Hospitalización (Internado)', totals.internado, `${totals.pctInternado}%`],
-                ['Urgencia / Demanda Espontánea', totals.urgencia, `${totals.pctUrgencia}%`],
-                ['Sobreturnos', totals.sobreturno, `${totals.pctSobreturno}%`],
+                ['Total Estudios Efectivamente Realizados', totals.realizados, `${totals.pctRealizados}% efectividad sobre turnos`],
+                ['Total Turnos Citados en SALUS', totals.total, '100% programados'],
+                ['Asistencia Ambulatoria (Presente)', totals.presente, `${totals.pctPresente}% de realizados`],
+                ['Hospitalización (Internado)', totals.internado, `${totals.pctInternado}% de realizados`],
+                ['Urgencia / Guardia', totals.urgencia, `${totals.pctUrgencia}% de realizados`],
+                ['Sobreturnos Concretados', totals.sobreturno, `${totals.pctSobreturno}% de realizados`],
                 ['Ausentismo / No-Show', totals.ausente, `${totals.pctAusente}%`],
                 ['Sin Registrar / Trámite', totals.sinRegistrar, `${totals.pctSinRegistrar}%`],
-                ['Estudios con Informe Firmado', totals.informados, `${totals.pctInformados}%`],
-                ['Estudios Pendientes de Informe', totals.pendientes, `${totals.pctPendientes}%`],
+                ['Estudios con Informe Firmado', totals.informados, `${totals.pctInformados}% de realizados`],
+                ['Estudios Pendientes de Informe', totals.pendientes, 'Pendientes de firma'],
                 ['Cantidad de Agendas con Producción', totals.cantAgendas, 'Agendas activas'],
                 ['Promedio de Producción', chartStats.avg, activeGranularity === 'dia' ? 'Estudios / Día' : 'Estudios / Mes'],
                 ['Pico Máximo de Producción', chartStats.peak ? chartStats.peak.total : 0, chartStats.peak ? `Fecha: ${chartStats.peak.label}` : '—']
@@ -728,12 +779,13 @@ export default function DiagnosticoImagenesDashboard({
                 const agendasRows = agendasSummaryList.map(a => ({
                     'Modalidad': a.modalidad,
                     'Agenda / Tipo Visita': a.agenda,
-                    'Total Estudios': a.total,
-                    'Presente': a.presente || 0,
-                    'Internado': a.internado || 0,
+                    'Estudios Efectivamente Realizados': a.realizados,
+                    'Total Turnos Agendados': a.total,
+                    'Presente (Ambulatorio)': a.presente || 0,
+                    'Internado (Hospitalización)': a.internado || 0,
                     'Urgencia': a.urgencia || 0,
                     'Sobreturno': a.sobreturno || 0,
-                    'Ausente': a.ausente || 0,
+                    'Ausente (No-Show)': a.ausente || 0,
                     'Sin Registrar': a.sinRegistrar || 0,
                     'Ambulatorio': a.ambulatorio,
                     'Hospitalización': a.hospitalizacion,
@@ -849,17 +901,20 @@ export default function DiagnosticoImagenesDashboard({
             return;
         }
 
-        const headers = ['Modalidad', 'Agenda', 'Total Estudios', 'Ambulatorio', '% Ambulatorio', 'Hospitalización', '% Hospitalización', 'Informados', '% Informados', 'Pendientes', 'Centros'];
+        const headers = ['Modalidad', 'Agenda', 'Estudios Efectivamente Realizados', 'Total Turnos Agendados', 'Presente', 'Internado', 'Urgencia', 'Sobreturno', 'Ausente (No-Show)', 'Sin Registrar', 'Informados', '% Informados', 'Pendientes', 'Centros'];
         const rows = agendasSummaryList.map(a => [
             `"${a.modalidad}"`,
             `"${a.agenda}"`,
+            a.realizados || 0,
             a.total,
-            a.ambulatorio,
-            a.total > 0 ? ((a.ambulatorio / a.total) * 100).toFixed(1) + '%' : '0%',
-            a.hospitalizacion,
-            a.total > 0 ? ((a.hospitalizacion / a.total) * 100).toFixed(1) + '%' : '0%',
+            a.presente || 0,
+            a.internado || 0,
+            a.urgencia || 0,
+            a.sobreturno || 0,
+            a.ausente || 0,
+            a.sinRegistrar || 0,
             a.informados,
-            a.total > 0 ? ((a.informados / a.total) * 100).toFixed(1) + '%' : '0%',
+            (a.realizados || a.total) > 0 ? ((a.informados / (a.realizados || a.total)) * 100).toFixed(1) + '%' : '0%',
             a.pendientes,
             `"${Array.from(a.centros).join(', ')}"`
         ]);
@@ -1337,83 +1392,152 @@ export default function DiagnosticoImagenesDashboard({
                 gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
                 gap: '14px'
             }}>
-                {/* 1. Total Estudios */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Total Estudios Realizados
+                {/* 1. Total Estudios Efectivamente Realizados */}
+                <div style={{
+                    background: '#FFFFFF',
+                    borderRadius: '14px',
+                    border: '1.5px solid #BBF7D0',
+                    padding: '16px',
+                    boxShadow: '0 2px 4px rgba(16, 185, 129, 0.05)',
+                    position: 'relative'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Estudios Realizados
+                        </span>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '2px 7px', borderRadius: '6px' }}>
+                            ✓ Efectivos
+                        </span>
                     </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
-                        {loading ? '...' : totals.total.toLocaleString('es-AR')}
+                    <div style={{ fontSize: '2rem', fontWeight: 800, color: '#065F46', marginTop: '4px' }}>
+                        {loading ? '...' : totals.realizados.toLocaleString('es-AR')}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                        En modalidad: <strong>{selectedModalidad}</strong>
+                    <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
+                        Presente + Hosp + Urg + Sobreturno
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '3px' }}>
+                        De <strong>{totals.total.toLocaleString('es-AR')}</strong> turnos agendados ({totals.pctRealizados}%)
                     </div>
                 </div>
 
-                {/* 2. Ambulatorio */}
+                {/* 2. Ambulatorio (Presentes) */}
                 <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Ambulatorio
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Ambulatorio (Pres)
                         </span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: COLOR_AMBULATORIO, background: '#ECFDF5', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctAmbulatorio}%
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: COLOR_AMBULATORIO, background: '#ECFDF5', padding: '2px 6px', borderRadius: '6px' }}>
+                            {totals.pctPresente}% efec
                         </span>
                     </div>
                     <div style={{ fontSize: '1.85rem', fontWeight: 800, color: COLOR_AMBULATORIO, marginTop: '4px' }}>
-                        {loading ? '...' : totals.ambulatorio.toLocaleString('es-AR')}
+                        {loading ? '...' : totals.presente.toLocaleString('es-AR')}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                        Consultas externas, sobreturnos y demanda espontánea
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
+                        Asistencia confirmada en consultorio externo
                     </div>
                 </div>
 
-                {/* 3. Hospitalización */}
+                {/* 3. Hospitalización (Internados) */}
                 <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             Hospitalización
                         </span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: COLOR_HOSPITALIZADO, background: '#F5F3FF', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctHospitalizacion}%
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: COLOR_HOSPITALIZADO, background: '#F5F3FF', padding: '2px 6px', borderRadius: '6px' }}>
+                            {totals.pctInternado}% efec
                         </span>
                     </div>
                     <div style={{ fontSize: '1.85rem', fontWeight: 800, color: COLOR_HOSPITALIZADO, marginTop: '4px' }}>
-                        {loading ? '...' : totals.hospitalizacion.toLocaleString('es-AR')}
+                        {loading ? '...' : totals.internado.toLocaleString('es-AR')}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
                         Pacientes en camas de piso, UCI y quirófano
                     </div>
                 </div>
 
-                {/* 4. Tasa de Informes Firmados */}
+                {/* 4. Urgencias / Guardia */}
                 <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Urgencias / Guardia
+                        </span>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706', background: '#FFFBEB', padding: '2px 6px', borderRadius: '6px' }}>
+                            {totals.pctUrgencia}% efec
+                        </span>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#D97706', marginTop: '4px' }}>
+                        {loading ? '...' : totals.urgencia.toLocaleString('es-AR')}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
+                        Estudios cursados por Guardia Médica
+                    </div>
+                </div>
+
+                {/* 5. Sobreturnos Efectivos */}
+                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Sobreturnos
+                        </span>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0284C7', background: '#F0F9FF', padding: '2px 6px', borderRadius: '6px' }}>
+                            {totals.pctSobreturno}% efec
+                        </span>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0284C7', marginTop: '4px' }}>
+                        {loading ? '...' : totals.sobreturno.toLocaleString('es-AR')}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
+                        Atención sobreturnada concretada
+                    </div>
+                </div>
+
+                {/* 6. Tasa de Informes Firmados */}
+                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             Tasa de Informes
                         </span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB', background: '#EFF6FF', padding: '2px 6px', borderRadius: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#2563EB', background: '#EFF6FF', padding: '2px 6px', borderRadius: '6px' }}>
                             {totals.pctInformados}% firmados
                         </span>
                     </div>
                     <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
                         {loading ? '...' : totals.informados.toLocaleString('es-AR')}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#DC2626', marginTop: '4px' }}>
-                        Pendientes de informe: <strong>{totals.pendientes.toLocaleString('es-AR')}</strong>
+                    <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '4px' }}>
+                        Pendientes de firma: <strong>{totals.pendientes.toLocaleString('es-AR')}</strong>
                     </div>
                 </div>
 
-                {/* 5. Agendas Activas */}
+                {/* 7. Auditoría: Ausentismo (No-Show) */}
+                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #FEE2E2', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Ausentismo (No-Show)
+                        </span>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#DC2626', background: '#FEF2F2', padding: '2px 6px', borderRadius: '6px', border: '1px solid #FECACA' }}>
+                            {totals.pctAusente}% no-show
+                        </span>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#DC2626', marginTop: '4px' }}>
+                        {loading ? '...' : totals.ausente.toLocaleString('es-AR')}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
+                        No concretados | S/reg: <strong>{totals.sinRegistrar.toLocaleString('es-AR')}</strong>
+                    </div>
+                </div>
+
+                {/* 8. Agendas Activas */}
                 <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         Agendas Activas
                     </div>
                     <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
                         {loading ? '...' : totals.cantAgendas}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px' }}>
-                        Tipos de Visita con producción en el período
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
+                        Tipos de Visita en modalidad <strong>{selectedModalidad}</strong>
                     </div>
                 </div>
             </div>
@@ -1557,12 +1681,12 @@ export default function DiagnosticoImagenesDashboard({
                     gap: '10px'
                 }}>
                     {[
-                        { key: 'Presente', count: totals.presente, pct: totals.pctPresente },
-                        { key: 'Internado', count: totals.internado, pct: totals.pctInternado },
-                        { key: 'Urgencia', count: totals.urgencia, pct: totals.pctUrgencia },
-                        { key: 'Sobreturno', count: totals.sobreturno, pct: totals.pctSobreturno },
-                        { key: 'Ausente', count: totals.ausente, pct: totals.pctAusente },
-                        { key: 'Sin Registrar', count: totals.sinRegistrar, pct: totals.pctSinRegistrar }
+                        { key: 'Presente', count: totals.presente, pct: totals.pctPresente, isEfectivo: true },
+                        { key: 'Internado', count: totals.internado, pct: totals.pctInternado, isEfectivo: true },
+                        { key: 'Urgencia', count: totals.urgencia, pct: totals.pctUrgencia, isEfectivo: true },
+                        { key: 'Sobreturno', count: totals.sobreturno, pct: totals.pctSobreturno, isEfectivo: true },
+                        { key: 'Ausente', count: totals.ausente, pct: totals.pctAusente, isEfectivo: false },
+                        { key: 'Sin Registrar', count: totals.sinRegistrar, pct: totals.pctSinRegistrar, isEfectivo: false }
                     ].map(st => {
                         const cfg = ASISTENCIA_CONFIG[st.key];
                         const isFiltered = filterAsistencia === st.key;
@@ -1588,6 +1712,11 @@ export default function DiagnosticoImagenesDashboard({
                                     <span style={{ fontSize: '0.74rem', fontWeight: 700, color: cfg.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                         <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cfg.color }} />
                                         {cfg.shortLabel}
+                                        {st.isEfectivo && (
+                                            <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#047857', background: '#ECFDF5', padding: '0 4px', borderRadius: '4px' }}>
+                                                Efectivo
+                                            </span>
+                                        )}
                                     </span>
                                     <span style={{
                                         fontSize: '0.7rem',
@@ -2253,10 +2382,10 @@ export default function DiagnosticoImagenesDashboard({
                         <div style={{ maxHeight: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {agendasSummaryList.map((item, idx) => {
                                 const isSelected = selectedAgenda === item.agenda;
-                                const pctTotal = totals.total > 0 ? ((item.total / totals.total) * 100).toFixed(1) : 0;
+                                const pctRealizados = totals.realizados > 0 ? ((item.realizados / totals.realizados) * 100).toFixed(1) : 0;
                                 const pctAmb = item.total > 0 ? ((item.ambulatorio / item.total) * 100).toFixed(0) : 0;
                                 const pctHosp = item.total > 0 ? ((item.hospitalizacion / item.total) * 100).toFixed(0) : 0;
-                                const pctInf = item.total > 0 ? ((item.informados / item.total) * 100).toFixed(0) : 0;
+                                const pctInf = (item.realizados || item.total) > 0 ? ((item.informados / (item.realizados || item.total)) * 100).toFixed(0) : 0;
 
                                 return (
                                     <div
@@ -2289,11 +2418,16 @@ export default function DiagnosticoImagenesDashboard({
                                                 </span>
                                             </div>
                                             <div style={{ textAlign: 'right' }}>
-                                                <span style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
-                                                    {item.total.toLocaleString('es-AR')}
-                                                </span>
-                                                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                    {pctTotal}% del volumen
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                                                    <span style={{ fontSize: '1rem', fontWeight: 800, color: '#065F46' }}>
+                                                        {item.realizados.toLocaleString('es-AR')}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '1px 5px', borderRadius: '4px' }}>
+                                                        Efectivos
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '1px' }}>
+                                                    {pctRealizados}% del total | {item.total} turnos ({item.ausente} aus)
                                                 </div>
                                             </div>
                                         </div>
