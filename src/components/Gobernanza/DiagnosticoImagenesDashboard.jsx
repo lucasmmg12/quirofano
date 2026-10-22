@@ -25,7 +25,9 @@ import {
     HelpCircle,
     TrendingUp,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    UserX,
+    Clock
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -45,6 +47,16 @@ const COLOR_PRIMARY = '#2563EB'; // Azul institucional
 const COLOR_ACCENT = '#0284C7';  // Cyan quirúrgico
 const COLOR_AMBULATORIO = '#10B981'; // Esmeralda clínico
 const COLOR_HOSPITALIZADO = '#8B5CF6'; // Púrpura internado
+
+// Configuración y Paleta de Estados de Asistencia
+export const ASISTENCIA_CONFIG = {
+    'Presente': { label: 'Presente / Atendido', shortLabel: 'Presente', color: '#10B981', bg: '#ECFDF5', border: '#A7F3D0', text: '#065F46', desc: 'Asistencia presencial confirmada' },
+    'Internado': { label: 'Internado / Hosp.', shortLabel: 'Internado', color: '#8B5CF6', bg: '#F5F3FF', border: '#DDD6FE', text: '#5B21B6', desc: 'Pacientes en internación institucional' },
+    'Urgencia': { label: 'Urgencia / Demanda', shortLabel: 'Urgencia', color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A', text: '#92400E', desc: 'Atención espontánea de guardia' },
+    'Sobreturno': { label: 'Sobreturno', shortLabel: 'Sobreturno', color: '#0284C7', bg: '#F0F9FF', border: '#BAE6FD', text: '#075985', desc: 'Turnos adicionales o sobreturnos' },
+    'Ausente': { label: 'Ausente (No-Show)', shortLabel: 'Ausente', color: '#EF4444', bg: '#FEF2F2', border: '#FECACA', text: '#991B1B', desc: 'Ausencia justificada o injustificada' },
+    'Sin Registrar': { label: 'Sin Registrar / Trámite', shortLabel: 'Sin Reg.', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0', text: '#334155', desc: 'Estado pendiente o no asignado' }
+};
 
 const MODALIDADES_TABS = [
     { id: 'TODAS', label: 'Todas las Modalidades', icon: Layers, badgeColor: '#3B82F6' },
@@ -74,8 +86,9 @@ export default function DiagnosticoImagenesDashboard({
     const [selectedModalidad, setSelectedModalidad] = useState('TODAS');
     const [selectedAgenda, setSelectedAgenda] = useState('TODAS');
     const [filterAmbito, setFilterAmbito] = useState('TODOS'); // 'TODOS' | 'Ambulatorio' | 'Hospitalización'
+    const [filterAsistencia, setFilterAsistencia] = useState('TODOS'); // 'TODOS' | 'Presente' | 'Internado' | 'Urgencia' | 'Sobreturno' | 'Ausente' | 'Sin Registrar'
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTabDetail, setActiveTabDetail] = useState('prestadores'); // 'prestadores' | 'solicitantes' | 'informantes' | 'obras_sociales' | 'centros'
+    const [activeTabDetail, setActiveTabDetail] = useState('prestadores'); // 'prestadores' | 'solicitantes' | 'informantes' | 'asistencia' | 'obras_sociales' | 'centros'
 
     // Estados para el Gráfico de Progresión Temporal
     const [chartGranularity, setChartGranularity] = useState('auto'); // 'auto' | 'dia' | 'mes'
@@ -192,12 +205,13 @@ export default function DiagnosticoImagenesDashboard({
         return counts;
     }, [data]);
 
-    // 2. Agendas filtradas por modalidad seleccionada y búsqueda
+    // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
     const filteredAgendasRows = useMemo(() => {
         if (!data?.agendas) return [];
         return data.agendas.filter(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return false;
+            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return false;
             if (searchTerm.trim()) {
                 const term = searchTerm.toLowerCase();
                 const ag = (r.Agenda || '').toLowerCase();
@@ -206,9 +220,9 @@ export default function DiagnosticoImagenesDashboard({
             }
             return true;
         });
-    }, [data, selectedModalidad, filterAmbito, searchTerm]);
+    }, [data, selectedModalidad, filterAmbito, filterAsistencia, searchTerm]);
 
-    // 3. Agrupación por Agenda Única (sumando centros y ámbitos)
+    // 3. Agrupación por Agenda Única (sumando centros, ámbitos y asistencias)
     const agendasSummaryList = useMemo(() => {
         const map = new Map();
         filteredAgendasRows.forEach(r => {
@@ -220,15 +234,31 @@ export default function DiagnosticoImagenesDashboard({
                     total: 0,
                     ambulatorio: 0,
                     hospitalizacion: 0,
+                    presente: 0,
+                    internado: 0,
+                    urgencia: 0,
+                    sobreturno: 0,
+                    ausente: 0,
+                    sinRegistrar: 0,
                     informados: 0,
                     pendientes: 0,
                     centros: new Set()
                 });
             }
             const item = map.get(key);
-            item.total += r.Cantidad || 0;
-            if (r.Ambito === 'Hospitalización') item.hospitalizacion += r.Cantidad || 0;
-            else item.ambulatorio += r.Cantidad || 0;
+            const cant = r.Cantidad || 0;
+            item.total += cant;
+            if (r.Ambito === 'Hospitalización') item.hospitalizacion += cant;
+            else item.ambulatorio += cant;
+
+            const estado = r.EstadoAsistencia;
+            if (estado === 'Presente') item.presente += cant;
+            else if (estado === 'Internado') item.internado += cant;
+            else if (estado === 'Urgencia') item.urgencia += cant;
+            else if (estado === 'Sobreturno') item.sobreturno += cant;
+            else if (estado === 'Ausente') item.ausente += cant;
+            else item.sinRegistrar += cant;
+
             item.informados += r.Informados || 0;
             item.pendientes += r.PendientesInforme || 0;
             if (r.Centro) item.centros.add(r.Centro);
@@ -242,6 +272,12 @@ export default function DiagnosticoImagenesDashboard({
         const total = agendasSummaryList.reduce((acc, a) => acc + a.total, 0);
         const ambulatorio = agendasSummaryList.reduce((acc, a) => acc + a.ambulatorio, 0);
         const hospitalizacion = agendasSummaryList.reduce((acc, a) => acc + a.hospitalizacion, 0);
+        const presente = agendasSummaryList.reduce((acc, a) => acc + (a.presente || 0), 0);
+        const internado = agendasSummaryList.reduce((acc, a) => acc + (a.internado || 0), 0);
+        const urgencia = agendasSummaryList.reduce((acc, a) => acc + (a.urgencia || 0), 0);
+        const sobreturno = agendasSummaryList.reduce((acc, a) => acc + (a.sobreturno || 0), 0);
+        const ausente = agendasSummaryList.reduce((acc, a) => acc + (a.ausente || 0), 0);
+        const sinRegistrar = agendasSummaryList.reduce((acc, a) => acc + (a.sinRegistrar || 0), 0);
         const informados = agendasSummaryList.reduce((acc, a) => acc + a.informados, 0);
         const pendientes = agendasSummaryList.reduce((acc, a) => acc + a.pendientes, 0);
 
@@ -251,6 +287,18 @@ export default function DiagnosticoImagenesDashboard({
             pctAmbulatorio: total > 0 ? ((ambulatorio / total) * 100).toFixed(1) : 0,
             hospitalizacion,
             pctHospitalizacion: total > 0 ? ((hospitalizacion / total) * 100).toFixed(1) : 0,
+            presente,
+            pctPresente: total > 0 ? ((presente / total) * 100).toFixed(1) : 0,
+            internado,
+            pctInternado: total > 0 ? ((internado / total) * 100).toFixed(1) : 0,
+            urgencia,
+            pctUrgencia: total > 0 ? ((urgencia / total) * 100).toFixed(1) : 0,
+            sobreturno,
+            pctSobreturno: total > 0 ? ((sobreturno / total) * 100).toFixed(1) : 0,
+            ausente,
+            pctAusente: total > 0 ? ((ausente / total) * 100).toFixed(1) : 0,
+            sinRegistrar,
+            pctSinRegistrar: total > 0 ? ((sinRegistrar / total) * 100).toFixed(1) : 0,
             informados,
             pctInformados: total > 0 ? ((informados / total) * 100).toFixed(1) : 0,
             pendientes,
@@ -369,6 +417,32 @@ export default function DiagnosticoImagenesDashboard({
             .sort((a, b) => b.cantidad - a.cantidad);
     }, [data, selectedModalidad, selectedAgenda]);
 
+    // 10. Desglose y Ranking por Estado de Asistencia
+    const asistenciasRanking = useMemo(() => {
+        if (!data?.asistencias) return [];
+        const map = new Map();
+        data.asistencias.forEach(r => {
+            if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
+            if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return false;
+
+            const nombre = r.AsistenciaOriginal || r.EstadoAsistencia || 'Sin Registrar';
+            const categoria = r.EstadoAsistencia || 'Sin Registrar';
+            if (!map.has(nombre)) {
+                map.set(nombre, { nombre, categoria, cantidad: 0 });
+            }
+            map.get(nombre).cantidad += (r.Cantidad || 0);
+        });
+
+        const totalAsist = Array.from(map.values()).reduce((a, b) => a + b.cantidad, 0);
+        return Array.from(map.values())
+            .map(item => ({
+                ...item,
+                porcentaje: totalAsist > 0 ? ((item.cantidad / totalAsist) * 100).toFixed(1) : 0
+            }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+    }, [data, selectedModalidad, selectedAgenda, filterAsistencia]);
+
     // ─── CÁLCULOS PARA GRÁFICO DE PROGRESIÓN TEMPORAL ───
     const rangeDays = useMemo(() => {
         if (!effectiveDesde || !effectiveHasta) return 30;
@@ -423,6 +497,8 @@ export default function DiagnosticoImagenesDashboard({
         data.evolucion.forEach(r => {
             // Filtro de Ámbito
             if (filterAmbito !== 'TODOS' && r.Ambito && r.Ambito !== filterAmbito) return;
+            // Filtro de Asistencia
+            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
             // Si hay una modalidad seleccionada puntual (que no sea TODAS)
             if (selectedModalidad !== 'TODAS' && r.Modalidad && r.Modalidad !== selectedModalidad) return;
 
@@ -475,7 +551,7 @@ export default function DiagnosticoImagenesDashboard({
         });
 
         return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
-    }, [data?.evolucion, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, selectedModalidad]);
+    }, [data?.evolucion, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, filterAsistencia, selectedModalidad]);
 
     const chartStats = useMemo(() => {
         if (!progressionChartData.length) return { total: 0, avg: 0, peak: null };
@@ -506,14 +582,19 @@ export default function DiagnosticoImagenesDashboard({
                 ['Período Hasta:', effectiveHasta],
                 ['Modalidad Seleccionada:', selectedModalidad],
                 ['Filtro de Ámbito:', filterAmbito],
+                ['Filtro de Asistencia:', filterAsistencia],
                 ['Agenda Seleccionada:', selectedAgenda],
                 ['Fecha de Generación:', new Date().toLocaleString('es-AR')],
                 ['Origen de Datos:', dataSource === 'salus_live' ? 'SALUS Live SQL Server' : 'Caché Supabase'],
                 [''],
                 ['INDICADORES CLAVE (KPIs)', 'VALOR', 'PORCENTAJE / DETALLE'],
                 ['Total Estudios Realizados', totals.total, '100%'],
-                ['Estudios Ambulatorios', totals.ambulatorio, `${totals.pctAmbulatorio}%`],
-                ['Estudios en Hospitalización', totals.hospitalizacion, `${totals.pctHospitalizacion}%`],
+                ['Asistencia Confirmada (Presente)', totals.presente, `${totals.pctPresente}%`],
+                ['Hospitalización (Internado)', totals.internado, `${totals.pctInternado}%`],
+                ['Urgencia / Demanda Espontánea', totals.urgencia, `${totals.pctUrgencia}%`],
+                ['Sobreturnos', totals.sobreturno, `${totals.pctSobreturno}%`],
+                ['Ausentismo / No-Show', totals.ausente, `${totals.pctAusente}%`],
+                ['Sin Registrar / Trámite', totals.sinRegistrar, `${totals.pctSinRegistrar}%`],
                 ['Estudios con Informe Firmado', totals.informados, `${totals.pctInformados}%`],
                 ['Estudios Pendientes de Informe', totals.pendientes, `${totals.pctPendientes}%`],
                 ['Cantidad de Agendas con Producción', totals.cantAgendas, 'Agendas activas'],
@@ -542,18 +623,21 @@ export default function DiagnosticoImagenesDashboard({
                 XLSX.utils.book_append_sheet(wb, wsProgresion, 'Progresion_Temporal');
             }
 
-            // 3. Hoja Ranking de Agendas
+            // 3. Hoja Ranking de Agendas con Asistencias
             if (agendasSummaryList.length > 0) {
                 const agendasRows = agendasSummaryList.map(a => ({
                     'Modalidad': a.modalidad,
                     'Agenda / Tipo Visita': a.agenda,
                     'Total Estudios': a.total,
+                    'Presente': a.presente || 0,
+                    'Internado': a.internado || 0,
+                    'Urgencia': a.urgencia || 0,
+                    'Sobreturno': a.sobreturno || 0,
+                    'Ausente': a.ausente || 0,
+                    'Sin Registrar': a.sinRegistrar || 0,
                     'Ambulatorio': a.ambulatorio,
-                    '% Ambulatorio': a.total > 0 ? ((a.ambulatorio / a.total) * 100).toFixed(1) + '%' : '0%',
                     'Hospitalización': a.hospitalizacion,
-                    '% Hospitalización': a.total > 0 ? ((a.hospitalizacion / a.total) * 100).toFixed(1) + '%' : '0%',
                     'Informados': a.informados,
-                    '% Informados': a.total > 0 ? ((a.informados / a.total) * 100).toFixed(1) + '%' : '0%',
                     'Pendientes de Informe': a.pendientes,
                     'Centros': Array.from(a.centros).join(', ')
                 }));
@@ -561,7 +645,19 @@ export default function DiagnosticoImagenesDashboard({
                 XLSX.utils.book_append_sheet(wb, wsAgendas, 'Ranking_Agendas');
             }
 
-            // 4. Hoja Prestadores Realizadores
+            // 4. Hoja Desglose Detallado de Asistencia
+            if (asistenciasRanking.length > 0) {
+                const asistRows = asistenciasRanking.map(a => ({
+                    'Estado de Asistencia': a.nombre,
+                    'Categoría': a.categoria,
+                    'Cantidad de Estudios': a.cantidad,
+                    '% del Volumen Total': `${a.porcentaje}%`
+                }));
+                const wsAsist = XLSX.utils.json_to_sheet(asistRows);
+                XLSX.utils.book_append_sheet(wb, wsAsist, 'Desglose_Asistencia');
+            }
+
+            // 5. Hoja Prestadores Realizadores
             if (realizadoresRanking.length > 0) {
                 const realRows = realizadoresRanking.map(r => ({
                     'Profesional Realizador': r.nombre,
@@ -572,7 +668,7 @@ export default function DiagnosticoImagenesDashboard({
                 XLSX.utils.book_append_sheet(wb, wsReal, 'Prestadores_Realizan');
             }
 
-            // 5. Hoja Prestadores Solicitantes
+            // 6. Hoja Prestadores Solicitantes
             if (solicitantesRanking.length > 0) {
                 const solRows = solicitantesRanking.map(s => ({
                     'Profesional Solicitante': s.nombre,
@@ -583,7 +679,7 @@ export default function DiagnosticoImagenesDashboard({
                 XLSX.utils.book_append_sheet(wb, wsSol, 'Prestadores_Solicitan');
             }
 
-            // 6. Hoja Prestadores Informantes
+            // 7. Hoja Prestadores Informantes
             if (informantesRanking.length > 0) {
                 const infRows = informantesRanking.map(i => ({
                     'Profesional Informante': i.nombre,
@@ -594,7 +690,7 @@ export default function DiagnosticoImagenesDashboard({
                 XLSX.utils.book_append_sheet(wb, wsInf, 'Prestadores_Informan');
             }
 
-            // 7. Hoja Obras Sociales
+            // 8. Hoja Obras Sociales
             if (obrasSocialesRanking.length > 0) {
                 const osRows = obrasSocialesRanking.map(o => ({
                     'Financiador / Obra Social': o.nombre,
@@ -1025,7 +1121,202 @@ export default function DiagnosticoImagenesDashboard({
                 </div>
             </div>
 
-            {/* ─── FILTROS DE TABLERO: ÁMBITO Y BÚSQUEDA ─── */}
+            {/* ─── DISTRIBUCIÓN OPERATIVA DE ASISTENCIA (DIFERENCIACIÓN SALUS) ─── */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                padding: '16px 20px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+            }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: '#EFF6FF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: COLOR_PRIMARY
+                        }}>
+                            <UserCheck size={18} />
+                        </div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 700, color: '#0F172A' }}>
+                                    Diferenciación de Estados de Asistencia (SALUS)
+                                </h3>
+                                {filterAsistencia !== 'TODOS' && (
+                                    <span style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: ASISTENCIA_CONFIG[filterAsistencia]?.color || COLOR_PRIMARY,
+                                        background: ASISTENCIA_CONFIG[filterAsistencia]?.bg || '#EFF6FF',
+                                        border: `1px solid ${ASISTENCIA_CONFIG[filterAsistencia]?.border || '#BFDBFE'}`,
+                                        padding: '2px 8px',
+                                        borderRadius: '999px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}>
+                                        Filtro activo: {filterAsistencia}
+                                        <button
+                                            onClick={() => setFilterAsistencia('TODOS')}
+                                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontWeight: 800, color: 'inherit' }}
+                                        >
+                                            ✕
+                                        </button>
+                                    </span>
+                                )}
+                            </div>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
+                                Haga clic en cualquier estado para filtrar de forma instantánea todo el tablero y los rankings
+                            </p>
+                        </div>
+                    </div>
+
+                    {filterAsistencia !== 'TODOS' && (
+                        <button
+                            onClick={() => setFilterAsistencia('TODOS')}
+                            style={{
+                                border: '1px solid #CBD5E1',
+                                background: '#F8FAFC',
+                                borderRadius: '6px',
+                                padding: '4px 10px',
+                                fontSize: '0.74rem',
+                                color: '#475569',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Restablecer a Todos ({totals.total.toLocaleString('es-AR')})
+                        </button>
+                    )}
+                </div>
+
+                {/* Barra segmentada de distribución proporcional */}
+                <div style={{
+                    width: '100%',
+                    height: '10px',
+                    borderRadius: '999px',
+                    background: '#F1F5F9',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)'
+                }}>
+                    {totals.presente > 0 && (
+                        <div
+                            title={`Presente: ${totals.presente.toLocaleString('es-AR')} (${totals.pctPresente}%)`}
+                            style={{ width: `${totals.pctPresente}%`, background: '#10B981', transition: 'width 0.3s ease', cursor: 'pointer' }}
+                            onClick={() => setFilterAsistencia(filterAsistencia === 'Presente' ? 'TODOS' : 'Presente')}
+                        />
+                    )}
+                    {totals.internado > 0 && (
+                        <div
+                            title={`Internado / Hosp.: ${totals.internado.toLocaleString('es-AR')} (${totals.pctInternado}%)`}
+                            style={{ width: `${totals.pctInternado}%`, background: '#8B5CF6', transition: 'width 0.3s ease', cursor: 'pointer' }}
+                            onClick={() => setFilterAsistencia(filterAsistencia === 'Internado' ? 'TODOS' : 'Internado')}
+                        />
+                    )}
+                    {totals.urgencia > 0 && (
+                        <div
+                            title={`Urgencia: ${totals.urgencia.toLocaleString('es-AR')} (${totals.pctUrgencia}%)`}
+                            style={{ width: `${totals.pctUrgencia}%`, background: '#F59E0B', transition: 'width 0.3s ease', cursor: 'pointer' }}
+                            onClick={() => setFilterAsistencia(filterAsistencia === 'Urgencia' ? 'TODOS' : 'Urgencia')}
+                        />
+                    )}
+                    {totals.sobreturno > 0 && (
+                        <div
+                            title={`Sobreturno: ${totals.sobreturno.toLocaleString('es-AR')} (${totals.pctSobreturno}%)`}
+                            style={{ width: `${totals.pctSobreturno}%`, background: '#0284C7', transition: 'width 0.3s ease', cursor: 'pointer' }}
+                            onClick={() => setFilterAsistencia(filterAsistencia === 'Sobreturno' ? 'TODOS' : 'Sobreturno')}
+                        />
+                    )}
+                    {totals.ausente > 0 && (
+                        <div
+                            title={`Ausente / No-Show: ${totals.ausente.toLocaleString('es-AR')} (${totals.pctAusente}%)`}
+                            style={{ width: `${totals.pctAusente}%`, background: '#EF4444', transition: 'width 0.3s ease', cursor: 'pointer' }}
+                            onClick={() => setFilterAsistencia(filterAsistencia === 'Ausente' ? 'TODOS' : 'Ausente')}
+                        />
+                    )}
+                    {totals.sinRegistrar > 0 && (
+                        <div
+                            title={`Sin Registrar / Trámite: ${totals.sinRegistrar.toLocaleString('es-AR')} (${totals.pctSinRegistrar}%)`}
+                            style={{ width: `${totals.pctSinRegistrar}%`, background: '#94A3B8', transition: 'width 0.3s ease', cursor: 'pointer' }}
+                            onClick={() => setFilterAsistencia(filterAsistencia === 'Sin Registrar' ? 'TODOS' : 'Sin Registrar')}
+                        />
+                    )}
+                </div>
+
+                {/* Pastillas Interactivas de Estados de Asistencia */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: '10px'
+                }}>
+                    {[
+                        { key: 'Presente', count: totals.presente, pct: totals.pctPresente },
+                        { key: 'Internado', count: totals.internado, pct: totals.pctInternado },
+                        { key: 'Urgencia', count: totals.urgencia, pct: totals.pctUrgencia },
+                        { key: 'Sobreturno', count: totals.sobreturno, pct: totals.pctSobreturno },
+                        { key: 'Ausente', count: totals.ausente, pct: totals.pctAusente },
+                        { key: 'Sin Registrar', count: totals.sinRegistrar, pct: totals.pctSinRegistrar }
+                    ].map(st => {
+                        const cfg = ASISTENCIA_CONFIG[st.key];
+                        const isFiltered = filterAsistencia === st.key;
+                        return (
+                            <button
+                                key={st.key}
+                                onClick={() => setFilterAsistencia(isFiltered ? 'TODOS' : st.key)}
+                                style={{
+                                    border: `1.5px solid ${isFiltered ? cfg.color : '#E2E8F0'}`,
+                                    background: isFiltered ? cfg.bg : '#FFFFFF',
+                                    borderRadius: '10px',
+                                    padding: '10px 12px',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                    boxShadow: isFiltered ? `0 2px 6px ${cfg.color}25` : '0 1px 2px rgba(0,0,0,0.02)',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: cfg.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cfg.color }} />
+                                        {cfg.shortLabel}
+                                    </span>
+                                    <span style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        color: cfg.text,
+                                        background: cfg.bg,
+                                        border: `1px solid ${cfg.border}`,
+                                        padding: '1px 6px',
+                                        borderRadius: '999px'
+                                    }}>
+                                        {st.pct}%
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {loading ? '...' : st.count.toLocaleString('es-AR')}
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                    {cfg.desc}
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* ─── FILTROS DE TABLERO: ÁMBITO, ASISTENCIA Y BÚSQUEDA ─── */}
             <div style={{
                 display: 'flex',
                 flexWrap: 'wrap',
@@ -1037,29 +1328,58 @@ export default function DiagnosticoImagenesDashboard({
                 border: '1px solid #E2E8F0',
                 padding: '12px 16px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Filter size={16} color="#64748B" />
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>Filtro Ámbito:</span>
-                    <div style={{ display: 'flex', background: '#F1F5F9', padding: '2px', borderRadius: '8px', gap: '2px' }}>
-                        {['TODOS', 'Ambulatorio', 'Hospitalización'].map(amb => (
-                            <button
-                                key={amb}
-                                onClick={() => setFilterAmbito(amb)}
-                                style={{
-                                    border: 'none',
-                                    padding: '4px 10px',
-                                    borderRadius: '6px',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    background: filterAmbito === amb ? '#FFFFFF' : 'transparent',
-                                    color: filterAmbito === amb ? COLOR_PRIMARY : '#64748B',
-                                    boxShadow: filterAmbito === amb ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                                }}
-                            >
-                                {amb}
-                            </button>
-                        ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Filter size={16} color="#64748B" />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>Ámbito:</span>
+                        <div style={{ display: 'flex', background: '#F1F5F9', padding: '2px', borderRadius: '8px', gap: '2px' }}>
+                            {['TODOS', 'Ambulatorio', 'Hospitalización'].map(amb => (
+                                <button
+                                    key={amb}
+                                    onClick={() => setFilterAmbito(amb)}
+                                    style={{
+                                        border: 'none',
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        background: filterAmbito === amb ? '#FFFFFF' : 'transparent',
+                                        color: filterAmbito === amb ? COLOR_PRIMARY : '#64748B',
+                                        boxShadow: filterAmbito === amb ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                                    }}
+                                >
+                                    {amb}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>Asistencia:</span>
+                        <select
+                            value={filterAsistencia}
+                            onChange={e => setFilterAsistencia(e.target.value)}
+                            style={{
+                                border: '1px solid #CBD5E1',
+                                background: '#FFFFFF',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                color: filterAsistencia === 'TODOS' ? '#475569' : COLOR_PRIMARY,
+                                cursor: 'pointer',
+                                outline: 'none'
+                            }}
+                        >
+                            <option value="TODOS">Todas las Asistencias</option>
+                            <option value="Presente">🟢 Presente / Atendido</option>
+                            <option value="Internado">🟣 Internado / Hosp.</option>
+                            <option value="Urgencia">🟠 Urgencia / Guardia</option>
+                            <option value="Sobreturno">🔵 Sobreturno</option>
+                            <option value="Ausente">🔴 Ausente / No-Show</option>
+                            <option value="Sin Registrar">⚪ Sin Registrar / Trámite</option>
+                        </select>
                     </div>
                 </div>
 
@@ -1681,16 +2001,28 @@ export default function DiagnosticoImagenesDashboard({
                                             </div>
                                         </div>
 
-                                        {/* Barra comparativa Ambulatorio vs Hospitalización */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={{ flex: 1, height: '6px', background: '#F1F5F9', borderRadius: '999px', overflow: 'hidden', display: 'flex' }}>
-                                                <div style={{ width: `${pctAmb}%`, background: COLOR_AMBULATORIO }}></div>
-                                                <div style={{ width: `${pctHosp}%`, background: COLOR_HOSPITALIZADO }}></div>
+                                        {/* Barra comparativa de Asistencia y Modalidad */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ flex: 1, height: '7px', background: '#F1F5F9', borderRadius: '999px', overflow: 'hidden', display: 'flex' }}>
+                                                    {item.presente > 0 && <div title={`Presentes: ${item.presente}`} style={{ width: `${(item.presente / item.total) * 100}%`, background: '#10B981' }} />}
+                                                    {item.internado > 0 && <div title={`Internados: ${item.internado}`} style={{ width: `${(item.internado / item.total) * 100}%`, background: '#8B5CF6' }} />}
+                                                    {item.urgencia > 0 && <div title={`Urgencias: ${item.urgencia}`} style={{ width: `${(item.urgencia / item.total) * 100}%`, background: '#F59E0B' }} />}
+                                                    {item.sobreturno > 0 && <div title={`Sobreturnos: ${item.sobreturno}`} style={{ width: `${(item.sobreturno / item.total) * 100}%`, background: '#0284C7' }} />}
+                                                    {item.ausente > 0 && <div title={`Ausentes: ${item.ausente}`} style={{ width: `${(item.ausente / item.total) * 100}%`, background: '#EF4444' }} />}
+                                                    {item.sinRegistrar > 0 && <div title={`Sin Registrar: ${item.sinRegistrar}`} style={{ width: `${(item.sinRegistrar / item.total) * 100}%`, background: '#94A3B8' }} />}
+                                                </div>
+                                                <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                                                    Inf: {pctInf}%
+                                                </span>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '6px', fontSize: '0.7rem', fontWeight: 600 }}>
-                                                <span style={{ color: COLOR_AMBULATORIO }}>Amb: {pctAmb}%</span>
-                                                <span style={{ color: COLOR_HOSPITALIZADO }}>Hosp: {pctHosp}%</span>
-                                                <span style={{ color: COLOR_PRIMARY }}>Inf: {pctInf}%</span>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '0.68rem', fontWeight: 600 }}>
+                                                {item.presente > 0 && <span style={{ color: '#059669', background: '#ECFDF5', padding: '1px 5px', borderRadius: '4px' }}>✓ Pres: {item.presente}</span>}
+                                                {item.internado > 0 && <span style={{ color: '#7C3AED', background: '#F5F3FF', padding: '1px 5px', borderRadius: '4px' }}>🏥 Hosp: {item.internado}</span>}
+                                                {item.urgencia > 0 && <span style={{ color: '#D97706', background: '#FFFBEB', padding: '1px 5px', borderRadius: '4px' }}>⚡ Urg: {item.urgencia}</span>}
+                                                {item.sobreturno > 0 && <span style={{ color: '#0284C7', background: '#F0F9FF', padding: '1px 5px', borderRadius: '4px' }}>⏱ Sobret: {item.sobreturno}</span>}
+                                                {item.ausente > 0 && <span style={{ color: '#DC2626', background: '#FEF2F2', padding: '1px 5px', borderRadius: '4px' }}>✗ Aus: {item.ausente}</span>}
+                                                {item.sinRegistrar > 0 && <span style={{ color: '#64748B', background: '#F1F5F9', padding: '1px 5px', borderRadius: '4px' }}>• S/Reg: {item.sinRegistrar}</span>}
                                             </div>
                                         </div>
 
@@ -1765,6 +2097,7 @@ export default function DiagnosticoImagenesDashboard({
                         overflowX: 'auto'
                     }}>
                         {[
+                            { id: 'asistencia', label: 'Asistencia', icon: CheckCircle2 },
                             { id: 'prestadores', label: 'Realizan', icon: UserCheck },
                             { id: 'solicitantes', label: 'Solicitan', icon: UserPlus },
                             { id: 'informantes', label: 'Informan', icon: FileCheck2 },
@@ -1805,6 +2138,77 @@ export default function DiagnosticoImagenesDashboard({
 
                     {/* Contenido según sub-pestaña */}
                     <div style={{ maxHeight: '530px', overflowY: 'auto' }}>
+                        {/* 0. ESTADOS DE ASISTENCIA SALUS */}
+                        {activeTabDetail === 'asistencia' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ fontSize: '0.78rem', color: '#64748B', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>Desglose por estado de concurrencia y trámite SALUS:</span>
+                                    {filterAsistencia !== 'TODOS' && (
+                                        <button
+                                            onClick={() => setFilterAsistencia('TODOS')}
+                                            style={{ border: 'none', background: 'transparent', color: COLOR_PRIMARY, fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600 }}
+                                        >
+                                            Mostrar todos
+                                        </button>
+                                    )}
+                                </div>
+                                {asistenciasRanking.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '30px', color: '#94A3B8' }}>
+                                        Sin registros de asistencia para los filtros seleccionados
+                                    </div>
+                                ) : (
+                                    asistenciasRanking.map((asist, i) => {
+                                        const cfg = ASISTENCIA_CONFIG[asist.categoria] || ASISTENCIA_CONFIG['Sin Registrar'];
+                                        const isFilterActive = filterAsistencia === asist.categoria;
+                                        return (
+                                            <div
+                                                key={i}
+                                                onClick={() => setFilterAsistencia(isFilterActive ? 'TODOS' : asist.categoria)}
+                                                style={{
+                                                    padding: '10px 12px',
+                                                    borderRadius: '8px',
+                                                    background: isFilterActive ? cfg.bg : '#F8FAFC',
+                                                    border: `1.5px solid ${isFilterActive ? cfg.color : '#E2E8F0'}`,
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s ease'
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 700,
+                                                            color: cfg.color,
+                                                            background: cfg.bg,
+                                                            border: `1px solid ${cfg.border}`,
+                                                            padding: '1px 6px',
+                                                            borderRadius: '6px'
+                                                        }}>
+                                                            {asist.categoria}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1E293B' }}>
+                                                            {asist.nombre}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
+                                                            {asist.cantidad.toLocaleString('es-AR')}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.72rem', color: '#64748B', marginLeft: '6px' }}>
+                                                            ({asist.porcentaje}%)
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ width: '100%', height: '5px', background: '#E2E8F0', borderRadius: '999px', marginTop: '6px', overflow: 'hidden' }}>
+                                                    <div style={{ width: `${asist.porcentaje}%`, height: '100%', background: cfg.color }}></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        )}
+
                         {/* A. PRESTADORES QUE LA REALIZAN */}
                         {activeTabDetail === 'prestadores' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

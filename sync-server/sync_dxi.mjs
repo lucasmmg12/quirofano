@@ -63,9 +63,21 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                 ISNULL(Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS Responsable,
                 ISNULL(Solicitante, 'NO ESPECIFICADO / EXTERNO') AS Solicitante,
                 ISNULL(Cliente, 'PARTICULAR / SIN FINANCIADOR') AS ObraSocial,
+                ISNULL(NULLIF(RTRIM(LTRIM(Asistencia)), ''), 'SIN REGISTRAR') AS AsistenciaOriginal,
+                CASE 
+                    WHEN Asistencia = 'Presente' THEN 'Presente'
+                    WHEN Asistencia = 'INTERNADO' THEN 'Internado'
+                    WHEN Asistencia = 'URGENCIA' THEN 'Urgencia'
+                    WHEN Asistencia = 'SOBRETURNO' THEN 'Sobreturno'
+                    WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada') THEN 'Ausente'
+                    WHEN Asistencia LIKE '%SUSPENDIDA%' OR Asistencia LIKE '%Anulación%' OR Asistencia LIKE '%CANCEL%' THEN 'Cancelada'
+                    WHEN Asistencia IS NULL OR RTRIM(LTRIM(Asistencia)) = '' THEN 'Sin Registrar'
+                    ELSE Asistencia
+                END AS EstadoAsistencia,
                 CASE 
                     WHEN Asistencia IN ('Presente', 'URGENCIA', 'SOBRETURNO') THEN 'Ambulatorio'
-                    WHEN Asistencia = 'INTERNADO' OR Asistencia IS NULL THEN 'Hospitalización'
+                    WHEN Asistencia = 'INTERNADO' THEN 'Hospitalización'
+                    WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
                     ELSE 'Ambulatorio'
                 END AS Ambito,
                 CASE WHEN [Fecha Informado] IS NOT NULL THEN 1 ELSE 0 END AS EstaInformado
@@ -83,12 +95,12 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
               AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
               AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%';
 
-            -- Set 0: Agendas con Totales, Ambito y Estado de Informe
-            SELECT Modalidad, Agenda, Centro, Ambito, COUNT(*) AS Cantidad,
+            -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia e Informe
+            SELECT Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
                    SUM(EstaInformado) AS Informados,
                    SUM(CASE WHEN EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, Centro, Ambito;
+            GROUP BY Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
 
             -- Set 1: Prestadores que la Realizan
             SELECT Modalidad, Agenda, Responsable AS PrestadorRealiza, COUNT(*) AS Cantidad
@@ -111,11 +123,17 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             FROM #TempDxI
             GROUP BY Modalidad, Agenda, ObraSocial;
 
-            -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito)
-            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, COUNT(*) AS Cantidad
+            -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia)
+            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito
+            GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia
             ORDER BY FechaDia ASC;
+
+            -- Set 6: Desglose Agregado por Estado de Asistencia
+            SELECT Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad
+            FROM #TempDxI
+            GROUP BY Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal
+            ORDER BY Cantidad DESC;
 
             DROP TABLE #TempDxI;
         `;
@@ -137,6 +155,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             informantes: res.recordsets[3] || [],
             obrasSociales: res.recordsets[4] || [],
             evolucion: res.recordsets[5] || [],
+            asistencias: res.recordsets[6] || [],
             ultima_actualizacion: new Date().toISOString()
         };
 
