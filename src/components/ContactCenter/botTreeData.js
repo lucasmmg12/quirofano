@@ -514,6 +514,33 @@ Contamos con un servicio permanente de guardia médica activa las 24 horas, todo
     },
 
     // -------------------------------------------------------------
+    // CONSULTA PEDIÁTRICA / CONTROL DE NIÑO SANO (SOLO GUARDIA 24HS)
+    // -------------------------------------------------------------
+    {
+        id: 'nodo_pediatria_guardia',
+        parentId: 'root_saludo',
+        level: 2,
+        order: 4.1,
+        category: 'guardia',
+        title: '4.1 Pediatría (Solo Guardia 24 hs - Sin Consultorio Externo)',
+        patientTrigger: 'Paciente solicita turno o consulta para Pediatría ("Pediatra", "Pediatría", "Control de niño sano")',
+        patientExamples: ['Pediatra', 'Turno pediatra', 'Control de niño sano', 'Pediatra para mi hijo'],
+        systemAction: 'Informa que Sanatorio Argentino no cuenta con consultorio pediátrico ambulatorio ni control de niño sano, únicamente guardia médica de 24 hs por orden de llegada en Sede 1 (San Luis 432 Oeste) y Sede 2 (San Luis 433 Oeste). Cierra la consulta de forma automática.',
+        nodeType: 'bot_response',
+        botResponse: `Hola, soy Sofia de Sanatorio Argentino de la *Prov. De San Juan*, gracias por tu contacto. Te escribo por tu consulta realizada:
+
+🏥 *No contamos con consultorio pediátrico*, solo guardia de 24 hs por orden de llegada en:
+📍 *Sede 1:* Calle San Luis 432 Oeste
+📍 *Sede 2:* Calle San Luis 433 Oeste
+
+⚠️ _Aclaración: No se realiza control de niño sano._
+
+Damos por resuelta tu consulta. Si deseás consultar por otra especialidad o servicio, podés escribir *"Menú"* en cualquier momento. ¡Muchas gracias!`,
+        availableTags: ['{nombre}'],
+        childrenIds: []
+    },
+
+    // -------------------------------------------------------------
     // CHEQUEO PREVENTIVO DE SALUD / CONTROL MUJER / CHEQUEO ANUAL
     // -------------------------------------------------------------
     {
@@ -707,6 +734,34 @@ Recordá que desde la página web de Sanatorio Argentino también podés autoges
 📋 *Anatomía Patológica*: Biopsias, PAP (papanicolau) y estudios histológicos.`,
         availableTags: ['{bot_name}', '{nombre}'],
         childrenIds: ['nodo_estudio_lab', 'nodo_estudio_imagenes', 'nodo_estudio_patologia']
+    },
+
+    // -------------------------------------------------------------
+    // LABORATORIO: ATENCIÓN Y EXTRACCIONES PRESENCIALES
+    // -------------------------------------------------------------
+    {
+        id: 'nodo_extracciones_lab',
+        parentId: 'root_saludo',
+        level: 2,
+        order: 6.9,
+        category: 'estudios',
+        title: '6.9 Laboratorio Presencial y Extracciones',
+        patientTrigger: 'Paciente consulta por extracciones o análisis ("Laboratorio", "Análisis de sangre", "Extracciones", "Horario laboratorio")',
+        patientExamples: ['Laboratorio', 'Quiero hacerme análisis', 'Horario de extracciones', 'Laboratorio completo a mi hijo'],
+        systemAction: 'Informa horarios de extracción (7:30 a 10 hs) por orden de llegada en Sede 1 y Sede Santa Fe, y contacto directo vía WhatsApp 2644609384.',
+        nodeType: 'bot_response',
+        botResponse: `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*
+
+Las extracciones en laboratorio son de *7.30hs a 10hs* por orden de llegada en:
+📍 *Sede 1:* Calle San Luis 432 Oeste
+📍 *Sede Santa Fe:* Calle Santa Fe 263 Este
+
+📲 Para cualquier consulta de preparación, ayuno o indicaciones previas, comunicarse al siguiente WhatsApp:
+👉 *2644609384* (o directo en https://wa.me/5492644609384)
+
+🌐 Más información: https://www.sanatorioargentino.com.ar/`,
+        availableTags: [],
+        childrenIds: []
     },
 
     // 7.A LABORATORIO GLIMS

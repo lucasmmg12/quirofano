@@ -1544,6 +1544,7 @@ interface IntentDetectionResult {
         | 'informes_biopsia_pap'
         | 'informes_general'
         | 'servicio_laboratorio'
+        | 'consulta_pediatria'
         | 'vacunatorio'
         | 'curso_embarazadas'
         | 'registro_civil'
@@ -1597,7 +1598,7 @@ const STOPWORDS_MEDICOS = new Set([
     'alguno', 'algunos', 'algunas', 'favor', 'hola', 'buenas', 'buenos', 'ustedes', 'sanatorio', 'argentino',
     'salud', 'clinica', 'clínica', 'medico', 'médico', 'medica', 'médica', 'doctor', 'doctora',
     'profesional', 'especialista', 'analisis', 'análisis', 'laboratorio', 'ecografia', 'ecografía',
-    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'cómo', 'para', 'buen', 'dia', 'días', 'bienvenido',
+    'radiografia', 'radiografía', 'orden', 'receta', 'como', 'cómo', 'para', 'buen', 'dia', 'dias', 'días', 'buenos dias', 'buenos días', 'bienvenido',
     'prevenir', 'prevencion', 'prevención', 'guardia', 'guardias', 'vacuna', 'vacunas', 'registro',
     'presupuesto', 'presupuestos', 'informe', 'informes', 'reclamo', 'reclamos',
     'familiar', 'familiares', 'paciente', 'pacientes', 'tercero', 'persona', 'personas',
@@ -2951,8 +2952,14 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         return { intent: 'radiografia', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
 
+    // 4.2 CONSULTA PEDIÁTRICA / CONTROL DE NIÑO SANO (SOLO GUARDIA 24HS - SIN CONSULTORIO EXTERNO)
+    const isPediatriaGeneral = /\b(pediatr[ií]a|pediatras?|niño\s+sano|niña\s+sana|control\s+(?:de\s+)?niño|control\s+(?:de\s+)?niña)\b/i.test(clean) && !/\bcirug[ií]a\s+pedi[aá]tric[ao]s?\b/i.test(clean);
+    if (isPediatriaGeneral) {
+        return { intent: 'consulta_pediatria', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
+    }
+
     // 5. ATENCIÓN Y EXTRACCIÓN DE LABORATORIO (IR A HACERSE LOS ANÁLISIS)
-    const isServicioLab = /\b(hacerme\s+(?:un\s+|el\s+)?(?:analisis|laboratorio|estudio\s+de\s+sangre)|sacar\s+sangre|extraccion(?:es)?|ayuno\s+(?:para\s+)?analisis|horario\s+(?:de\s+)?laboratorio|guardia\s+de\s+laboratorio)\b/i.test(clean);
+    const isServicioLab = !isInfLab && !isInfGen && /\b(laboratorio[s]?|an[aá]lisis(?:\s+cl[ií]nicos?|\s+de\s+sangre|\s+de\s+orina)?|extracci[oó]n(?:es)?|sacar(?:me)?\s+sangre|estudio(?:s)?\s+de\s+sangre|hemograma|urocultivo|orina\s+completa|hacer(?:me|le|se)?\s+(?:el\s+|un\s+|este\s+)?laboratorio|ayuno\s+(?:para\s+)?an[aá]lisis|horario\s+(?:de\s+)?laboratorio|guardia\s+de\s+laboratorio)\b/i.test(clean);
     if (isServicioLab) {
         return { intent: 'servicio_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: null };
     }
@@ -3099,7 +3106,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'turno', 'turnos', 'cita', 'citas', 'para', 'por', 'con', 'del', 'las', 'los', 'una', 'uno',
             'mañana', 'tarde', 'siesta', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado',
             'sancor', 'osde', 'osp', 'omint', 'swiss', 'medical', 'particular', 'provincia', 'damsup',
-            'hola', 'buen', 'dia', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
+            'hola', 'buen', 'dia', 'dias', 'días', 'buenos', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
             'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre',
             'cualquier', 'horario', 'cuando', 'tiene',
             // Términos diagnósticos y administrativos
@@ -3110,7 +3117,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'representante', 'asesor', 'asesora', 'operador', 'operadora'
         ]);
 
-        const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
+        const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorios?|guardias?|vacunatorios?|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
 
         // 1. Prioridad: Buscar bigramas consecutivos (ej. "daniela saldivar")
         for (let i = 0; i < wordsInText.length - 1; i++) {
@@ -3199,7 +3206,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
             const { data: rawDocs } = await docQuery.limit(15);
 
-            const docs = (rawDocs || []).filter((d: any) => !/\b(escuela|colegio|instituto|lab\b|laboratorio|guardia|vacunatorio|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(d.profesional_nombre || ''));
+            const docs = (rawDocs || []).filter((d: any) => !/\b(escuela|colegio|instituto|lab\b|laboratorios?|guardias?|vacunatorios?|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(d.profesional_nombre || ''));
 
             if (docs && docs.length > 0) {
                 // Formatear y asociar metadata de presentación clara a cada doctor
@@ -5571,21 +5578,17 @@ async function handleChatbotTriage(
         !isNavigationBackOrMenu(cleanText)
     ) {
         if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(cleanText.trim()) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(cleanText)) {
-            updates.motivo_consulta = 'Laboratorio: Atención Presencial y Extracciones';
+            updates.motivo_consulta = 'Laboratorio: Extracciones y Consultas (Sede 1 y Santa Fe)';
             replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
-                `⚠️ Las consultas de *Laboratorio* (preparación, ayuno, presupuestos, resultados y extracciones) *no se gestionan por este canal*. Por favor comunicate directamente con el Laboratorio a través de sus líneas de WhatsApp (abajo) 👇\n\n` +
-                `Contamos con laboratorio de análisis clínicos en:\n` +
-                `📍 *Sede 01 (San Luis 432 Oeste):* Guardias activas las *24 horas*.\n` +
-                `📍 *Sede Santa Fe (Santa Fe 263 Este):* Horario de atención de *7:30 a 21:00 hs*.\n\n` +
-                `📋 *Pautas para la atención:*\n` +
-                `• La atención en ambas sedes es *por orden de llegada* (no se saca turno previo).\n` +
-                `• *Extracciones de sangre:* Hasta las 10:00 am (por condiciones de ayuno).\n\n` +
-                `📲 *Líneas de WhatsApp para consultas de preparación / ayuno:*\n` +
-                `• Sede 01: https://wa.me/5492644867408\n` +
-                `• Sede Santa Fe: https://wa.me/5492644609384\n\n` +
+                `Las extracciones en laboratorio son de *7.30hs a 10hs* por orden de llegada en:\n` +
+                `📍 *Sede 1:* Calle San Luis 432 Oeste\n` +
+                `📍 *Sede Santa Fe:* Calle Santa Fe 263 Este\n\n` +
+                `📲 Para cualquier consulta de preparación, ayuno o indicaciones previas, comunicarse al siguiente WhatsApp:\n` +
+                `👉 *2644609384* (o directo en https://wa.me/5492644609384)\n\n` +
                 `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/` +
                 getInfoResolutionFooter();
             nextStage = 'informacion_respondida';
+            updates.bot_active = true;
             return await finalizeAndSend(replyText, nextStage, updates);
         }
         if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(cleanText.trim()) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(cleanText)) {
@@ -5733,13 +5736,39 @@ async function handleChatbotTriage(
         return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================
+    // FLUJO: CONSULTA PEDIÁTRICA / CONTROL DE NIÑO SANO (AUTÓNOMO - SOLO GUARDIA 24HS)
+    // REGLA INSTITUCIONAL: No contamos con consultorio pediátrico ni control de niño sano.
+    // Solo guardia médica de 24 hs por orden de llegada en Sede 1 y Sede 2.
+    // El bot informa la guardia y finaliza la conversación cerrando el chat.
+    // =============================================
+    else if (analysis.intent === 'consulta_pediatria') {
+        updates.motivo_consulta = 'Consulta Pediatría: Solo Guardia 24hs (Sin consultorio externo ni niño sano)';
+        updates.status = 'finalizada';
+        updates.bot_active = false;
+        updates.bot_stage = 'consulta_resuelta';
+        updates.resolution_reason = 'Información Guardia Pediátrica 24hs (Sin consultorio externo)';
+        updates.closed_at = new Date().toISOString();
+        updates.closed_by_agent_name = 'Bot Sanatorio';
+
+        replyText = `Hola, soy Sofia de Sanatorio Argentino de la *Prov. De San Juan*, gracias por tu contacto. Te escribo por tu consulta realizada:\n\n` +
+            `🏥 *No contamos con consultorio pediátrico*, solo guardia de 24 hs por orden de llegada en:\n` +
+            `📍 *Sede 1:* Calle San Luis 432 Oeste\n` +
+            `📍 *Sede 2:* Calle San Luis 433 Oeste\n\n` +
+            `⚠️ _No se realiza control de niño sano._\n\n` +
+            `Damos por resuelta tu consulta. Si deseás consultar por otra especialidad o servicio, podés escribir *"Menú"* en cualquier momento. ¡Muchas gracias!`;
+        nextStage = 'consulta_resuelta';
+        return await finalizeAndSend(replyText, nextStage, updates);
+    }
+    // =============================================
     // FLUJO 0C: PACIENTE RESPONDIENDO DATOS O PREFERENCIAS DE NUEVO TURNO (PRIORIDAD DE CONTEXTO)
     // =============================================
     else if (
         currentStage === 'esperando_datos_turno' && 
         analysis.intent !== 'derivacion_agente' && 
         analysis.intent !== 'volver_atras' && 
-        analysis.intent !== 'cancelar_turno_online'
+        analysis.intent !== 'cancelar_turno_online' &&
+        analysis.intent !== 'consulta_pediatria' &&
+        analysis.intent !== 'servicio_laboratorio'
     ) {
         const isRequestingAgentInTurno = 
             /(?:^|\n)\s*(?:2|2️⃣|opci[oó]n\s*2)\s*(?:$|\n)/i.test(cleanText) && 
@@ -6491,21 +6520,17 @@ async function handleChatbotTriage(
     // FLUJO: SERVICIO DE LABORATORIO (ATENCIÓN PRESENCIAL Y EXTRACCIONES)
     // =============================================
     else if (analysis.intent === 'servicio_laboratorio') {
-        updates.motivo_consulta = 'Laboratorio: Atención Presencial y Extracciones';
+        updates.motivo_consulta = 'Laboratorio: Extracciones y Consultas (Sede 1 y Santa Fe)';
         replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
-            `⚠️ Las consultas de *Laboratorio* (preparación, ayuno, presupuestos, resultados y extracciones) *no se gestionan por este canal*. Por favor comunicate directamente con el Laboratorio a través de sus líneas de WhatsApp (abajo) 👇\n\n` +
-            `Contamos con laboratorio de análisis clínicos en:\n` +
-            `📍 *Sede 01 (San Luis 432 Oeste):* Guardias activas las *24 horas*.\n` +
-            `📍 *Sede Santa Fe (Santa Fe 263 Este):* Horario de atención de *7:30 a 21:00 hs*.\n\n` +
-            `📋 *Pautas para la atención:*\n` +
-            `• La atención en ambas sedes es *por orden de llegada* (no se saca turno previo).\n` +
-            `• *Extracciones de sangre:* Hasta las 10:00 am (por condiciones de ayuno).\n\n` +
-            `📲 *Líneas de WhatsApp para consultas de preparación / ayuno:*\n` +
-            `• Sede 01: https://wa.me/5492644867408\n` +
-            `• Sede Santa Fe: https://wa.me/5492644609384\n\n` +
+            `Las extracciones en laboratorio son de *7.30hs a 10hs* por orden de llegada en:\n` +
+            `📍 *Sede 1:* Calle San Luis 432 Oeste\n` +
+            `📍 *Sede Santa Fe:* Calle Santa Fe 263 Este\n\n` +
+            `📲 Para cualquier consulta de preparación, ayuno o indicaciones previas, comunicarse al siguiente WhatsApp:\n` +
+            `👉 *2644609384* (o directo en https://wa.me/5492644609384)\n\n` +
             `🌐 Para más información visitá: https://www.sanatorioargentino.com.ar/` +
             getInfoResolutionFooter();
         nextStage = 'informacion_respondida';
+        updates.bot_active = true;
     }
     // =============================================
     // FLUJO: VACUNATORIO

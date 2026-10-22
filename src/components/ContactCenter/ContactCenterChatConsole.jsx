@@ -7334,6 +7334,24 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 >
                                     <LayoutTemplate size={12} /> Plantillas Meta
                                 </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const plantillaDatos = 'Indíqueme los siguientes datos del paciente:\nDNI (sin puntos ni espacios):\nNombre y Apellido:\nObra social:\nDepartamento donde vive:\nFecha de nacimiento:';
+                                        setMessageInput(prev => prev ? `${prev}\n\n${plantillaDatos}` : plantillaDatos);
+                                        setTimeout(() => inputRef.current?.focus(), 50);
+                                    }}
+                                    title="Insertar plantilla de solicitud de datos del paciente (/datos)"
+                                    style={{
+                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                        border: '1px solid #FED7AA', background: '#FFF7ED', color: '#C2410C',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 1px 2px rgba(194, 65, 12, 0.08)'
+                                    }}
+                                >
+                                    <UserCheck size={12} /> Pedir Datos
+                                </button>
                             </div>
 
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
