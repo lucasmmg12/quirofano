@@ -7,7 +7,8 @@ import {
     FileText, HelpCircle, PhoneCall, DollarSign, TrendingUp, X, 
     Calculator, Info, ShieldCheck, Zap, Award, UserCheck, Timer,
     CheckSquare, TrendingDown, Smile, UserX, Layers, Target, Cpu,
-    ChevronLeft, Printer, FileDown
+    ChevronLeft, Printer, FileDown,
+    Flame, Sun, Moon, Coffee, Grid
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -131,6 +132,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
     // Modo de visualización de la curva horaria: 'operativo' (07:00 a 21:00 hs) | '24hs'
     const [waitCurveMode, setWaitCurveMode] = useState('operativo');
+
+    // Estados para el Mapa de Calor de Afluencia de Pacientes (Horarios de Entrada)
+    const [heatmapMode, setHeatmapMode] = useState('operativo'); // 'operativo' (07-21 hs) | '24hs'
+    const [heatmapMetric, setHeatmapMetric] = useState('todos'); // 'todos' | 'nuevos'
+    const [heatmapView, setHeatmapView] = useState('matriz'); // 'matriz' | 'curva'
+    const [heatmapHoveredCell, setHeatmapHoveredCell] = useState(null);
 
     // Métrica activa en la distribución de conversaciones del equipo: 'finalizadas' | 'asignadas'
     const [convPieMetric, setConvPieMetric] = useState('finalizadas');
@@ -305,7 +312,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             frtHistogram: [],
             // 8. Métricas de Inactividad (+24h sin respuesta)
             archivedOver24hCount: 0,
-            archivedOver24hPct: 0
+            archivedOver24hPct: 0,
+            // 9. Mapa de Calor de Afluencia de Pacientes (Horarios de Entrada por Primera Vez)
+            incomingHeatmap: null
         }
     });
 
@@ -1019,6 +1028,206 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 cantidad: peakHourVal
             };
 
+            // ── Cómputo del Mapa de Calor de Afluencia de Pacientes (Horarios de Entrada) ──
+            const DIAS_SEMANA_HEATMAP = [
+                { idx: 1, name: 'Lunes', short: 'Lun' },
+                { idx: 2, name: 'Martes', short: 'Mar' },
+                { idx: 3, name: 'Miércoles', short: 'Mié' },
+                { idx: 4, name: 'Jueves', short: 'Jue' },
+                { idx: 5, name: 'Viernes', short: 'Vie' },
+                { idx: 6, name: 'Sábado', short: 'Sáb' },
+                { idx: 0, name: 'Domingo', short: 'Dom' }
+            ];
+
+            // Identificar el primer contacto histórico por teléfono en la muestra
+            const phoneFirstContactTime = new Map();
+            const sortedByCreation = [...filteredConvs]
+                .filter(c => c.created_at)
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+            sortedByCreation.forEach(c => {
+                if (c.phone) {
+                    const norm = c.phone.trim();
+                    if (!phoneFirstContactTime.has(norm)) {
+                        phoneFirstContactTime.set(norm, new Date(c.created_at).getTime());
+                    }
+                }
+            });
+
+            // Inicializar matriz 7 días x 24 horas
+            const heatmapMatrixMap = {};
+            DIAS_SEMANA_HEATMAP.forEach(d => {
+                heatmapMatrixMap[d.idx] = Array.from({ length: 24 }, (_, h) => ({
+                    hour: h,
+                    count: 0,
+                    newPatientsCount: 0,
+                    isOperatingHour: (d.idx >= 1 && d.idx <= 5 && h >= 7 && h <= 21) || (d.idx === 6 && h >= 8 && h <= 12)
+                }));
+            });
+
+            const hourlyIncomingTotals = Array.from({ length: 24 }, (_, h) => ({
+                hour: h,
+                hora: `${h.toString().padStart(2, '0')}:00`,
+                total: 0,
+                newPatientsTotal: 0,
+                isOperatingHour: h >= 7 && h <= 21
+            }));
+
+            let totalIncomingTracked = 0;
+            let totalNewPatientsTracked = 0;
+            let franjaManana = 0;   // 07 a 12:59
+            let franjaSiesta = 0;   // 13 a 15:59
+            let franjaTarde = 0;    // 16 a 20:59
+            let franjaNoche = 0;    // 21 a 06:59
+            let offHoursCount = 0;
+
+            filteredConvs.forEach(c => {
+                if (!c.created_at) return;
+                const dt = new Date(c.created_at);
+                if (isNaN(dt.getTime())) return;
+
+                const dow = dt.getDay(); // 0 = Domingo, 1 = Lunes...
+                const hr = dt.getHours(); // 0 a 23
+                const normP = c.phone ? c.phone.trim() : null;
+                const isFirstEver = normP && phoneFirstContactTime.get(normP) === dt.getTime();
+
+                if (heatmapMatrixMap[dow] && hr >= 0 && hr < 24) {
+                    heatmapMatrixMap[dow][hr].count++;
+                    hourlyIncomingTotals[hr].total++;
+                    totalIncomingTracked++;
+
+                    if (isFirstEver) {
+                        heatmapMatrixMap[dow][hr].newPatientsCount++;
+                        hourlyIncomingTotals[hr].newPatientsTotal++;
+                        totalNewPatientsTracked++;
+                    }
+
+                    // Franjas horarias
+                    if (hr >= 7 && hr <= 12) franjaManana++;
+                    else if (hr >= 13 && hr <= 15) franjaSiesta++;
+                    else if (hr >= 16 && hr <= 20) franjaTarde++;
+                    else franjaNoche++;
+
+                    // Fuera de horario comercial
+                    const isOp = (dow >= 1 && dow <= 5 && hr >= 7 && hr <= 20) || (dow === 6 && hr >= 8 && hr <= 11);
+                    if (!isOp) {
+                        offHoursCount++;
+                    }
+                }
+            });
+
+            // Respaldo por si filteredConvs estuviera vacío y solo hay métricas horarias diarias
+            if (totalIncomingTracked === 0 && hourlyIncomingCounts.some(cnt => cnt > 0)) {
+                hourlyIncomingCounts.forEach((cnt, h) => {
+                    if (cnt > 0) {
+                        hourlyIncomingTotals[h].total = cnt;
+                        totalIncomingTracked += cnt;
+                        [1, 2, 3, 4, 5].forEach(d => {
+                            heatmapMatrixMap[d][h].count += Math.round(cnt / 5);
+                        });
+                        if (h >= 7 && h <= 12) franjaManana += cnt;
+                        else if (h >= 13 && h <= 15) franjaSiesta += cnt;
+                        else if (h >= 16 && h <= 20) franjaTarde += cnt;
+                        else franjaNoche += cnt;
+                    }
+                });
+            }
+
+            // Encontrar celdas picos y máximos
+            let maxCellAll = 0;
+            let maxCellNew = 0;
+            let peakCellAll = null;
+            let peakCellNew = null;
+
+            DIAS_SEMANA_HEATMAP.forEach(d => {
+                heatmapMatrixMap[d.idx].forEach(cell => {
+                    if (cell.count > maxCellAll) {
+                        maxCellAll = cell.count;
+                        peakCellAll = {
+                            dayName: d.name,
+                            dayShort: d.short,
+                            hour: `${cell.hour.toString().padStart(2, '0')}:00 hs`,
+                            count: cell.count
+                        };
+                    }
+                    if (cell.newPatientsCount > maxCellNew) {
+                        maxCellNew = cell.newPatientsCount;
+                        peakCellNew = {
+                            dayName: d.name,
+                            dayShort: d.short,
+                            hour: `${cell.hour.toString().padStart(2, '0')}:00 hs`,
+                            count: cell.newPatientsCount
+                        };
+                    }
+                });
+            });
+
+            // Resumen por día de la semana
+            let peakDayVal = 0;
+            let peakDayName = null;
+            const heatmapDaySummary = DIAS_SEMANA_HEATMAP.map(d => {
+                const dayTotal = heatmapMatrixMap[d.idx].reduce((sum, h) => sum + h.count, 0);
+                const dayNewTotal = heatmapMatrixMap[d.idx].reduce((sum, h) => sum + h.newPatientsCount, 0);
+                if (dayTotal > peakDayVal) {
+                    peakDayVal = dayTotal;
+                    peakDayName = d.name;
+                }
+                return {
+                    dayIdx: d.idx,
+                    dayName: d.name,
+                    dayShort: d.short,
+                    total: dayTotal,
+                    newPatientsTotal: dayNewTotal,
+                    pct: totalIncomingTracked > 0 ? Number(((dayTotal / totalIncomingTracked) * 100).toFixed(1)) : 0
+                };
+            });
+
+            // Hora pico consolidada
+            let peakHourGeneralVal = 0;
+            let peakHourGeneralLabel = null;
+            hourlyIncomingTotals.forEach(item => {
+                if (item.total > peakHourGeneralVal) {
+                    peakHourGeneralVal = item.total;
+                    peakHourGeneralLabel = item.hora;
+                }
+            });
+
+            const incomingHeatmapData = {
+                matrix: DIAS_SEMANA_HEATMAP.map(d => ({
+                    dayIdx: d.idx,
+                    dayName: d.name,
+                    dayShort: d.short,
+                    hours: heatmapMatrixMap[d.idx],
+                    totalDay: heatmapDaySummary.find(s => s.dayIdx === d.idx)?.total || 0,
+                    totalNewDay: heatmapDaySummary.find(s => s.dayIdx === d.idx)?.newPatientsTotal || 0,
+                    pctDay: heatmapDaySummary.find(s => s.dayIdx === d.idx)?.pct || 0
+                })),
+                hourlySummary: hourlyIncomingTotals.map(h => ({
+                    ...h,
+                    pct: totalIncomingTracked > 0 ? Number(((h.total / totalIncomingTracked) * 100).toFixed(1)) : 0,
+                    pctNew: totalNewPatientsTracked > 0 ? Number(((h.newPatientsTotal / totalNewPatientsTracked) * 100).toFixed(1)) : 0
+                })),
+                daySummary: heatmapDaySummary,
+                maxCellAll: maxCellAll || 1,
+                maxCellNew: maxCellNew || 1,
+                totalIncoming: totalIncomingTracked,
+                totalNewPatients: totalNewPatientsTracked,
+                peakCellAll: peakCellAll || { dayName: 'Lunes', hour: '10:00 hs', count: 0 },
+                peakCellNew: peakCellNew || { dayName: 'Lunes', hour: '10:00 hs', count: 0 },
+                peakHour: { hora: peakHourGeneralLabel || '10:00 hs', total: peakHourGeneralVal },
+                peakDay: { day: peakDayName || 'Lunes', total: peakDayVal },
+                franjas: {
+                    manana: { count: franjaManana, pct: totalIncomingTracked > 0 ? Math.round((franjaManana / totalIncomingTracked) * 100) : 0 },
+                    siesta: { count: franjaSiesta, pct: totalIncomingTracked > 0 ? Math.round((franjaSiesta / totalIncomingTracked) * 100) : 0 },
+                    tarde: { count: franjaTarde, pct: totalIncomingTracked > 0 ? Math.round((franjaTarde / totalIncomingTracked) * 100) : 0 },
+                    noche: { count: franjaNoche, pct: totalIncomingTracked > 0 ? Math.round((franjaNoche / totalIncomingTracked) * 100) : 0 }
+                },
+                offHours: {
+                    count: offHoursCount,
+                    pct: totalIncomingTracked > 0 ? Number(((offHoursCount / totalIncomingTracked) * 100).toFixed(1)) : 0
+                }
+            };
+
             // ── G. Tendencia Diaria de Mensajes y Gasto ──
             let runningOut = 0;
             const dailyTrendData = Object.entries(dailyOutTally)
@@ -1367,7 +1576,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     resolutionHistogram: resolutionHistogramData,
                     frtHistogram: frtHistogramData,
                     archivedOver24hCount,
-                    archivedOver24hPct
+                    archivedOver24hPct,
+                    incomingHeatmap: incomingHeatmapData
                 }
             });
 
@@ -3113,6 +3323,497 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         </span>
                     </div>
                 </div>
+
+                {/* ── GRÁFICO: MAPA DE CALOR DE AFLUENCIA DE PACIENTES (¿A QUÉ HORA ESCRIBEN POR PRIMERA VEZ?) ── */}
+                {(() => {
+                    const heatmap = metrics.patientQuality?.incomingHeatmap;
+                    const isNewMetric = heatmapMetric === 'nuevos';
+                    const maxVal = isNewMetric ? (heatmap?.maxCellNew || 1) : (heatmap?.maxCellAll || 1);
+                    const peakCell = isNewMetric ? heatmap?.peakCellNew : heatmap?.peakCellAll;
+                    const displayHours = heatmapMode === 'operativo' 
+                        ? [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21] 
+                        : Array.from({ length: 24 }, (_, i) => i);
+
+                    const getCellColor = (count) => {
+                        if (!count || count === 0) {
+                            return { bg: '#F8FAFC', border: '#F1F5F9', text: '#94A3B8', fontWeight: 500 };
+                        }
+                        const intensity = maxVal > 0 ? count / maxVal : 0;
+                        if (intensity < 0.20) {
+                            return { bg: '#EFF6FF', border: '#DBEAFE', text: '#0284C7', fontWeight: 600 };
+                        }
+                        if (intensity < 0.45) {
+                            return { bg: '#BAE6FD', border: '#7DD3FC', text: '#0369A1', fontWeight: 700 };
+                        }
+                        if (intensity < 0.70) {
+                            return { bg: '#38BDF8', border: '#0284C7', text: '#082F49', fontWeight: 800 };
+                        }
+                        if (intensity < 0.88) {
+                            return { bg: '#0284C7', border: '#0369A1', text: '#FFFFFF', fontWeight: 800 };
+                        }
+                        return { bg: '#EA580C', border: '#C2410C', text: '#FFFFFF', fontWeight: 900 };
+                    };
+
+                    const getIntensityLabel = (intensity) => {
+                        if (intensity === 0) return 'Sin afluencia';
+                        if (intensity < 0.20) return 'Baja afluencia';
+                        if (intensity < 0.45) return 'Afluencia moderada';
+                        if (intensity < 0.70) return 'Afluencia alta';
+                        if (intensity < 0.88) return 'Afluencia muy alta';
+                        return 'Pico máximo crítico 🔥';
+                    };
+
+                    return (
+                        <div style={{
+                            background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0',
+                            padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px'
+                        }}>
+                            {/* Cabecera del Mapa de Calor */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{
+                                        width: '32px', height: '32px', borderRadius: '8px',
+                                        background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
+                                        color: '#EA580C', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        border: '1px solid #FED7AA', boxShadow: '0 2px 6px rgba(234, 88, 12, 0.12)'
+                                    }}>
+                                        <Flame size={17} />
+                                    </div>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0F2942' }}>
+                                            Mapa de Calor de Afluencia de Pacientes (Horarios de Entrada por Primera Vez)
+                                        </h4>
+                                        <p style={{ margin: '1px 0 0', fontSize: '0.72rem', color: '#64748B' }}>
+                                            Identifica en qué días y franjas horarias nos escriben mayoritariamente para planificar turnos y dotación de asesoras
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    {/* Selector: Todas las Consultas vs Pacientes Nuevos */}
+                                    <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '2px', borderRadius: '6px', fontSize: '0.7rem' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapMetric('todos')}
+                                            style={{
+                                                border: 'none',
+                                                background: heatmapMetric === 'todos' ? '#FFFFFF' : 'transparent',
+                                                color: heatmapMetric === 'todos' ? '#0284C7' : '#64748B',
+                                                fontWeight: heatmapMetric === 'todos' ? 800 : 500,
+                                                padding: '3px 9px', borderRadius: '4px', cursor: 'pointer',
+                                                boxShadow: heatmapMetric === 'todos' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            Todas las Consultas
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapMetric('nuevos')}
+                                            style={{
+                                                border: 'none',
+                                                background: heatmapMetric === 'nuevos' ? '#FFFFFF' : 'transparent',
+                                                color: heatmapMetric === 'nuevos' ? '#0284C7' : '#64748B',
+                                                fontWeight: heatmapMetric === 'nuevos' ? 800 : 500,
+                                                padding: '3px 9px', borderRadius: '4px', cursor: 'pointer',
+                                                boxShadow: heatmapMetric === 'nuevos' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            Pacientes Nuevos (1er Contacto)
+                                        </button>
+                                    </div>
+
+                                    {/* Selector: Operativo vs 24hs */}
+                                    <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '2px', borderRadius: '6px', fontSize: '0.7rem' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapMode('operativo')}
+                                            style={{
+                                                border: 'none',
+                                                background: heatmapMode === 'operativo' ? '#FFFFFF' : 'transparent',
+                                                color: heatmapMode === 'operativo' ? '#0284C7' : '#64748B',
+                                                fontWeight: heatmapMode === 'operativo' ? 800 : 500,
+                                                padding: '3px 9px', borderRadius: '4px', cursor: 'pointer',
+                                                boxShadow: heatmapMode === 'operativo' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            07-21 hs
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapMode('24hs')}
+                                            style={{
+                                                border: 'none',
+                                                background: heatmapMode === '24hs' ? '#FFFFFF' : 'transparent',
+                                                color: heatmapMode === '24hs' ? '#0284C7' : '#64748B',
+                                                fontWeight: heatmapMode === '24hs' ? 800 : 500,
+                                                padding: '3px 9px', borderRadius: '4px', cursor: 'pointer',
+                                                boxShadow: heatmapMode === '24hs' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            24 Horas
+                                        </button>
+                                    </div>
+
+                                    {/* Selector: Vista Matriz vs Curva */}
+                                    <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '2px', borderRadius: '6px', fontSize: '0.7rem' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapView('matriz')}
+                                            style={{
+                                                border: 'none',
+                                                background: heatmapView === 'matriz' ? '#FFFFFF' : 'transparent',
+                                                color: heatmapView === 'matriz' ? '#0284C7' : '#64748B',
+                                                fontWeight: heatmapView === 'matriz' ? 800 : 500,
+                                                padding: '3px 8px', borderRadius: '4px', cursor: 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                boxShadow: heatmapView === 'matriz' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                                            }}
+                                        >
+                                            <Grid size={12} />
+                                            Matriz 2D
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHeatmapView('curva')}
+                                            style={{
+                                                border: 'none',
+                                                background: heatmapView === 'curva' ? '#FFFFFF' : 'transparent',
+                                                color: heatmapView === 'curva' ? '#0284C7' : '#64748B',
+                                                fontWeight: heatmapView === 'curva' ? 800 : 500,
+                                                padding: '3px 8px', borderRadius: '4px', cursor: 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                boxShadow: heatmapView === 'curva' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                                            }}
+                                        >
+                                            <BarChart3 size={12} />
+                                            Curva Horaria
+                                        </button>
+                                    </div>
+
+                                    {peakCell && (
+                                        <span style={{
+                                            fontSize: '0.72rem', fontWeight: 800, padding: '4px 10px', borderRadius: '20px',
+                                            background: '#FFF7ED', color: '#EA580C', border: '1px solid #FED7AA',
+                                            display: 'flex', alignItems: 'center', gap: '6px'
+                                        }}>
+                                            <Flame size={13} />
+                                            Pico: {peakCell.dayName} a las {peakCell.hour} ({peakCell.count} pac.)
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 4 Franjas Horarias Clave (KPI Cards de Afluencia) */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
+                                <div style={{ background: '#FFFFFF', border: '1px solid #BAE6FD', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Sun size={18} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>Mañana (07–13 hs)</div>
+                                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0F2942' }}>
+                                            {heatmap?.franjas?.manana?.count || 0}
+                                            <span style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 700, marginLeft: '6px' }}>
+                                                ({heatmap?.franjas?.manana?.pct || 0}%)
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#0369A1', fontWeight: 600 }}>Franja pico principal</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ background: '#FFFFFF', border: '1px solid #FED7AA', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#FFF7ED', color: '#EA580C', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Coffee size={18} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>Siesta (13–16 hs)</div>
+                                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0F2942' }}>
+                                            {heatmap?.franjas?.siesta?.count || 0}
+                                            <span style={{ fontSize: '0.7rem', color: '#EA580C', fontWeight: 700, marginLeft: '6px' }}>
+                                                ({heatmap?.franjas?.siesta?.pct || 0}%)
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#C2410C', fontWeight: 600 }}>Flujo moderado continuo</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ background: '#FFFFFF', border: '1px solid #DDD6FE', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Activity size={18} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>Tarde (16–21 hs)</div>
+                                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0F2942' }}>
+                                            {heatmap?.franjas?.tarde?.count || 0}
+                                            <span style={{ fontSize: '0.7rem', color: '#7C3AED', fontWeight: 700, marginLeft: '6px' }}>
+                                                ({heatmap?.franjas?.tarde?.pct || 0}%)
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#6D28D9', fontWeight: 600 }}>Segundo turno de atención</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#F1F5F9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Moon size={18} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700 }}>Fuera de Horario (21–07 hs & Dom)</div>
+                                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0F2942' }}>
+                                            {heatmap?.offHours?.count || 0}
+                                            <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, marginLeft: '6px' }}>
+                                                ({heatmap?.offHours?.pct || 0}%)
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600 }}>Demanda latente / en espera</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Vista 1: Matriz de Calor 2D (Día de Semana x Hora) */}
+                            {heatmapView === 'matriz' ? (
+                                <div style={{ width: '100%', overflowX: 'auto', paddingBottom: '4px' }}>
+                                    <div style={{ minWidth: heatmapMode === 'operativo' ? '700px' : '900px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {/* Fila de Encabezado de Horas */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '54px', paddingRight: '90px' }}>
+                                            {displayHours.map(h => {
+                                                const isPeakH = (heatmap?.peakHour?.hora || '').startsWith(h.toString().padStart(2, '0'));
+                                                return (
+                                                    <div
+                                                        key={`header-h-${h}`}
+                                                        style={{
+                                                            flex: 1, textAlign: 'center', fontSize: '10.5px',
+                                                            color: isPeakH ? '#EA580C' : '#64748B',
+                                                            fontWeight: isPeakH ? 800 : 600,
+                                                            padding: '2px 0'
+                                                        }}
+                                                    >
+                                                        {h.toString().padStart(2, '0')}h
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Filas de los Días de la Semana */}
+                                        {(heatmap?.matrix || []).map(dayRow => {
+                                            const isPeakDay = dayRow.dayName === heatmap?.peakDay?.day;
+                                            return (
+                                                <div
+                                                    key={`row-${dayRow.dayIdx}`}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                                        background: '#FFFFFF', padding: '3px 6px', borderRadius: '8px',
+                                                        border: isPeakDay ? '1.5px solid #FED7AA' : '1px solid #F1F5F9'
+                                                    }}
+                                                >
+                                                    {/* Nombre del Día */}
+                                                    <div style={{
+                                                        width: '44px', fontSize: '11px', fontWeight: 800,
+                                                        color: isPeakDay ? '#EA580C' : '#334155',
+                                                        display: 'flex', alignItems: 'center', gap: '4px'
+                                                    }}>
+                                                        {dayRow.dayShort}
+                                                        {isPeakDay && <Flame size={10} color="#EA580C" />}
+                                                    </div>
+
+                                                    {/* Celdas de Calor */}
+                                                    {displayHours.map(h => {
+                                                        const cell = dayRow.hours[h];
+                                                        const count = isNewMetric ? (cell?.newPatientsCount || 0) : (cell?.count || 0);
+                                                        const intensity = maxVal > 0 ? count / maxVal : 0;
+                                                        const styleProps = getCellColor(count);
+                                                        const isHovered = heatmapHoveredCell && heatmapHoveredCell.dayIdx === dayRow.dayIdx && heatmapHoveredCell.hour === h;
+
+                                                        return (
+                                                            <div
+                                                                key={`cell-${dayRow.dayIdx}-${h}`}
+                                                                onMouseEnter={() => setHeatmapHoveredCell({
+                                                                    dayIdx: dayRow.dayIdx,
+                                                                    dayName: dayRow.dayName,
+                                                                    hour: h,
+                                                                    hourLabel: `${h.toString().padStart(2, '0')}:00 hs`,
+                                                                    count,
+                                                                    pctDay: dayRow.totalDay > 0 ? Number(((count / dayRow.totalDay) * 100).toFixed(1)) : 0,
+                                                                    intensity,
+                                                                    isOperatingHour: cell?.isOperatingHour
+                                                                })}
+                                                                onMouseLeave={() => setHeatmapHoveredCell(null)}
+                                                                style={{
+                                                                    flex: 1,
+                                                                    height: '32px',
+                                                                    backgroundColor: styleProps.bg,
+                                                                    border: `1px solid ${isHovered ? '#0284C7' : styleProps.border}`,
+                                                                    borderRadius: '6px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: '11px',
+                                                                    color: styleProps.text,
+                                                                    fontWeight: styleProps.fontWeight,
+                                                                    cursor: 'pointer',
+                                                                    transform: isHovered ? 'scale(1.08)' : 'scale(1)',
+                                                                    boxShadow: isHovered ? '0 4px 10px rgba(2, 132, 199, 0.22)' : 'none',
+                                                                    transition: 'all 0.12s ease',
+                                                                    position: 'relative',
+                                                                    zIndex: isHovered ? 2 : 1
+                                                                }}
+                                                            >
+                                                                {count > 0 ? count : '·'}
+                                                            </div>
+                                                        );
+                                                    })}
+
+                                                    {/* Total del Día a la derecha */}
+                                                    <div style={{
+                                                        width: '84px', textAlign: 'right', display: 'flex', flexDirection: 'column',
+                                                        justifyContent: 'center', alignItems: 'flex-end', paddingRight: '4px'
+                                                    }}>
+                                                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F2942' }}>
+                                                            {isNewMetric ? dayRow.totalNewDay : dayRow.totalDay}
+                                                            <span style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, marginLeft: '3px' }}>
+                                                                ({dayRow.pctDay}%)
+                                                            </span>
+                                                        </span>
+                                                        <div style={{ width: '48px', height: '4px', background: '#E2E8F0', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' }}>
+                                                            <div style={{
+                                                                width: `${Math.min(100, (dayRow.pctDay * 2.5))}%`,
+                                                                height: '100%',
+                                                                background: isPeakDay ? '#EA580C' : '#0284C7',
+                                                                borderRadius: '2px'
+                                                            }} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {/* Fila de Acumulado Horario Inferior */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingLeft: '54px', paddingRight: '90px', paddingTop: '4px' }}>
+                                            {displayHours.map(h => {
+                                                const hData = heatmap?.hourlySummary?.[h];
+                                                const hTotal = isNewMetric ? (hData?.newPatientsTotal || 0) : (hData?.total || 0);
+                                                const isPeakH = (heatmap?.peakHour?.hora || '').startsWith(h.toString().padStart(2, '0'));
+                                                return (
+                                                    <div
+                                                        key={`foot-h-${h}`}
+                                                        style={{
+                                                            flex: 1, textAlign: 'center', fontSize: '9.5px',
+                                                            color: isPeakH ? '#EA580C' : '#64748B',
+                                                            fontWeight: isPeakH ? 800 : 600,
+                                                            background: isPeakH ? '#FFF7ED' : 'transparent',
+                                                            borderRadius: '4px', padding: '2px 0'
+                                                        }}
+                                                    >
+                                                        {hTotal > 0 ? hTotal : '-'}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Vista 2: Curva de Barras de Afluencia Horaria Consolidada */
+                                <div style={{ width: '100%', height: '220px' }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart
+                                            data={(heatmapMode === 'operativo' 
+                                                ? (heatmap?.hourlySummary || []).filter(h => h.isOperatingHour)
+                                                : (heatmap?.hourlySummary || [])
+                                            )}
+                                            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                            <XAxis 
+                                                dataKey="hora" 
+                                                tick={{ fontSize: 10, fill: '#64748B' }}
+                                                interval={heatmapMode === 'operativo' ? 0 : 1}
+                                            />
+                                            <YAxis tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
+                                            <Tooltip
+                                                cursor={{ fill: 'rgba(2, 132, 199, 0.06)', radius: 4 }}
+                                                contentStyle={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem' }}
+                                                formatter={(val, name, item) => [
+                                                    `${val} pacientes entrantes (${item.payload.pct}% del total)`,
+                                                    isNewMetric ? 'Pacientes Nuevos' : 'Consultas Entrantes'
+                                                ]}
+                                            />
+                                            <Bar dataKey={isNewMetric ? 'newPatientsTotal' : 'total'} name="Pacientes Entrantes" radius={[4, 4, 0, 0]}>
+                                                {(heatmapMode === 'operativo' 
+                                                    ? (heatmap?.hourlySummary || []).filter(h => h.isOperatingHour)
+                                                    : (heatmap?.hourlySummary || [])
+                                                ).map((entry, index) => {
+                                                    const val = isNewMetric ? entry.newPatientsTotal : entry.total;
+                                                    const cProps = getCellColor(val);
+                                                    return (
+                                                        <Cell key={`bar-heat-${index}`} fill={cProps.bg === '#F8FAFC' ? '#CBD5E1' : cProps.bg} />
+                                                    );
+                                                })}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
+
+                            {/* Detalle flotante interactivo de celda hovered */}
+                            {heatmapHoveredCell && (
+                                <div style={{
+                                    background: '#FFFFFF', border: '1px solid #BAE6FD', borderRadius: '8px',
+                                    padding: '6px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    fontSize: '0.74rem', color: '#0F2942', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: getCellColor(heatmapHoveredCell.count).bg }} />
+                                        <span>
+                                            <strong>{heatmapHoveredCell.dayName} a las {heatmapHoveredCell.hourLabel}:</strong> {heatmapHoveredCell.count} {isNewMetric ? 'pacientes nuevos' : 'consultas'} ({heatmapHoveredCell.pctDay}% de la afluencia de ese día)
+                                        </span>
+                                    </div>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: heatmapHoveredCell.intensity >= 0.88 ? '#EA580C' : '#0284C7' }}>
+                                        {getIntensityLabel(heatmapHoveredCell.intensity)}
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Leyenda cromática y pie de información */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', fontSize: '0.7rem', color: '#64748B', borderTop: '1px dashed #CBD5E1', paddingTop: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 700, color: '#334155' }}>Intensidad de Entrada:</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#F8FAFC', border: '1px solid #E2E8F0', display: 'inline-block' }}></span>
+                                        0 (Sin demanda)
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#EFF6FF', border: '1px solid #DBEAFE', display: 'inline-block' }}></span>
+                                        Baja
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#BAE6FD', border: '1px solid #7DD3FC', display: 'inline-block' }}></span>
+                                        Media
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#38BDF8', border: '1px solid #0284C7', display: 'inline-block' }}></span>
+                                        Alta
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#0284C7', border: '1px solid #0369A1', display: 'inline-block' }}></span>
+                                        Muy Alta
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#EA580C', border: '1px solid #C2410C', display: 'inline-block' }}></span>
+                                        Pico Máximo 🔥
+                                    </span>
+                                </div>
+                                <span>
+                                    {heatmapMode === 'operativo' ? 'Franja operativa (07:00 a 21:00 hs) · ' : 'Vista 24 hs completa · '}
+                                    Cómputo en base a {heatmap?.totalIncoming || 0} mensajes de entrada analizados
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* ── ENVEJECIMIENTO DE COLA ACTIVA (QUEUE AGING EN TIEMPO REAL) ── */}
                 <div style={{
