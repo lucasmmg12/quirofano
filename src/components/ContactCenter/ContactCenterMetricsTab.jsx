@@ -839,6 +839,16 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             const reasonLabel = matchedCat ? matchedCat.label : (c.resolution_reason || 'Otro / Consulta Respondida');
                             agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] = (agentDataMap[actualResolvedAgId].resolvedReasons[reasonLabel] || 0) + 1;
 
+                            // Curva horaria de despachos de la asesora (Hora local San Juan UTC-3)
+                            const actionDateStr = c.closed_at || c.assigned_at || c.created_at;
+                            if (actionDateStr) {
+                                const actDate = new Date(actionDateStr);
+                                const localHour = (actDate.getUTCHours() - 3 + 24) % 24;
+                                if (localHour >= 0 && localHour < 24) {
+                                    agentDataMap[actualResolvedAgId].hourlyMap[localHour] = (agentDataMap[actualResolvedAgId].hourlyMap[localHour] || 0) + 1;
+                                }
+                            }
+
                             // AHT Neto: solo duraciones de atención humana activa razonables (< 180 min)
                             if (assignedDate && c.closed_at) {
                                 const closedDate = new Date(c.closed_at);
@@ -1376,13 +1386,6 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         : 0;
                     const medianHandle = calcMedian(a.handleTimesMin);
 
-                    // Encontrar su horario pico
-                    let maxH = 0;
-                    let maxHIdx = 0;
-                    a.hourlyMap.forEach((cnt, idx) => {
-                        if (cnt > maxH) { maxH = cnt; maxHIdx = idx; }
-                    });
-
                     const withinSla = a.responseTimesMin.filter(x => x <= 15).length;
                     const within60 = a.responseTimesMin.filter(x => x > 15 && x <= 60).length;
                     const over60 = a.responseTimesMin.filter(x => x > 60).length;
@@ -1397,14 +1400,44 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         : (a.count > 0 ? a.count : 0);
 
                     // 1. Curva de Intensidad Horaria (07:00 a 21:00 hs)
+                    const totalGestionesHorarias = a.hourlyMap.reduce((s, x) => s + x, 0);
+                    const msgRatio = (a.count > 0 && totalGestionesHorarias > 0)
+                        ? (a.count / totalGestionesHorarias)
+                        : (msgPerConv > 0 ? msgPerConv : 1);
+
                     const hourlyChartData = [];
                     for (let h = 7; h <= 21; h++) {
+                        let msgsH = 0;
+                        if (totalGestionesHorarias > 0) {
+                            msgsH = Math.round((a.hourlyMap[h] || 0) * msgRatio);
+                        } else if (a.count > 0 && hourlyAgentCounts.reduce((s, x) => s + x, 0) > 0) {
+                            const totalAgMsgsAll = hourlyAgentCounts.reduce((s, x) => s + x, 0);
+                            const agentShare = a.count / totalAgMsgsAll;
+                            msgsH = Math.round((hourlyAgentCounts[h] || 0) * agentShare);
+                        } else {
+                            msgsH = a.hourlyMap[h] || 0;
+                        }
+
                         hourlyChartData.push({
                             hora: `${h.toString().padStart(2, '0')}:00`,
-                            mensajes: a.hourlyMap[h] || 0,
-                            esPico: h === maxHIdx
+                            mensajes: msgsH,
+                            gestiones: a.hourlyMap[h] || 0,
+                            esPico: false
                         });
                     }
+
+                    // Encontrar su horario pico en la franja operativa (07:00 a 21:00 hs)
+                    let maxH = 0;
+                    let maxHLabel = '07:00';
+                    hourlyChartData.forEach(item => {
+                        if (item.mensajes > maxH) {
+                            maxH = item.mensajes;
+                            maxHLabel = item.hora;
+                        }
+                    });
+                    hourlyChartData.forEach(item => {
+                        item.esPico = item.hora === maxHLabel && maxH > 0;
+                    });
 
                     // 2. Evolución Diaria en el período seleccionado (ordenada cronológicamente)
                     const dailyChartData = Object.entries(a.dailyMap || {})
@@ -1447,7 +1480,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         avgAgentFRTMin: avgFRT,
                         avgHandleTimeMin: avgHandle,
                         medianHandleTimeMin: medianHandle,
-                        peakHour: `${maxHIdx.toString().padStart(2, '0')}:00 hs`,
+                        peakHour: `${maxHLabel} hs`,
                         peakCount: maxH,
                         slaCumplimientoPct: agentSlaPct,
                         slaBreakdown: {
@@ -4336,17 +4369,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                             <Tooltip 
                                                                 content={({ active, payload, label }) => {
                                                                     if (active && payload && payload.length) {
+                                                                        const dataItem = payload[0].payload || {};
                                                                         return (
                                                                             <div style={{
                                                                                 background: '#FFFFFF',
-                                                                                padding: '6px 10px',
-                                                                                borderRadius: '6px',
+                                                                                padding: '8px 12px',
+                                                                                borderRadius: '8px',
                                                                                 border: '1px solid #E2E8F0',
                                                                                 boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
                                                                                 fontSize: '0.72rem'
                                                                             }}>
-                                                                                <div style={{ fontWeight: 700, color: '#0F2942' }}>{label}</div>
-                                                                                <div style={{ color: ag.color, fontWeight: 800 }}>{payload[0].value} mensajes enviados</div>
+                                                                                <div style={{ fontWeight: 800, color: '#0F2942', marginBottom: '2px' }}>{label} hs</div>
+                                                                                <div style={{ color: ag.color, fontWeight: 800 }}>
+                                                                                    {Number(payload[0].value || 0).toLocaleString('es-AR')} mensajes enviados
+                                                                                </div>
+                                                                                {dataItem.gestiones > 0 && (
+                                                                                    <div style={{ color: '#64748B', fontSize: '0.66rem', marginTop: '2px' }}>
+                                                                                        {dataItem.gestiones} conversaciones gestionadas
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         );
                                                                     }
