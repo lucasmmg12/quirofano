@@ -75,31 +75,39 @@ export default function DiagnosticoImagenesDashboard({
         try {
             let loaded = false;
 
-            // 1. Intentar endpoint local de SALUS Sync Server (directo con LAN)
-            try {
-                const qs = new URLSearchParams({
-                    desde: effectiveDesde,
-                    hasta: effectiveHasta,
-                    ...(forceRefresh ? { refresh: 'true' } : {})
-                });
-                const res = await fetch(`http://localhost:3456/api/salus/dxi-analytics?${qs.toString()}`, {
-                    signal: AbortSignal.timeout(forceRefresh ? 90000 : 15000)
-                });
+            // 1. Intentar endpoints de SALUS Sync Server (relativo vía Vite proxy y directo localhost)
+            const qs = new URLSearchParams({
+                desde: effectiveDesde,
+                hasta: effectiveHasta,
+                ...(forceRefresh ? { refresh: 'true' } : {})
+            });
+            const candidates = [
+                `/api/salus/dxi-analytics?${qs.toString()}`,
+                `http://localhost:3456/api/salus/dxi-analytics?${qs.toString()}`,
+                `http://127.0.0.1:3456/api/salus/dxi-analytics?${qs.toString()}`
+            ];
 
-                if (res.ok) {
-                    const json = await res.json();
-                    if (json.success && json.data) {
-                        setData(json.data);
-                        setLastUpdated(json.updated_at || new Date().toISOString());
-                        setDataSource(json.fromCache ? 'supabase_cache' : 'salus_live');
-                        loaded = true;
-                        if (forceRefresh) {
-                            addToast?.('Datos de Diagnóstico por Imágenes sincronizados desde SALUS', 'success');
+            for (const url of candidates) {
+                try {
+                    const res = await fetch(url, {
+                        signal: AbortSignal.timeout(forceRefresh ? 90000 : 15000)
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json.success && json.data) {
+                            setData(json.data);
+                            setLastUpdated(json.updated_at || new Date().toISOString());
+                            setDataSource(json.fromCache ? 'supabase_cache' : 'salus_live');
+                            loaded = true;
+                            if (forceRefresh) {
+                                addToast?.('Datos de Diagnóstico por Imágenes sincronizados desde SALUS', 'success');
+                            }
+                            break;
                         }
                     }
+                } catch (_) {
+                    // Probar siguiente candidato
                 }
-            } catch (errLocal) {
-                console.log('[DxI] Sync server local no respondió, recurriendo a Supabase cache...');
             }
 
             // 2. Fallback: Leer de Supabase app_config
