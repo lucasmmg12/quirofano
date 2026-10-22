@@ -37,6 +37,7 @@ import {
     Tooltip as RechartsTooltip,
     Legend
 } from 'recharts';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 
 // Colores Institucionales Sanatorio Argentino (Calidad-QOAG)
@@ -485,7 +486,167 @@ export default function DiagnosticoImagenesDashboard({
         return { total, avg, peak };
     }, [progressionChartData]);
 
-    // ─── EXPORTACIÓN A CSV / EXCEL ───
+    // ─── EXPORTACIÓN A EXCEL MULTI-HOJA (.XLSX) ───
+    const handleExportExcel = () => {
+        if (!agendasSummaryList.length && !progressionChartData.length) {
+            addToast?.('No hay datos disponibles para exportar a Excel', 'warning');
+            return;
+        }
+
+        try {
+            const wb = XLSX.utils.book_new();
+
+            // 1. Hoja Resumen Ejecutivo
+            const resumenData = [
+                ['REPORTE EJECUTIVO DE ANALÍTICA — DIAGNÓSTICO POR IMÁGENES (DxI)'],
+                ['Sanatorio Argentino — Sistema de Gobernanza y Gestión Hospitalaria'],
+                [''],
+                ['PARÁMETROS DEL REPORTE', ''],
+                ['Período Desde:', effectiveDesde],
+                ['Período Hasta:', effectiveHasta],
+                ['Modalidad Seleccionada:', selectedModalidad],
+                ['Filtro de Ámbito:', filterAmbito],
+                ['Agenda Seleccionada:', selectedAgenda],
+                ['Fecha de Generación:', new Date().toLocaleString('es-AR')],
+                ['Origen de Datos:', dataSource === 'salus_live' ? 'SALUS Live SQL Server' : 'Caché Supabase'],
+                [''],
+                ['INDICADORES CLAVE (KPIs)', 'VALOR', 'PORCENTAJE / DETALLE'],
+                ['Total Estudios Realizados', totals.total, '100%'],
+                ['Estudios Ambulatorios', totals.ambulatorio, `${totals.pctAmbulatorio}%`],
+                ['Estudios en Hospitalización', totals.hospitalizacion, `${totals.pctHospitalizacion}%`],
+                ['Estudios con Informe Firmado', totals.informados, `${totals.pctInformados}%`],
+                ['Estudios Pendientes de Informe', totals.pendientes, `${totals.pctPendientes}%`],
+                ['Cantidad de Agendas con Producción', totals.cantAgendas, 'Agendas activas'],
+                ['Promedio de Producción', chartStats.avg, activeGranularity === 'dia' ? 'Estudios / Día' : 'Estudios / Mes'],
+                ['Pico Máximo de Producción', chartStats.peak ? chartStats.peak.total : 0, chartStats.peak ? `Fecha: ${chartStats.peak.label}` : '—']
+            ];
+            const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+            XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen_KPIs');
+
+            // 2. Hoja Progresión Temporal (Evolución de Estudios)
+            if (progressionChartData.length > 0) {
+                const progresionRows = progressionChartData.map(p => ({
+                    'Fecha / Período': p.fullDate || p.label,
+                    'Etiqueta': p.label,
+                    'Total Estudios': p.total,
+                    'Ecografía (ECO)': p.ECOGRAFIA || 0,
+                    'Radiología (RX)': p.RADIOLOGIA || 0,
+                    'Mamografía': p.MAMOGRAFIA || 0,
+                    'Tomografía (TC)': p.TOMOGRAFIA || 0,
+                    'Densitometría': p.DENSITOMETRIA || 0,
+                    'Otras Pruebas': p.OTRAS || 0,
+                    'Ambulatorio': p.ambulatorio || 0,
+                    'Hospitalización': p.hospitalizacion || 0
+                }));
+                const wsProgresion = XLSX.utils.json_to_sheet(progresionRows);
+                XLSX.utils.book_append_sheet(wb, wsProgresion, 'Progresion_Temporal');
+            }
+
+            // 3. Hoja Ranking de Agendas
+            if (agendasSummaryList.length > 0) {
+                const agendasRows = agendasSummaryList.map(a => ({
+                    'Modalidad': a.modalidad,
+                    'Agenda / Tipo Visita': a.agenda,
+                    'Total Estudios': a.total,
+                    'Ambulatorio': a.ambulatorio,
+                    '% Ambulatorio': a.total > 0 ? ((a.ambulatorio / a.total) * 100).toFixed(1) + '%' : '0%',
+                    'Hospitalización': a.hospitalizacion,
+                    '% Hospitalización': a.total > 0 ? ((a.hospitalizacion / a.total) * 100).toFixed(1) + '%' : '0%',
+                    'Informados': a.informados,
+                    '% Informados': a.total > 0 ? ((a.informados / a.total) * 100).toFixed(1) + '%' : '0%',
+                    'Pendientes de Informe': a.pendientes,
+                    'Centros': Array.from(a.centros).join(', ')
+                }));
+                const wsAgendas = XLSX.utils.json_to_sheet(agendasRows);
+                XLSX.utils.book_append_sheet(wb, wsAgendas, 'Ranking_Agendas');
+            }
+
+            // 4. Hoja Prestadores Realizadores
+            if (realizadoresRanking.length > 0) {
+                const realRows = realizadoresRanking.map(r => ({
+                    'Profesional Realizador': r.nombre,
+                    'Cantidad Estudios': r.cantidad,
+                    '% del Volumen': `${r.porcentaje}%`
+                }));
+                const wsReal = XLSX.utils.json_to_sheet(realRows);
+                XLSX.utils.book_append_sheet(wb, wsReal, 'Prestadores_Realizan');
+            }
+
+            // 5. Hoja Prestadores Solicitantes
+            if (solicitantesRanking.length > 0) {
+                const solRows = solicitantesRanking.map(s => ({
+                    'Profesional Solicitante': s.nombre,
+                    'Cantidad Estudios': s.cantidad,
+                    '% del Volumen': `${s.porcentaje}%`
+                }));
+                const wsSol = XLSX.utils.json_to_sheet(solRows);
+                XLSX.utils.book_append_sheet(wb, wsSol, 'Prestadores_Solicitan');
+            }
+
+            // 6. Hoja Prestadores Informantes
+            if (informantesRanking.length > 0) {
+                const infRows = informantesRanking.map(i => ({
+                    'Profesional Informante': i.nombre,
+                    'Estudios Informados': i.cantidad,
+                    '% del Total Informados': `${i.porcentaje}%`
+                }));
+                const wsInf = XLSX.utils.json_to_sheet(infRows);
+                XLSX.utils.book_append_sheet(wb, wsInf, 'Prestadores_Informan');
+            }
+
+            // 7. Hoja Obras Sociales
+            if (obrasSocialesRanking.length > 0) {
+                const osRows = obrasSocialesRanking.map(o => ({
+                    'Financiador / Obra Social': o.nombre,
+                    'Cantidad Estudios': o.cantidad,
+                    '% de Cobertura': `${o.porcentaje}%`
+                }));
+                const wsOs = XLSX.utils.json_to_sheet(osRows);
+                XLSX.utils.book_append_sheet(wb, wsOs, 'Obras_Sociales');
+            }
+
+            const fileName = `DxI_Analitica_${selectedModalidad}_${effectiveDesde}_${effectiveHasta}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            addToast?.('Planilla Excel (.xlsx) generada exitosamente con todas las hojas', 'success');
+        } catch (err) {
+            console.error('Error al generar Excel DxI:', err);
+            addToast?.('Error al generar archivo Excel: ' + err.message, 'error');
+        }
+    };
+
+    // ─── EXPORTACIÓN RÁPIDA DE LA PROGRESIÓN TEMPORAL (.XLSX) ───
+    const handleExportProgressionExcel = () => {
+        if (!progressionChartData.length) {
+            addToast?.('No hay datos de progresión para exportar', 'warning');
+            return;
+        }
+
+        try {
+            const wb = XLSX.utils.book_new();
+            const progresionRows = progressionChartData.map(p => ({
+                'Fecha / Período': p.fullDate || p.label,
+                'Etiqueta': p.label,
+                'Total Estudios': p.total,
+                'Ecografía (ECO)': p.ECOGRAFIA || 0,
+                'Radiología (RX)': p.RADIOLOGIA || 0,
+                'Mamografía': p.MAMOGRAFIA || 0,
+                'Tomografía (TC)': p.TOMOGRAFIA || 0,
+                'Densitometría': p.DENSITOMETRIA || 0,
+                'Otras Pruebas': p.OTRAS || 0,
+                'Ambulatorio': p.ambulatorio || 0,
+                'Hospitalización': p.hospitalizacion || 0
+            }));
+            const ws = XLSX.utils.json_to_sheet(progresionRows);
+            XLSX.utils.book_append_sheet(wb, ws, `Progresion_${activeGranularity}`);
+            XLSX.writeFile(wb, `DxI_Progresion_${selectedModalidad}_${effectiveDesde}_${effectiveHasta}.xlsx`);
+            addToast?.('Excel de Progresión Temporal descargado exitosamente', 'success');
+        } catch (err) {
+            console.error('Error exportando progresión a Excel:', err);
+            addToast?.('Error al descargar Excel: ' + err.message, 'error');
+        }
+    };
+
+    // ─── EXPORTACIÓN A CSV ───
     const handleExportCsv = () => {
         if (!agendasSummaryList.length) {
             addToast?.('No hay datos para exportar', 'warning');
@@ -629,6 +790,31 @@ export default function DiagnosticoImagenesDashboard({
                         ))}
                     </div>
 
+                    {/* Botón Descargar Excel (.xlsx) */}
+                    <button
+                        onClick={handleExportExcel}
+                        disabled={loading}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: '#ECFDF5',
+                            border: '1px solid #A7F3D0',
+                            borderRadius: '10px',
+                            padding: '7px 14px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            color: '#065F46',
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                            transition: 'all 0.15s ease'
+                        }}
+                        title="Descargar reporte completo en Excel (.xlsx) con todas las hojas tabuladas"
+                    >
+                        <FileSpreadsheet size={16} color="#059669" />
+                        Descargar Excel
+                    </button>
+
                     {/* Botón Exportar CSV */}
                     <button
                         onClick={handleExportCsv}
@@ -643,13 +829,14 @@ export default function DiagnosticoImagenesDashboard({
                             padding: '7px 12px',
                             fontSize: '0.8rem',
                             fontWeight: 600,
-                            color: '#334155',
+                            color: '#475569',
                             cursor: 'pointer',
                             boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                         }}
+                        title="Exportar listado en formato CSV"
                     >
-                        <Download size={15} />
-                        Exportar
+                        <Download size={14} />
+                        CSV
                     </button>
 
                     {/* Botón Sincronizar SALUS */}
@@ -1040,6 +1227,31 @@ export default function DiagnosticoImagenesDashboard({
                             ))}
                         </div>
 
+                        {/* Botón Descargar Excel Progresión */}
+                        <button
+                            onClick={handleExportProgressionExcel}
+                            disabled={loading || !progressionChartData.length}
+                            title="Descargar datos de la curva de evolución en Excel (.xlsx)"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                border: '1px solid #CBD5E1',
+                                background: '#FFFFFF',
+                                borderRadius: '8px',
+                                padding: '4px 9px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                color: '#0F172A',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <FileSpreadsheet size={13} color="#059669" />
+                            <span>Excel Progresión</span>
+                        </button>
+
                         {/* Botón Colapsar / Expandir */}
                         <button
                             onClick={() => setChartCollapsed(!chartCollapsed)}
@@ -1381,9 +1593,33 @@ export default function DiagnosticoImagenesDashboard({
                                 Ranking de Producción por Agenda
                             </h3>
                         </div>
-                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                            Mostrando {agendasSummaryList.length} agendas
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                Mostrando {agendasSummaryList.length} agendas
+                            </span>
+                            <button
+                                onClick={handleExportExcel}
+                                disabled={loading || !agendasSummaryList.length}
+                                title="Descargar reporte completo en Excel (.xlsx)"
+                                style={{
+                                    border: '1px solid #CBD5E1',
+                                    background: '#F8FAFC',
+                                    borderRadius: '6px',
+                                    padding: '3px 8px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    color: '#065F46',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                }}
+                            >
+                                <FileSpreadsheet size={13} color="#059669" />
+                                Excel
+                            </button>
+                        </div>
                     </div>
 
                     {loading ? (
