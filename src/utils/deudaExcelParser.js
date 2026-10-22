@@ -5,7 +5,7 @@
  */
 import { read, utils } from 'xlsx';
 
-// Mapeo de columnas por índice (formato con Concepto)
+// Mapeo de columnas por índice (formato con Concepto y Alta)
 const COL_MAP = {
     0: 'fecha_albaran',      // Fecha albaran
     1: 'nombre',             // Paciente
@@ -20,6 +20,7 @@ const COL_MAP = {
     10: 'habitacion',        // HOSP_Habitacion
     11: 'telefono_raw',      // telefono1_formateado
     12: 'email',             // email
+    13: 'fecha_alta',        // Fecha alta médica (opcional auditable)
 };
 
 export async function parseDeudaExcel(file) {

@@ -144,12 +144,17 @@ export async function fetchFacturas(pacienteId) {
 
 // ─── Cobros ───
 
-export async function fetchCobros(pacienteId) {
-    const { data, error } = await supabase
-        .from('deudas_cobros')
-        .select('*')
-        .eq('paciente_id', pacienteId)
-        .order('fecha', { ascending: false });
+export async function fetchCobros(pacienteId, nhc = null) {
+    if (!pacienteId && !nhc) return [];
+    let query = supabase.from('deudas_cobros').select('*');
+    if (pacienteId && nhc) {
+        query = query.or(`paciente_id.eq.${pacienteId},nhc.eq.${nhc}`);
+    } else if (nhc) {
+        query = query.eq('nhc', nhc);
+    } else {
+        query = query.eq('paciente_id', pacienteId);
+    }
+    const { data, error } = await query.order('fecha', { ascending: false });
     if (error) throw error;
     return data || [];
 }
@@ -167,12 +172,17 @@ export async function fetchCobrosPorNhc(nhc) {
 
 // ─── Notas de Crédito ───
 
-export async function fetchNotasCredito(pacienteId) {
-    const { data, error } = await supabase
-        .from('deudas_notas_credito')
-        .select('*')
-        .eq('paciente_id', pacienteId)
-        .order('fecha', { ascending: false });
+export async function fetchNotasCredito(pacienteId, nhc = null) {
+    if (!pacienteId && !nhc) return [];
+    let query = supabase.from('deudas_notas_credito').select('*');
+    if (pacienteId && nhc) {
+        query = query.or(`paciente_id.eq.${pacienteId},nhc.eq.${nhc}`);
+    } else if (nhc) {
+        query = query.eq('nhc', nhc);
+    } else {
+        query = query.eq('paciente_id', pacienteId);
+    }
+    const { data, error } = await query.order('fecha', { ascending: false });
     if (error) throw error;
     return data || [];
 }
@@ -992,14 +1002,13 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     const rango = getRangoFechasPreset(preset, fechaDesde, fechaHasta);
     const { fechaDesde: effDesde, fechaHasta: effHasta } = rango;
 
-    // 1. Obtener todos los pacientes de deudas
+    // 1. Obtener todos los pacientes de deudas (sin descartar cancelados con saldo 0)
     let queryPacientes = supabase
         .from('deudas_pacientes')
         .select('*')
-        .gte('deuda_total', MIN_DEUDA)
         .order('deuda_total', { ascending: false });
 
-    // 2. Obtener todos los seguimientos (acciones de gestión y pagos)
+    // 2. Obtener todos los seguimientos (acciones de gestión y notas)
     let querySeguimiento = supabase
         .from('deudas_seguimiento')
         .select('*')
@@ -1020,6 +1029,18 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     const pacientes = pacientesRes.data || [];
     const seguimientos = segRes.data || [];
     const cuotas = cuotasRes.data || [];
+
+    // 4. Obtener cobros de caja SALUS (deudas_cobros) para los pacientes de la cartera
+    const nhcs = [...new Set(pacientes.map(p => p.nhc).filter(Boolean))];
+    let cobros = [];
+    if (nhcs.length > 0) {
+        const { data: cobrosData } = await supabase
+            .from('deudas_cobros')
+            .select('nhc, importe, fecha, forma_pago, descripcion')
+            .in('nhc', nhcs)
+            .order('fecha', { ascending: true });
+        cobros = cobrosData || [];
+    }
 
     // Helper nombre meses en español
     const monthNames = {
@@ -1065,7 +1086,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     // Identificar pacientes gestionados
     const pacientesGestionadosList = pacientes.filter(p => {
         if (effDesde && effHasta) {
-            // En modo con filtro de fechas: revisa si tuvo acción o último contacto en el rango
             if (patientHasGestionInRange.has(p.id)) return true;
             if (p.ultimo_contacto_at) {
                 const cDate = p.ultimo_contacto_at.substring(0, 10);
@@ -1078,7 +1098,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             return false;
         }
 
-        // En modo "Todos": cualquier paciente no virgen de gestión
         return (
             p.categoria !== 'sin_gestionar' || 
             p.ultimo_contacto_at || 
@@ -1086,29 +1105,32 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         );
     });
 
-    const totalDeudaGestionada = pacientesGestionadosList.reduce((acc, p) => acc + Number(p.deuda_total), 0);
+    const totalDeudaGestionada = pacientesGestionadosList.reduce((acc, p) => {
+        const cap = Number(p.deuda_total) > 0 ? Number(p.deuda_total) : Number(p.total_cobros || 0);
+        return acc + cap;
+    }, 0);
     const totalPacientes = pacientes.length;
     const countGestionados = pacientesGestionadosList.length;
     const porcentajeGestionado = totalPacientes > 0 ? Math.round((countGestionados / totalPacientes) * 100) : 0;
 
-    // Calcular cobros por mes (y total cobrado filtrado con desglose didáctico)
+    // ─── Calcular cobros por mes (Caja Real SALUS + Cancelaciones) ───
     const cobradoPorMes = {};
     let totalDeudaCobrada = 0;
     let montoDeudasCanceladas = 0;
     let countDeudasCanceladas = 0;
     let montoCobrosCuotasYSeg = 0;
 
-    seguimientos.forEach(s => {
-        if (s.tipo === 'pago' && s.monto > 0) {
-            const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
-            const ym = s.created_at ? s.created_at.substring(0, 7) : '';
-            const monto = Number(s.monto);
+    // A) Sumar los cobros reales registrados en caja SALUS (deudas_cobros)
+    cobros.forEach(c => {
+        const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
+        const ym = cDate ? cDate.substring(0, 7) : '';
+        const monto = Number(c.importe) || 0;
 
+        if (monto > 0 && ym) {
             cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
 
-            // Filtro por fecha para el KPI de Cobro Efectivo
             if (effDesde && effHasta) {
-                if (sDate >= effDesde && sDate <= effHasta) {
+                if (cDate >= effDesde && cDate <= effHasta) {
                     totalDeudaCobrada += monto;
                     montoCobrosCuotasYSeg += monto;
                 }
@@ -1119,44 +1141,46 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         }
     });
 
-    // Identificar pacientes con pagos ya computados en seguimiento
-    const pacIdsWithSegPayment = new Set(
-        seguimientos.filter(s => s.tipo === 'pago' && s.monto > 0).map(s => s.paciente_id)
-    );
-
-    // Sumar deudas canceladas que no tengan registro duplicado en seguimiento
+    // B) Pacientes cancelados (si no tienen cobros en deudas_cobros)
+    const nhcsConCobros = new Set(cobros.map(c => c.nhc));
     pacientes.forEach(p => {
         if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
-            if (!pacIdsWithSegPayment.has(p.id)) {
-                const cancDate = p.deuda_cancelada_at.substring(0, 10);
-                const ym = p.deuda_cancelada_at.substring(0, 7);
-                const monto = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
-                if (monto > 0) {
-                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
-                    if (effDesde && effHasta) {
-                        if (cancDate >= effDesde && cancDate <= effHasta) {
-                            totalDeudaCobrada += monto;
-                            montoDeudasCanceladas += monto;
-                            countDeudasCanceladas++;
-                        }
-                    } else {
+            const cancDate = p.deuda_cancelada_at.substring(0, 10);
+            const ym = cancDate.substring(0, 7);
+            const monto = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+
+            // Si el paciente no tenía movimientos en deudas_cobros, computamos su monto cancelado
+            if (!nhcsConCobros.has(p.nhc) && monto > 0 && ym) {
+                cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                if (effDesde && effHasta) {
+                    if (cancDate >= effDesde && cancDate <= effHasta) {
                         totalDeudaCobrada += monto;
                         montoDeudasCanceladas += monto;
                         countDeudasCanceladas++;
                     }
+                } else {
+                    totalDeudaCobrada += monto;
+                    montoDeudasCanceladas += monto;
+                    countDeudasCanceladas++;
                 }
+            } else if (effDesde && effHasta && cancDate >= effDesde && cancDate <= effHasta) {
+                montoDeudasCanceladas += monto;
+                countDeudasCanceladas++;
+            } else if (!effDesde && !effHasta) {
+                montoDeudasCanceladas += monto;
+                countDeudasCanceladas++;
             }
         }
     });
 
-    // Totales históricos acumulados de toda la vida del sistema
+    // Totales históricos acumulados
     const totalHistoricoCanceladasMonto = pacientes
         .filter(p => p.categoria === 'deuda_cancelada')
-        .reduce((s, p) => s + Number(p.deuda_total || 0), 0);
+        .reduce((s, p) => s + (Number(p.total_cobros) || Number(p.deuda_total) || 0), 0);
     const totalHistoricoCanceladasCount = pacientes.filter(p => p.categoria === 'deuda_cancelada').length;
     const totalHistoricoCobrado = Object.values(cobradoPorMes).reduce((a, b) => a + b, 0);
 
-    // Calcular deuda gestionada/abordada por mes (100% coherente con el filtro de períodos y KPI)
+    // Calcular deuda gestionada/abordada por mes (Criterio Cosecha)
     const gestionadoPorMes = {};
     const pacientesPorMesGestion = {};
 
@@ -1187,9 +1211,71 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
 
     Object.entries(pacientesPorMesGestion).forEach(([ym, pacSet]) => {
         const pacList = pacientes.filter(p => pacSet.has(p.id));
-        const sum = pacList.reduce((s, p) => s + Number(p.deuda_total), 0);
+        // Capital gestionado: si se canceló al 100%, rescatamos el capital de total_cobros
+        const sum = pacList.reduce((s, p) => {
+            const cap = Number(p.deuda_total) > 0 ? Number(p.deuda_total) : Number(p.total_cobros || 0);
+            return s + cap;
+        }, 0);
         gestionadoPorMes[ym] = sum;
     });
+
+    // ─── Análisis de Exigibilidad: Regla de 30 días post-alta ───
+    let totalDeudaExigible = 0;
+    let totalDeudaEnGracia = 0;
+    let countPacientesExigibles = 0;
+    let countPacientesEnGracia = 0;
+
+    try {
+        const { data: facturasActivas = [] } = await supabase
+            .from('deudas_facturas')
+            .select('paciente_id, n_admision, pendiente')
+            .gt('pendiente', 0);
+
+        const distinctAdms = [...new Set(facturasActivas.map(f => f.n_admision).filter(Boolean))];
+        let allAltas = [];
+        if (distinctAdms.length > 0) {
+            for (let i = 0; i < distinctAdms.length; i += 100) {
+                const chunk = distinctAdms.slice(i, i + 100);
+                const { data: chunkAltas } = await supabase
+                    .from('altas_administrativas')
+                    .select('numero_admision, fecha_alta, fecha_ingreso')
+                    .in('numero_admision', chunk);
+                if (chunkAltas) allAltas.push(...chunkAltas);
+            }
+        }
+        const altasMap = new Map();
+        allAltas.forEach(a => altasMap.set(a.numero_admision, a));
+
+        const today = new Date();
+        const pacExigibilidad = {};
+        facturasActivas.forEach(f => {
+            if (!pacExigibilidad[f.paciente_id]) {
+                pacExigibilidad[f.paciente_id] = { exigible: 0, enGracia: 0 };
+            }
+            const alta = altasMap.get(f.n_admision);
+            const monto = Number(f.pendiente) || 0;
+            if (alta && alta.fecha_alta) {
+                const fAlta = new Date(alta.fecha_alta + 'T12:00:00');
+                const diffDays = Math.floor((today - fAlta) / (1000 * 60 * 60 * 24));
+                if (diffDays >= 30) {
+                    pacExigibilidad[f.paciente_id].exigible += monto;
+                } else {
+                    pacExigibilidad[f.paciente_id].enGracia += monto;
+                }
+            } else {
+                pacExigibilidad[f.paciente_id].enGracia += monto;
+            }
+        });
+
+        Object.values(pacExigibilidad).forEach(pe => {
+            totalDeudaExigible += pe.exigible;
+            totalDeudaEnGracia += pe.enGracia;
+            if (pe.exigible > 0) countPacientesExigibles++;
+            if (pe.enGracia > 0 && pe.exigible === 0) countPacientesEnGracia++;
+        });
+    } catch (errExig) {
+        console.warn('Error calculando exigibilidad 30d:', errExig);
+    }
 
     // Calcular deuda originada / incorporada por mes (para evolución de stock)
     const deudaPorMes = {};
@@ -1297,6 +1383,10 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         totalHistoricoCobrado,
         totalHistoricoCanceladasMonto,
         totalHistoricoCanceladasCount,
+        totalDeudaExigible,
+        totalDeudaEnGracia,
+        countPacientesExigibles,
+        countPacientesEnGracia,
         barrasMesAMes,
         evolucionDeudaTotal,
         topDeudores,

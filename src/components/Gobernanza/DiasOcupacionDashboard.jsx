@@ -27,11 +27,14 @@ import {
     INDICADORES_QUIROFANO_CATALOGO,
     DEFAULT_ACTIVE_QUIROFANO_IDS,
     INDICADORES_EPIDEMIOLOGIA_CATALOGO,
-    DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS
+    DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS,
+    INDICADORES_DXI_CATALOGO,
+    DEFAULT_ACTIVE_DXI_IDS
 } from './telarConfig';
 import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
 import QuirofanoDashboard from './QuirofanoDashboard';
 import EpidemiologiaDashboard from './EpidemiologiaDashboard';
+import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -352,6 +355,43 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         setActiveEpidemiologiaIds(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS);
         try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS)); } catch {}
         addToast?.('Todos los indicadores de Epidemiología activados', 'success');
+    };
+
+    // === ESTADOS DE DIAGNÓSTICO POR IMÁGENES (DXI - 2022 EN ADELANTE) ===
+    const [isDxiOpen, setIsDxiOpen] = useState(() => {
+        return localStorage.getItem('telar_dxi_expanded') !== 'false';
+    });
+
+    const handleToggleDxi = () => {
+        if (isUciOnly) return;
+        setIsDxiOpen(prev => {
+            const next = !prev;
+            try { localStorage.setItem('telar_dxi_expanded', String(next)); } catch {}
+            return next;
+        });
+    };
+
+    const [activeDxiIds, setActiveDxiIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem('telar_active_dxi_indicators');
+            return saved ? JSON.parse(saved) : DEFAULT_ACTIVE_DXI_IDS;
+        } catch {
+            return DEFAULT_ACTIVE_DXI_IDS;
+        }
+    });
+
+    const handleToggleDxiIndicator = (id) => {
+        setActiveDxiIds(prev => {
+            const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+            try { localStorage.setItem('telar_active_dxi_indicators', JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+
+    const handleSelectAllDxiIndicators = () => {
+        setActiveDxiIds(DEFAULT_ACTIVE_DXI_IDS);
+        try { localStorage.setItem('telar_active_dxi_indicators', JSON.stringify(DEFAULT_ACTIVE_DXI_IDS)); } catch {}
+        addToast?.('Todos los indicadores de Diagnóstico por Imágenes activados', 'success');
     };
 
     const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
@@ -717,7 +757,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
-        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO') {
+        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI') {
             setLoading(false);
             setLoadingPeticiones(false);
             return;
@@ -3835,6 +3875,145 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     )}
                                 </div>
                             )}
+
+                            {/* ── SECTOR DIAGNÓSTICO POR IMÁGENES (DXI) ── */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '10px',
+                                    border: `1.5px solid ${isDxiOpen || sectorId === 'DXI' ? '#93C5FD' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    overflow: 'hidden',
+                                    boxShadow: isDxiOpen || sectorId === 'DXI' ? '0 4px 12px -2px rgba(37, 99, 235, 0.12)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleToggleDxi();
+                                            if (sectorId !== 'DXI') handleSelectSector('DXI');
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 12px',
+                                            background: sectorId === 'DXI' ? '#EFF6FF' : '#F8FAFC',
+                                            border: 'none',
+                                            borderBottom: isDxiOpen ? '1px solid #BFDBFE' : 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'DXI') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'DXI') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.1rem' }}>🩻</span>
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'DXI' ? '#1D4ED8' : '#334155' }}>
+                                                    Imágenes (DxI)
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                    ECO, RX, MAM, TC, DE (2022+)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ color: sectorId === 'DXI' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
+                                                {isDxiOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            </span>
+                                        </div>
+                                    </button>
+
+                                    {/* CONTENIDO DESPLEGABLE DE DXI */}
+                                    {isDxiOpen && (
+                                        <div style={{
+                                            borderTop: '1px solid #BFDBFE',
+                                            background: '#FFFFFF',
+                                            animation: 'fadeIn 0.2s ease-out'
+                                        }}>
+                                            <div style={{ padding: '10px 12px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1D4ED8', textTransform: 'uppercase' }}>
+                                                    Indicadores DxI ({activeDxiIds.length})
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSelectAllDxiIndicators}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        color: '#2563EB',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        padding: '1px 4px'
+                                                    }}
+                                                >
+                                                    Todos
+                                                </button>
+                                            </div>
+
+                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
+                                                {INDICADORES_DXI_CATALOGO.map(ind => {
+                                                    const isChecked = activeDxiIds.includes(ind.id);
+                                                    return (
+                                                        <div
+                                                            key={ind.id}
+                                                            onClick={() => {
+                                                                if (sectorId !== 'DXI') handleSelectSector('DXI');
+                                                                handleToggleDxiIndicator(ind.id);
+                                                            }}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                background: isChecked && sectorId === 'DXI' ? '#EFF6FF' : 'transparent',
+                                                                border: isChecked && sectorId === 'DXI' ? '1px solid #BFDBFE' : '1px solid transparent',
+                                                                transition: 'all 0.12s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                                {isChecked ? (
+                                                                    <CheckSquare size={15} color="#2563EB" />
+                                                                ) : (
+                                                                    <Square size={15} color="#94A3B8" />
+                                                                )}
+                                                                <span style={{
+                                                                    fontSize: '0.74rem',
+                                                                    fontWeight: isChecked ? 700 : 500,
+                                                                    color: isChecked ? '#1E3A8A' : '#475569',
+                                                                    whiteSpace: 'nowrap',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis'
+                                                                }}
+                                                                title={ind.descripcion}
+                                                                >
+                                                                    {ind.label}
+                                                                </span>
+                                                            </div>
+                                                            <span style={{
+                                                                fontSize: '0.6rem',
+                                                                fontWeight: 700,
+                                                                padding: '1px 4px',
+                                                                borderRadius: '4px',
+                                                                background: '#EFF6FF',
+                                                                color: '#2563EB',
+                                                                flexShrink: 0
+                                                            }}>
+                                                                DxI
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -3849,6 +4028,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             fechaHasta={fechaHasta}
                             datePresetMode={datePresetMode}
                             activeIndicatorIds={activeEpidemiologiaIds}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'DXI' ? (
+                        <DiagnosticoImagenesDashboard 
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            onDatePresetChange={handleSetDatePreset}
+                            onCustomDateChange={(d, h) => {
+                                setFechaDesde(d);
+                                setFechaHasta(h);
+                                setDatePresetMode('personalizado');
+                            }}
                             addToast={addToast}
                         />
                     ) : sectorId === 'GUARDIA' ? (

@@ -502,6 +502,31 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                             <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '6px' }}>
                                 <span>{data.deudoresActivos} pacientes con saldo por cobrar</span>
                             </div>
+                            {/* Regla 30 días post-alta */}
+                            {data.totalDeudaExigible !== undefined && (
+                                <div style={{
+                                    marginTop: '8px',
+                                    paddingTop: '8px',
+                                    borderTop: '1px dashed #fcd34d',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '3px',
+                                    fontSize: '0.69rem',
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: '#b45309', fontWeight: 600 }}>⚖️ Exigible (&ge;30d post-alta):</span>
+                                        <strong style={{ color: '#92400e', fontFamily: 'monospace' }}>
+                                            {formatMoney(data.totalDeudaExigible)}
+                                        </strong>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: '#64748b' }}>⏳ En gracia (&lt;30d o sin alta):</span>
+                                        <strong style={{ color: '#475569', fontFamily: 'monospace' }}>
+                                            {formatMoney(data.totalDeudaEnGracia)}
+                                        </strong>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* 4. Efectividad de Cobranza sobre Gestión */}

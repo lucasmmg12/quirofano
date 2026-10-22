@@ -32,6 +32,7 @@ import { getIncentivosContactCenter, getTurnosDiariosContactCenter } from './inc
 import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
 import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turnos_contact_center.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
+import { getDxIAnalytics } from './sync_dxi.mjs';
 
 
 
@@ -4114,6 +4115,53 @@ app.get('/api/salus/guardia-internado', async (req, res) => {
 app.get('/api/salus/sync/guardia-internado', async (req, res) => {
     try {
         const data = await syncGuardiaInternado();
+        res.json({ success: true, results: data });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── Diagnóstico por Imágenes (DxI) — Gobernanza de Datos ──
+app.get('/api/salus/dxi-analytics', async (req, res) => {
+    try {
+        const { desde, hasta, refresh } = req.query;
+        const forceRefresh = refresh === 'true';
+
+        // Si no se pide refresh y no se pasa un rango específico, intentar leer de Supabase app_config para velocidad instantánea
+        if (!forceRefresh && !desde && !hasta) {
+            const { data: cfg } = await supabase
+                .from('app_config')
+                .select('value, updated_at')
+                .eq('key', 'dxi_analytics_cache')
+                .maybeSingle();
+
+            if (cfg?.value) {
+                try {
+                    const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
+                    return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
+                } catch (_) {}
+            }
+        }
+
+        const data = await getDxIAnalytics({
+            fechaDesde: desde || '2022-01-01',
+            fechaHasta: hasta || new Date().toISOString().substring(0, 10)
+        });
+
+        res.json({ success: true, fromCache: false, data, updated_at: new Date().toISOString() });
+    } catch (err) {
+        console.error('Error en /api/salus/dxi-analytics:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/salus/sync/dxi', async (req, res) => {
+    try {
+        const { desde, hasta } = req.query;
+        const data = await getDxIAnalytics({
+            fechaDesde: desde || '2022-01-01',
+            fechaHasta: hasta || new Date().toISOString().substring(0, 10)
+        });
         res.json({ success: true, results: data });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

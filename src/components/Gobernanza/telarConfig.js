@@ -67,6 +67,17 @@ export const SECTORES_CONFIG = [
         descripcion: 'Planilla C2 y Vigilancia Nacional (Bronquiolitis, ETI, Neumonía, Diarreas, Varicela, ETS)',
         activo: true,
         badge: 'Romano'
+    },
+    { 
+        id: 'DXI', 
+        label: 'Diagnóstico por Imágenes (DxI)', 
+        shortLabel: 'Imágenes (DxI)',
+        icon: '🩻', 
+        camasDefault: 0,
+        serviciosSalus: ['RADIOLOGIA', 'ECOGRAFIA', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA'],
+        descripcion: 'Ecografía, Mamografía, Tomografía (sin contrastes), Radiología y Densitometría Ósea (2022+)',
+        activo: true,
+        badge: 'Nuevo'
     }
 ];
 
@@ -563,5 +574,102 @@ export const INDICADORES_EPIDEMIOLOGIA_CATALOGO = [
 ];
 
 export const DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS = INDICADORES_EPIDEMIOLOGIA_CATALOGO.map(i => i.id);
+
+// ─── CATÁLOGO DE INDICADORES DE DIAGNÓSTICO POR IMÁGENES (DXI - 2022 EN ADELANTE) ───
+export const INDICADORES_DXI_CATALOGO = [
+    {
+        id: 'dxi_volumen_total',
+        label: 'Producción Total de Imágenes',
+        grupo: 'Volumen y Capacidad',
+        tipo: 'kpi',
+        icon: 'Layers',
+        descripcion: 'Total de estudios realizados en el período histórico (ECO, RX, MAM, TC sin contrastes, DE).',
+        benchmark: 'Demanda asistencial global',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA'
+    },
+    {
+        id: 'dxi_modalidades',
+        label: 'Distribución por Modalidad',
+        grupo: 'Modalidades Diagnósticas',
+        tipo: 'donut',
+        icon: 'PieChart',
+        descripcion: 'Segmentación porcentual por Ecografía, Radiología, Mamografía, Tomografía y Densitometría Ósea.',
+        benchmark: 'Mix de estudios diagnósticos',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA'
+    },
+    {
+        id: 'dxi_agendas',
+        label: 'Producción por Agenda Específica',
+        grupo: 'Gestión de Agendas',
+        tipo: 'bar',
+        icon: 'Calendar',
+        descripcion: 'Volumen nominal discriminado por cada Tipo de Visita / Agenda de turnos.',
+        benchmark: 'Utilización de agenda',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA ([Tipo Visita])'
+    },
+    {
+        id: 'dxi_ambito',
+        label: 'Diferenciación Ambulatorio vs Hospitalización',
+        grupo: 'Ámbito Asistencial',
+        tipo: 'donut',
+        icon: 'Building2',
+        descripcion: 'Relación entre pacientes de consulta ambulatoria vs internados en hospitalización.',
+        benchmark: 'Composición de demanda ambulatoria/internados',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA (Origen / Asistencia)'
+    },
+    {
+        id: 'dxi_prestadores_realizan',
+        label: 'Prestadores que la Realizan',
+        grupo: 'Cuerpo Profesional',
+        tipo: 'table',
+        icon: 'UserCheck',
+        descripcion: 'Médicos especialistas y técnicos responsables de la ejecución del estudio.',
+        benchmark: 'Productividad por profesional',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA (Responsable)'
+    },
+    {
+        id: 'dxi_prestadores_solicitan',
+        label: 'Prestadores que la Solicitan',
+        grupo: 'Demanda Médica y Derivación',
+        tipo: 'table',
+        icon: 'UserPlus',
+        descripcion: 'Médicos derivadores institucionales y externos que prescriben la práctica.',
+        benchmark: 'Prescripción y derivación clínica',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA (Solicitante)'
+    },
+    {
+        id: 'dxi_prestadores_informan',
+        label: 'Prestadores que Informan y Tasa de Firma',
+        grupo: 'Informes Médicos',
+        tipo: 'table',
+        icon: 'FileCheck2',
+        descripcion: 'Profesionales firmantes del informe diagnóstico y % de estudios informados vs pendientes.',
+        benchmark: 'Oportunidad de entrega de informes',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA ([Fecha Informado] / Responsable)'
+    },
+    {
+        id: 'dxi_obras_sociales',
+        label: 'Obras Sociales y Financiadores',
+        grupo: 'Financiadores',
+        tipo: 'bar_horizontal',
+        icon: 'CreditCard',
+        descripcion: 'Ranking de cobertura: OSP, Swiss Medical, PAMI, OSDE, Particular y convenios.',
+        benchmark: 'Concentración de cartera financiadora',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA (Cliente)'
+    },
+    {
+        id: 'dxi_centros',
+        label: 'Centros y Sedes de Atención',
+        grupo: 'Infraestructura',
+        tipo: 'bar',
+        icon: 'MapPin',
+        descripcion: 'Distribución física del volumen por sede (Santa Fe, San Luis Sur, Sede Central, Quirófano).',
+        benchmark: 'Capacidad por sede física',
+        origen: 'VLIS_PeticionesPruebas_ARGENTINA (VIS_Centro)'
+    }
+];
+
+export const DEFAULT_ACTIVE_DXI_IDS = INDICADORES_DXI_CATALOGO.map(i => i.id);
+
 
 

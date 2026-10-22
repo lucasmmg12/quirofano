@@ -19,9 +19,10 @@
 --   [10] HOSP_Habitacion
 --   [11] telefono1_formateado
 --   [12] email
+--   [13] Fecha alta (Opcional auditable)
 -- =====================================================
 
-SELECT TOP 1000
+SELECT 
     T.[Fecha albaran],
     T.Paciente,
     T.Paciente_NHC,
@@ -47,8 +48,11 @@ SELECT TOP 1000
             , 'ó', ''), 'ú', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '*', ''), '.', ''), ',', '')
         ELSE NULL
     END AS telefono1_formateado,
-    V.email
+    V.email,
+    CAST(TA.[Fecha alta] AS DATE) AS [Fecha alta]
 FROM [TABLEAU_Detalle de ventas Facturadas con Gastos y Honorarios] AS T
+LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] AS TA
+    ON T.[Núm.Admisión] = TA.[Número admisión]
 LEFT JOIN VIS_Pacientes AS V 
     ON T.Paciente_NHC = V.NHC
 WHERE T.Tarifa LIKE '042%'
@@ -56,4 +60,15 @@ WHERE T.Tarifa LIKE '042%'
   AND T.[Numero folio] IS NOT NULL
   AND T.Paciente IS NOT NULL
   AND T.[Fecha albaran] >= '2025-05-01'
+  -- =========================================================================
+  -- REGLA DE NEGOCIO OBLIGATORIA: 30 DÍAS POST-ALTA
+  -- Se considera Deuda Exigible de cobranzas únicamente luego de transcurridos
+  -- 30 días corridos desde el alta del paciente.
+  -- 1) Si tuvo internación/admisión: exige Fecha de Alta y >= 30 días de egreso.
+  -- 2) Si es prestación ambulatoria sin admisión: exige >= 30 días desde albarán.
+  -- =========================================================================
+  AND (
+      (T.[Núm.Admisión] IS NOT NULL AND TA.[Fecha alta] IS NOT NULL AND DATEDIFF(DAY, TA.[Fecha alta], CAST(GETDATE() AS DATE)) >= 30)
+      OR (T.[Núm.Admisión] IS NULL AND DATEDIFF(DAY, T.[Fecha albaran], CAST(GETDATE() AS DATE)) >= 30)
+  )
 ORDER BY T.[Fecha albaran] DESC

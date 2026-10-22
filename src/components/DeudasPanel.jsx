@@ -248,8 +248,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 fetchFacturas(deudor.id),
                 fetchSeguimiento(deudor.id),
                 fetchPlanesPago(deudor.id),
-                fetchCobros(deudor.id),
-                fetchNotasCredito(deudor.id),
+                fetchCobros(deudor.id, deudor.nhc),
+                fetchNotasCredito(deudor.id, deudor.nhc),
                 deudor.categoria === 'deuda_cancelada'
                     ? fetchDeudaCanceladaInfo(deudor.id)
                     : Promise.resolve(null),
