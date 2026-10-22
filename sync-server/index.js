@@ -4124,8 +4124,9 @@ app.get('/api/salus/sync/guardia-internado', async (req, res) => {
 // ── Diagnóstico por Imágenes (DxI) — Gobernanza de Datos ──
 app.get('/api/salus/dxi-analytics', async (req, res) => {
     try {
-        const { desde, hasta, refresh } = req.query;
-        const forceRefresh = refresh === 'true';
+        const desde = req.query.desde || req.query.fechaDesde;
+        const hasta = req.query.hasta || req.query.fechaHasta;
+        const forceRefresh = req.query.refresh === 'true';
 
         // Si no se pide refresh y no se pasa un rango específico, intentar leer de Supabase app_config para velocidad instantánea
         if (!forceRefresh && !desde && !hasta) {

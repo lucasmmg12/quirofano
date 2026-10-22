@@ -22,8 +22,21 @@ import {
     BarChart3, 
     SlidersHorizontal,
     FileSpreadsheet,
-    HelpCircle
+    HelpCircle,
+    TrendingUp,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
+import {
+    ResponsiveContainer,
+    LineChart,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as RechartsTooltip,
+    Legend
+} from 'recharts';
 import { supabase } from '../../lib/supabase';
 
 // Colores Institucionales Sanatorio Argentino (Calidad-QOAG)
@@ -62,6 +75,20 @@ export default function DiagnosticoImagenesDashboard({
     const [filterAmbito, setFilterAmbito] = useState('TODOS'); // 'TODOS' | 'Ambulatorio' | 'Hospitalización'
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTabDetail, setActiveTabDetail] = useState('prestadores'); // 'prestadores' | 'solicitantes' | 'informantes' | 'obras_sociales' | 'centros'
+
+    // Estados para el Gráfico de Progresión Temporal
+    const [chartGranularity, setChartGranularity] = useState('auto'); // 'auto' | 'dia' | 'mes'
+    const [chartCollapsed, setChartCollapsed] = useState(false);
+    const [visibleSeries, setVisibleSeries] = useState({
+        total: true,
+        ECOGRAFIA: true,
+        RADIOLOGIA: true,
+        MAMOGRAFIA: true,
+        TOMOGRAFIA: true,
+        DENSITOMETRIA: true,
+        ambulatorio: true,
+        hospitalizacion: true
+    });
 
     // Rango efectivo (supeditado al filtro superior del Telar)
     const effectiveDesde = fechaDesde || '2022-01-01';
@@ -340,6 +367,123 @@ export default function DiagnosticoImagenesDashboard({
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
     }, [data, selectedModalidad, selectedAgenda]);
+
+    // ─── CÁLCULOS PARA GRÁFICO DE PROGRESIÓN TEMPORAL ───
+    const rangeDays = useMemo(() => {
+        if (!effectiveDesde || !effectiveHasta) return 30;
+        const d1 = new Date(effectiveDesde + 'T00:00:00');
+        const d2 = new Date(effectiveHasta + 'T23:59:59');
+        return Math.max(1, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)));
+    }, [effectiveDesde, effectiveHasta]);
+
+    const activeGranularity = useMemo(() => {
+        if (chartGranularity !== 'auto') return chartGranularity;
+        const hasDaily = data?.evolucion?.some(e => Boolean(e.FechaDia));
+        return (rangeDays <= 65 && hasDaily) ? 'dia' : 'mes';
+    }, [chartGranularity, rangeDays, data?.evolucion]);
+
+    const progressionChartData = useMemo(() => {
+        if (!data?.evolucion || !Array.isArray(data.evolucion) || data.evolucion.length === 0) return [];
+
+        const map = new Map();
+
+        // Si es granularidad diaria y rango moderado (<= 62 días), poblar todos los días con 0 para continuidad clínica
+        if (activeGranularity === 'dia' && effectiveDesde && effectiveHasta && rangeDays <= 62) {
+            const start = new Date(effectiveDesde + 'T00:00:00');
+            const end = new Date(effectiveHasta + 'T00:00:00');
+            const todayStr = new Date().toISOString().substring(0, 10);
+            const cur = new Date(start);
+            while (cur <= end) {
+                const yyyy = cur.getFullYear();
+                const mm = String(cur.getMonth() + 1).padStart(2, '0');
+                const dd = String(cur.getDate()).padStart(2, '0');
+                const dayKey = `${yyyy}-${mm}-${dd}`;
+                if (dayKey > todayStr && dayKey > effectiveHasta) break;
+
+                map.set(dayKey, {
+                    key: dayKey,
+                    label: `${dd}/${mm}`,
+                    fullDate: dayKey,
+                    total: 0,
+                    ECOGRAFIA: 0,
+                    RADIOLOGIA: 0,
+                    MAMOGRAFIA: 0,
+                    TOMOGRAFIA: 0,
+                    DENSITOMETRIA: 0,
+                    OTRAS: 0,
+                    ambulatorio: 0,
+                    hospitalizacion: 0
+                });
+                cur.setDate(cur.getDate() + 1);
+            }
+        }
+
+        // Acumular registros
+        data.evolucion.forEach(r => {
+            // Filtro de Ámbito
+            if (filterAmbito !== 'TODOS' && r.Ambito && r.Ambito !== filterAmbito) return;
+            // Si hay una modalidad seleccionada puntual (que no sea TODAS)
+            if (selectedModalidad !== 'TODAS' && r.Modalidad && r.Modalidad !== selectedModalidad) return;
+
+            const timeKey = (activeGranularity === 'dia' && r.FechaDia) ? r.FechaDia : (r.PeriodoMes || r.FechaDia?.substring(0, 7));
+            if (!timeKey) return;
+
+            if (!map.has(timeKey)) {
+                let label = timeKey;
+                if (timeKey.length === 10) {
+                    const parts = timeKey.split('-');
+                    label = `${parts[2]}/${parts[1]}`;
+                } else if (timeKey.length === 7) {
+                    const [y, m] = timeKey.split('-');
+                    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                    label = `${meses[parseInt(m, 10) - 1] || m} ${y.slice(2)}`;
+                }
+
+                map.set(timeKey, {
+                    key: timeKey,
+                    label,
+                    fullDate: timeKey,
+                    total: 0,
+                    ECOGRAFIA: 0,
+                    RADIOLOGIA: 0,
+                    MAMOGRAFIA: 0,
+                    TOMOGRAFIA: 0,
+                    DENSITOMETRIA: 0,
+                    OTRAS: 0,
+                    ambulatorio: 0,
+                    hospitalizacion: 0
+                });
+            }
+
+            const point = map.get(timeKey);
+            const cant = r.Cantidad || 0;
+            point.total += cant;
+
+            const mod = r.Modalidad || 'OTRAS';
+            if (point[mod] !== undefined) {
+                point[mod] += cant;
+            } else {
+                point.OTRAS += cant;
+            }
+
+            if (r.Ambito === 'Hospitalización') {
+                point.hospitalizacion += cant;
+            } else {
+                point.ambulatorio += cant;
+            }
+        });
+
+        return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
+    }, [data?.evolucion, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, selectedModalidad]);
+
+    const chartStats = useMemo(() => {
+        if (!progressionChartData.length) return { total: 0, avg: 0, peak: null };
+        const total = progressionChartData.reduce((acc, p) => acc + p.total, 0);
+        const nonZeroPoints = progressionChartData.filter(p => p.total > 0);
+        const avg = nonZeroPoints.length > 0 ? (total / nonZeroPoints.length).toFixed(1) : (total / progressionChartData.length).toFixed(1);
+        const peak = progressionChartData.reduce((max, p) => p.total > (max?.total || 0) ? p : max, null);
+        return { total, avg, peak };
+    }, [progressionChartData]);
 
     // ─── EXPORTACIÓN A CSV / EXCEL ───
     const handleExportCsv = () => {
@@ -775,6 +919,445 @@ export default function DiagnosticoImagenesDashboard({
                         />
                     </div>
                 </div>
+            </div>
+
+            {/* ─── GRÁFICO DE LÍNEAS: PROGRESIÓN DEL PERÍODO ─── */}
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '14px',
+                border: '1px solid #E2E8F0',
+                padding: '16px 20px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+            }}>
+                {/* Header del Gráfico */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '10px',
+                            background: '#EFF6FF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: COLOR_PRIMARY
+                        }}>
+                            <TrendingUp size={20} />
+                        </div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#0F172A' }}>
+                                    Progresión del Período — Evolución Temporal
+                                </h3>
+                                <span style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    color: COLOR_PRIMARY,
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    textTransform: 'uppercase'
+                                }}>
+                                    {activeGranularity === 'dia' ? 'Vista Diaria' : 'Vista Mensual'}
+                                </span>
+                            </div>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                                {selectedModalidad === 'TODAS' 
+                                    ? 'Curva de estudios realizados por día/mes y desglose por modalidad diagnóstica'
+                                    : `Curva evolutiva para modalidad ${selectedModalidad} desagregada por ámbito`}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Controles de Granularidad y Resumen */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        {/* Indicadores Clave */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.75rem',
+                                color: '#475569'
+                            }}>
+                                Promedio: <strong style={{ color: '#0F172A' }}>{chartStats.avg}</strong> {activeGranularity === 'dia' ? 'est/día' : 'est/mes'}
+                            </div>
+
+                            {chartStats.peak && (
+                                <div style={{
+                                    background: '#FEF3C7',
+                                    border: '1px solid #FDE68A',
+                                    padding: '4px 10px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.75rem',
+                                    color: '#92400E'
+                                }}>
+                                    Pico: <strong>{chartStats.peak.total.toLocaleString('es-AR')}</strong> ({chartStats.peak.label})
+                                </div>
+                            )}
+
+                            <div style={{
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                padding: '4px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.75rem',
+                                color: COLOR_PRIMARY
+                            }}>
+                                Total Período: <strong>{chartStats.total.toLocaleString('es-AR')}</strong>
+                            </div>
+                        </div>
+
+                        {/* Switch Granularidad: Auto / Día / Mes */}
+                        <div style={{ display: 'flex', background: '#F1F5F9', padding: '2px', borderRadius: '8px', gap: '2px' }}>
+                            {[
+                                { id: 'auto', label: 'Auto' },
+                                { id: 'dia', label: 'Día' },
+                                { id: 'mes', label: 'Mes' }
+                            ].map(btn => (
+                                <button
+                                    key={btn.id}
+                                    onClick={() => setChartGranularity(btn.id)}
+                                    style={{
+                                        border: 'none',
+                                        padding: '4px 8px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        background: chartGranularity === btn.id ? '#FFFFFF' : 'transparent',
+                                        color: chartGranularity === btn.id ? COLOR_PRIMARY : '#64748B',
+                                        boxShadow: chartGranularity === btn.id ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                                    }}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Botón Colapsar / Expandir */}
+                        <button
+                            onClick={() => setChartCollapsed(!chartCollapsed)}
+                            title={chartCollapsed ? 'Expandir gráfico' : 'Colapsar gráfico'}
+                            style={{
+                                border: '1px solid #E2E8F0',
+                                background: '#FFFFFF',
+                                borderRadius: '8px',
+                                padding: '6px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#64748B'
+                            }}
+                        >
+                            {chartCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                        </button>
+                    </div>
+                </div>
+
+                {!chartCollapsed && (
+                    <>
+                        {/* Selector / Leyenda interactiva de series */}
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            gap: '8px',
+                            paddingTop: '6px',
+                            borderTop: '1px solid #F1F5F9',
+                            fontSize: '0.75rem'
+                        }}>
+                            <span style={{ color: '#64748B', fontWeight: 600, marginRight: '4px' }}>Series visibles:</span>
+                            
+                            {/* Toggle Total */}
+                            <button
+                                onClick={() => setVisibleSeries(prev => ({ ...prev, total: !prev.total }))}
+                                style={{
+                                    borderRadius: '14px',
+                                    padding: '3px 10px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: visibleSeries.total ? '#EFF6FF' : '#F1F5F9',
+                                    color: visibleSeries.total ? '#1D4ED8' : '#94A3B8',
+                                    border: visibleSeries.total ? '1px solid #BFDBFE' : '1px solid #E2E8F0'
+                                }}
+                            >
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB' }} />
+                                Total {selectedModalidad === 'TODAS' ? 'General' : selectedModalidad}
+                            </button>
+
+                            {selectedModalidad === 'TODAS' ? (
+                                <>
+                                    {[
+                                        { key: 'ECOGRAFIA', label: 'Ecografía (ECO)', color: '#06B6D4' },
+                                        { key: 'RADIOLOGIA', label: 'Radiología (RX)', color: '#6366F1' },
+                                        { key: 'MAMOGRAFIA', label: 'Mamografía', color: '#EC4899' },
+                                        { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', color: '#F59E0B' },
+                                        { key: 'DENSITOMETRIA', label: 'Densitometría', color: '#10B981' }
+                                    ].map(s => (
+                                        <button
+                                            key={s.key}
+                                            onClick={() => setVisibleSeries(prev => ({ ...prev, [s.key]: !prev[s.key] }))}
+                                            style={{
+                                                borderRadius: '14px',
+                                                padding: '3px 10px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 600,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                background: visibleSeries[s.key] ? '#FFFFFF' : '#F8FAFC',
+                                                color: visibleSeries[s.key] ? '#1E293B' : '#94A3B8',
+                                                border: visibleSeries[s.key] ? `1px solid ${s.color}` : '1px solid #E2E8F0',
+                                                opacity: visibleSeries[s.key] ? 1 : 0.6
+                                            }}
+                                        >
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                                            {s.label}
+                                        </button>
+                                    ))}
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => setVisibleSeries(prev => ({ ...prev, ambulatorio: !prev.ambulatorio }))}
+                                        style={{
+                                            borderRadius: '14px',
+                                            padding: '3px 10px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            background: visibleSeries.ambulatorio ? '#ECFDF5' : '#F8FAFC',
+                                            color: visibleSeries.ambulatorio ? '#047857' : '#94A3B8',
+                                            border: visibleSeries.ambulatorio ? '1px solid #A7F3D0' : '1px solid #E2E8F0'
+                                        }}
+                                    >
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
+                                        Ambulatorio
+                                    </button>
+
+                                    <button
+                                        onClick={() => setVisibleSeries(prev => ({ ...prev, hospitalizacion: !prev.hospitalizacion }))}
+                                        style={{
+                                            borderRadius: '14px',
+                                            padding: '3px 10px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            background: visibleSeries.hospitalizacion ? '#F5F3FF' : '#F8FAFC',
+                                            color: visibleSeries.hospitalizacion ? '#6D28D9' : '#94A3B8',
+                                            border: visibleSeries.hospitalizacion ? '1px solid #DDD6FE' : '1px solid #E2E8F0'
+                                        }}
+                                    >
+                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8B5CF6' }} />
+                                        Hospitalización
+                                    </button>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Contenedor del Gráfico Recharts */}
+                        <div style={{ width: '100%', height: '300px', marginTop: '6px' }}>
+                            {loading ? (
+                                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', gap: '8px' }}>
+                                    <RefreshCw className="animate-spin" size={18} color={COLOR_PRIMARY} />
+                                    <span style={{ fontSize: '0.85rem' }}>Cargando evolución temporal de estudios...</span>
+                                </div>
+                            ) : progressionChartData.length === 0 ? (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94A3B8' }}>
+                                    <Activity size={32} strokeWidth={1.5} style={{ marginBottom: '8px', opacity: 0.6 }} />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>No hay datos de evolución temporal para el período seleccionado</span>
+                                    <span style={{ fontSize: '0.75rem' }}>Verifique el rango de fechas seleccionado en la barra superior</span>
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={progressionChartData} margin={{ top: 12, right: 18, left: -10, bottom: 4 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                                        <XAxis 
+                                            dataKey="label" 
+                                            stroke="#94A3B8" 
+                                            fontSize={11} 
+                                            tickLine={false} 
+                                            axisLine={{ stroke: '#E2E8F0' }} 
+                                            minTickGap={14} 
+                                        />
+                                        <YAxis 
+                                            stroke="#94A3B8" 
+                                            fontSize={11} 
+                                            tickLine={false} 
+                                            axisLine={false} 
+                                            tickFormatter={v => v.toLocaleString('es-AR')} 
+                                        />
+                                        <RechartsTooltip
+                                            content={({ active, payload, label }) => {
+                                                if (!active || !payload || !payload.length) return null;
+                                                const pointData = payload[0]?.payload;
+                                                return (
+                                                    <div style={{
+                                                        background: '#FFFFFF',
+                                                        border: '1px solid #CBD5E1',
+                                                        borderRadius: '10px',
+                                                        padding: '10px 14px',
+                                                        boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
+                                                        fontSize: '0.78rem',
+                                                        minWidth: '200px'
+                                                    }}>
+                                                        <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
+                                                            {activeGranularity === 'dia' ? `Fecha: ${pointData?.fullDate || label}` : `Período: ${label}`}
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 800, color: '#2563EB' }}>
+                                                            <span>Total Estudios:</span>
+                                                            <span>{(pointData?.total || 0).toLocaleString('es-AR')}</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                            {payload.filter(p => p.dataKey !== 'total' && p.value > 0).map((p, idx) => (
+                                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: '#475569' }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color || p.stroke }}></span>
+                                                                        <span>{p.name}:</span>
+                                                                    </div>
+                                                                    <span style={{ fontWeight: 600, color: '#1E293B' }}>{p.value.toLocaleString('es-AR')}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }}
+                                        />
+
+                                        {/* Series para TODAS LAS MODALIDADES */}
+                                        {selectedModalidad === 'TODAS' && (
+                                            <>
+                                                {visibleSeries.total && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="total" 
+                                                        name="Total General" 
+                                                        stroke="#2563EB" 
+                                                        strokeWidth={2.8} 
+                                                        dot={{ r: 2.5, fill: '#2563EB' }} 
+                                                        activeDot={{ r: 6 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.ECOGRAFIA && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="ECOGRAFIA" 
+                                                        name="Ecografía (ECO)" 
+                                                        stroke="#06B6D4" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.RADIOLOGIA && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="RADIOLOGIA" 
+                                                        name="Radiología (RX)" 
+                                                        stroke="#6366F1" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.MAMOGRAFIA && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="MAMOGRAFIA" 
+                                                        name="Mamografía" 
+                                                        stroke="#EC4899" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.TOMOGRAFIA && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="TOMOGRAFIA" 
+                                                        name="Tomografía (TC)" 
+                                                        stroke="#F59E0B" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.DENSITOMETRIA && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="DENSITOMETRIA" 
+                                                        name="Densitometría" 
+                                                        stroke="#10B981" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                            </>
+                                        )}
+
+                                        {/* Series para MODALIDAD ESPECÍFICA */}
+                                        {selectedModalidad !== 'TODAS' && (
+                                            <>
+                                                {visibleSeries.total && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="total" 
+                                                        name={`Total ${selectedModalidad}`} 
+                                                        stroke={MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB'} 
+                                                        strokeWidth={2.8} 
+                                                        dot={{ r: 2.5, fill: MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB' }} 
+                                                        activeDot={{ r: 6 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.ambulatorio && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="ambulatorio" 
+                                                        name="Ambulatorio" 
+                                                        stroke="#10B981" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.hospitalizacion && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="hospitalizacion" 
+                                                        name="Hospitalización" 
+                                                        stroke="#8B5CF6" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                            </>
+                                        )}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* ─── GRID PRINCIPAL: TABLA DE AGENDAS + PANEL DE PROFUNDIZACIÓN ─── */}

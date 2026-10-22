@@ -48,6 +48,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
         const batchQuery = `
             -- 1. Filtrar una sola vez al espacio temporal indexado
             SELECT 
+                CONVERT(VARCHAR(10), [Fecha Solicitud], 120) AS FechaDia,
                 CONVERT(VARCHAR(7), [Fecha Solicitud], 120) AS PeriodoMes,
                 CASE 
                     WHEN [Tipo Visita] LIKE '(ECO)%' OR Prueba LIKE '%ECOGRAF%' OR Prueba LIKE '%DOPPLER%' THEN 'ECOGRAFIA'
@@ -110,11 +111,11 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             FROM #TempDxI
             GROUP BY Modalidad, Agenda, ObraSocial;
 
-            -- Set 5: Evolución Temporal
-            SELECT PeriodoMes, Modalidad, COUNT(*) AS Cantidad
+            -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito)
+            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad
-            ORDER BY PeriodoMes ASC;
+            GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito
+            ORDER BY FechaDia ASC;
 
             DROP TABLE #TempDxI;
         `;
