@@ -1317,12 +1317,34 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         };
     });
 
-    // 2. Datos para Gráfico de Líneas: Evolución de la Deuda Total
-    let acumuladoDeuda = 0;
+    // 2. Datos para Gráfico de Líneas: Evolución de la Deuda Total (Stock de Pasivo Vivo al cierre de cada mes)
+    const stockPorMes = {};
+    const curYm = new Date().toISOString().substring(0, 7);
+    const pastOrCurrentMonths = sortedMonths.filter(m => m <= curYm);
+    const anchorMonth = pastOrCurrentMonths.length > 0 
+        ? pastOrCurrentMonths[pastOrCurrentMonths.length - 1] 
+        : sortedMonths[sortedMonths.length - 1];
+
+    stockPorMes[anchorMonth] = Math.round(deudaBruta);
+
+    const anchorIdx = sortedMonths.indexOf(anchorMonth);
+    for (let i = anchorIdx; i > 0; i--) {
+        const curM = sortedMonths[i];
+        const prevM = sortedMonths[i - 1];
+        const originada = deudaPorMes[curM] || 0;
+        const cobrada = cobradoPorMes[curM] || 0;
+        const prevStock = stockPorMes[curM] - originada + cobrada;
+        stockPorMes[prevM] = Math.max(0, Math.round(prevStock));
+    }
+
+    for (let i = anchorIdx + 1; i < sortedMonths.length; i++) {
+        stockPorMes[sortedMonths[i]] = Math.round(deudaBruta);
+    }
+
     const evolucionDeudaTotal = sortedMonths.map(ym => {
         const originada = deudaPorMes[ym] || 0;
         const cobrada = cobradoPorMes[ym] || 0;
-        acumuladoDeuda = Math.max(0, acumuladoDeuda + originada - cobrada);
+        const stockMes = stockPorMes[ym] ?? Math.round(deudaBruta);
         const inPeriod = targetYmStart && targetYmEnd 
             ? (ym >= targetYmStart && ym <= targetYmEnd)
             : true;
@@ -1330,7 +1352,7 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         return {
             rawMes: ym,
             mes: formatMonthLabel(ym),
-            deudaTotal: Math.round(acumuladoDeuda),
+            deudaTotal: stockMes,
             cobradaMes: Math.round(cobrada),
             incorporadaMes: Math.round(originada),
             inPeriod
