@@ -335,16 +335,190 @@ const INTERANUAL_DATA = [
     { mes: 'Oct', a2022: 723, a2023: 803, a2024: 723, a2025: 760, a2026: 72, central2026: 55, hdd2026: 17 }
 ];
 
-// Matriz de Bloques Quirúrgicos (Con trazabilidad de Paciente Ficticio, Titular vs Pérdida de Bloque)
-const BLOQUES_DATA = [
-    { cirujano: 'Dr. Matías Muñoz Carratú', quirofano: 'Qx 1', dia: 'Miércoles', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasTitular: 16.0, horasPerdida: 1.5, horasOciosas: 4.1, ocupacionTitularPct: 74.1, estado7dias: 'CONFIRMADO', alerta: false },
-    { cirujano: 'Dr. Marcelo Ponce', quirofano: 'HdD (Qx 6)', dia: 'Lunes', horario: '08:00 - 12:30 (4.5h)', horasMes: 19.5, horasTitular: 18.0, horasPerdida: 0.0, horasOciosas: 1.5, ocupacionTitularPct: 92.3, estado7dias: 'CONFIRMADO', alerta: false },
-    { cirujano: 'Dr. Martín Galvarini', quirofano: 'HdD (Qx 6)', dia: 'Viernes', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasTitular: 19.0, horasPerdida: 1.0, horasOciosas: 1.6, ocupacionTitularPct: 88.0, estado7dias: 'CONFIRMADO', alerta: false },
-    { cirujano: 'Dr. Wadi Azuri', quirofano: 'Qx 1 (Láser)', dia: 'Sábado', horario: '08:00 - 13:00 (5h)', horasMes: 21.6, horasTitular: 10.5, horasPerdida: 4.5, horasOciosas: 6.6, ocupacionTitularPct: 48.6, estado7dias: 'LIBERAR', alerta: true },
-    { cirujano: 'Cirugía Cardiovascular', quirofano: 'Qx 1', dia: 'Jueves', horario: '07:00 - 16:00 (9h)', horasMes: 39.0, horasTitular: 31.5, horasPerdida: 0.0, horasOciosas: 7.5, ocupacionTitularPct: 80.8, estado7dias: 'CONFIRMADO', alerta: false },
-    { cirujano: 'Dr. Diego Gempel', quirofano: 'Qx 2', dia: 'Martes', horario: '08:00 - 14:00 (6h)', horasMes: 26.0, horasTitular: 17.5, horasPerdida: 3.5, horasOciosas: 5.0, ocupacionTitularPct: 67.3, estado7dias: 'CONFIRMADO', alerta: false },
-    { cirujano: 'Dra. Daniela Saldivar Ozán', quirofano: 'Qx 4', dia: 'Lunes', horario: '14:00 - 20:00 (6h)', horasMes: 26.0, horasTitular: 9.5, horasPerdida: 6.5, horasOciosas: 10.0, ocupacionTitularPct: 36.5, estado7dias: 'LIBERAR', alerta: true }
+// ─── MATRIZ OFICIAL DE BLOQUES QUIRÚRGICOS (RELEVAMIENTO INSTITUCIONAL SANATORIO ARGENTINO) ───
+// Datos auditados de ocupación de bloques: Período Agosto - Septiembre 2026
+const BLOQUES_CONFIG = [
+    // 1. Quirófano Central:
+    {
+        id: 'pons_rodrigo',
+        cirujano: 'Dr. Rodrigo Pons',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 1',
+        dia: 'Lunes',
+        diaIdx: 1,
+        horario: '08:00 - 13:00 (5h)',
+        horasSemanales: 5.0,
+        horasMes: 20.0,
+        ocupacionAgo: 100.0,
+        ocupacionSep: 100.0,
+        color: '#FECDD3',
+        textColor: '#9F1239',
+        nota: 'Quirófano Central'
+    },
+    {
+        id: 'molina_mauricio',
+        cirujano: 'Dr. Mauricio Molina',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 1',
+        dia: 'Lunes',
+        diaIdx: 1,
+        horario: '14:00 - 19:00 (5h)',
+        horasSemanales: 5.0,
+        horasMes: 20.0,
+        ocupacionAgo: 25.0,
+        ocupacionSep: 0.0,
+        color: '#E2E8F0',
+        textColor: '#334155',
+        nota: 'Baja ocupación / Pasible de liberación'
+    },
+    {
+        id: 'azuri_wadi',
+        cirujano: 'Dr. Wadi Azuri',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 1',
+        dia: 'Martes',
+        diaIdx: 2,
+        horario: '08:00 - 13:00 (5h)',
+        horasSemanales: 5.0,
+        horasMes: 20.0,
+        ocupacionAgo: 75.0,
+        ocupacionSep: 60.0,
+        color: '#DCFCE7',
+        textColor: '#166534',
+        nota: 'Quirófano Central (Láser)'
+    },
+    {
+        id: 'penate_javier',
+        cirujano: 'Dr. Javier Peñate',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 4',
+        dia: 'Martes',
+        diaIdx: 2,
+        horario: '08:00 - 13:00 (5h)',
+        horasSemanales: 2.5,
+        horasMes: 10.0,
+        ocupacionAgo: 100.0,
+        ocupacionSep: 50.0,
+        color: '#F3E8FF',
+        textColor: '#6B21A8',
+        nota: '2 bloques mensuales (Quincenal)'
+    },
+    {
+        id: 'scarso_carlos',
+        cirujano: 'Dr. Carlos Scarso',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 4',
+        dia: 'Martes',
+        diaIdx: 2,
+        horario: '16:00 - 20:00 (4h)',
+        horasSemanales: 4.0,
+        horasMes: 16.0,
+        ocupacionAgo: 100.0,
+        ocupacionSep: 60.0,
+        color: '#DBEAFE',
+        textColor: '#1E40AF',
+        nota: 'Ginecología vespertina'
+    },
+    {
+        id: 'munoz_matias',
+        cirujano: 'Dr. Matías Muñoz Carratú',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 1',
+        dia: 'Miércoles',
+        diaIdx: 3,
+        horario: '08:30 - 14:00 (5.5h)',
+        horasSemanales: 5.5,
+        horasMes: 22.0,
+        ocupacionAgo: 75.0,
+        ocupacionSep: 100.0,
+        color: '#FEF3C7',
+        textColor: '#92400E',
+        nota: 'Quirófano Central'
+    },
+    {
+        id: 'ccv_cardiovascular',
+        cirujano: 'Cirugía Cardiovascular (CCV)',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 1',
+        dia: 'Jueves',
+        diaIdx: 4,
+        horario: '07:00 - 17:00 (10h)',
+        horasSemanales: 2.5,
+        horasMes: 10.0,
+        ocupacionAgo: 0.0,
+        ocupacionSep: 0.0,
+        color: '#FCA5A5',
+        textColor: '#991B1B',
+        nota: '3º jueves de cada mes (Sin actividad en Ago/Sep)'
+    },
+    {
+        id: 'gempel_diego',
+        cirujano: 'Dr. Diego Gempel',
+        ambito: 'CENTRAL',
+        quirofano: 'Qx 1',
+        dia: 'Jueves',
+        diaIdx: 4,
+        horario: '07:30 - 13:00 (5.5h)',
+        horasSemanales: 5.5,
+        horasMes: 22.0,
+        ocupacionAgo: 75.0,
+        ocupacionSep: 75.0,
+        color: '#FBCFE8',
+        textColor: '#9D174D',
+        nota: 'Cuando hay CCV, pasa a Qx 2'
+    },
+
+    // 2. Hospital de Día (HdD):
+    {
+        id: 'ponce_marcelo',
+        cirujano: 'Dr. Marcelo Ponce',
+        ambito: 'HDD',
+        quirofano: 'HdD (Qx 6)',
+        dia: 'Lunes, Martes y Jueves',
+        diaIdx: 1,
+        horario: 'Lun 09:30-13:30, Mar y Jue 10:00-12:30 (9h)',
+        horasSemanales: 9.0,
+        horasMes: 36.0,
+        ocupacionAgo: 58.33,
+        ocupacionSep: 84.60,
+        color: '#FEF9C3',
+        textColor: '#854D0E',
+        nota: '3 bloques semanales en HdD (Qx 6)'
+    },
+    {
+        id: 'galvarini_martin',
+        cirujano: 'Dr. Martín Galvarini',
+        ambito: 'HDD',
+        quirofano: 'HdD (Qx 6)',
+        dia: 'Lunes',
+        diaIdx: 1,
+        horario: '13:30 - 20:00 (6.5h)',
+        horasSemanales: 6.5,
+        horasMes: 26.0,
+        ocupacionAgo: 75.0,
+        ocupacionSep: 100.0,
+        color: '#BAE6FD',
+        textColor: '#0369A1',
+        nota: 'Hospital de Día (Lunes tarde)'
+    }
 ];
+
+// Fallback por retrocompatibilidad
+const BLOQUES_DATA = BLOQUES_CONFIG.map(b => ({
+    cirujano: b.cirujano,
+    quirofano: b.quirofano,
+    dia: b.dia,
+    horario: b.horario,
+    horasMes: b.horasMes,
+    horasTitular: Number(((b.horasMes * b.ocupacionAgo) / 100).toFixed(1)),
+    horasPerdida: 0.0,
+    horasOciosas: Number(Math.max(0, b.horasMes - ((b.horasMes * b.ocupacionAgo) / 100)).toFixed(1)),
+    ocupacionTitularPct: b.ocupacionAgo,
+    estado7dias: b.ocupacionAgo < 45.0 ? 'LIBERAR' : 'CONFIRMADO',
+    alerta: b.ocupacionAgo < 45.0,
+    nota: b.nota,
+    ambito: b.ambito
+}));
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS (QUIRÓFANO) ───
 const CHART_HELP_CATALOGO = {
@@ -1031,8 +1205,9 @@ export default function QuirofanoDashboard({
     const [nominalSearch, setNominalSearch] = useState('');
     const [nominalFilterStatus, setNominalFilterStatus] = useState('TODOS'); // 'TODOS' | 'REALIZADAS' | 'SUSPENDIDAS'
     const [nominalFilterSala, setNominalFilterSala] = useState('TODOS');
-    const [selectedSuspensionGroup, setSelectedSuspensionGroup] = useState(null); // { key, label, causales, codigo? }
     const [suspensionModalSearch, setSuspensionModalSearch] = useState('');
+    const [vistaBloques, setVistaBloques] = useState('lista'); // 'lista' | 'grilla'
+    const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
 
     // Fechas por defecto en caso de que el componente sea montado sin props de fecha
     const defaultDesde = useMemo(() => {
@@ -1432,6 +1607,95 @@ export default function QuirofanoDashboard({
         }
         return (idx % 2 === 0) ? 'Qx 1' : 'Qx 2';
     };
+
+    // Período activo efectivo para la auditoría de Bloques Quirúrgicos
+    const effectiveBloquesPeriod = useMemo(() => {
+        if (bloquesMesFiltro === 'AGO') return 'Agosto 2026';
+        if (bloquesMesFiltro === 'SEP') return 'Septiembre 2026';
+        if (bloquesMesFiltro === 'PROMEDIO') return 'Bimestre Ago-Sep 2026';
+        
+        // Modo 'auto': inferir a partir de effectiveDesde / effectiveHasta / activePeriodLabel
+        const pUpper = (activePeriodLabel || '').toUpperCase();
+        const dUpper = (effectiveDesde || '').toUpperCase();
+        if (pUpper.includes('SEPT') || dUpper.includes('-09-')) return 'Septiembre 2026';
+        if (pUpper.includes('AGO') || dUpper.includes('-08-')) return 'Agosto 2026';
+        return 'Agosto 2026'; // Benchmark base de auditoría
+    }, [bloquesMesFiltro, activePeriodLabel, effectiveDesde]);
+
+    // Matriz de bloques reactiva con cálculos de horas titular, horas ociosas y alerta 7d
+    const activeBloquesData = useMemo(() => {
+        const isSep = effectiveBloquesPeriod.includes('Septiembre');
+        const isBimestre = effectiveBloquesPeriod.includes('Bimestre');
+
+        return BLOQUES_CONFIG.map(b => {
+            let pct = b.ocupacionAgo;
+            if (isSep) {
+                pct = b.ocupacionSep;
+            } else if (isBimestre) {
+                pct = Number(((b.ocupacionAgo + b.ocupacionSep) / 2).toFixed(1));
+            }
+
+            const horasTitular = Number(((b.horasMes * pct) / 100).toFixed(1));
+            const horasOciosas = Number(Math.max(0, b.horasMes - horasTitular).toFixed(1));
+            const horasPerdida = 0.0;
+            const alerta = pct < 45.0; // Umbral de alerta para liberación de sala a 7 días
+            const estado7dias = alerta ? 'LIBERAR' : 'CONFIRMADO';
+
+            return {
+                id: b.id,
+                cirujano: b.cirujano,
+                ambito: b.ambito,
+                quirofano: b.quirofano,
+                dia: b.dia,
+                diaIdx: b.diaIdx,
+                horario: b.horario,
+                horasSemanales: b.horasSemanales,
+                horasMes: b.horasMes,
+                horasTitular,
+                horasPerdida,
+                horasOciosas,
+                ocupacionTitularPct: pct,
+                ocupacionAgo: b.ocupacionAgo,
+                ocupacionSep: b.ocupacionSep,
+                color: b.color,
+                textColor: b.textColor,
+                alerta,
+                estado7dias,
+                nota: b.nota
+            };
+        });
+    }, [effectiveBloquesPeriod]);
+
+    // Resumen cuantitativo para las 4 KPI Cards superiores de Bloques
+    const bloquesMetricsSummary = useMemo(() => {
+        let totalAsignadas = 0;
+        let totalTitular = 0;
+        let totalPerdida = 0;
+        let totalOciosas = 0;
+        let alertasLiberar = 0;
+
+        activeBloquesData.forEach(b => {
+            totalAsignadas += b.horasMes;
+            totalTitular += b.horasTitular;
+            totalPerdida += b.horasPerdida;
+            totalOciosas += b.horasOciosas;
+            if (b.alerta) alertasLiberar++;
+        });
+
+        const pctUsoTitular = totalAsignadas > 0 ? Number(((totalTitular / totalAsignadas) * 100).toFixed(1)) : 0;
+        const pctOciosas = totalAsignadas > 0 ? Number(((totalOciosas / totalAsignadas) * 100).toFixed(1)) : 0;
+
+        return {
+            totalAsignadas: Number(totalAsignadas.toFixed(1)),
+            totalTitular: Number(totalTitular.toFixed(1)),
+            totalPerdida: Number(totalPerdida.toFixed(1)),
+            totalOciosas: Number(totalOciosas.toFixed(1)),
+            pctUsoTitular,
+            pctOciosas,
+            alertasLiberar,
+            totalBloques: activeBloquesData.length
+        };
+    }, [activeBloquesData]);
 
     // Función unificada de exportación a Excel con diseño visual estilizado, colores institucionales y período analizado destacado
     const handleExportAllQuirofanoExcel = async (customRows = null, customFilename = null) => {
@@ -3505,9 +3769,92 @@ export default function QuirofanoDashboard({
                                     </p>
                                 </div>
                             </div>
-                            <span style={{ fontSize: '0.76rem', background: '#15803D', color: '#FFFFFF', padding: '5px 12px', borderRadius: '8px', fontWeight: 800 }}>
-                                Período Auditado: {activePeriodLabel}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.74rem', background: '#DCFCE7', color: '#166534', padding: '5px 12px', borderRadius: '8px', fontWeight: 800, border: '1px solid #86EFAC' }}>
+                                    Período Bloques: {effectiveBloquesPeriod}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Controles de Selección de Período y Vista */}
+                        <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px dashed #86EFAC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#14532D', marginRight: '4px' }}>
+                                    Auditoría Mensual:
+                                </span>
+                                {[
+                                    { id: 'auto', label: `Automático (${activePeriodLabel})` },
+                                    { id: 'AGO', label: 'Agosto 2026' },
+                                    { id: 'SEP', label: 'Septiembre 2026' },
+                                    { id: 'PROMEDIO', label: 'Promedio Ago-Sep' }
+                                ].map(btn => (
+                                    <button
+                                        key={btn.id}
+                                        type="button"
+                                        onClick={() => setBloquesMesFiltro(btn.id)}
+                                        style={{
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '5px 11px',
+                                            borderRadius: '7px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: bloquesMesFiltro === btn.id ? 800 : 600,
+                                            background: bloquesMesFiltro === btn.id ? '#15803D' : '#DCFCE7',
+                                            color: bloquesMesFiltro === btn.id ? '#FFFFFF' : '#166534',
+                                            boxShadow: bloquesMesFiltro === btn.id ? '0 2px 4px rgba(21,128,61,0.25)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {btn.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Selector de Vista: Tabla de Auditoría vs Grilla Semanal Visual */}
+                            <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '3px', borderRadius: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setVistaBloques('lista')}
+                                    style={{
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '5px 12px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.74rem',
+                                        fontWeight: vistaBloques === 'lista' ? 800 : 600,
+                                        background: vistaBloques === 'lista' ? '#FFFFFF' : 'transparent',
+                                        color: vistaBloques === 'lista' ? '#0F172A' : '#64748B',
+                                        boxShadow: vistaBloques === 'lista' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    <FileSpreadsheet size={14} />
+                                    Tabla de Auditoría
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setVistaBloques('grilla')}
+                                    style={{
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '5px 12px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.74rem',
+                                        fontWeight: vistaBloques === 'grilla' ? 800 : 600,
+                                        background: vistaBloques === 'grilla' ? '#FFFFFF' : 'transparent',
+                                        color: vistaBloques === 'grilla' ? '#0F172A' : '#64748B',
+                                        boxShadow: vistaBloques === 'grilla' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    <Calendar size={14} />
+                                    Grilla Semanal Visual (Excel)
+                                </button>
+                            </div>
                         </div>
 
                         {/* 3 Pasos del Ciclo de Vida del Bloque */}
@@ -3522,7 +3869,7 @@ export default function QuirofanoDashboard({
                                     </h4>
                                 </div>
                                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
-                                    Para <strong>guardarle el lugar al doctor</strong> y asegurarle que pueda operar en horarios fijos, se genera un <em>paciente ficticio</em> como marcador de agenda. Ese quirófano queda reservado de manera exclusiva para el titular del bloque.
+                                    Para <strong>guardarle el lugar al doctor</strong> y asegurarle disponibilidad fija, se genera un <em>paciente ficticio</em> como marcador de agenda. Franja exclusiva para el cirujano titular.
                                 </p>
                             </div>
 
@@ -3535,7 +3882,7 @@ export default function QuirofanoDashboard({
                                     </h4>
                                 </div>
                                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
-                                    Cuando el médico titular programa la intervención, <strong>se borra el paciente ficticio y se coloca el paciente real</strong>. La cirugía la ejecuta el mismo doctor asignado. Se computa como <strong>Uso Efectivo</strong> y aprovechamiento óptimo del recurso.
+                                    Al programar la intervención real, <strong>se sustituye el ficticio por el paciente real</strong> y opera el médico asignado. Se computa como <strong>Uso Efectivo</strong> del bloque.
                                 </p>
                             </div>
 
@@ -3548,7 +3895,7 @@ export default function QuirofanoDashboard({
                                     </h4>
                                 </div>
                                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>
-                                    Si se saca el paciente ficticio pero la cirugía la termina operando <strong>otro médico que no es el titular del bloque</strong>, se audita formalmente como <strong>Pérdida de Bloque</strong>: el titular no utilizó su franja exclusiva y requirió cesión de urgencia.
+                                    Si el bloque lo termina operando <strong>otro médico ajeno a la titularidad</strong> o queda vacío sin ceder a tiempo, se audita como <strong>Pérdida de Bloque</strong> y capacidad subutilizada.
                                 </p>
                             </div>
                         </div>
@@ -3557,22 +3904,22 @@ export default function QuirofanoDashboard({
                         <div style={{ marginTop: '14px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <AlertCircle size={18} color="#D97706" style={{ flexShrink: 0 }} />
                             <span style={{ fontSize: '0.78rem', color: '#334155' }}>
-                                <strong>Ventana de Liberación a 7 Días:</strong> Si faltando 7 días la franja horaria aún conserva el paciente ficticio sin confirmación de paciente real, el sistema emite alerta para liberar la sala a agenda abierta y evitar horas ociosas en quirófano.
+                                <strong>Ventana de Liberación a 7 Días:</strong> Si faltando 7 días la franja horaria aún conserva el paciente ficticio sin paciente real o con ocupación menor al 45%, el sistema emite alerta para liberar la sala a agenda abierta y evitar horas ociosas en quirófano.
                             </span>
                         </div>
                     </div>
 
-                    {/* Resumen Cuantitativo de la Eficiencia de Bloques */}
+                    {/* Resumen Cuantitativo Dinámico de la Eficiencia de Bloques */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
                         <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                             <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>
                                 Horas Asignadas (Mes)
                             </div>
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
-                                175.3h
+                                {bloquesMetricsSummary.totalAsignadas}h
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                                7 Bloques Médicos Activos
+                                {bloquesMetricsSummary.totalBloques} Bloques Auditados ({effectiveBloquesPeriod})
                             </div>
                         </div>
 
@@ -3581,22 +3928,22 @@ export default function QuirofanoDashboard({
                                 Horas Uso Titular (Concretado)
                             </div>
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#15803D', marginTop: '2px' }}>
-                                133.5h
+                                {bloquesMetricsSummary.totalTitular}h
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#15803D', fontWeight: 700, marginTop: '2px' }}>
-                                76.2% de ocupación efectiva titular
+                                {bloquesMetricsSummary.pctUsoTitular}% de ocupación efectiva titular
                             </div>
                         </div>
 
                         <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #FECDD3', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                             <div style={{ fontSize: '0.72rem', color: '#9F1239', fontWeight: 800, textTransform: 'uppercase' }}>
-                                Pérdidas de Bloque (Otro Médico)
+                                Pérdidas de Bloque (Desvío)
                             </div>
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#E11D48', marginTop: '2px' }}>
-                                16.5h
+                                {bloquesMetricsSummary.totalPerdida}h
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#E11D48', fontWeight: 700, marginTop: '2px' }}>
-                                9.4% desvío a profesionales externos
+                                0.0% desvío a profesionales externos
                             </div>
                         </div>
 
@@ -3605,81 +3952,376 @@ export default function QuirofanoDashboard({
                                 Horas Ociosas / Sin Ocupar
                             </div>
                             <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#D97706', marginTop: '2px' }}>
-                                25.3h
+                                {bloquesMetricsSummary.totalOciosas}h
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 700, marginTop: '2px' }}>
-                                14.4% capacidad pasible de liberación
+                                {bloquesMetricsSummary.pctOciosas}% capacidad pasible de liberación ({bloquesMetricsSummary.alertasLiberar} franjas en alerta)
                             </div>
                         </div>
                     </div>
 
-                    {/* Matriz Detallada de Bloques con Pérdidas y Uso Titular */}
-                    <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Matriz de Ocupación de Bloques vs. Horas Ociosas y Pérdidas ({activePeriodLabel})
-                                </h3>
-                                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                    Trazabilidad de horas asignadas, horas operadas por el cirujano titular, horas perdidas (operó otro médico) y horas vacías.
-                                </p>
+                    {/* VISTA 1: TABLA NUMÉRICA DE AUDITORÍA */}
+                    {vistaBloques === 'lista' && (
+                        <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Matriz de Ocupación de Bloques vs. Horas Ociosas ({effectiveBloquesPeriod})
+                                    </h3>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                                        Trazabilidad oficial de horas asignadas, uso titular efectivo, capacidad ociosa y condición de liberación a 7 días.
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#334155', padding: '4px 10px', borderRadius: '8px', fontWeight: 700 }}>
+                                        {activeBloquesData.length} franjas auditadas
+                                    </span>
+                                </div>
                             </div>
-                            <span style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#334155', padding: '4px 10px', borderRadius: '8px', fontWeight: 700 }}>
-                                7 franjas monitoreadas
-                            </span>
-                        </div>
 
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                                <thead>
-                                    <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #CBD5E1', color: '#334155', textAlign: 'left' }}>
-                                        <th style={{ padding: '10px 12px' }}>Cirujano Titular / Servicio</th>
-                                        <th style={{ padding: '10px 12px' }}>Sala</th>
-                                        <th style={{ padding: '10px 12px' }}>Día y Franja</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Asignadas</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right', background: '#F0FDF4', color: '#166534' }}>Hs Titular</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right', background: '#FFF1F2', color: '#9F1239' }}>Hs Pérdida Bloque</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Ociosas</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Eficiencia Titular</th>
-                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Alerta 7d</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {BLOQUES_DATA.map((b, idx) => (
-                                        <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0', background: b.alerta ? '#FFFBEB' : '#FFFFFF' }}>
-                                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>{b.cirujano}</td>
-                                            <td style={{ padding: '10px 12px', fontWeight: 800, color: '#1E40AF' }}>{b.quirofano}</td>
-                                            <td style={{ padding: '10px 12px', color: '#475569' }}>{b.dia} · {b.horario}</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{b.horasMes}h</td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803D', background: '#F0FDF4' }}>
-                                                {b.horasTitular}h
-                                            </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasPerdida > 0 ? '#E11D48' : '#94A3B8', background: '#FFF1F2' }}>
-                                                {b.horasPerdida > 0 ? `${b.horasPerdida}h` : '0h'}
-                                            </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasOciosas > 5 ? '#DC2626' : '#64748B' }}>
-                                                {b.horasOciosas}h
-                                            </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: b.ocupacionTitularPct >= 75 ? '#15803D' : b.ocupacionTitularPct >= 55 ? '#D97706' : '#DC2626' }}>
-                                                {b.ocupacionTitularPct}%
-                                            </td>
-                                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                                {b.alerta ? (
-                                                    <span style={{ background: '#FEE2E2', color: '#DC2626', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem' }}>
-                                                        LIBERAR
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ background: '#DCFCE7', color: '#15803D', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem' }}>
-                                                        CONFIRMADO
-                                                    </span>
-                                                )}
-                                            </td>
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #CBD5E1', color: '#334155', textAlign: 'left' }}>
+                                            <th style={{ padding: '10px 12px' }}>Cirujano Titular / Servicio</th>
+                                            <th style={{ padding: '10px 12px' }}>Ámbito</th>
+                                            <th style={{ padding: '10px 12px' }}>Sala</th>
+                                            <th style={{ padding: '10px 12px' }}>Día y Franja</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Asignadas</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right', background: '#F0FDF4', color: '#166534' }}>Hs Titular</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Ociosas</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Ocupación</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Alerta 7d</th>
+                                            <th style={{ padding: '10px 12px' }}>Condición Operativa</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {activeBloquesData.map((b) => (
+                                            <tr key={b.id} style={{ borderBottom: '1px solid #E2E8F0', background: b.alerta ? '#FFFBEB' : '#FFFFFF' }}>
+                                                <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>
+                                                    {b.cirujano}
+                                                </td>
+                                                <td style={{ padding: '10px 12px' }}>
+                                                    <span style={{
+                                                        fontSize: '0.68rem',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        fontWeight: 800,
+                                                        background: b.ambito === 'CENTRAL' ? '#EFF6FF' : '#ECFDF5',
+                                                        color: b.ambito === 'CENTRAL' ? '#1D4ED8' : '#047857',
+                                                        border: `1px solid ${b.ambito === 'CENTRAL' ? '#BFDBFE' : '#A7F3D0'}`
+                                                    }}>
+                                                        {b.ambito === 'CENTRAL' ? 'CENTRAL' : 'HOSP. DÍA'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontWeight: 800, color: '#1E40AF' }}>
+                                                    {b.quirofano}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', color: '#475569' }}>
+                                                    <strong>{b.dia}</strong> · {b.horario}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
+                                                    {b.horasMes}h
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803D', background: '#F0FDF4' }}>
+                                                    {b.horasTitular}h
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasOciosas > 5 ? '#DC2626' : '#64748B' }}>
+                                                    {b.horasOciosas}h
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: b.ocupacionTitularPct >= 75 ? '#15803D' : b.ocupacionTitularPct >= 50 ? '#D97706' : '#DC2626' }}>
+                                                    {b.ocupacionTitularPct}%
+                                                </td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                                    {b.alerta ? (
+                                                        <span style={{ background: '#FEE2E2', color: '#DC2626', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                            <AlertCircle size={11} />
+                                                            LIBERAR
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ background: '#DCFCE7', color: '#15803D', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                            <Check size={11} />
+                                                            CONFIRMADO
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#475569' }}>
+                                                    {b.nota}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800, color: '#0F172A' }}>
+                                            <td style={{ padding: '10px 12px' }} colSpan={4}>TOTAL CONSOLIDADO ({effectiveBloquesPeriod})</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{bloquesMetricsSummary.totalAsignadas}h</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.totalTitular}h</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#DC2626' }}>{bloquesMetricsSummary.totalOciosas}h</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.pctUsoTitular}%</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#DC2626' }}>{bloquesMetricsSummary.alertasLiberar} a liberar</td>
+                                            <td style={{ padding: '10px 12px' }}>10 Bloques Institucionales</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* VISTA 2: GRILLA SEMANAL VISUAL (REPRODUCCIÓN EXACTA EXCEL INSTITUCIONAL) */}
+                    {vistaBloques === 'grilla' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Distribución Semanal de Bloques: Quirófano Central vs Hospital de Día
+                                    </h4>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                        Diagrama oficial de franjas horarias y porcentajes de ocupación (Agosto - Septiembre 2026)
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem' }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#DCFCE7', border: '1px solid #86EFAC' }}></span>
+                                        Alta Ocupación (≥75%)
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#FEF3C7', border: '1px solid #FCD34D' }}></span>
+                                        Media (50-74%)
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#FEE2E2', border: '1px solid #FCA5A5' }}></span>
+                                        Crítica / A Liberar (&lt;50%)
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: '18px' }}>
+                                
+                                {/* 1. QUIRÓFANO CENTRAL */}
+                                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1.5px solid #BFDBFE', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                                    <div style={{ background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', color: '#FFFFFF', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Building2 size={18} />
+                                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>QUIRÓFANO CENTRAL</h4>
+                                        </div>
+                                        <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                            Salas Qx 1 a Qx 4
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#334155' }}>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>LUNES</div>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MARTES</div>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MIÉRCOLES</div>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>JUEVES</div>
+                                        <div style={{ padding: '8px 4px' }}>VIERNES</div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', minHeight: '440px', fontSize: '0.72rem' }}>
+                                        
+                                        {/* Lunes Central */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {/* Dr Pons */}
+                                            <div style={{ background: '#FECDD3', border: '1.5px solid #FDA4AF', borderRadius: '8px', padding: '8px', color: '#9F1239' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONS, RODRIGO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>08:00 - 13:00 (5h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 100% · SEP: 100%
+                                                </div>
+                                            </div>
+
+                                            {/* Dr Molina */}
+                                            <div style={{ background: '#E2E8F0', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px', color: '#334155' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR MOLINA, MAURICIO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>14:00 - 19:00 (5h)</div>
+                                                <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 25% · SEP: 0%
+                                                </div>
+                                                <div style={{ fontSize: '0.64rem', color: '#DC2626', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
+                                                    Sugerir Liberación
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Martes Central */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Dr Azuri */}
+                                            <div style={{ background: '#DCFCE7', border: '1.5px solid #86EFAC', borderRadius: '8px', padding: '8px', color: '#166534' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR AZURI, WADI</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 60%
+                                                </div>
+                                            </div>
+
+                                            {/* Dr Peñate */}
+                                            <div style={{ background: '#F3E8FF', border: '1.5px solid #D8B4FE', borderRadius: '8px', padding: '8px', color: '#6B21A8' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PEÑATE, JAVIER</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 4) · 2 mensuales</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h quincenal)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 100% · SEP: 50%
+                                                </div>
+                                            </div>
+
+                                            {/* Dr Scarso */}
+                                            <div style={{ background: '#DBEAFE', border: '1.5px solid #93C5FD', borderRadius: '8px', padding: '8px', color: '#1E40AF', marginTop: 'auto' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR SCARSO, CARLOS</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 4)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>16:00 - 20:00 (4h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 100% · SEP: 60%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Miércoles Central */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Dr Muñoz Carratú */}
+                                            <div style={{ background: '#FEF3C7', border: '1.5px solid #FCD34D', borderRadius: '8px', padding: '8px', color: '#92400E' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR MUÑOZ, MATIAS</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>08:30 - 14:00 (5.5h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 100%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Jueves Central */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* CCV */}
+                                            <div style={{ background: '#FCA5A5', border: '1.5px solid #F87171', borderRadius: '8px', padding: '8px', color: '#991B1B' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>CCV (Qx 1)</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.68rem' }}>3º jueves de cada mes</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:00 - 17:00 (10h)</div>
+                                                <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 0% · SEP: 0%
+                                                </div>
+                                                <div style={{ fontSize: '0.64rem', color: '#991B1B', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
+                                                    Sin actividad en período
+                                                </div>
+                                            </div>
+
+                                            {/* Dr Gempel */}
+                                            <div style={{ background: '#FBCFE8', border: '1.5px solid #F472B6', borderRadius: '8px', padding: '8px', color: '#9D174D' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR GEMPEL, DIEGO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
+                                                <div style={{ fontSize: '0.65rem', margin: '2px 0', fontStyle: 'italic' }}>Cuando hay CCV, pasa a Qx 2</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:30 - 13:00 (5.5h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 75%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Viernes Central */}
+                                        <div style={{ padding: '8px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FAFAFA' }}>
+                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 700, textAlign: 'center' }}>
+                                                Sin bloques fijos asignados
+                                            </span>
+                                            <span style={{ fontSize: '0.66rem', color: '#CBD5E1', textAlign: 'center', marginTop: '4px' }}>
+                                                Disponibilidad abierta para cirugías programadas y urgencias
+                                            </span>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                {/* 2. HOSPITAL DE DÍA */}
+                                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1.5px solid #A7F3D0', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                                    <div style={{ background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', color: '#FFFFFF', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Activity size={18} />
+                                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>HOSPITAL DE DÍA</h4>
+                                        </div>
+                                        <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                            Quirófano HdD (Qx 6)
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#334155' }}>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>LUNES</div>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MARTES</div>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MIÉRCOLES</div>
+                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>JUEVES</div>
+                                        <div style={{ padding: '8px 4px' }}>VIERNES</div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', minHeight: '440px', fontSize: '0.72rem' }}>
+                                        
+                                        {/* Lunes HdD */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {/* Dr Ponce */}
+                                            <div style={{ background: '#FEF9C3', border: '1.5px solid #FDE047', borderRadius: '8px', padding: '8px', color: '#854D0E' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONCE, MARCELO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>09:30 - 13:30 (4h)</div>
+                                            </div>
+
+                                            {/* Dr Galvarini */}
+                                            <div style={{ background: '#BAE6FD', border: '1.5px solid #7DD3FC', borderRadius: '8px', padding: '8px', color: '#0369A1' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR GALVARINI, MARTIN</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>13:30 - 20:00 (6.5h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 100%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Martes HdD */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Dr Ponce */}
+                                            <div style={{ background: '#FEF9C3', border: '1.5px solid #FDE047', borderRadius: '8px', padding: '8px', color: '#854D0E' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONCE, MARCELO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>10:00 - 12:30 (2.5h)</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Miércoles HdD */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Tarjeta resumen 3 bloques Dr Ponce */}
+                                            <div style={{ background: '#FEF9C3', border: '2px dashed #EAB308', borderRadius: '8px', padding: '10px 8px', color: '#854D0E', textAlign: 'center' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.74rem' }}>DR PONCE, MARCELO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.68rem', margin: '3px 0' }}>3 BLOQUES (Qx 6)</div>
+                                                <div style={{ fontSize: '0.64rem', color: '#713F12', marginBottom: '6px' }}>Lun (4h), Mar (2.5h), Jue (2.5h)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '4px', borderRadius: '4px', fontWeight: 900, fontSize: '0.70rem' }}>
+                                                    AGO: 58,33%<br />SEPT: 84,60%
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Jueves HdD */}
+                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {/* Dr Ponce */}
+                                            <div style={{ background: '#FEF9C3', border: '1.5px solid #FDE047', borderRadius: '8px', padding: '8px', color: '#854D0E' }}>
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONCE, MARCELO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>10:00 - 12:30 (2.5h)</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Viernes HdD */}
+                                        <div style={{ padding: '8px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FAFAFA' }}>
+                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 700, textAlign: 'center' }}>
+                                                Sin bloques fijos asignados
+                                            </span>
+                                            <span style={{ fontSize: '0.66rem', color: '#CBD5E1', textAlign: 'center', marginTop: '4px' }}>
+                                                Hospital de Día disponible para endoscopías ambulatorias
+                                            </span>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
