@@ -3591,9 +3591,6 @@ export default function QuirofanoDashboard({
                                         <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#F8FAFC' }}>
                                             Auditoría Clínica de Gobernanza: Paradoja del Causal 3 ("Ya fue realizado")
                                         </h3>
-                                        <span style={{ fontSize: '0.68rem', background: '#0284C7', color: '#FFFFFF', padding: '2px 8px', borderRadius: '6px', fontWeight: 800 }}>
-                                            Estándar QOAG / SALUS
-                                        </span>
                                     </div>
                                     <p style={{ margin: 0, fontSize: '0.82rem', color: '#94A3B8', lineHeight: 1.5 }}>
                                         <strong>Regla de Gobernanza Institucional:</strong> En el sistema SALUS los turnos de quirófano <em>nunca se borran</em> para preservar la trazabilidad legal y la reserva de bloque. Cuando una paciente obstétrica se opera de urgencia antes de la fecha programada (ej. cesárea en semana 38 con turno agendado para semana 39) o cuando una cirugía se reprograma y se efectiviza en otra fecha, el turno remanente se clasifica como <strong>"3. Ya fue realizado"</strong>. No representa una cirugía perdida ni un fallo asistencial.
