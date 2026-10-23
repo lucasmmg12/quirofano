@@ -25,7 +25,6 @@ import NomencladorView from './components/NomencladorView.jsx';
 import TemplateManager from './components/TemplateManager.jsx';
 import MessagingPanel from './components/MessagingPanel.jsx';
 import PedidosMarcela from './components/PedidosMarcela.jsx';
-import WhatsAppLineStatus from './components/WhatsAppLineStatus.jsx';
 import MetricsPanel from './components/MetricsPanel.jsx';
 import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
 import PublicRecepcionView from './components/PublicRecepcionView.jsx';
@@ -822,10 +821,6 @@ function App({ currentUser, onLogout }) {
                             Sistema de gestión integral
                         </span>
                     </div>
-                    {/* WhatsApp Line Status — centered in topbar */}
-                    {(activeView === 'mensajeria' || activeView === 'cirugias' || activeView === 'deudas') && (
-                        <WhatsAppLineStatus />
-                    )}
                     <div className="topbar__right" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <SystemOutageReporter currentUser={currentUser} addToast={addToast} />
                         {/* Dark Mode Toggle */}
