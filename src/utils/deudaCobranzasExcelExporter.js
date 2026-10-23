@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 
 /**
  * Paleta cromática corporativa Premium - Sanatorio Argentino
- * Desarrollado para la Gerencia de Innovación y Transformación Digital
+ * Desarrollado para el Sector de Innovación y Transformación Digital
  */
 const PALETTE = {
     navyDark: 'FF0A192F',        // Azul noche institucional profundo
@@ -260,7 +260,7 @@ export async function generarExcelCobranzas({
     const signatureRow = wsDashboard.rowCount + 2;
     wsDashboard.mergeCells(signatureRow, 2, signatureRow + 2, 6);
     const sigCell = wsDashboard.getCell(signatureRow, 2);
-    sigCell.value = 'SANATORIO ARGENTINO  •  GERENCIA DE INNOVACIÓN Y TRANSFORMACIÓN DIGITAL\n' +
+    sigCell.value = 'SANATORIO ARGENTINO  •  INNOVACIÓN Y TRANSFORMACIÓN DIGITAL\n' +
         'Documento emitido y auditado automáticamente mediante algoritmos de trazabilidad institucional.\n' +
         'Gobernanza de Datos Médicos y Financieros — San Juan, Argentina.';
     sigCell.font = { name: 'Segoe UI', size: 8.5, italic: true, bold: false, color: { argb: PALETTE.tealBrand } };
