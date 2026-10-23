@@ -1203,6 +1203,7 @@ export default function QuirofanoDashboard({
     const [nominalFilterStatus, setNominalFilterStatus] = useState('TODOS'); // 'TODOS' | 'REALIZADAS' | 'SUSPENDIDAS'
     const [nominalFilterSala, setNominalFilterSala] = useState('TODOS');
     const [suspensionModalSearch, setSuspensionModalSearch] = useState('');
+    const [selectedSuspensionGroup, setSelectedSuspensionGroup] = useState(null);
     const [vistaBloques, setVistaBloques] = useState('lista'); // 'lista' | 'grilla'
     const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
 
