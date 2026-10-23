@@ -219,7 +219,7 @@ function App({ currentUser, onLogout }) {
 
     // Restricted viewer check
     const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
-    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim());
+    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim());
 
     // Derive activeView directly from the URL pathname
     // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)

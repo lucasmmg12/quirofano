@@ -14,7 +14,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
     const isUciOnly = username === 'naguilera';
-    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar'].includes(username);
+    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username);
     const isLMarinero = ['lmarinero', 'lucas marinero'].includes(username) || MASTER_ADMINS.includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
