@@ -10,7 +10,8 @@ import {
     Search, RefreshCw, ChevronRight, ChevronLeft, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
     Stethoscope, ChevronDown, ChevronUp, StickyNote, Save,
-    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors, Undo2, UserCheck
+    ListFilter, Download, FileDown, ShoppingCart, Printer, Trash2, PackageCheck, Receipt, Scissors, Undo2, UserCheck,
+    AlertTriangle, RotateCcw
 } from 'lucide-react';
 import {
     fetchAltas, fetchHistorialInternaciones, updateAltaEstado, updateAltaNotas, updateAltaResponsable, ALTA_ESTADOS,
@@ -19,6 +20,7 @@ import {
     cerrarPeriodoFacturacion, reabrirPeriodoFacturacion, ejecutarCorteDeMesProlongadas,
     setReingresoReal
 } from '../services/altasService';
+import { devolverFichaARecepcion, cancelarDevolucionFicha } from '../services/fichasAdmisionesService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
 import SalusSyncButton from './SalusSyncButton';
 import AltasMetricsPanel from './AltasMetricsPanel';
@@ -181,6 +183,12 @@ export default function AltasPanel({ addToast, currentUser }) {
     const [showCorteModal, setShowCorteModal] = useState(false);
     const [corteLoading, setCorteLoading] = useState(false);
     const [prolongadasCount, setProlongadasCount] = useState(0);
+
+    // ── Devolución de Ficha a Recepción (Paso 1) ──
+    const [devolverModalData, setDevolverModalData] = useState(null);
+    const [motivoDevolucion, setMotivoDevolucion] = useState('');
+    const [responsableDevolucion, setResponsableDevolucion] = useState('');
+    const [submittingDevolucion, setSubmittingDevolucion] = useState(false);
 
     // ── Carrito & Traspaso ──
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -354,7 +362,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => !a.en_carrito_traspaso && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
+            .filter(a => !a.en_carrito_traspaso && a.ficha_estado !== 'devuelta_a_recepcion' && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -364,6 +372,13 @@ export default function AltasPanel({ addToast, currentUser }) {
             addToast?.('Seleccioná fichas para enviar al carrito', 'info');
             return;
         }
+
+        const devueltas = altas.filter(a => selectedIds.has(a.id) && a.ficha_estado === 'devuelta_a_recepcion');
+        if (devueltas.length > 0) {
+            addToast?.(`No podés enviar al carrito ${devueltas.length} ficha(s) que están devueltas a Recepción. Deben ser subsanadas primero.`, 'warning');
+            return;
+        }
+
         try {
             await marcarParaTraspaso([...selectedIds], currentUser?.usuario);
             addToast?.(`${selectedIds.size} ficha(s) enviadas al carrito`, 'success');
@@ -372,6 +387,67 @@ export default function AltasPanel({ addToast, currentUser }) {
             loadCarrito();
         } catch (err) {
             addToast?.('Error: ' + err.message, 'error');
+        }
+    };
+
+    // ── Devolución de Ficha Física a Recepción (Paso 1) ──
+    const handleConfirmarDevolucion = async () => {
+        if (!devolverModalData) return;
+        if (!motivoDevolucion || !motivoDevolucion.trim()) {
+            addToast?.('Debe indicar el motivo de la devolución a Recepción', 'warning');
+            return;
+        }
+        setSubmittingDevolucion(true);
+        try {
+            const resp = (responsableDevolucion || currentUser?.nombre || currentUser?.usuario || 'Control de Altas').trim();
+            const motivo = motivoDevolucion.trim();
+            await devolverFichaARecepcion({
+                admisionId: devolverModalData.id,
+                nAdmision: devolverModalData.numero_admision,
+                motivo,
+                responsable: resp
+            });
+
+            const now = new Date().toISOString();
+            setAltas(prev => prev.map(a => a.id === devolverModalData.id ? {
+                ...a,
+                ficha_estado: 'devuelta_a_recepcion',
+                ficha_devolucion_motivo: motivo,
+                ficha_devolucion_por: resp,
+                ficha_devolucion_at: now,
+                en_carrito_traspaso: false
+            } : a));
+
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(devolverModalData.id);
+                return next;
+            });
+
+            addToast?.(`Ficha ${devolverModalData.numero_admision || ''} devuelta a Recepción (Paso 1). Aparece en su bandeja de devueltas.`, 'success');
+            setDevolverModalData(null);
+            setMotivoDevolucion('');
+        } catch (err) {
+            console.error('[AltasPanel] Error devolviendo ficha:', err);
+            addToast?.('Error al devolver ficha: ' + err.message, 'error');
+        } finally {
+            setSubmittingDevolucion(false);
+        }
+    };
+
+    const handleCancelarDevolucion = async (altaId) => {
+        try {
+            await cancelarDevolucionFicha(altaId);
+            setAltas(prev => prev.map(a => a.id === altaId ? {
+                ...a,
+                ficha_estado: 'entregada',
+                ficha_devolucion_motivo: null,
+                ficha_devolucion_por: null,
+                ficha_devolucion_at: null
+            } : a));
+            addToast?.('Devolución cancelada: ficha reactivada en Control de Altas', 'success');
+        } catch (err) {
+            addToast?.('Error cancelando devolución: ' + err.message, 'error');
         }
     };
 
@@ -816,10 +892,17 @@ export default function AltasPanel({ addToast, currentUser }) {
     }, [allProcessedAltas]);
     const total = localStats._total || 0;
 
+    // Contar fichas devueltas a Recepción
+    const devueltasRecCount = useMemo(() => {
+        return allProcessedAltas.filter(a => a.ficha_estado === 'devuelta_a_recepcion').length;
+    }, [allProcessedAltas]);
+
     // Aplicar filtro de pill (estado) y filtro de responsable — frontend
     const preFilteredAltas = useMemo(() => {
         let result = allProcessedAltas;
-        if (filterEstado && filterEstado !== 'all') {
+        if (filterEstado === 'devuelta_a_recepcion') {
+            result = result.filter(a => a.ficha_estado === 'devuelta_a_recepcion');
+        } else if (filterEstado && filterEstado !== 'all') {
             result = result.filter(a => a._effectiveEstado === filterEstado);
         }
         if (filterResponsable && filterResponsable !== 'all') {
@@ -1680,6 +1763,29 @@ export default function AltasPanel({ addToast, currentUser }) {
                         </button>
                     );
                 })}
+                {/* Filtro rápido: Devueltas a Recepción */}
+                <button
+                    onClick={() => setFilterEstado(filterEstado === 'devuelta_a_recepcion' ? 'all' : 'devuelta_a_recepcion')}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '6px 12px', borderRadius: '20px',
+                        background: filterEstado === 'devuelta_a_recepcion' ? '#DC2626' : (devueltasRecCount > 0 ? '#FEF2F2' : '#F9FAFB'),
+                        color: filterEstado === 'devuelta_a_recepcion' ? '#fff' : (devueltasRecCount > 0 ? '#DC2626' : '#94A3B8'),
+                        border: `1px solid ${filterEstado === 'devuelta_a_recepcion' ? '#DC2626' : (devueltasRecCount > 0 ? '#FECACA' : '#E5E7EB')}`,
+                        cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
+                        transition: 'all 0.15s',
+                        opacity: devueltasRecCount === 0 ? 0.6 : 1,
+                    }}
+                    title="Ver solo las fichas físicas devueltas a Recepción (Paso 1)"
+                >
+                    🔙 Devueltas a Recepción
+                    <span style={{
+                        background: filterEstado === 'devuelta_a_recepcion' ? 'rgba(255,255,255,0.25)' : (devueltasRecCount > 0 ? '#FEE2E2' : '#E2E8F0'),
+                        color: filterEstado === 'devuelta_a_recepcion' ? '#fff' : (devueltasRecCount > 0 ? '#991B1B' : '#64748B'),
+                        padding: '1px 7px', borderRadius: '10px',
+                        fontSize: '0.68rem',
+                    }}>{devueltasRecCount}</span>
+                </button>
             </div>
 
             {/* ── Selector de Mes ── */}
@@ -1951,11 +2057,11 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             }}
                                                 style={{
                                                     cursor: 'pointer', transition: 'background 0.15s',
-                                                    background: alta._cruzaMes ? '#F0FDF4' : (alta._isDevueltaFac ? '#FEF2F2' : undefined),
-                                                    borderLeft: alta._cruzaMes ? '3px solid #10B981' : (alta._isDevueltaFac ? '3px solid #DC2626' : undefined),
+                                                    background: alta.ficha_estado === 'devuelta_a_recepcion' ? '#FFF5F5' : (alta._cruzaMes ? '#F0FDF4' : (alta._isDevueltaFac ? '#FEF2F2' : undefined)),
+                                                    borderLeft: alta.ficha_estado === 'devuelta_a_recepcion' ? '3px solid #DC2626' : (alta._cruzaMes ? '3px solid #10B981' : (alta._isDevueltaFac ? '3px solid #DC2626' : undefined)),
                                                 }}
-                                            onMouseOver={e => { if (!isExpanded && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = 'var(--neutral-50)'; }}
-                                            onMouseOut={e => { if (!isExpanded && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = ''; }}
+                                            onMouseOver={e => { if (!isExpanded && alta.ficha_estado !== 'devuelta_a_recepcion' && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = 'var(--neutral-50)'; }}
+                                            onMouseOut={e => { if (!isExpanded && alta.ficha_estado !== 'devuelta_a_recepcion' && !alta._isDevueltaFac && !alta._cruzaMes) e.currentTarget.style.background = ''; }}
                                         >
                                             {/* Checkbox / Cart status */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
@@ -1986,8 +2092,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         <input type="checkbox"
                                                             checked={selectedIds.has(alta.id)}
                                                             onChange={() => handleToggleSelect(alta.id)}
-                                                            title="Seleccionar para enviar al carrito"
-                                                            style={{ cursor: 'pointer', accentColor: '#6366F1' }}
+                                                            disabled={alta.ficha_estado === 'devuelta_a_recepcion'}
+                                                            title={alta.ficha_estado === 'devuelta_a_recepcion' ? 'Ficha física devuelta a Recepción (debe ser subsanada primero)' : 'Seleccionar para enviar al carrito'}
+                                                            style={{ cursor: alta.ficha_estado === 'devuelta_a_recepcion' ? 'not-allowed' : 'pointer', accentColor: '#6366F1' }}
                                                         />
                                                     )
                                                 )}
@@ -2186,34 +2293,83 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     ) : <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>
                                                 )}
                                             </td>
-                                            {/* Facturación */}
+                                            {/* Facturación y Circuito de Ficha */}
                                             <td className="cart__td">
-                                                {alta._isFacturada ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                        padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                                                        background: '#ECFDF5', color: '#059669',
-                                                        border: '1px solid #A7F3D0',
-                                                        fontSize: '0.7rem', fontWeight: 700,
-                                                        whiteSpace: 'nowrap',
-                                                    }}>
-                                                        <Receipt size={10} />
-                                                        {alta.usuario_facturo || 'Facturada'}
-                                                    </span>
-                                                ) : alta._isDevueltaFac ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                        padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                                                        background: '#FEF2F2', color: '#DC2626',
-                                                        border: '1px solid #FECACA',
-                                                        fontSize: '0.7rem', fontWeight: 700,
-                                                        whiteSpace: 'nowrap',
-                                                    }}>
-                                                        🔙 Devuelta
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: 'var(--neutral-300)', fontSize: '0.75rem' }}>—</span>
-                                                )}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                                                    {alta._isFacturada ? (
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                            padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                            background: '#ECFDF5', color: '#059669',
+                                                            border: '1px solid #A7F3D0',
+                                                            fontSize: '0.7rem', fontWeight: 700,
+                                                            whiteSpace: 'nowrap',
+                                                        }}>
+                                                            <Receipt size={10} />
+                                                            {alta.usuario_facturo || 'Facturada'}
+                                                        </span>
+                                                    ) : alta._isDevueltaFac ? (
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                            padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                            background: '#FEF2F2', color: '#DC2626',
+                                                            border: '1px solid #FECACA',
+                                                            fontSize: '0.7rem', fontWeight: 700,
+                                                            whiteSpace: 'nowrap',
+                                                        }}>
+                                                            🔙 Devuelta FAC
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--neutral-300)', fontSize: '0.72rem' }}>—</span>
+                                                    )}
+
+                                                    {/* Indicador o Botón de Devolución a Recepción */}
+                                                    {alta.ficha_estado === 'devuelta_a_recepcion' ? (
+                                                        <span
+                                                            title={`Ficha devuelta a Recepción (Paso 1)\nMotivo: ${alta.ficha_devolucion_motivo || 'Sin motivo'}\nPor: ${alta.ficha_devolucion_por || 'Administración'} (${formatDate(alta.ficha_devolucion_at)})`}
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                padding: '1px 6px', borderRadius: '4px',
+                                                                background: '#FEE2E2', color: '#DC2626',
+                                                                border: '1px solid #FECACA',
+                                                                fontSize: '0.64rem', fontWeight: 800,
+                                                                cursor: 'help', whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            <Undo2 size={9} /> Devuelta a Rec.
+                                                        </span>
+                                                    ) : !isReadOnly && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={e => {
+                                                                e.stopPropagation();
+                                                                setMotivoDevolucion('');
+                                                                setResponsableDevolucion(currentUser?.nombre || currentUser?.usuario || 'Control de Altas');
+                                                                setDevolverModalData(alta);
+                                                            }}
+                                                            title="Devolver ficha física a Recepción (Paso 1) si falta documentación o firmas"
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                padding: '1px 6px', borderRadius: '4px',
+                                                                background: 'transparent', border: '1px dashed #CBD5E1',
+                                                                color: '#64748B', fontSize: '0.63rem', fontWeight: 600,
+                                                                cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap'
+                                                            }}
+                                                            onMouseOver={e => {
+                                                                e.currentTarget.style.borderColor = '#DC2626';
+                                                                e.currentTarget.style.color = '#DC2626';
+                                                                e.currentTarget.style.background = '#FEF2F2';
+                                                            }}
+                                                            onMouseOut={e => {
+                                                                e.currentTarget.style.borderColor = '#CBD5E1';
+                                                                e.currentTarget.style.color = '#64748B';
+                                                                e.currentTarget.style.background = 'transparent';
+                                                            }}
+                                                        >
+                                                            <Undo2 size={9} /> Devolver a Rec.
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>,
 
@@ -2255,6 +2411,84 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                                         </div>
                                                                     </div>
                                                                 ))}
+                                                            </div>
+                                                            {/* Tarjeta: Circuito de Ficha Física */}
+                                                            <div style={{
+                                                                marginTop: '12px', padding: '10px 12px', borderRadius: '8px',
+                                                                background: alta.ficha_estado === 'devuelta_a_recepcion' ? '#FFF5F5' : '#F8FAFC',
+                                                                border: `1.5px solid ${alta.ficha_estado === 'devuelta_a_recepcion' ? '#FCA5A5' : '#E2E8F0'}`
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: alta.ficha_estado === 'devuelta_a_recepcion' ? '#DC2626' : '#475569', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                        📦 Ficha Física (Recepción ➔ Altas)
+                                                                    </span>
+                                                                    {alta.ficha_estado === 'devuelta_a_recepcion' ? (
+                                                                        <span style={{ background: '#DC2626', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 800 }}>
+                                                                            DEVUELTA AL PASO 1
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span style={{ background: '#ECFDF5', color: '#059669', padding: '1px 6px', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 800 }}>
+                                                                            {alta.ficha_estado === 'entregada' ? 'ENTREGADA' : 'EN CIRCUITO'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
+                                                                {alta.ficha_estado === 'devuelta_a_recepcion' ? (
+                                                                    <div style={{ fontSize: '0.75rem', color: '#991B1B' }}>
+                                                                        <div style={{ fontWeight: 700, marginBottom: '2px' }}>
+                                                                            Motivo de devolución a Recepción:
+                                                                        </div>
+                                                                        <div style={{ background: '#fff', padding: '6px 8px', borderRadius: '6px', border: '1px solid #FECACA', color: '#7F1D1D', fontStyle: 'italic', marginBottom: '8px' }}>
+                                                                            "{alta.ficha_devolucion_motivo || 'Sin motivo especificado'}"
+                                                                        </div>
+                                                                        <div style={{ fontSize: '0.68rem', color: '#B91C1C', marginBottom: '8px' }}>
+                                                                            Devuelta por <strong>{alta.ficha_devolucion_por || 'Administración'}</strong> el {formatDate(alta.ficha_devolucion_at)}
+                                                                        </div>
+                                                                        {!isReadOnly && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={e => {
+                                                                                    e.stopPropagation();
+                                                                                    handleCancelarDevolucion(alta.id);
+                                                                                }}
+                                                                                style={{
+                                                                                    padding: '4px 10px', borderRadius: '6px',
+                                                                                    background: '#fff', border: '1px solid #DC2626',
+                                                                                    color: '#DC2626', fontSize: '0.7rem', fontWeight: 700,
+                                                                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                                                                }}
+                                                                            >
+                                                                                <RotateCcw size={11} /> Cancelar Devolución (Reactivar)
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div>
+                                                                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginBottom: '8px' }}>
+                                                                            Si faltan firmas, pagaré o documentación física, podés devolver la ficha a Recepción (Paso 1) indicando el motivo.
+                                                                        </div>
+                                                                        {!isReadOnly && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={e => {
+                                                                                    e.stopPropagation();
+                                                                                    setMotivoDevolucion('');
+                                                                                    setResponsableDevolucion(currentUser?.nombre || currentUser?.usuario || 'Control de Altas');
+                                                                                    setDevolverModalData(alta);
+                                                                                }}
+                                                                                style={{
+                                                                                    padding: '5px 12px', borderRadius: '6px',
+                                                                                    background: '#DC2626', border: 'none',
+                                                                                    color: '#fff', fontSize: '0.72rem', fontWeight: 700,
+                                                                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                                    boxShadow: '0 1px 2px rgba(220,38,38,0.2)'
+                                                                                }}
+                                                                            >
+                                                                                <Undo2 size={12} /> Devolver Ficha a Recepción (Paso 1)
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             {hcLocalStore.getAdmissionData(alta.numero_admision) && (
                                                                 <div style={{ marginTop: '12px' }}>
@@ -2728,6 +2962,206 @@ export default function AltasPanel({ addToast, currentUser }) {
                     document.body
                 )
             )}
+            {/* Modal de Devolución de Ficha Física a Recepción (Paso 1) */}
+            {devolverModalData && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backdropFilter: 'blur(3px)' }}>
+                    <div style={{
+                        background: '#fff', borderRadius: '16px', width: '560px', maxWidth: '100%',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden',
+                        display: 'flex', flexDirection: 'column', animation: 'fadeIn 0.15s ease-out'
+                    }}>
+                        {/* Modal Header */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
+                            padding: '16px 20px', color: '#fff', display: 'flex',
+                            alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Undo2 size={20} color="#fff" />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.3px' }}>
+                                        Devolver Ficha Física a Recepción
+                                    </h3>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', opacity: 0.9 }}>
+                                        Circuito de Fichas · Paso 2 (Altas) ➔ Paso 1 (Recepción)
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { if (!submittingDevolucion) setDevolverModalData(null); }}
+                                style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '75vh', overflowY: 'auto' }}>
+                            {/* Resumen de Admisión */}
+                            <div style={{
+                                background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                borderRadius: '10px', padding: '12px 14px', display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', fontSize: '0.8rem'
+                            }}>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Paciente</div>
+                                    <div style={{ fontWeight: 800, color: '#0F172A' }}>{devolverModalData.paciente}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>N° Admisión</div>
+                                    <div style={{ fontWeight: 800, color: '#2563EB', fontFamily: 'monospace' }}>{devolverModalData.numero_admision || '—'}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Obra Social</div>
+                                    <div style={{ fontWeight: 600, color: '#334155' }}>{devolverModalData.cliente || 'Particular'}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Médico / Especialidad</div>
+                                    <div style={{ fontWeight: 600, color: '#334155' }}>{devolverModalData.doctor || '—'} · {devolverModalData.especialidad || '—'}</div>
+                                </div>
+                            </div>
+
+                            {/* Explicación de impacto */}
+                            <div style={{
+                                background: '#FFF5F5', border: '1px solid #FECACA',
+                                borderRadius: '10px', padding: '12px 14px', display: 'flex', gap: '10px'
+                            }}>
+                                <AlertTriangle size={18} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div style={{ fontSize: '0.78rem', color: '#991B1B', lineHeight: 1.45 }}>
+                                    <strong>¿Qué sucederá al confirmar?</strong> La ficha pasará al estado <strong>Devuelta a Recepción</strong>. En el <em>Portal de Recepción (Paso 1)</em> verán una alerta roja destacada con el motivo indicado para que el recepcionista complete las firmas o documentación faltante y la vuelva a entregar.
+                                </div>
+                            </div>
+
+                            {/* Motivos rápidos sugeridos */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                    Sugerencias rápidas de motivo (clic para seleccionar):
+                                </label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    {[
+                                        'Falta pagaré / garantía firmada',
+                                        'Falta voucher o credencial de afiliado',
+                                        'Falta firma o sello médico',
+                                        'Falta autorización / pedido de prórroga',
+                                        'Falta hoja quirúrgica / protocolo',
+                                        'Ficha con datos erróneos o ilegibles'
+                                    ].map((sug, i) => (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => {
+                                                setMotivoDevolucion(prev => {
+                                                    if (!prev.trim()) return sug;
+                                                    if (prev.includes(sug)) return prev;
+                                                    return `${prev}; ${sug}`;
+                                                });
+                                            }}
+                                            style={{
+                                                padding: '4px 10px', borderRadius: '16px',
+                                                background: motivoDevolucion.includes(sug) ? '#FEE2E2' : '#F1F5F9',
+                                                color: motivoDevolucion.includes(sug) ? '#991B1B' : '#475569',
+                                                border: `1px solid ${motivoDevolucion.includes(sug) ? '#FCA5A5' : '#E2E8F0'}`,
+                                                fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            + {sug}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Campo de texto de Motivo Obligatorio */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', marginBottom: '6px' }}>
+                                    Motivo detallado de la devolución <span style={{ color: '#DC2626' }}>*</span>
+                                </label>
+                                <textarea
+                                    value={motivoDevolucion}
+                                    onChange={e => setMotivoDevolucion(e.target.value)}
+                                    placeholder="Describí exactamente qué falta o debe corregir Recepción (ej: Falta firma de pagaré y fotocopia de credencial)..."
+                                    rows={3}
+                                    style={{
+                                        width: '100%', padding: '10px 12px', borderRadius: '8px',
+                                        border: '1.5px solid #CBD5E1', fontSize: '0.82rem',
+                                        outline: 'none', resize: 'vertical', fontFamily: 'inherit',
+                                        boxSizing: 'border-box'
+                                    }}
+                                    onFocus={e => e.currentTarget.style.borderColor = '#DC2626'}
+                                    onBlur={e => e.currentTarget.style.borderColor = '#CBD5E1'}
+                                />
+                            </div>
+
+                            {/* Responsable de Devolución */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', marginBottom: '6px' }}>
+                                    Responsable que devuelve:
+                                </label>
+                                <input
+                                    type="text"
+                                    value={responsableDevolucion}
+                                    onChange={e => setResponsableDevolucion(e.target.value)}
+                                    placeholder="Nombre del operador / sector"
+                                    style={{
+                                        width: '100%', padding: '8px 12px', borderRadius: '8px',
+                                        border: '1px solid #CBD5E1', fontSize: '0.82rem',
+                                        outline: 'none', boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div style={{
+                            padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0',
+                            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setDevolverModalData(null)}
+                                disabled={submittingDevolucion}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px',
+                                    background: '#fff', border: '1px solid #CBD5E1',
+                                    color: '#475569', fontSize: '0.82rem', fontWeight: 600,
+                                    cursor: submittingDevolucion ? 'not-allowed' : 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmarDevolucion}
+                                disabled={submittingDevolucion || !motivoDevolucion.trim()}
+                                style={{
+                                    padding: '8px 20px', borderRadius: '8px',
+                                    background: submittingDevolucion || !motivoDevolucion.trim() ? '#94A3B8' : '#DC2626',
+                                    border: 'none', color: '#fff', fontSize: '0.82rem', fontWeight: 800,
+                                    cursor: submittingDevolucion || !motivoDevolucion.trim() ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)'
+                                }}
+                            >
+                                {submittingDevolucion ? (
+                                    <>
+                                        <Loader2 size={15} className="spin" />
+                                        Devolviendo a Recepción...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Undo2 size={15} />
+                                        Confirmar Devolución a Recepción
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Modal de Confirmación de Corte de Mes */}
             {showCorteModal && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

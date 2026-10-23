@@ -38,7 +38,7 @@ export const CIRCUITO_PASOS = [
             'Enviar al carrito solo las fichas que se entregan físicamente.',
             'En el carrito, marcar cada ficha como documentación completa o incompleta (con motivo).',
             'Firmar quien entrega y quien recibe, y emitir la entrega: se genera el remito PDF.',
-            'Las fichas devueltas por Administración aparecen en "Devueltas": completar y "Subsanar" para volver a entregarlas.'
+            'Las fichas devueltas por Administración aparecen destacadas con alerta roja en "Devueltas": completar la documentación y "Subsanar" para reingresarlas.'
         ],
         resultado: 'La ficha queda ENTREGADA y recién ahí aparece en Control de Altas.'
     },
@@ -52,7 +52,7 @@ export const CIRCUITO_PASOS = [
         hacer: [
             'Trabajar solo con fichas ya entregadas por Recepción (si una admisión no aparece, su ficha todavía no fue entregada).',
             'Controlar la documentación y actualizar el estado (Auditoría, Prórroga, Presupuesto, Alta Adm, etc.).',
-            'Si falta documentación física: devolverla a Recepción desde "1. Entrega de Fichas" → Historial, indicando el motivo.',
+            'Si falta documentación física o firmas: devolverla a Recepción directamente desde el botón "Devolver a Rec." en la fila o detalle, indicando el motivo.',
             'Con la ficha lista: seleccionarla → enviar al carrito → generar el traspaso con remito y firma.',
             'Las fichas devueltas por Facturación aparecen como "Devuelta FAC": corregir y volver a traspasar.'
         ],

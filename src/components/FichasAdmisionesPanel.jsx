@@ -28,7 +28,8 @@ import {
     fetchHistorialEntregas,
     fetchEntregaConDetalle,
     devolverFichaARecepcion,
-    subsanarFichaDevuelta
+    subsanarFichaDevuelta,
+    subsanarYEnviarAlCarrito
 } from '../services/fichasAdmisionesService';
 import DigitalSignaturePad from './common/DigitalSignaturePad';
 import PrintConstanciaFichas from './PrintConstanciaFichas';
@@ -474,6 +475,18 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
         }
     };
 
+    const handleSubsanarYAgregarAlCarrito = async (item) => {
+        try {
+            const userNombre = currentUser?.nombre || (isPublic ? 'Recepción' : 'Operador');
+            await subsanarYEnviarAlCarrito(item.id, userNombre);
+            showToast('Ficha subsanada y agregada al carrito');
+            loadPendientes();
+            loadCarrito();
+        } catch (err) {
+            showToast('Error al subsanar y agregar al carrito: ' + err.message, 'error');
+        }
+    };
+
     // ─── Copiar Link Público ───
     const handleCopiarLinkPublico = () => {
         const publicUrl = `${window.location.origin}/#/entrega-fichas-publico`;
@@ -596,6 +609,59 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                 </div>
             </div>
 
+            {/* ── Banner de Alerta Urgente: Fichas Devueltas por Administración ── */}
+            {resumen.devueltas > 0 && (
+                <div style={{
+                    background: '#fff1f2',
+                    border: '2px solid #e11d48',
+                    borderRadius: '14px',
+                    padding: '16px 20px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '14px',
+                    boxShadow: '0 4px 16px rgba(225, 29, 72, 0.12)'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{
+                            width: '44px', height: '44px', borderRadius: '12px',
+                            background: '#ffe4e6', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', color: '#e11d48', flexShrink: 0
+                        }}>
+                            <AlertTriangle size={24} />
+                        </div>
+                        <div>
+                            <div style={{ fontWeight: 800, fontSize: '1rem', color: '#9f1239', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span>🚨 ATENCIÓN RECEPCIÓN: Hay {resumen.devueltas} {resumen.devueltas === 1 ? 'ficha devuelta' : 'fichas devueltas'} por Administración</span>
+                                <span style={{ background: '#e11d48', color: '#fff', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', fontWeight: 800, textTransform: 'uppercase' }}>
+                                    Acción Requerida
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '0.82rem', color: '#be123c', marginTop: '3px' }}>
+                                Control de Altas devolvió {resumen.devueltas === 1 ? 'esta ficha física' : 'estas fichas físicas'} por falta de firmas, pagaré o documentación. Deben completarse y marcarse como subsanadas para volver a entregarlas.
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => { setFiltroEstado('devueltas'); setActiveTab('pendientes'); }}
+                        style={{
+                            background: '#e11d48', color: '#ffffff',
+                            border: 'none', padding: '10px 18px', borderRadius: '10px',
+                            fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(225, 29, 72, 0.3)',
+                            display: 'flex', alignItems: 'center', gap: '8px'
+                        }}
+                    >
+                        <AlertTriangle size={16} />
+                        Ver Fichas Devueltas ({resumen.devueltas}) →
+                    </button>
+                </div>
+            )}
+
             {/* Badges de Resumen (Estilo Asociaciones) */}
             <div style={{
                 display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px'
@@ -647,16 +713,22 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                     style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         padding: '6px 14px', borderRadius: '20px',
-                        border: filtroEstado === 'devueltas' && activeTab === 'pendientes' ? '2px solid #dc2626' : '1px solid #e2e8f0',
-                        background: filtroEstado === 'devueltas' && activeTab === 'pendientes' ? '#fef2f2' : '#ffffff',
+                        border: filtroEstado === 'devueltas' && activeTab === 'pendientes' 
+                            ? '2px solid #dc2626' 
+                            : (resumen.devueltas > 0 ? '2px solid #f87171' : '1px solid #e2e8f0'),
+                        background: filtroEstado === 'devueltas' && activeTab === 'pendientes' 
+                            ? '#fef2f2' 
+                            : (resumen.devueltas > 0 ? '#fff5f5' : '#ffffff'),
                         fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
-                        color: filtroEstado === 'devueltas' && activeTab === 'pendientes' ? '#dc2626' : '#475569'
+                        color: filtroEstado === 'devueltas' && activeTab === 'pendientes' ? '#dc2626' : (resumen.devueltas > 0 ? '#b91c1c' : '#475569')
                     }}
                 >
                     <AlertTriangle size={14} color="#dc2626" />
                     Devueltas por Administración
                     <span style={{
-                        background: '#fee2e2', color: '#b91c1c', padding: '1px 8px',
+                        background: resumen.devueltas > 0 ? '#dc2626' : '#fee2e2',
+                        color: resumen.devueltas > 0 ? '#ffffff' : '#b91c1c',
+                        padding: '1px 8px',
                         borderRadius: '10px', fontSize: '0.72rem', fontWeight: 800
                     }}>
                         {resumen.devueltas}
@@ -941,17 +1013,28 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                                 <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                                                     {isDevuelta ? (
                                                         <div style={{
-                                                            background: '#fef2f2', border: '1px solid #fecaca',
-                                                            borderRadius: '6px', padding: '4px 8px', color: '#b91c1c',
-                                                            fontSize: '0.72rem', fontWeight: 800, textAlign: 'left'
+                                                            background: '#fef2f2', border: '1.5px solid #f87171',
+                                                            borderRadius: '8px', padding: '6px 10px', color: '#b91c1c',
+                                                            fontSize: '0.74rem', fontWeight: 800, textAlign: 'left',
+                                                            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.08)'
                                                         }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <AlertTriangle size={13} color="#dc2626" />
-                                                                DEVUELTA A RECEPCIÓN
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626' }}>
+                                                                <AlertTriangle size={14} />
+                                                                DEVUELTA POR ADMINISTRACIÓN
                                                             </div>
                                                             {adm.ficha_devolucion_motivo && (
-                                                                <div style={{ fontWeight: 600, fontSize: '0.68rem', marginTop: '2px', color: '#7f1d1d' }}>
+                                                                <div style={{
+                                                                    fontWeight: 700, fontSize: '0.72rem', marginTop: '3px',
+                                                                    color: '#991b1b', background: '#fff', padding: '4px 6px',
+                                                                    borderRadius: '4px', border: '1px solid #fecaca'
+                                                                }}>
                                                                     Motivo: {adm.ficha_devolucion_motivo}
+                                                                </div>
+                                                            )}
+                                                            {(adm.ficha_devolucion_por || adm.ficha_devolucion_at) && (
+                                                                <div style={{ fontSize: '0.66rem', color: '#b91c1c', marginTop: '3px' }}>
+                                                                    Por: <strong>{adm.ficha_devolucion_por || 'Administración'}</strong>
+                                                                    {adm.ficha_devolucion_at && ` · ${new Date(adm.ficha_devolucion_at).toLocaleDateString('es-AR')} ${new Date(adm.ficha_devolucion_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -973,18 +1056,34 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                                                 </td>
                                                 <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                                     {isDevuelta ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleSubsanarFicha(adm)}
-                                                            style={{
-                                                                padding: '6px 12px', borderRadius: '6px',
-                                                                background: '#16a34a', color: '#ffffff',
-                                                                fontSize: '0.74rem', fontWeight: 800, border: 'none',
-                                                                cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            ✓ Marcar Subsanada
-                                                        </button>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSubsanarYAgregarAlCarrito(adm)}
+                                                                title="Marca como subsanada y la agrega de inmediato al carrito de entrega de hoy"
+                                                                style={{
+                                                                    padding: '5px 10px', borderRadius: '6px',
+                                                                    background: '#2563eb', color: '#ffffff',
+                                                                    fontSize: '0.72rem', fontWeight: 800, border: 'none',
+                                                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                                                }}
+                                                            >
+                                                                <ShoppingCart size={12} /> Subsanar y al Carrito
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSubsanarFicha(adm)}
+                                                                title="Marca como subsanada y la deja en lista de pendientes"
+                                                                style={{
+                                                                    padding: '4px 10px', borderRadius: '6px',
+                                                                    background: '#16a34a', color: '#ffffff',
+                                                                    fontSize: '0.7rem', fontWeight: 700, border: 'none',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                ✓ Marcar Subsanada
+                                                            </button>
+                                                        </div>
                                                     ) : isEnCarrito ? (
                                                         <button
                                                             type="button"

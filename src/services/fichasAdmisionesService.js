@@ -389,6 +389,7 @@ export async function fetchEntregaConDetalle(entregaId) {
 export async function devolverFichaARecepcion({
     detalleId,
     admisionId,
+    nAdmision,
     entregaId,
     motivo = 'Falta documentación o autorización',
     responsable = 'Administración'
@@ -399,7 +400,34 @@ export async function devolverFichaARecepcion({
 
     const now = new Date().toISOString();
 
-    // 1. Actualizar el detalle de la entrega
+    // Si no se pasó detalleId pero sí admisionId o nAdmision, buscar el último detalle de entrega
+    if (!detalleId && (admisionId || nAdmision)) {
+        try {
+            let detQuery = supabase
+                .from('entregas_fichas_detalle')
+                .select('id, entrega_id');
+            
+            if (admisionId) {
+                detQuery = detQuery.eq('admision_id', admisionId);
+            } else if (nAdmision) {
+                detQuery = detQuery.eq('numero_admision', nAdmision);
+            }
+
+            const { data: ultDetalle } = await detQuery
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (ultDetalle) {
+                detalleId = ultDetalle.id;
+                if (!entregaId) entregaId = ultDetalle.entrega_id;
+            }
+        } catch (e) {
+            console.warn('[fichasAdmisionesService] No se pudo encontrar detalle previo:', e);
+        }
+    }
+
+    // 1. Actualizar el detalle de la entrega si existe
     if (detalleId) {
         await supabase
             .from('entregas_fichas_detalle')
@@ -422,7 +450,7 @@ export async function devolverFichaARecepcion({
 
     // 3. Devolver la admisión al estado 'devuelta_a_recepcion' para que Recepción la vea en su bandeja
     if (admisionId) {
-        await supabase
+        const { error: updateError } = await supabase
             .from('altas_administrativas')
             .update({
                 ficha_estado: 'devuelta_a_recepcion',
@@ -432,6 +460,47 @@ export async function devolverFichaARecepcion({
                 ficha_en_carrito: false
             })
             .eq('id', admisionId);
+
+        if (updateError) {
+            console.error('[fichasAdmisionesService] Error actualizando alta administrativa:', updateError);
+            throw updateError;
+        }
+    }
+
+    return true;
+}
+
+// ─── 6.B Cancelar / Revertir Devolución de Ficha (en caso de error en Altas) ───
+export async function cancelarDevolucionFicha(admisionId) {
+    if (!admisionId) return false;
+
+    // 1. En altas_administrativas volver a 'entregada'
+    const { error: altasError } = await supabase
+        .from('altas_administrativas')
+        .update({
+            ficha_estado: 'entregada',
+            ficha_devolucion_motivo: null,
+            ficha_devolucion_at: null,
+            ficha_devolucion_por: null
+        })
+        .eq('id', admisionId);
+
+    if (altasError) throw altasError;
+
+    // 2. En entregas_fichas_detalle volver a 'aceptada'
+    try {
+        await supabase
+            .from('entregas_fichas_detalle')
+            .update({
+                estado_ficha: 'aceptada',
+                devolucion_motivo: null,
+                devolucion_at: null,
+                devolucion_por: null
+            })
+            .eq('admision_id', admisionId)
+            .eq('estado_ficha', 'devuelta_a_recepcion');
+    } catch (e) {
+        console.warn('[fichasAdmisionesService] Error revirtiendo detalle:', e);
     }
 
     return true;
@@ -457,10 +526,32 @@ export async function subsanarFichaDevuelta(admisionId, detalleId = null) {
         await supabase
             .from('entregas_fichas_detalle')
             .update({
-                subsanada_at: now
+                subsanada_at: now,
+                estado_ficha: 'subsanada'
             })
             .eq('id', detalleId);
+    } else if (admisionId) {
+        try {
+            await supabase
+                .from('entregas_fichas_detalle')
+                .update({
+                    subsanada_at: now,
+                    estado_ficha: 'subsanada'
+                })
+                .eq('admision_id', admisionId)
+                .eq('estado_ficha', 'devuelta_a_recepcion');
+        } catch (e) {
+            console.warn('[fichasAdmisionesService] Error actualizando detalle en subsanar:', e);
+        }
     }
 
     return true;
 }
+
+// ─── 8. Subsanar y Enviar Directo al Carrito de Recepción ───
+export async function subsanarYEnviarAlCarrito(admisionId, userDetails = 'Recepción') {
+    await subsanarFichaDevuelta(admisionId);
+    await toggleCarritoFicha(admisionId, true, userDetails);
+    return true;
+}
+
