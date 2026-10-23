@@ -3556,26 +3556,6 @@ export default function QuirofanoDashboard({
                                 >
                                     <Eye size={14} /> Auditar Pacientes Causal 3 ({dynamicMetrics ? dynamicMetrics.motivo3Count : 0})
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowSqlModal(true)}
-                                    style={{
-                                        background: 'rgba(255,255,255,0.1)',
-                                        color: '#E2E8F0',
-                                        border: '1px solid rgba(255,255,255,0.2)',
-                                        borderRadius: '8px',
-                                        padding: '8px 14px',
-                                        fontSize: '0.78rem',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                    }}
-                                    title="Ver query SQL canónica 4.B de autocruce y trazabilidad en el manual institucional"
-                                >
-                                    <BookOpen size={14} /> Ver Query SQL 4.B
-                                </button>
                             </div>
                         </div>
 
