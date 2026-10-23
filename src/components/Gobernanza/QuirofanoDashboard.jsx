@@ -274,11 +274,10 @@ const CICLO_VIDA_KPIS = {
     tasaSuspensionNeta: '5,17%'
 };
 
-// Productividad de Equipos
+// Productividad de Equipos (Nómina Activa Quirófano Sanatorio Argentino)
 const EQUIPOS_DATA = {
     circulantes: [
         { nombre: 'VILLEGAS CORTEZ, DAYANA JANET', cant: 181 },
-        { nombre: 'GOMEZ, MICAELA NAHIR', cant: 167 },
         { nombre: 'OVIEDO, AGOSTINA MILAGRO', cant: 162 },
         { nombre: 'CACERES, MARIA CRISTINA', cant: 161 },
         { nombre: 'RAMIREZ BASINAY, CELINA MARI...', cant: 148 },
@@ -289,25 +288,23 @@ const EQUIPOS_DATA = {
         { nombre: 'MUÑOZ, JULIETA ANALIA', cant: 102 }
     ],
     tecnicosAnestesia: [
-        { nombre: 'FERRA, PATRICIA YAEL', cant: 232 },
         { nombre: 'RIVERO RUIZ, NANCY LILIANA', cant: 219 },
         { nombre: 'HERRERA ESCRIVA, JOSE FRA...', cant: 217 },
         { nombre: 'FERNANDEZ, EDUARDO SAM...', cant: 216 },
         { nombre: 'RIVEROS DIAZ, NOEMI DEL V...', cant: 193 },
         { nombre: 'ALMAGRO, MELINA', cant: 182 },
-        { nombre: 'JOFRE, LUDMILA ORIANA', cant: 156 },
         { nombre: 'LUNA, MELISA ELIANA', cant: 155 }
     ],
     anestesistas: [
-        { nombre: 'MONTILLA DEL PIF, GONZALO (Grupo)', cant: 227, grupo: 'Planta' },
-        { nombre: 'QUIROGA, JORGE ALEJAND... (Grupo)', cant: 179, grupo: 'Planta' },
-        { nombre: 'CASANOVA, MARCELO (Grupo)', cant: 176, grupo: 'Planta' },
-        { nombre: 'MARTINEZ, ALFREDO OSCAR (Grupo)', cant: 166, grupo: 'Planta' },
-        { nombre: 'ORELLANO, FASSAEL (Grupo)', cant: 159, grupo: 'Planta' },
-        { nombre: 'SZRETTER, ALBERTO FEDER... (Grupo)', cant: 117, grupo: 'Planta' },
-        { nombre: 'SOTARELLO, PATRICIO (Guardia)', cant: 97, grupo: 'Guardia' },
-        { nombre: 'SCHIAVI GUERRERO, GUIDO... (Guardia)', cant: 80, grupo: 'Guardia' },
-        { nombre: 'VARAS BERESVIL, PEDRO B... (Guardia)', cant: 77, grupo: 'Guardia' }
+        { nombre: 'MONTILLA DEL PIF, GONZALO (Grupo)', cant: 227, grupo: 'Grupo' },
+        { nombre: 'QUIROGA, JORGE ALEJANDRO (Grupo)', cant: 179, grupo: 'Grupo' },
+        { nombre: 'CASANOVA, MARCELO (Grupo)', cant: 176, grupo: 'Grupo' },
+        { nombre: 'MARTINEZ, ALFREDO OSCAR (Grupo)', cant: 166, grupo: 'Grupo' },
+        { nombre: 'ORELLANO, FASSAEL (Grupo)', cant: 159, grupo: 'Grupo' },
+        { nombre: 'SZRETTER, ALBERTO FEDERICO (Grupo)', cant: 117, grupo: 'Grupo' },
+        { nombre: 'SOTARELLO, FABRICIO (Grupo)', cant: 97, grupo: 'Grupo' },
+        { nombre: 'SCHIAVI GUERRERO, GUIDO (Grupo)', cant: 80, grupo: 'Grupo' },
+        { nombre: 'VARAS BERESVIL, PEDRO B. (Grupo)', cant: 77, grupo: 'Grupo' }
     ],
     instrumentadores: [
         { nombre: 'SANTAMARIA, GRACIELA HELENA', cant: 178 },
@@ -4387,7 +4384,7 @@ export default function QuirofanoDashboard({
                             </div>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>Anestesistas ({activePeriodLabel})</h3>
-                                <p style={{ margin: 0, fontSize: '0.70rem', color: '#64748B' }}>Grupo Anestésico (Planta vs Guardia)</p>
+                                <p style={{ margin: 0, fontSize: '0.70rem', color: '#64748B' }}>Grupo Anestésico Institucional</p>
                             </div>
                         </div>
 
@@ -4396,7 +4393,7 @@ export default function QuirofanoDashboard({
                                 {activeEquiposData.anestesistas.map((a, idx) => (
                                     <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
                                         <td style={{ padding: '6px 4px', fontWeight: 700, color: '#0F172A' }}>{a.nombre}</td>
-                                        <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 900, color: a.grupo === 'Guardia' ? '#DC2626' : '#D97706' }}>{a.cant}</td>
+                                        <td style={{ padding: '6px 4px', textAlign: 'right', fontWeight: 900, color: '#D97706' }}>{a.cant}</td>
                                     </tr>
                                 ))}
                             </tbody>
