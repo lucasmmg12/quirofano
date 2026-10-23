@@ -1954,6 +1954,44 @@ export default function QuirofanoDashboard({
             const sala = getSalaEstimada(s, idx);
             const rawMotivo = (s.motivo || '').toLowerCase();
 
+            // Buscar si el paciente tiene otra cirugía registrada y realizada en el sistema
+            const efectivizada = allSurgeriesRows.find(other => {
+                if (other.id === s.id) return false;
+                const matchId = s.id_paciente && other.id_paciente && String(s.id_paciente).trim() === String(other.id_paciente).trim();
+                const matchDni = s.dni && other.dni && String(s.dni).trim() === String(other.dni).trim();
+                const matchNom = s.nombre && other.nombre && s.nombre.trim().toUpperCase() === other.nombre.trim().toUpperCase();
+                if (!matchId && !matchDni && !matchNom) return false;
+
+                const isAusente = other.ausente === 1 || other.ausente === '1' || other.ausente === true;
+                const isSusp = other.status === 'rojo' || other.status === 'suspendida';
+                return !isAusente && !isSusp;
+            });
+
+            let fechaEfectiva = null;
+            let efectivizacionTipo = null;
+            let efectivizacionTexto = null;
+
+            if (efectivizada) {
+                fechaEfectiva = efectivizada.fecha_cirugia;
+                const dProg = s.fecha_cirugia ? new Date(s.fecha_cirugia) : null;
+                const dReal = efectivizada.fecha_cirugia ? new Date(efectivizada.fecha_cirugia) : null;
+                if (dProg && dReal && !isNaN(dProg.getTime()) && !isNaN(dReal.getTime())) {
+                    const diffDays = Math.round((dProg.getTime() - dReal.getTime()) / (1000 * 60 * 60 * 24));
+                    if (diffDays > 0) {
+                        efectivizacionTipo = 'ANTICIPADA';
+                        efectivizacionTexto = `Anticipada ${diffDays} ${diffDays === 1 ? 'día' : 'días'} antes (${efectivizada.fecha_cirugia})`;
+                    } else if (diffDays < 0) {
+                        efectivizacionTipo = 'REPROGRAMADA';
+                        efectivizacionTexto = `Reprogramada ${Math.abs(diffDays)} ${Math.abs(diffDays) === 1 ? 'día' : 'días'} después (${efectivizada.fecha_cirugia})`;
+                    } else {
+                        efectivizacionTipo = 'MISMO_DIA';
+                        efectivizacionTexto = `Efectivizada en otra sala el mismo día (${efectivizada.fecha_cirugia})`;
+                    }
+                } else {
+                    efectivizacionTexto = `Efectivizada el ${efectivizada.fecha_cirugia}`;
+                }
+            }
+
             let cat = 'OPERATIVO';
             let catLabel = 'Operativo & Logística';
             let cod = 1;
@@ -1973,7 +2011,7 @@ export default function QuirofanoDashboard({
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 10; motDesc = '10. Ortopedia / Prótesis';
             } else if (rawMotivo.includes('cirujano') || rawMotivo.includes('medico')) {
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 8; motDesc = '8. Otro motivo de cirujanos';
-            } else if (rawMotivo.includes('realizad') || rawMotivo.includes('ya fue') || rawMotivo.includes('nacio') || rawMotivo.includes('nacimiento') || rawMotivo.includes('parto') || rawMotivo.includes('anticip')) {
+            } else if (rawMotivo.includes('realizad') || rawMotivo.includes('ya fue') || rawMotivo.includes('nacio') || rawMotivo.includes('nacimiento') || rawMotivo.includes('parto') || rawMotivo.includes('anticip') || efectivizacionTipo === 'ANTICIPADA') {
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 3; motDesc = '3. Ya fue realizado';
             } else {
                 // Distribución proporcional exacta alineada con la tabla y gráfico de auditoría
@@ -1990,7 +2028,11 @@ export default function QuirofanoDashboard({
                 causalCodigo: cod,
                 causalMotivo: s.motivo || motDesc,
                 causalCategoria: cat,
-                causalCategoriaLabel: catLabel
+                causalCategoriaLabel: catLabel,
+                fechaEfectiva,
+                efectivizacionTipo,
+                efectivizacionTexto,
+                cirugiaEfectiva: efectivizada || null
             };
         });
     }, [allSurgeriesRows, scopedSurgeriesRows, ambitoFilter, activeMotivosSuspension]);
@@ -2033,7 +2075,9 @@ export default function QuirofanoDashboard({
             const wb = XLSX.utils.book_new();
             const excelRows = patients.map((p, idx) => ({
                 'N°': idx + 1,
-                'Fecha Cirugía': p.fecha_cirugia || '—',
+                'Fecha Programada': p.fecha_cirugia || '—',
+                'Fecha Efectiva Realizada': p.fechaEfectiva || (p.causalCodigo === 3 ? 'Ver Historia Clínica' : 'No realizada'),
+                'Trazabilidad de Efectivización': p.efectivizacionTexto || (p.causalCodigo === 3 ? 'Cirugía efectivizada según registro médico (ver HC)' : '—'),
                 'Paciente': p.nombre || 'PACIENTE NO ESPECIFICADO',
                 'NHC / N° Historia': p.id_paciente || '—',
                 'DNI': p.dni || '—',
@@ -2051,7 +2095,7 @@ export default function QuirofanoDashboard({
 
             const ws = XLSX.utils.json_to_sheet(excelRows);
             ws['!cols'] = [
-                { wch: 6 }, { wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 14 }, { wch: 16 },
+                { wch: 6 }, { wch: 16 }, { wch: 22 }, { wch: 38 }, { wch: 34 }, { wch: 22 }, { wch: 14 }, { wch: 16 },
                 { wch: 32 }, { wch: 28 }, { wch: 34 }, { wch: 18 }, { wch: 28 }, { wch: 24 },
                 { wch: 14 }, { wch: 36 }, { wch: 30 }
             ];
@@ -6093,7 +6137,8 @@ export default function QuirofanoDashboard({
                                             zIndex: 2
                                         }}>
                                             <th style={{ padding: '12px 8px', color: '#64748B', fontWeight: 800, width: '40px' }}>N°</th>
-                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>Fecha Cx</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>Fecha Prog.</th>
+                                            <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, minWidth: '150px' }}>Efectivización / Fecha Real</th>
                                             <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '190px' }}>Paciente</th>
                                             <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '90px' }}>NHC</th>
                                             <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '180px' }}>Cirujano</th>
@@ -6124,6 +6169,58 @@ export default function QuirofanoDashboard({
                                                     </td>
                                                     <td style={{ padding: '10px 10px', color: '#334155', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                         {p.fecha_cirugia || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '10px 10px' }}>
+                                                        {p.fechaEfectiva ? (
+                                                            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '2px' }}>
+                                                                <span style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    padding: '2px 7px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '0.68rem',
+                                                                    fontWeight: 800,
+                                                                    background: '#DCFCE7',
+                                                                    color: '#15803D',
+                                                                    border: '1px solid #86EFAC'
+                                                                }}>
+                                                                    ✓ Realizada: {p.fechaEfectiva}
+                                                                </span>
+                                                                {p.efectivizacionTexto && (
+                                                                    <span style={{ fontSize: '0.66rem', color: '#475569' }}>
+                                                                        {p.efectivizacionTexto}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : p.causalCodigo === 3 ? (
+                                                            <span style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                padding: '2px 7px',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.68rem',
+                                                                fontWeight: 800,
+                                                                background: '#EFF6FF',
+                                                                color: '#1D4ED8',
+                                                                border: '1px solid #BFDBFE'
+                                                            }}>
+                                                                ✓ Realizada (Efectivizada en HC)
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                padding: '2px 7px',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.68rem',
+                                                                fontWeight: 600,
+                                                                background: '#F1F5F9',
+                                                                color: '#64748B'
+                                                            }}>
+                                                                No efectivizada
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td style={{ padding: '10px 12px' }}>
                                                         <div style={{ fontWeight: 800, color: '#0F172A' }}>
