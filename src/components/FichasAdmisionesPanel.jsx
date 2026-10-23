@@ -24,6 +24,7 @@ import {
     toggleMultipleCarritoFichas,
     fetchCarritoFichas,
     vaciarCarritoFichas,
+    toggleAllPendientesACarrito,
     emitirEntregaFichas,
     fetchHistorialEntregas,
     fetchEntregaConDetalle,
@@ -197,6 +198,21 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
     };
 
     // ─── Enviar al Carrito ───
+    const handleEnviarTodasAlCarrito = async () => {
+        if (resumen.pendientes === 0) return;
+        const confirmMsg = `¿Desea enviar TODAS las ${resumen.pendientes} fichas pendientes al carrito de entrega?`;
+        if (!window.confirm(confirmMsg)) return;
+        try {
+            await toggleAllPendientesACarrito(true, currentUser?.nombre || 'Recepción');
+            setSelectedIds(new Set());
+            showToast(`Todas las ${resumen.pendientes} fichas pendientes fueron agregadas al carrito`);
+            loadPendientes();
+        } catch (err) {
+            console.error('[FichasAdmisiones] Error agregando todas al carrito:', err);
+            showToast('Error al agregar todas al carrito', 'error');
+        }
+    };
+
     const handleEnviarSeleccionadasAlCarrito = async () => {
         if (selectedIds.size === 0) return;
         try {
@@ -870,8 +886,26 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                             )}
                         </form>
 
-                        {/* Botón de Enviar Seleccionadas al Carrito */}
+                        {/* Botón de Enviar Seleccionadas o Todas al Carrito */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {resumen.pendientes > 0 && filtroEstado === 'pendientes' && (
+                                <button
+                                    type="button"
+                                    onClick={handleEnviarTodasAlCarrito}
+                                    title="Enviar todas las admisiones pendientes de entrega al carrito con un solo clic"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '9px 15px', borderRadius: '8px',
+                                        background: '#f0fdf4', border: '1.5px solid #86efac',
+                                        color: '#15803d', fontWeight: 800, fontSize: '0.82rem',
+                                        cursor: 'pointer', transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <ShoppingCart size={15} />
+                                    Enviar TODAS ({resumen.pendientes}) al Carrito
+                                </button>
+                            )}
+
                             {selectedIds.size > 0 && (
                                 <button
                                     type="button"

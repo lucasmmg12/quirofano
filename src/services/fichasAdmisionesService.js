@@ -176,6 +176,29 @@ export async function toggleMultipleCarritoFichas(admisionIds, inCart, userDetai
     return true;
 }
 
+export async function toggleAllPendientesACarrito(inCart = true, userDetails = 'Recepción') {
+    let query = supabase
+        .from('altas_administrativas')
+        .update({
+            ficha_en_carrito: inCart,
+            ficha_carrito_por: inCart ? userDetails : null,
+            ficha_carrito_at: inCart ? new Date().toISOString() : null,
+            ficha_estado: inCart ? 'en_carrito' : 'pendiente'
+        })
+        .gte('fecha_ingreso', FICHAS_CIRCUITO_CORTE);
+
+    if (inCart) {
+        query = query.or('ficha_estado.is.null,ficha_estado.eq.pendiente');
+    } else {
+        query = query.eq('ficha_en_carrito', true);
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+    return true;
+}
+
+
 export async function fetchCarritoFichas() {
     const { data, error } = await supabase
         .from('altas_administrativas')

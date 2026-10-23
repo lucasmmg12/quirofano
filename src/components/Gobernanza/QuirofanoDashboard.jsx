@@ -461,6 +461,142 @@ const CHART_HELP_CATALOGO = {
     }
 };
 
+// ─── CLASIFICADOR CLÍNICO DE ESPECIALIDADES MÉDICAS SEGÚN NOMENCLADOR Y PROCEDIMIENTO ───
+export function getEspecialidadMedica(descripcion, modulo) {
+    const d = `${descripcion || ''} ${modulo || ''}`.toUpperCase();
+    
+    // 1. Obstetricia (Partos, Cesáreas y controles obstétricos directos)
+    if (d.includes('CESAREA') || d.includes('PARTO') || d.includes('AMNIOCENTESIS') || d.includes('MONITOREO FETAL') || d.includes('CERCLAJE')) {
+        return 'OBSTETRICIA';
+    }
+    
+    // 2. Ginecología (Intervenciones en aparato reproductor femenino)
+    if (
+        d.includes('HISTERECTOMIA') || d.includes('HISTEROSCOPIA') || d.includes('LEEP') || 
+        d.includes('CONIZACION') || d.includes('RASPADO') || d.includes('LEGRADO') || 
+        d.includes('MIOMECTOMIA') || d.includes('COLPORRAFIA') || d.includes('VAGIN') || 
+        d.includes('OVARIO') || d.includes('TROMPA') || d.includes('BARTHOLINO') || 
+        d.includes('CERVIX') || d.includes('FONDO DE SACO') || d.includes('LABIOS MAYORES') ||
+        d.includes('LABIOS MENORES') || d.includes('VULVECTOMIA')
+    ) {
+        return 'GINECOLOGIA';
+    }
+
+    // 3. Mastología / Patología Mamaria
+    if (
+        d.includes('CUADRANTECTOMIA') || d.includes('MASTECTOMIA') || d.includes('GANGLIO CENTINELA') || 
+        d.includes('TUMORECTOMIA') || d.includes('TUMOR DE MAMA') || d.includes('BIOPSIA MAMARIA') ||
+        d.includes('VACIAMIENTO AXILAR')
+    ) {
+        return 'MASTOLOGIA / PATOLOGIA MAMARIA';
+    }
+
+    // 4. Gastroenterología / Endoscopía Digestiva
+    if (
+        d.includes('FIBROENDOSCOPIA') || d.includes('COLONOSCOPIA') || d.includes('ENDOSCOP') || 
+        d.includes('COLANGIO') || d.includes('GASTRO') || d.includes('ESOFAG') || 
+        d.includes('DILATACION ESOFAGICA') || d.includes('POLIPECTOMIA ENDOSCOPICA') ||
+        d.includes('CPRE') || d.includes('BALON INTRAGASTRICO')
+    ) {
+        return 'GASTROENTEROLOGIA / ENDOSCOPIA';
+    }
+
+    // 5. Traumatología y Ortopedia
+    if (
+        d.includes('ARTROSCOPIA') || d.includes('FRACTURA') || d.includes('OSTEOTOMIA') || 
+        d.includes('HALLUX') || d.includes('RODILLA') || d.includes('HOMBRO') || 
+        d.includes('CADERA') || d.includes('COLUMNA') || d.includes('LIGAMENTO') || 
+        d.includes('MENISCO') || d.includes('ESCOLIOSIS') || d.includes('LORDOSIS') || 
+        d.includes('CIFOSIS') || d.includes('PIE O TIBIA') || d.includes('TENDON') ||
+        d.includes('REDUCCION') || d.includes('OSTEOSINTESIS') || d.includes('AMPUTACION')
+    ) {
+        return 'TRAUMATOLOGIA Y ORTOPEDIA';
+    }
+
+    // 6. Urología
+    if (
+        d.includes('CATETER DOBLE J') || d.includes('PROSTATA') || d.includes('VASECTOMIA') || 
+        d.includes('FIMOSIS') || d.includes('POSTIOPLASTIA') || d.includes('ORQUID') || 
+        d.includes('VARICOCELE') || d.includes('LITOTRICIA') || d.includes('URETERO') || 
+        d.includes('CISTO') || d.includes('NEFRECTOMIA') || d.includes('RTU-P') || d.includes('RTUP')
+    ) {
+        return 'UROLOGIA';
+    }
+
+    // 7. Cirugía Vascular y Flebología
+    if (
+        d.includes('SAFENECTOMIA') || d.includes('VARICES') || d.includes('FLEBO') || 
+        d.includes('VASCULAR') || d.includes('FISTULA ARTERIOVENOSA') || d.includes('FAV') ||
+        d.includes('BYPASS VASCULAR') || d.includes('TROMBECTOMIA') || d.includes('EMBOLECTOMIA')
+    ) {
+        return 'CIRUGIA VASCULAR / FLEBOLOGIA';
+    }
+
+    // 8. Reproducción Asistida / Fertilidad
+    if (
+        d.includes('REPRODUCCION') || d.includes('TRANSFERENCIA') || 
+        d.includes('ASPIRACION FOLICULAR') || d.includes('DESCONGELACION')
+    ) {
+        return 'REPRODUCCION ASISTIDA / FERTILIDAD';
+    }
+
+    // 9. Cirugía Plástica y Reparadora
+    if (
+        d.includes('MASTOPLASTIA') || d.includes('DERMOLIPECTOMIA') || d.includes('LIPOASPIRACION') || 
+        d.includes('RINOPLASTIA') || d.includes('IMPLANTES MAMARIOS') || d.includes('PROTESIS MAMARIA') ||
+        d.includes('BLEFAROPLASTIA') || d.includes('OTOPLASTIA') || d.includes('LIFTING')
+    ) {
+        return 'CIRUGIA PLASTICA';
+    }
+
+    // 10. Otorrinolaringología (ORL)
+    if (
+        d.includes('AMIGDAL') || d.includes('ADENOID') || d.includes('TIMPANO') || 
+        d.includes('SEPTOPLASTIA') || d.includes('LARINGE') || d.includes('RINOSEPTOPLASTIA')
+    ) {
+        return 'OTORRINOLARINGOLOGIA';
+    }
+
+    // 11. Cirugía Pediátrica
+    if (d.includes('PEDIATR') || d.includes('NEONAT')) {
+        return 'CIRUGIA PEDIATRICA';
+    }
+
+    // 12. Cirugía General y Digestiva
+    if (
+        d.includes('COLECISTECTOMIA') || d.includes('HERNIO') || d.includes('EVENTRO') || 
+        d.includes('APENDIC') || d.includes('LAPAROTOMIA') || d.includes('HEMORROID') || 
+        d.includes('FISTULA') || d.includes('QUISTE PILONIDAL') || d.includes('SACROCOCCIGEO') ||
+        d.includes('LIPOMA') || d.includes('BYPASS GASTRICO') || d.includes('MANGA GASTRICA') ||
+        d.includes('SLEEVE') || d.includes('COLECTOMIA') || d.includes('ABSCESO') ||
+        d.includes('ESPLENECTOMIA') || d.includes('TIROIDES') || d.includes('TIROIDECTOMIA') ||
+        d.includes('PIEL') || d.includes('TUMOR') || d.includes('BIOPSIA')
+    ) {
+        return 'CIRUGIA GENERAL';
+    }
+
+    return 'OTRAS ESPECIALIDADES';
+}
+
+// ─── DETECCIÓN DE PRESTADORES / REGISTROS GENÉRICOS O INSTITUCIONALES EN SALUS ───
+export function isMedicoGenerico(medico) {
+    if (!medico) return true;
+    const m = medico.trim().toUpperCase();
+    return (
+        m.includes('GUARDIA') ||
+        m.includes('QUIRÓFANO') ||
+        m.includes('QUIROFANO') ||
+        m.includes('CENTRALES') ||
+        m.includes('HDD') ||
+        m.includes('HEMODINAMIA') ||
+        m.includes('HOSPITAL DE DIA') ||
+        m.includes('RX') ||
+        m.includes('****') ||
+        m === 'SIN MEDICO' ||
+        m === ''
+    );
+}
+
 // ─── COMPILADOR EN UN SOLO PASE (STREAM REDUCER) PARA AHORRO DE MEMORIA RAM ───
 function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
     if (!allRows || allRows.length === 0) return null;
@@ -550,29 +686,34 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
             urgencias++;
         }
 
+        // Clasificación de especialidad médica real según procedimiento
+        const espReal = getEspecialidadMedica(s.descripcion, s.modulo);
+        especialidadesMap[espReal] = (especialidadesMap[espReal] || 0) + 1;
+
+        // Médico Cirujano (excluyendo guardias genéricas y agendas de salas del ranking nominal)
         if (s.medico) {
             const m = s.medico.trim();
-            if (!medicosMap[m]) {
-                medicosMap[m] = {
-                    nombre: m,
-                    especialidad: s.modulo ? s.modulo.replace(/^\(CX\)\s*/i, '').trim() : 'Cirugía General',
-                    programadas: 0,
-                    realizadas: 0,
-                    suspendidas: 0
-                };
+            const esGenerico = isMedicoGenerico(m);
+            if (!esGenerico) {
+                if (!medicosMap[m]) {
+                    medicosMap[m] = {
+                        nombre: m,
+                        especialidad: espReal,
+                        programadas: 0,
+                        realizadas: 0,
+                        suspendidas: 0
+                    };
+                }
+                medicosMap[m].programadas++;
+                if (isSusp) medicosMap[m].suspendidas++;
+                else medicosMap[m].realizadas++;
             }
-            medicosMap[m].programadas++;
-            if (isSusp) medicosMap[m].suspendidas++;
-            else medicosMap[m].realizadas++;
         }
 
         if (s.obra_social) {
             const os = s.obra_social.trim();
             obrasSocialesMap[os] = (obrasSocialesMap[os] || 0) + 1;
         }
-
-        const modulo = s.modulo ? s.modulo.replace(/^\(CX\)\s*/i, '').trim() : 'CIRUGIA GENERAL';
-        especialidadesMap[modulo] = (especialidadesMap[modulo] || 0) + 1;
 
         const rawProc = s.descripcion ? s.descripcion.trim().toUpperCase() : (s.modulo ? s.modulo.trim().toUpperCase() : 'CIRUGIA GENERAL');
         const proc = rawProc.startsWith('(CX)') ? rawProc : `(CX) ${rawProc}`;
@@ -585,7 +726,7 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
                 procRealMap[proc] = {
                     nombre: proc,
                     cantidad: 0,
-                    especialidad: s.modulo ? s.modulo.replace(/^\(CX\)\s*/i, '').trim() : 'Cirugía General'
+                    especialidad: espReal
                 };
             }
             procRealMap[proc].cantidad++;
@@ -622,6 +763,23 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
         }))
         .sort((a, b) => b.cant - a.cant)
         .slice(0, 12);
+
+    // Cirugías más realizadas (tipos de procedimiento)
+    const procedimientosMasRealizados = Object.entries(procTotalMap)
+        .map(([procFullName, cant], idx) => {
+            const cleanName = procFullName.replace(/^\(CX\)\s*/i, '').trim();
+            const esp = getEspecialidadMedica(cleanName, '');
+            return {
+                nombre: cleanName,
+                procedimientoRaw: procFullName,
+                especialidad: esp,
+                cant,
+                pct: total > 0 ? Number(((cant / total) * 100).toFixed(1)) : 0,
+                color: osColors[idx % osColors.length]
+            };
+        })
+        .sort((a, b) => b.cant - a.cant)
+        .slice(0, 15);
 
     const allSalas = [
         { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: Math.round(centralesRealizadas * 0.28), horas: Number((centralesRealizadas * 0.28 * 2.3).toFixed(1)), ocupacionPct: Number(Math.min(96, Math.max(40, 75 + (centrales % 20))).toFixed(1)), color: '#1E40AF', tipo: 'CENTRALES' },
@@ -742,11 +900,13 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
             cirujanos,
             obrasSociales,
             especialidades,
+            procedimientosMasRealizados,
             salasData
         },
         motivosSuspension,
         procedimientosRealizados,
-        procedimientosSuspendidos
+        procedimientosSuspendidos,
+        procedimientosMasRealizados
     };
 }
 
@@ -815,7 +975,8 @@ export default function QuirofanoDashboard({
     const [sortMotivosBy, setSortMotivosBy] = useState('codigo'); // 'codigo' | 'cantidad'
     const [allSurgeriesRows, setAllSurgeriesRows] = useState([]);
     const [ambitoFilter, setAmbitoFilter] = useState('TODOS'); // 'TODOS' | 'CENTRALES' | 'HDD'
-    const [selectedCrossFilter, setSelectedCrossFilter] = useState(null); // { type: 'OBRA_SOCIAL'|'CIRUJANO'|'ESPECIALIDAD', value: string, label: string }
+    const [selectedCrossFilter, setSelectedCrossFilter] = useState(null); // { type: 'OBRA_SOCIAL'|'CIRUJANO'|'ESPECIALIDAD'|'PROCEDIMIENTO', value: string, label: string }
+    const [tipoRankingEspecialidad, setTipoRankingEspecialidad] = useState('ESPECIALIDAD'); // 'ESPECIALIDAD' | 'PROCEDIMIENTO'
     const [loadingSurgeries, setLoadingSurgeries] = useState(false);
     const [showNominalModal, setShowNominalModal] = useState(false);
     const [nominalSearch, setNominalSearch] = useState('');
@@ -931,8 +1092,14 @@ export default function QuirofanoDashboard({
         }
         if (selectedCrossFilter.type === 'ESPECIALIDAD') {
             return allSurgeriesRows.filter(s => {
-                const esp = s.modulo ? s.modulo.replace(/^\(CX\)\s*/i, '').trim().toUpperCase() : 'CIRUGIA GENERAL';
+                const esp = getEspecialidadMedica(s.descripcion, s.modulo);
                 return esp === filterVal;
+            });
+        }
+        if (selectedCrossFilter.type === 'PROCEDIMIENTO') {
+            return allSurgeriesRows.filter(s => {
+                const rawProc = (s.descripcion || s.modulo || '').replace(/^\(CX\)\s*/i, '').trim().toUpperCase();
+                return rawProc.includes(filterVal) || filterVal.includes(rawProc);
             });
         }
         return allSurgeriesRows;
@@ -984,6 +1151,14 @@ export default function QuirofanoDashboard({
         return dynamicMetrics ? dynamicMetrics.especialidades : ESPECIALIDADES_DATA;
     }, [selectedCrossFilter, unfilteredCompiledData, dynamicMetrics]);
 
+    // Cirugías más realizadas (tipos de procedimiento)
+    const displayProcedimientosMasRealizados = useMemo(() => {
+        if (selectedCrossFilter && selectedCrossFilter.type === 'PROCEDIMIENTO') {
+            return unfilteredCompiledData?.dynamicMetrics?.procedimientosMasRealizados || [];
+        }
+        return dynamicMetrics ? dynamicMetrics.procedimientosMasRealizados : [];
+    }, [selectedCrossFilter, unfilteredCompiledData, dynamicMetrics]);
+
     // Tarjeta Demanda por Obra Social:
     // Si el filtro activo es OBRA_SOCIAL, mantenemos la lista global para poder cambiar de obra social con 1 clic.
     // Si el filtro activo es CIRUJANO o ESPECIALIDAD, mostramos las obras sociales supeditadas.
@@ -997,6 +1172,7 @@ export default function QuirofanoDashboard({
     // Referencias para retrocompatibilidad
     const filteredCirujanos = displayCirujanos;
     const activeEspecialidadesData = displayEspecialidades;
+    const activeProcedimientosMasRealizadosData = displayProcedimientosMasRealizados;
     const activeObrasSocialesData = displayObrasSociales;
 
     const formattedPeriodo = useMemo(() => {
@@ -2234,27 +2410,59 @@ export default function QuirofanoDashboard({
                             </div>
                         </div>
 
-                        {/* Ranking Especialidades */}
+                        {/* Ranking Especialidades & Cirugías Más Realizadas (Conmutador) */}
                         <div style={{ 
                             background: '#FFFFFF', 
                             borderRadius: '14px', 
-                            border: selectedCrossFilter?.type === 'ESPECIALIDAD' ? '1.5px solid #3B82F6' : '1px solid #E2E8F0', 
+                            border: (selectedCrossFilter?.type === 'ESPECIALIDAD' || selectedCrossFilter?.type === 'PROCEDIMIENTO') ? '1.5px solid #3B82F6' : '1px solid #E2E8F0', 
                             padding: '20px', 
-                            boxShadow: selectedCrossFilter?.type === 'ESPECIALIDAD' ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)' 
+                            boxShadow: (selectedCrossFilter?.type === 'ESPECIALIDAD' || selectedCrossFilter?.type === 'PROCEDIMIENTO') ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 1px 3px rgba(0,0,0,0.02)' 
                         }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
-                                        Cirugías por Especialidad ({activePeriodLabel})
-                                    </h3>
-                                    {selectedCrossFilter && selectedCrossFilter.type === 'ESPECIALIDAD' && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {/* Selector tipo pill para Especialidad vs Cirugías más realizadas */}
+                                    <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTipoRankingEspecialidad('ESPECIALIDAD')}
+                                            style={{
+                                                padding: '4px 10px',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s ease',
+                                                background: tipoRankingEspecialidad === 'ESPECIALIDAD' ? '#2563EB' : 'transparent',
+                                                color: tipoRankingEspecialidad === 'ESPECIALIDAD' ? '#FFFFFF' : '#475569',
+                                                boxShadow: tipoRankingEspecialidad === 'ESPECIALIDAD' ? '0 1px 4px rgba(37,99,235,0.3)' : 'none'
+                                            }}
+                                        >
+                                            🩺 Especialidades
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTipoRankingEspecialidad('PROCEDIMIENTO')}
+                                            style={{
+                                                padding: '4px 10px',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s ease',
+                                                background: tipoRankingEspecialidad === 'PROCEDIMIENTO' ? '#2563EB' : 'transparent',
+                                                color: tipoRankingEspecialidad === 'PROCEDIMIENTO' ? '#FFFFFF' : '#475569',
+                                                boxShadow: tipoRankingEspecialidad === 'PROCEDIMIENTO' ? '0 1px 4px rgba(37,99,235,0.3)' : 'none'
+                                            }}
+                                        >
+                                            ✂️ Cirugías Más Realizadas
+                                        </button>
+                                    </div>
+
+                                    {selectedCrossFilter && (selectedCrossFilter.type === 'ESPECIALIDAD' || selectedCrossFilter.type === 'PROCEDIMIENTO') && (
                                         <span style={{ fontSize: '0.65rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
                                             🔒 Filtro Activo
-                                        </span>
-                                    )}
-                                    {selectedCrossFilter && selectedCrossFilter.type !== 'ESPECIALIDAD' && (
-                                        <span style={{ fontSize: '0.65rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
-                                            Supeditado
                                         </span>
                                     )}
                                 </div>
@@ -2274,71 +2482,133 @@ export default function QuirofanoDashboard({
                                         alignItems: 'center',
                                         gap: '3px'
                                     }}
-                                    title="Explicación clínica de especialidades"
+                                    title="Explicación clínica de especialidades y procedimientos"
                                 >
                                     <HelpCircle size={12} /> Explicación
                                 </button>
                             </div>
+
                             <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
-                                💡 Haz clic en una fila para bloquear y supeditar los gráficos a esa especialidad.
+                                💡 Haz clic en una fila para bloquear y supeditar los gráficos a esa {tipoRankingEspecialidad === 'ESPECIALIDAD' ? 'especialidad médica' : 'cirugía'}.
                             </div>
+
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                    <thead>
-                                        <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#475569', textAlign: 'left' }}>
-                                            <th style={{ padding: '8px' }}>Especialidad</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>Cant Cx</th>
-                                            <th style={{ padding: '8px', textAlign: 'right' }}>% Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {activeEspecialidadesData.map((e, idx) => {
-                                            const isSelected = selectedCrossFilter?.type === 'ESPECIALIDAD' && 
-                                                selectedCrossFilter.value.trim().toUpperCase() === e.nombre.trim().toUpperCase();
-                                            return (
-                                                <tr 
-                                                    key={idx} 
-                                                    onClick={() => handleToggleCrossFilter('ESPECIALIDAD', e.nombre)}
-                                                    title={isSelected ? "Haz clic para quitar el bloqueo" : `Haz clic para bloquear y supeditar todo a ${e.nombre}`}
-                                                    style={{ 
-                                                        borderBottom: '1px solid #F1F5F9',
-                                                        cursor: 'pointer',
-                                                        background: isSelected ? '#EFF6FF' : 'transparent',
-                                                        borderLeft: isSelected ? '4px solid #2563EB' : '4px solid transparent',
-                                                        transition: 'background 0.15s ease'
-                                                    }}
-                                                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8FAFC'; }}
-                                                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                                                >
-                                                    <td style={{ padding: '8px', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                {isSelected && <Lock size={12} color="#2563EB" strokeWidth={2.5} />}
-                                                                <span>{e.nombre}</span>
+                                {tipoRankingEspecialidad === 'ESPECIALIDAD' ? (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#475569', textAlign: 'left' }}>
+                                                <th style={{ padding: '8px' }}>Especialidad Médica</th>
+                                                <th style={{ padding: '8px', textAlign: 'right' }}>Cant Cx</th>
+                                                <th style={{ padding: '8px', textAlign: 'right' }}>% Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {activeEspecialidadesData.map((e, idx) => {
+                                                const isSelected = selectedCrossFilter?.type === 'ESPECIALIDAD' && 
+                                                    selectedCrossFilter.value.trim().toUpperCase() === e.nombre.trim().toUpperCase();
+                                                return (
+                                                    <tr 
+                                                        key={idx} 
+                                                        onClick={() => handleToggleCrossFilter('ESPECIALIDAD', e.nombre)}
+                                                        title={isSelected ? "Haz clic para quitar el bloqueo" : `Haz clic para bloquear y supeditar todo a ${e.nombre}`}
+                                                        style={{ 
+                                                            borderBottom: '1px solid #F1F5F9',
+                                                            cursor: 'pointer',
+                                                            background: isSelected ? '#EFF6FF' : 'transparent',
+                                                            borderLeft: isSelected ? '4px solid #2563EB' : '4px solid transparent',
+                                                            transition: 'background 0.15s ease'
+                                                        }}
+                                                        onMouseEnter={ev => { if (!isSelected) ev.currentTarget.style.background = '#F8FAFC'; }}
+                                                        onMouseLeave={ev => { if (!isSelected) ev.currentTarget.style.background = 'transparent'; }}
+                                                    >
+                                                        <td style={{ padding: '8px', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                    {isSelected && <Lock size={12} color="#2563EB" strokeWidth={2.5} />}
+                                                                    <span>{e.nombre}</span>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <span style={{ 
+                                                                        fontSize: '0.60rem', 
+                                                                        background: '#2563EB', 
+                                                                        color: '#FFFFFF', 
+                                                                        padding: '1px 5px', 
+                                                                        borderRadius: '4px', 
+                                                                        fontWeight: 800,
+                                                                        letterSpacing: '0.3px',
+                                                                        flexShrink: 0
+                                                                    }}>
+                                                                        BLOQUEADO
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            {isSelected && (
-                                                                <span style={{ 
-                                                                    fontSize: '0.60rem', 
-                                                                    background: '#2563EB', 
-                                                                    color: '#FFFFFF', 
-                                                                    padding: '1px 5px', 
-                                                                    borderRadius: '4px', 
-                                                                    fontWeight: 800,
-                                                                    letterSpacing: '0.3px',
-                                                                    flexShrink: 0
-                                                                }}>
-                                                                    BLOQUEADO
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{e.cant}</td>
-                                                    <td style={{ padding: '8px', textAlign: 'right', color: '#2563EB', fontWeight: 800 }}>{e.pct}%</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                        </td>
+                                                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{e.cant}</td>
+                                                        <td style={{ padding: '8px', textAlign: 'right', color: '#2563EB', fontWeight: 800 }}>{e.pct}%</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#475569', textAlign: 'left' }}>
+                                                <th style={{ padding: '8px' }}>Cirugía / Procedimiento</th>
+                                                <th style={{ padding: '8px', textAlign: 'right' }}>Cant Cx</th>
+                                                <th style={{ padding: '8px', textAlign: 'right' }}>% Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {activeProcedimientosMasRealizadosData.map((p, idx) => {
+                                                const isSelected = selectedCrossFilter?.type === 'PROCEDIMIENTO' && 
+                                                    selectedCrossFilter.value.trim().toUpperCase() === p.nombre.trim().toUpperCase();
+                                                return (
+                                                    <tr 
+                                                        key={idx} 
+                                                        onClick={() => handleToggleCrossFilter('PROCEDIMIENTO', p.nombre)}
+                                                        title={isSelected ? "Haz clic para quitar el bloqueo" : `Haz clic para bloquear y supeditar todo a ${p.nombre}`}
+                                                        style={{ 
+                                                            borderBottom: '1px solid #F1F5F9',
+                                                            cursor: 'pointer',
+                                                            background: isSelected ? '#EFF6FF' : 'transparent',
+                                                            borderLeft: isSelected ? '4px solid #2563EB' : '4px solid transparent',
+                                                            transition: 'background 0.15s ease'
+                                                        }}
+                                                        onMouseEnter={ev => { if (!isSelected) ev.currentTarget.style.background = '#F8FAFC'; }}
+                                                        onMouseLeave={ev => { if (!isSelected) ev.currentTarget.style.background = 'transparent'; }}
+                                                    >
+                                                        <td style={{ padding: '8px', fontWeight: 700, color: isSelected ? '#1E40AF' : '#0F172A' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                    {isSelected && <Lock size={12} color="#2563EB" strokeWidth={2.5} />}
+                                                                    <span style={{ fontSize: '0.72rem' }}>{p.nombre}</span>
+                                                                </div>
+                                                                {isSelected && (
+                                                                    <span style={{ 
+                                                                        fontSize: '0.60rem', 
+                                                                        background: '#2563EB', 
+                                                                        color: '#FFFFFF', 
+                                                                        padding: '1px 5px', 
+                                                                        borderRadius: '4px', 
+                                                                        fontWeight: 800,
+                                                                        letterSpacing: '0.3px',
+                                                                        flexShrink: 0
+                                                                    }}>
+                                                                        BLOQUEADO
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.65rem', color: '#64748B', fontWeight: 500 }}>{p.especialidad}</div>
+                                                        </td>
+                                                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800 }}>{p.cant}</td>
+                                                        <td style={{ padding: '8px', textAlign: 'right', color: '#059669', fontWeight: 800 }}>{p.pct}%</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
                             </div>
                         </div>
 
