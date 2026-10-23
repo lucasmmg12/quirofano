@@ -605,7 +605,16 @@ PATRONES SQL correctos:
 
 **NUNCA** uses \`confirmado_at\` como indicador principal de confirmación. El campo que define si una cirugía está confirmada es \`status = 'azul'\`. El \`confirmado_at\` es solo un timestamp auxiliar.
 
-### ⚠️ REGLA DE ORO DE GOBERNANZA: NUNCA CONFUNDIR ESTADOS DE MENSAJERÍA CON SUSPENSIONES DE QUIRÓFANO
+### 🎯 REGLA DE ORO INSTITUCIONAL: COINCIDENCIA EXACTA 1:1 CON EL DASHBOARD EN PANTALLA
+- **VERDAD ABSOLUTA DEL DASHBOARD**: Cuando el usuario te pregunte por cualquier indicador, número, total, porcentaje, desglose o métrica de Gobernanza (Quirófano, Días Cama, Ocupación, UCI, Salas, etc.):
+  1. Si recibís datos en \`moduleContext\` (como \`quirofano_gobernanza\` o \`indicadores_gobernanza\` / \`indicadores_telar\`), **ESTOS DATOS SON LA VERDAD ABSOLUTA E INMUTABLE QUE EL USUARIO TIENE DELANTE DE SUS OJOS EN EL DASHBOARD**.
+  2. **TUS NÚMEROS DEBEN COINCIDIR EXACTAMENTE, DÍGITO POR DÍGITO Y DECIMAL POR DECIMAL, CON LO QUE MUESTRA EL DASHBOARD**.
+  3. **NUNCA** inventes cifras, nunca estimes números diferentes ni respondas con cálculos dispares de queries SQL si contradicen o difieren de los datos de pantalla.
+  4. En Quirófano: Total programadas, realizadas, suspendidas netas, tasa bruta, tasa neta y casos por causal (como Causal 2 Financiador) deben ser IDÉNTICOS al dashboard.
+  5. En Días Cama / UCI / Ocupación: Días cama ocupados, camas disponibles, % de ocupación, ALOS (estancia media), admisiones únicas y defunciones deben ser IDÉNTICOS al dashboard.
+  6. Dotación de UCI: 16 camas exactas e inmutables (8 Intensiva + 8 Intermedia).
+
+### ⚠️ REGLA DE GOBERNANZA: NUNCA CONFUNDIR ESTADOS DE MENSAJERÍA CON SUSPENSIONES DE QUIRÓFANO
 - **¡NUNCA respondas que una cirugía suspendida por falta de autorización no existe porque no está en 'verde'!**
 - \`status = 'verde'\` es un estado del pipeline de mensajes de WhatsApp.
 - Cuando el usuario te pregunte por:
@@ -2196,8 +2205,8 @@ NO te excedas — una o dos referencias por respuesta, bien colocadas.`;
             ? `\nEl usuario está actualmente en el módulo: **${moduleNames[currentModule] || currentModule}**. Si pregunta "qué veo acá" o "qué es esto", explicale ese módulo.`
             : '';
 
-        const extraContext = moduleContext
-            ? `\n\n📌 **DATOS ACTIVOS EN PANTALLA (Telar/Contexto)**:\nEl usuario está viendo los siguientes datos. Podés usarlos para responder preguntas, hacer resúmenes o exportarlos a Excel si te lo pide:\n${JSON.stringify(moduleContext)}`
+        const extraContext = (moduleContext && (Array.isArray(moduleContext) ? moduleContext.length > 0 : Object.keys(moduleContext).length > 0))
+            ? `\n\n📌 **DATOS ACTIVOS EN PANTALLA (VERDAD ABSOLUTA DEL DASHBOARD — FIDELIDAD 1:1 OBLIGATORIA)**:\nEl usuario está viendo exactamente estos números en su pantalla en este momento. TUS RESPUESTAS DEBEN COINCIDIR EXACTAMENTE, NÚMERO POR NÚMERO Y DECIMAL POR DECIMAL, CON ESTOS DATOS DEL DASHBOARD:\n${JSON.stringify(moduleContext, null, 2)}`
             : '';
 
         const contextInfo = `

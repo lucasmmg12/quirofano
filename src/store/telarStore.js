@@ -18,3 +18,5 @@ export const useTelarStore = create((set) => ({
     
     clearIndicators: () => set({ activeIndicators: [] }),
 }));
+
+export default useTelarStore;

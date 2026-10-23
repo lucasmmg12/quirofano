@@ -1424,7 +1424,31 @@ export default function QuirofanoDashboard({
                 programadas: dynamicMetrics?.total || 0,
                 realizadas: dynamicMetrics?.realizadas || 0,
                 suspendidas: dynamicMetrics?.suspendidas || 0,
-                tasaSuspension: dynamicMetrics?.tasaSusp || '0.00',
+                suspendidasNetas: dynamicMetrics?.suspendidasNetas || 0,
+                tasaSuspensionBruta: `${dynamicMetrics?.tasaSuspBruta || dynamicMetrics?.tasaSusp || '0.00'}%`,
+                tasaSuspensionNeta: `${dynamicMetrics?.tasaSuspNeta || '0.00'}%`,
+                motivo3YaRealizadas: dynamicMetrics?.motivo3Count || 0,
+                motivo1Reprogramadas: dynamicMetrics?.motivo1Count || 0,
+                desgloseSalas: {
+                    centrales: {
+                        programadas: dynamicMetrics?.centrales || 0,
+                        realizadas: dynamicMetrics?.centralesRealizadas || 0,
+                        suspendidas: dynamicMetrics?.centralesSuspendidas || 0
+                    },
+                    hdd: {
+                        programadas: dynamicMetrics?.hdd || 0,
+                        realizadas: dynamicMetrics?.hddRealizadas || 0,
+                        suspendidas: dynamicMetrics?.hddSuspendidas || 0
+                    },
+                    hemodinamia: {
+                        programadas: dynamicMetrics?.hemodinamia || 0,
+                        realizadas: dynamicMetrics?.hemodinamiaRealizadas || 0,
+                        suspendidas: dynamicMetrics?.hemodinamiaSuspendidas || 0
+                    }
+                },
+                topCirujanos: (dynamicMetrics?.cirujanos || []).slice(0, 10),
+                topEspecialidades: (dynamicMetrics?.especialidades || []).slice(0, 10),
+                topObrasSociales: (dynamicMetrics?.obrasSociales || []).slice(0, 10),
                 resumenCategorias: {
                     financiador_os: {
                         casos: suspensionCategoriesSummary?.financiador?.cant || 0,

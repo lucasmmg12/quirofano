@@ -31,6 +31,7 @@ import {
     INDICADORES_DXI_CATALOGO,
     DEFAULT_ACTIVE_DXI_IDS
 } from './telarConfig';
+import { useTelarStore } from '../../store/telarStore';
 import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
 import QuirofanoDashboard from './QuirofanoDashboard';
 import EpidemiologiaDashboard from './EpidemiologiaDashboard';
@@ -1521,32 +1522,74 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         return list;
     }, [metrics, activeSectorConfig, uciSubNivel, fechaDesde, fechaHasta, camasTotales]);
 
-    // Notificar métricas al padre de forma segura fuera del render
+    // Notificar métricas al padre y a Beto IA de forma segura fuera del render
     useEffect(() => {
-        if (!onMetricsUpdate || !metrics) return;
-        onMetricsUpdate({
-            sector: activeSectorConfig.label,
-            subNivel: sectorId === 'UCI' ? uciSubNivel : null,
-            camasTotales,
-            fechaDesde,
-            fechaHasta,
-            diasOcupados: metrics.diasOcupados,
-            camasDisponibles: metrics.camasDisponibles,
-            porcOcupacion: metrics.porcOcupacion,
-            porcDefuncion: metrics.porcDefuncion,
-            alos: metrics.alos,
-            totalAdmisiones: metrics.totalAdmisiones,
-            defunciones: metrics.defunciones,
-            intensidadCamaDia: metrics.intensidadCamaDia,
-            totalEstudiosPeriodo: metrics.totalEstudiosPeriodo,
-            dataMotivosAlta: metrics.dataMotivosAlta,
-            dataRangoEtario: metrics.dataRangoEtario,
-            topEspecialidades: metrics.topEspecialidades,
-            dataProduccionOrigen: metrics.dataProduccionOrigen,
-            topEstudiosCount: metrics.dataTopEstudios?.length || 0,
-            activeIndicators: activeIndicatorsList,
-            filteredRows
-        });
+        if (!metrics) return;
+
+        // 1. Notificar al padre (para exportación y modales)
+        if (onMetricsUpdate) {
+            onMetricsUpdate({
+                sector: activeSectorConfig.label,
+                subNivel: sectorId === 'UCI' ? uciSubNivel : null,
+                camasTotales,
+                fechaDesde,
+                fechaHasta,
+                diasOcupados: metrics.diasOcupados,
+                camasDisponibles: metrics.camasDisponibles,
+                porcOcupacion: metrics.porcOcupacion,
+                porcDefuncion: metrics.porcDefuncion,
+                alos: metrics.alos,
+                totalAdmisiones: metrics.totalAdmisiones,
+                defunciones: metrics.defunciones,
+                intensidadCamaDia: metrics.intensidadCamaDia,
+                totalEstudiosPeriodo: metrics.totalEstudiosPeriodo,
+                dataMotivosAlta: metrics.dataMotivosAlta,
+                dataRangoEtario: metrics.dataRangoEtario,
+                topEspecialidades: metrics.topEspecialidades,
+                dataProduccionOrigen: metrics.dataProduccionOrigen,
+                topEstudiosCount: metrics.dataTopEstudios?.length || 0,
+                activeIndicators: activeIndicatorsList,
+                filteredRows
+            });
+        }
+
+        // 2. Sincronizar contexto activo para que Beto IA responda exactamente con los mismos números del dashboard
+        if (typeof window !== 'undefined') {
+            window.__indicadores_active_context = {
+                modulo: 'Gobernanza Indicadores - Días Cama y Ocupación',
+                sector: activeSectorConfig.label,
+                subNivel: sectorId === 'UCI' ? uciSubNivel : null,
+                dotacionCamas: camasTotales,
+                periodo: `${fechaDesde} al ${fechaHasta}`,
+                fechaDesde,
+                fechaHasta,
+                kpis: {
+                    diasCamasOcupados: metrics.diasOcupados,
+                    diasCamasDisponibles: metrics.camasDisponibles,
+                    porcentajeOcupacion: `${metrics.porcOcupacion}%`,
+                    porcentajeDefuncion: `${metrics.porcDefuncion}%`,
+                    alosDiasEstancia: `${metrics.alos} días`,
+                    totalAdmisionesUnicas: metrics.totalAdmisiones,
+                    defunciones: metrics.defunciones,
+                    intensidadDiagnostica: `${metrics.intensidadCamaDia} estudios/cama-día`,
+                    totalEstudiosRealizados: metrics.totalEstudiosPeriodo || 0
+                },
+                topEspecialidades: metrics.topEspecialidades?.slice(0, 5) || [],
+                motivosEgreso: metrics.dataMotivosAlta?.slice(0, 4) || [],
+                demografia: {
+                    pctMujeres: `${metrics.pctMujeres}%`,
+                    pctHombres: `${metrics.pctHombres}%`
+                },
+                indicadoresDetalle: activeIndicatorsList
+            };
+        }
+
+        // 3. Sincronizar store global de Telar
+        try {
+            useTelarStore.getState().setIndicators(activeIndicatorsList);
+        } catch (e) {
+            console.error('Error sincronizando telarStore:', e);
+        }
     }, [
         metrics.diasOcupados, 
         metrics.camasDisponibles, 

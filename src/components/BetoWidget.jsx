@@ -399,15 +399,22 @@ export default function BetoWidget({ currentUser, currentModule, onNavigate, hid
             const quirofanoActiveCtx = (typeof window !== 'undefined' && window.__quirofano_active_context)
                 ? window.__quirofano_active_context
                 : null;
+            const indicadoresActiveCtx = (typeof window !== 'undefined' && window.__indicadores_active_context)
+                ? window.__indicadores_active_context
+                : null;
 
-            let computedModuleContext = null;
+            let computedModuleContext = {};
             if (quirofanoActiveCtx) {
-                computedModuleContext = {
-                    ...(currentModule === 'gobernanza_indicadores' && activeIndicators ? { indicadores_telar: activeIndicators } : {}),
-                    quirofano_gobernanza: quirofanoActiveCtx
-                };
-            } else if (currentModule === 'gobernanza_indicadores') {
-                computedModuleContext = activeIndicators;
+                computedModuleContext.quirofano_gobernanza = quirofanoActiveCtx;
+            }
+            if (indicadoresActiveCtx) {
+                computedModuleContext.indicadores_gobernanza = indicadoresActiveCtx;
+            }
+            if (activeIndicators && activeIndicators.length > 0) {
+                computedModuleContext.indicadores_telar = activeIndicators;
+            }
+            if (Object.keys(computedModuleContext).length === 0) {
+                computedModuleContext = null;
             }
 
             const response = await fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
