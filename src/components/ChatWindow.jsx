@@ -1441,19 +1441,20 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
             case 'image':
             case 'sticker':
                 return (
-                    <div>
+                    <div style={{ position: 'relative' }}>
                         {msg.media_url ? (
                             <img
                                 src={msg.media_url}
                                 alt={msg.media_type === 'sticker' ? 'Sticker' : 'Imagen'}
                                 onClick={() => setLightboxUrl(msg.media_url)}
                                 style={{
-                                    maxWidth: msg.media_type === 'sticker' ? '160px' : '240px',
-                                    maxHeight: msg.media_type === 'sticker' ? '160px' : '240px',
+                                    maxWidth: msg.media_type === 'sticker' ? '160px' : '260px',
+                                    maxHeight: msg.media_type === 'sticker' ? '160px' : '320px',
                                     borderRadius: msg.media_type === 'sticker' ? '4px' : '8px',
                                     cursor: 'pointer',
                                     objectFit: 'cover', display: 'block',
-                                    background: msg.media_type === 'sticker' ? 'transparent' : undefined,
+                                    background: msg.media_type === 'sticker' ? 'transparent' : '#F1F5F9',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
                                 }}
                                 onError={(e) => { e.target.style.display = 'none'; }}
                             />
@@ -1469,8 +1470,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                 <span>{msg.media_type === 'sticker' ? 'Sticker' : 'Imagen no disponible'}</span>
                             </div>
                         )}
-                        {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && msg.content !== '📷 Imagen' && (
-                            <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>{msg.content}</p>
+                        {msg.content && msg.content !== '[image]' && msg.content !== '[sticker]' && msg.content !== '📷 Imagen' && msg.content.trim() !== '.' && (
+                            <p style={{ margin: '6px 2px 2px', fontSize: '0.86rem', lineHeight: '1.4', wordBreak: 'break-word' }}>{msg.content}</p>
                         )}
                     </div>
                 );
@@ -1677,44 +1678,60 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                     </div>
                 )}
 
-                {/* ===== HEADER ===== */}
+                {/* ===== HEADER INSTITUCIONAL MODERNO ===== */}
                 <div style={{
-                    background: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 50%, #3B82F6 100%)',
-                    padding: '16px 20px',
+                    background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                    padding: '12px 18px',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     color: '#fff', position: 'relative',
-                    borderBottom: '3px solid #1D4ED8',
+                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    boxShadow: '0 4px 12px rgba(15,23,42,0.15)',
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        {/* Avatar con Iniciales y Badge WhatsApp */}
                         <div style={{
-                            width: '44px', height: '44px', borderRadius: '12px',
-                            background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                            width: '42px', height: '42px', borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 2px 8px rgba(37,211,102,0.3)',
-                            border: '2px solid rgba(255,255,255,0.3)',
+                            color: '#FFFFFF', fontWeight: 800, fontSize: '0.90rem',
+                            boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                            position: 'relative', flexShrink: 0,
+                            border: '2px solid rgba(255,255,255,0.25)'
                         }}>
-                            <MessageSquare size={20} color="#fff" />
+                            {patientName ? patientName.split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'P'}
+                            <div style={{
+                                position: 'absolute', bottom: '-2px', right: '-2px',
+                                width: '15px', height: '15px', borderRadius: '50%',
+                                background: '#25D366', border: '2px solid #0F172A',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <MessageSquare size={7} color="#fff" />
+                            </div>
                         </div>
-                        <div>
+
+                        <div style={{ minWidth: 0 }}>
                             <h3 style={{
-                                margin: 0, fontSize: '0.95rem', fontWeight: 700,
-                                textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                                maxWidth: '280px', overflow: 'hidden',
+                                margin: 0, fontSize: '0.98rem', fontWeight: 700,
+                                color: '#FFFFFF', letterSpacing: '-0.2px',
+                                maxWidth: '300px', overflow: 'hidden',
                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             }}>
                                 {patientName || 'Paciente'}
                             </h3>
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: '6px',
-                                fontSize: '0.75rem', opacity: 0.85, marginTop: '2px',
+                                fontSize: '0.74rem', color: '#93C5FD', marginTop: '2px',
+                                flexWrap: 'wrap'
                             }}>
-                                <Phone size={11} />
-                                <span style={{ userSelect: 'text', cursor: 'text' }}>{patientPhone}</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <Phone size={11} style={{ opacity: 0.8 }} />
+                                    <span style={{ userSelect: 'text', cursor: 'text', fontWeight: 500, color: '#E2E8F0' }}>{patientPhone}</span>
+                                </span>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(patientPhone).then(() => addToast?.('📋 Número copiado', 'success')).catch(() => {}); }}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', padding: '1px', display: 'inline-flex', alignItems: 'center', transition: 'color 0.15s' }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: '2px', display: 'inline-flex', alignItems: 'center', transition: 'color 0.15s' }}
                                     onMouseOver={e => e.currentTarget.style.color = '#fff'}
-                                    onMouseOut={e => e.currentTarget.style.color = 'rgba(255,255,255,0.5)'}
+                                    onMouseOut={e => e.currentTarget.style.color = 'rgba(255,255,255,0.6)'}
                                     title="Copiar número"
                                 >
                                     <Copy size={11} />
@@ -1723,9 +1740,10 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     <span
                                         style={{
                                             display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                            marginLeft: '8px', padding: '2px 9px', borderRadius: '10px',
-                                            background: 'rgba(255,255,255,0.18)', fontSize: '0.72rem',
-                                            color: '#fff', fontWeight: 600,
+                                            marginLeft: '6px', padding: '2px 8px', borderRadius: '12px',
+                                            background: 'rgba(255,255,255,0.12)', fontSize: '0.70rem',
+                                            border: '1px solid rgba(255,255,255,0.18)',
+                                            color: '#F8FAFC', fontWeight: 600,
                                             cursor: 'default', userSelect: 'none',
                                         }}
                                         title="Línea institucional oficial de Cirugías: 5492644809077"
@@ -1740,9 +1758,10 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     <span
                                         style={{
                                             display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                            marginLeft: '8px', padding: '2px 9px', borderRadius: '10px',
-                                            background: 'rgba(255,255,255,0.22)', fontSize: '0.72rem',
-                                            color: '#fff', fontWeight: 600,
+                                            marginLeft: '6px', padding: '2px 8px', borderRadius: '12px',
+                                            background: 'rgba(255,255,255,0.14)', fontSize: '0.70rem',
+                                            border: '1px solid rgba(255,255,255,0.18)',
+                                            color: '#F8FAFC', fontWeight: 600,
                                             cursor: 'default', userSelect: 'none',
                                         }}
                                         title="Línea institucional oficial de Contact Center: 5492645825637"
@@ -1757,16 +1776,18 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     <span
                                         onClick={() => setShowChangeLineModal(true)}
                                         style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                            marginLeft: '8px', padding: '1px 8px', borderRadius: '10px',
-                                            background: `${currentLine.color}40`, fontSize: '0.68rem',
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                            marginLeft: '6px', padding: '2px 8px', borderRadius: '12px',
+                                            background: 'rgba(255,255,255,0.12)', fontSize: '0.70rem',
+                                            border: '1px solid rgba(255,255,255,0.18)',
+                                            color: '#F8FAFC', fontWeight: 600,
                                             cursor: 'pointer', transition: 'all 0.15s',
                                         }}
                                         title="Cambiar línea"
                                     >
                                         <span style={{
                                             width: '6px', height: '6px', borderRadius: '50%',
-                                            background: currentLine.color, display: 'inline-block',
+                                            background: currentLine.color || '#10B981', display: 'inline-block',
                                         }} />
                                         {currentLine.label} ···{currentLine.phone.slice(-4)}
                                     </span>
@@ -1774,13 +1795,15 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     <span
                                         onClick={() => setShowLineSelector(true)}
                                         style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                            marginLeft: '8px', padding: '1px 8px', borderRadius: '10px',
-                                            background: 'rgba(234,179,8,0.25)', fontSize: '0.68rem',
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                            marginLeft: '6px', padding: '2px 8px', borderRadius: '12px',
+                                            background: 'rgba(234,179,8,0.20)', fontSize: '0.70rem',
+                                            border: '1px solid rgba(234,179,8,0.30)',
+                                            color: '#FEF08A', fontWeight: 600,
                                             cursor: 'pointer', transition: 'all 0.15s',
                                         }}
-                                        onMouseOver={e => e.currentTarget.style.background = 'rgba(234,179,8,0.45)'}
-                                        onMouseOut={e => e.currentTarget.style.background = 'rgba(234,179,8,0.25)'}
+                                        onMouseOver={e => e.currentTarget.style.background = 'rgba(234,179,8,0.35)'}
+                                        onMouseOut={e => e.currentTarget.style.background = 'rgba(234,179,8,0.20)'}
                                         title="Click para seleccionar línea"
                                     >
                                         ⚠️ Sin línea asignada
@@ -1793,16 +1816,17 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                     <button
                         onClick={onClose}
                         style={{
-                            width: '34px', height: '34px', borderRadius: '10px',
-                            background: 'rgba(255,255,255,0.15)', border: 'none',
-                            color: '#fff', cursor: 'pointer', display: 'flex',
+                            width: '32px', height: '32px', borderRadius: '50%',
+                            background: 'rgba(255,255,255,0.12)', border: 'none',
+                            color: '#F1F5F9', cursor: 'pointer', display: 'flex',
                             alignItems: 'center', justifyContent: 'center',
-                            transition: 'all 0.15s',
+                            transition: 'all 0.15s', flexShrink: 0
                         }}
-                        onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
-                        onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; e.currentTarget.style.color = '#fff'; }}
+                        onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = '#F1F5F9'; }}
+                        title="Cerrar ventana"
                     >
-                        <X size={18} />
+                        <X size={17} />
                     </button>
                 </div>
 
@@ -1872,15 +1896,15 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     marginBottom: '3px',
                                 }}>
                                     <div style={{
-                                        maxWidth: '78%', padding: '8px 12px',
-                                        borderRadius: isOut ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+                                        maxWidth: '82%', padding: '8px 12px',
+                                        borderRadius: isOut ? '12px 3px 12px 12px' : '3px 12px 12px 12px',
                                         background: isOut
-                                            ? (isBot ? 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)' : 'linear-gradient(135deg, #D9FDD3 0%, #C8F5C0 100%)')
+                                            ? (isBot ? '#F0F9FF' : '#D9FDD3')
                                             : (isNote ? '#F5F3FF' : '#FFFFFF'),
                                         color: '#111B21',
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
                                         position: 'relative',
-                                        border: isBot ? '1px solid rgba(2, 132, 199, 0.15)' : 'none'
+                                        border: isBot ? '1px solid #BAE6FD' : (isOut ? 'none' : '1px solid rgba(0,0,0,0.04)')
                                     }}>
                                         {isOut && isBot && (
                                             <div style={{
@@ -1901,10 +1925,10 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                                 {item.sender_name}
                                             </p>
                                         )}
-                                        {!isOut && item.sender_name && (
+                                        {!isOut && item.sender_name && item.sender_name.trim() !== '.' && item.sender_name.trim() !== '-' && !item.sender_name.includes(patientPhone) && (
                                             <p style={{
                                                 margin: '0 0 4px', fontSize: '0.72rem',
-                                                fontWeight: 700, color: isNote ? '#6B21A8' : '#1FA855',
+                                                fontWeight: 700, color: isNote ? '#6B21A8' : '#075E54',
                                             }}>
                                                 {item.sender_name}
                                             </p>
@@ -2240,61 +2264,77 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                             <span style={{ fontSize: '0.85rem', color: '#667781' }}>Enviando...</span>
                         </div>
                     ) : (
-                        /* Normal composer */
-                        <>
-                            {/* Emoji toggle */}
-                            <button
-                                onClick={() => setShowEmojis(!showEmojis)}
-                                style={{
-                                    width: '36px', height: '36px', borderRadius: '50%',
-                                    background: showEmojis ? 'rgba(37,211,102,0.15)' : 'none',
-                                    border: 'none',
-                                    color: showEmojis ? '#25D366' : '#54656F',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                    justifyContent: 'center', flexShrink: 0,
-                                    transition: 'all 0.15s',
-                                }}
-                            >
-                                <Smile size={22} />
-                            </button>
+                        /* Normal composer en fila horizontal limpia */
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            gap: '8px',
+                            width: '100%',
+                        }}>
+                            {/* Acciones de adjuntos a la izquierda */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', paddingBottom: '3px', flexShrink: 0 }}>
+                                {/* Emoji toggle */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEmojis(!showEmojis)}
+                                    style={{
+                                        width: '36px', height: '36px', borderRadius: '50%',
+                                        background: showEmojis ? 'rgba(37,211,102,0.15)' : 'transparent',
+                                        border: 'none',
+                                        color: showEmojis ? '#25D366' : '#54656F',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', flexShrink: 0,
+                                        transition: 'all 0.15s',
+                                    }}
+                                    onMouseOver={e => { if (!showEmojis) e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
+                                    onMouseOut={e => { if (!showEmojis) e.currentTarget.style.background = 'transparent'; }}
+                                    title="Emojis"
+                                >
+                                    <Smile size={20} />
+                                </button>
 
-                            {/* Attach button (Clip universal para documentos y archivos) */}
-                            <button
-                                type="button"
-                                onClick={() => !uploadingMedia && (attachmentInputRef.current || fileInputRef.current)?.click()}
-                                disabled={uploadingMedia}
-                                style={{
-                                    width: '36px', height: '36px', borderRadius: '50%',
-                                    background: selectedFile ? '#E0F2FE' : 'none',
-                                    border: selectedFile ? '1.5px solid #0284C7' : 'none',
-                                    color: selectedFile ? '#0284C7' : '#54656F',
-                                    cursor: uploadingMedia ? 'not-allowed' : 'pointer',
-                                    display: 'flex', alignItems: 'center',
-                                    justifyContent: 'center', flexShrink: 0,
-                                    transition: 'all 0.15s',
-                                }}
-                                title="Adjuntar archivo o documento (PDF, Excel, Word, texto, audio)"
-                            >
-                                <Paperclip size={20} />
-                            </button>
+                                {/* Attach button (Clip universal para documentos y archivos) */}
+                                <button
+                                    type="button"
+                                    onClick={() => !uploadingMedia && (attachmentInputRef.current || fileInputRef.current)?.click()}
+                                    disabled={uploadingMedia}
+                                    style={{
+                                        width: '36px', height: '36px', borderRadius: '50%',
+                                        background: selectedFile ? '#E0F2FE' : 'transparent',
+                                        border: selectedFile ? '1.5px solid #0284C7' : 'none',
+                                        color: selectedFile ? '#0284C7' : '#54656F',
+                                        cursor: uploadingMedia ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', flexShrink: 0,
+                                        transition: 'all 0.15s',
+                                    }}
+                                    onMouseOver={e => { if (!selectedFile) e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; }}
+                                    onMouseOut={e => { if (!selectedFile) e.currentTarget.style.background = 'transparent'; }}
+                                    title="Adjuntar archivo o documento (PDF, Excel, Word, texto)"
+                                >
+                                    <Paperclip size={19} />
+                                </button>
 
-                            {/* Image button */}
-                            <button
-                                type="button"
-                                onClick={() => !uploadingMedia && (imageInputRef.current || fileInputRef.current)?.click()}
-                                disabled={uploadingMedia}
-                                style={{
-                                    width: '36px', height: '36px', borderRadius: '50%',
-                                    background: 'none', border: 'none', color: '#54656F',
-                                    cursor: uploadingMedia ? 'not-allowed' : 'pointer',
-                                    display: 'flex', alignItems: 'center',
-                                    justifyContent: 'center', flexShrink: 0,
-                                    transition: 'all 0.15s',
-                                }}
-                                title="Enviar imagen o captura"
-                            >
-                                <ImageIcon size={20} />
-                            </button>
+                                {/* Image button */}
+                                <button
+                                    type="button"
+                                    onClick={() => !uploadingMedia && (imageInputRef.current || fileInputRef.current)?.click()}
+                                    disabled={uploadingMedia}
+                                    style={{
+                                        width: '36px', height: '36px', borderRadius: '50%',
+                                        background: 'transparent', border: 'none', color: '#54656F',
+                                        cursor: uploadingMedia ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', flexShrink: 0,
+                                        transition: 'all 0.15s',
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = 'rgba(0,0,0,0.05)'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                                    title="Enviar imagen o captura"
+                                >
+                                    <ImageIcon size={19} />
+                                </button>
+                            </div>
 
                             {/* Text input + Shortcuts popup */}
                             <div style={{ flex: 1, position: 'relative' }}>
@@ -2421,7 +2461,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                         zIndex: 100,
                                     }}>
                                         <p style={{ margin: 0, fontSize: '0.82rem', color: '#8696A0' }}>
-                                            No se encontraron atajos para <strong>/{shortcutFilter}</strong>
+                                             No se encontraron atajos para <strong>/{shortcutFilter}</strong>
                                         </p>
                                     </div>
                                 )}
@@ -2432,56 +2472,73 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     onChange={handleInputChange}
                                     onKeyDown={handleKeyDown}
                                     onPaste={handlePaste}
-                                    placeholder={selectedFile ? (selectedFile.type === 'image' ? 'Comentario opcional para la imagen (Ctrl+Enter para enviar)...' : `Mensaje opcional para acompañar ${selectedFile.name} (Ctrl+Enter para enviar)...`) : "Escribí un mensaje... (Ctrl+Enter para enviar, / para atajos o Ctrl+V para capturas)"}
+                                    placeholder={selectedFile ? (selectedFile.type === 'image' ? 'Comentario opcional para la imagen...' : `Mensaje opcional para ${selectedFile.name}...`) : "Escribí un mensaje... (/ para atajos)"}
                                     rows={1}
                                     style={{
                                         width: '100%', resize: 'none',
-                                        padding: '10px 14px',
-                                        borderRadius: '20px', border: 'none',
+                                        padding: '10px 16px',
+                                        borderRadius: '22px', border: '1px solid #E2E8F0',
                                         fontSize: '0.88rem', outline: 'none',
                                         background: '#fff',
-                                        maxHeight: '100px', minHeight: '40px',
+                                        maxHeight: '110px', minHeight: '42px',
                                         lineHeight: 1.4,
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                                        boxSizing: 'border-box',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                                        fontFamily: 'inherit',
+                                        color: '#0F172A',
+                                        transition: 'border-color 0.15s, box-shadow 0.15s',
+                                    }}
+                                    onFocus={e => {
+                                        e.currentTarget.style.borderColor = '#25D366';
+                                        e.currentTarget.style.boxShadow = '0 0 0 3px rgba(37,211,102,0.12)';
+                                    }}
+                                    onBlur={e => {
+                                        e.currentTarget.style.borderColor = '#E2E8F0';
+                                        e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)';
                                     }}
                                 />
                             </div>
 
-                            {/* Send or Mic button */}
-                            {(inputText.trim() || selectedFile) ? (
-                                <button
-                                    onClick={handleSend}
-                                    disabled={sending || uploadingMedia}
-                                    title="Enviar mensaje (Ctrl+Enter)"
-                                    style={{
-                                        width: '42px', height: '42px', borderRadius: '50%',
-                                        background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
-                                        border: 'none', color: '#fff', cursor: (sending || uploadingMedia) ? 'not-allowed' : 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0, transition: 'all 0.2s',
-                                        boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
-                                        opacity: (sending || uploadingMedia) ? 0.7 : 1,
-                                    }}
-                                >
-                                    <Send size={18} style={{ marginLeft: '2px' }} />
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={startRecording}
-                                    style={{
-                                        width: '42px', height: '42px', borderRadius: '50%',
-                                        background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
-                                        border: 'none', color: '#fff', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        flexShrink: 0, transition: 'all 0.2s',
-                                        boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
-                                    }}
-                                    title="Grabar audio"
-                                >
-                                    <Mic size={18} />
-                                </button>
-                            )}
-                        </>
+                            {/* Send or Mic button a la derecha en la misma fila */}
+                            <div style={{ flexShrink: 0, paddingBottom: '2px' }}>
+                                {(inputText.trim() || selectedFile) ? (
+                                    <button
+                                        onClick={handleSend}
+                                        disabled={sending || uploadingMedia}
+                                        title="Enviar mensaje (Ctrl+Enter)"
+                                        style={{
+                                            width: '42px', height: '42px', borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                            border: 'none', color: '#fff', cursor: (sending || uploadingMedia) ? 'not-allowed' : 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            flexShrink: 0, transition: 'all 0.15s',
+                                            boxShadow: '0 2px 8px rgba(37,211,102,0.35)',
+                                            opacity: (sending || uploadingMedia) ? 0.7 : 1,
+                                        }}
+                                    >
+                                        <Send size={18} style={{ marginLeft: '2px' }} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={startRecording}
+                                        style={{
+                                            width: '42px', height: '42px', borderRadius: '50%',
+                                            background: '#FFFFFF',
+                                            border: '1px solid #E2E8F0', color: '#54656F',
+                                            cursor: 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            flexShrink: 0, transition: 'all 0.15s',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                                        }}
+                                        onMouseOver={e => { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.borderColor = '#25D366'; e.currentTarget.style.color = '#16A34A'; }}
+                                        onMouseOut={e => { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.color = '#54656F'; }}
+                                        title="Grabar audio"
+                                    >
+                                        <Mic size={18} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </div>
                 )}
