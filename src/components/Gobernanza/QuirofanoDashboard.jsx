@@ -6145,7 +6145,7 @@ export default function QuirofanoDashboard({
                                             <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '120px' }}>Sala</th>
                                             <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '200px' }}>Procedimiento</th>
                                             <th style={{ padding: '12px 10px', color: '#64748B', fontWeight: 800, width: '140px' }}>Obra Social</th>
-                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '220px' }}>Causal Oficial & Motivo</th>
+                                            <th style={{ padding: '12px 12px', color: '#64748B', fontWeight: 800, minWidth: '220px' }}>Motivo de Suspensión</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -6265,22 +6265,7 @@ export default function QuirofanoDashboard({
                                                         {p.obra_social || 'PARTICULAR'}
                                                     </td>
                                                     <td style={{ padding: '10px 12px' }}>
-                                                        <div style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '5px',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '6px',
-                                                            fontSize: '0.70rem',
-                                                            fontWeight: 800,
-                                                            background: `${catColor}15`,
-                                                            color: catColor,
-                                                            border: `1px solid ${catColor}35`,
-                                                            marginBottom: '2px'
-                                                        }}>
-                                                            <AlertTriangle size={11} /> Cód. #{p.causalCodigo} • {p.causalCategoriaLabel}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0F172A' }}>
+                                                        <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#0F172A' }}>
                                                             {p.causalMotivo || p.motivo || 'Sin detalle adicional'}
                                                         </div>
                                                     </td>
