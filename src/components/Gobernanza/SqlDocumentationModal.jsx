@@ -469,7 +469,7 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                                     <div>
                                         <strong style={{ color: '#5B21B6', fontSize: '0.92rem' }}>
-                                            Centro Quirúrgico · Quirófano Central (Qx 1-4) & Hospital de Día (Qx 5-6)
+                                            Centro Quirúrgico · Quirófano Central (Qx 1-4 + Sala de Partos) & Hospital de Día (Qx 5-6)
                                         </strong>
                                         <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#4C1D95' }}>
                                             Repositorio oficial de consultas T-SQL para auditoría de ocupación de salas, volumen interanual, causales de suspensión 1..13, articulación con Guardia de Urgencias, matriz de bloques a 7 días, productividad de equipos e inventario mensual de insumos.

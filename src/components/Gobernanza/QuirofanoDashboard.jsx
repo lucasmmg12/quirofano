@@ -522,9 +522,9 @@ const CHART_HELP_CATALOGO = {
     ocupacion_salas: {
         id: 'ocupacion_salas',
         titulo: 'Ocupación Quirúrgica por Sala y Horas de Uso',
-        subtitulo: 'Quirófano Central (Qx 1-4) vs Hospital de Día (Qx 5-6) vs Sala de Partos',
+        subtitulo: 'Quirófano Central (Qx 1-4 y Sala de Partos) vs Hospital de Día (Qx 5-6)',
         icon: '🔪',
-        queMuestra: 'Compara el porcentaje de ocupación efectiva y las horas reales de utilización quirúrgica para cada uno de los quirófanos habilitados sobre la ventana horaria estándar (07:00 a 21:00 hs, 14 horas diarias en 26 días hábiles = 364 hs/mes).',
+        queMuestra: 'Compara el porcentaje de ocupación efectiva y las horas reales de utilización quirúrgica para cada uno de los quirófanos habilitados sobre la ventana horaria estándar (07:00 a 21:00 hs, 14 horas diarias en 26 días hábiles = 364 hs/mes). Incluye Quirófano Central (Qx 1 a 4 y Sala de Partos) y Hospital de Día.',
         comoSeCalcula: 'Horas Efectivas = Sumatoria de (HoraSalidaSala - HoraEntradaSala) en horas por sala. Ocupación % = (Horas Efectivas / 364 horas teóricas disponibles) × 100.',
         fuenteSalus: 'dbo.SalasQuirurgicas cruzada con dbo.ProtocolosQuirurgicos por IdSala y campos de tiempo efectivos.',
         meta: 'Meta Benchmark: 75% a 85% de ocupación en Quirófano Central | > 65% en Hospital de Día.',
@@ -2097,7 +2097,7 @@ export default function QuirofanoDashboard({
                                     boxShadow: ambitoFilter === 'CENTRALES' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
                                 }}
                             >
-                                🏥 Qx Centrales (1-4) {dynamicMetrics ? `(${dynamicMetrics.centralesRealizadas})` : ''}
+                                🏥 Qx Central + Sala Parto {dynamicMetrics ? `(${dynamicMetrics.centralesRealizadas})` : ''}
                             </button>
                             <button
                                 type="button"
@@ -2318,7 +2318,7 @@ export default function QuirofanoDashboard({
                     >
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>
-                                {ambitoFilter === 'TODOS' ? 'Distribución de Salas' : `Ámbito: ${ambitoFilter === 'CENTRALES' ? 'Qx Centrales (1-4)' : 'Hospital de Día (HdD)'}`}
+                                {ambitoFilter === 'TODOS' ? 'Distribución de Salas' : `Ámbito: ${ambitoFilter === 'CENTRALES' ? 'Qx Central (1-4 y Sala Partos)' : 'Hospital de Día (HdD)'}`}
                             </span>
                             <span style={{ fontSize: '0.62rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
                                 Alternar
@@ -2335,9 +2335,9 @@ export default function QuirofanoDashboard({
                             {loadingSurgeries ? '...' : dynamicMetrics ? (
                                 ambitoFilter === 'TODOS' ? (
                                     <>
-                                        <div><strong>Realizadas:</strong> Centrales {dynamicMetrics.centralesRealizadas} · HdD {dynamicMetrics.hddRealizadas}{dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · Hemo ${dynamicMetrics.hemodinamiaRealizadas}` : ''}</div>
+                                        <div><strong>Realizadas:</strong> Central + Parto {dynamicMetrics.centralesRealizadas} · HdD {dynamicMetrics.hddRealizadas}{dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · Hemo ${dynamicMetrics.hemodinamiaRealizadas}` : ''}</div>
                                         <div style={{ opacity: 0.8, fontSize: '0.68rem', marginTop: '2px' }}>
-                                            <strong>Programadas ({dynamicMetrics.globalTotal}):</strong> Centrales {dynamicMetrics.centrales} · HdD {dynamicMetrics.hdd}{dynamicMetrics.hemodinamia > 0 ? ` · Hemo ${dynamicMetrics.hemodinamia}` : ''}
+                                            <strong>Programadas ({dynamicMetrics.globalTotal}):</strong> Central + Parto {dynamicMetrics.centrales} · HdD {dynamicMetrics.hdd}{dynamicMetrics.hemodinamia > 0 ? ` · Hemo ${dynamicMetrics.hemodinamia}` : ''}
                                         </div>
                                     </>
                                 ) : (
@@ -4467,7 +4467,7 @@ export default function QuirofanoDashboard({
 
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                         <h3 style={{ margin: '0 0 14px 0', fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                            Desglose 2026: Quirófano Central vs. Hospital de Día (HdD) — {activePeriodLabel}
+                            Desglose 2026: Quirófano Central (Qx 1-4 + Sala de Partos) vs. Hospital de Día (HdD) — {activePeriodLabel}
                         </h3>
                         <div style={{ height: '240px', width: '100%' }}>
                             <ResponsiveContainer width="100%" height="100%">
@@ -4477,7 +4477,7 @@ export default function QuirofanoDashboard({
                                     <YAxis tick={{ fontSize: 12 }} />
                                     <RechartsTooltip />
                                     <Legend />
-                                    <Bar dataKey="central2026" name="Quirófano Central (Qx 1-4)" fill="#1E40AF" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="central2026" name="Quirófano Central (Qx 1-4 + Sala de Partos)" fill="#1E40AF" radius={[4, 4, 0, 0]} />
                                     <Bar dataKey="hdd2026" name="Hospital de Día (Qx 5-6)" fill="#10B981" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
