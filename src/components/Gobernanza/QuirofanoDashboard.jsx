@@ -348,6 +348,18 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 100.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
+        ],
         color: '#FECDD3',
         textColor: '#9F1239',
         nota: 'Quirófano Central'
@@ -364,6 +376,18 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 25.0,
         ocupacionSep: 0.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', hs: 5.0, usada: true, detalle: '5.0h operadas (1 cirugía)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
         color: '#E2E8F0',
         textColor: '#334155',
         nota: 'Baja ocupación / Pasible de liberación'
@@ -380,6 +404,19 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 60.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 04/08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 11/08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 18/08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 25/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 01/09', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 08/09', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 15/09', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 22/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 5, label: 'Sem 5', fecha: 'Mar 29/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
         color: '#DCFCE7',
         textColor: '#166534',
         nota: 'Quirófano Central (Láser)'
@@ -396,6 +433,14 @@ const BLOQUES_CONFIG = [
         horasMes: 10.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 50.0,
+        semanasAgo: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 11/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 25/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 08/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 22/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad' }
+        ],
         color: '#F3E8FF',
         textColor: '#6B21A8',
         nota: '2 bloques mensuales (Quincenal)'
@@ -412,6 +457,19 @@ const BLOQUES_CONFIG = [
         horasMes: 16.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 60.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 04/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 11/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 18/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 25/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 01/09', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 08/09', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 15/09', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 22/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 5, label: 'Sem 5', fecha: 'Mar 29/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
         color: '#DBEAFE',
         textColor: '#1E40AF',
         nota: 'Ginecología vespertina'
@@ -428,6 +486,18 @@ const BLOQUES_CONFIG = [
         horasMes: 22.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 100.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mié 05/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mié 12/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mié 19/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mié 26/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mié 02/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mié 09/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mié 16/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mié 23/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' }
+        ],
         color: '#FEF3C7',
         textColor: '#92400E',
         nota: 'Quirófano Central'
@@ -444,6 +514,12 @@ const BLOQUES_CONFIG = [
         horasMes: 10.0,
         ocupacionAgo: 0.0,
         ocupacionSep: 0.0,
+        semanasAgo: [
+            { sem: 1, label: '3º Jue', fecha: 'Jue 20/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
+        ],
+        semanasSep: [
+            { sem: 1, label: '3º Jue', fecha: 'Jue 17/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
+        ],
         color: '#FCA5A5',
         textColor: '#991B1B',
         nota: '3º jueves de cada mes (Sin actividad en Ago/Sep)'
@@ -460,6 +536,18 @@ const BLOQUES_CONFIG = [
         horasMes: 22.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 75.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Jue 06/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Jue 13/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Jue 20/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Pasa a Qx 2 (CCV)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Jue 27/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Jue 03/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Jue 10/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Jue 17/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Pasa a Qx 2 (CCV)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Jue 24/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
         color: '#FBCFE8',
         textColor: '#9D174D',
         nota: 'Cuando hay CCV, pasa a Qx 2'
@@ -478,6 +566,18 @@ const BLOQUES_CONFIG = [
         horasMes: 36.0,
         ocupacionAgo: 58.33,
         ocupacionSep: 84.60,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: '03/08 - 07/08', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
+            { sem: 2, label: 'Sem 2', fecha: '10/08 - 14/08', hs: 6.5, usada: true, turnos: '2/3', detalle: '6.5h (2/3 turnos: Lun y Mar operados)' },
+            { sem: 3, label: 'Sem 3', fecha: '17/08 - 21/08', hs: 0.0, usada: false, turnos: '0/3', detalle: 'Ocioso (0/3 turnos)' },
+            { sem: 4, label: 'Sem 4', fecha: '24/08 - 28/08', hs: 5.5, usada: true, turnos: '2/3', detalle: '5.5h (2/3 turnos operados)' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: '01/09 - 04/09', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
+            { sem: 2, label: 'Sem 2', fecha: '07/09 - 11/09', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
+            { sem: 3, label: 'Sem 3', fecha: '14/09 - 18/09', hs: 6.5, usada: true, turnos: '2/3', detalle: '6.5h (2/3 turnos operados)' },
+            { sem: 4, label: 'Sem 4', fecha: '21/09 - 25/09', hs: 6.0, usada: true, turnos: '3/4', detalle: '6.0h (asistencia alta)' }
+        ],
         color: '#FEF9C3',
         textColor: '#854D0E',
         nota: '3 bloques semanales en HdD (Qx 6)'
@@ -494,6 +594,18 @@ const BLOQUES_CONFIG = [
         horasMes: 26.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 100.0,
+        semanasAgo: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasSep: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' }
+        ],
         color: '#BAE6FD',
         textColor: '#0369A1',
         nota: 'Hospital de Día (Lunes tarde)'
@@ -1206,6 +1318,7 @@ export default function QuirofanoDashboard({
     const [selectedSuspensionGroup, setSelectedSuspensionGroup] = useState(null);
     const [vistaBloques, setVistaBloques] = useState('lista'); // 'lista' | 'grilla'
     const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
+    const [selectedBloqueDetail, setSelectedBloqueDetail] = useState(null); // { bloque, semana }
 
     // Fechas por defecto en caso de que el componente sea montado sin props de fecha
     const defaultDesde = useMemo(() => {
@@ -1627,10 +1740,16 @@ export default function QuirofanoDashboard({
 
         return BLOQUES_CONFIG.map(b => {
             let pct = b.ocupacionAgo;
+            let semanas = b.semanasAgo || [];
             if (isSep) {
                 pct = b.ocupacionSep;
+                semanas = b.semanasSep || b.semanasAgo || [];
             } else if (isBimestre) {
                 pct = Number(((b.ocupacionAgo + b.ocupacionSep) / 2).toFixed(1));
+                semanas = [
+                    ...(b.semanasAgo || []).map(s => ({ ...s, label: `Ago ${s.label}` })),
+                    ...(b.semanasSep || []).map(s => ({ ...s, label: `Sep ${s.label}` }))
+                ];
             }
 
             const horasTitular = Number(((b.horasMes * pct) / 100).toFixed(1));
@@ -1655,6 +1774,9 @@ export default function QuirofanoDashboard({
                 ocupacionTitularPct: pct,
                 ocupacionAgo: b.ocupacionAgo,
                 ocupacionSep: b.ocupacionSep,
+                semanas,
+                semanasAgo: b.semanasAgo || [],
+                semanasSep: b.semanasSep || [],
                 color: b.color,
                 textColor: b.textColor,
                 alerta,
@@ -1948,6 +2070,121 @@ export default function QuirofanoDashboard({
         } catch (e) {
             console.error('Error generando PDF de suspensiones:', e);
             addToast?.('Error al generar PDF de suspensiones', 'error');
+        }
+    };
+
+    // ─── EXPORTACIÓN A EXCEL DE MATRIZ DE BLOQUES QUIRÚRGICOS ───
+    const handleExportBloquesExcel = () => {
+        try {
+            if (!activeBloquesData || activeBloquesData.length === 0) {
+                addToast?.('No hay datos de bloques quirúrgicos para exportar', 'warning');
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+
+            // 1. Hoja 1: Matriz Consolidada de Bloques Quirúrgicos
+            const rowsMatriz = activeBloquesData.map((b, idx) => {
+                const semResumen = (b.semanas || []).map(s => `${s.label} (${s.fecha || ''}): ${s.usada ? 'OPERADO (' + s.hs + 'h)' : 'OCIOSO (0h)'}`).join(' | ');
+                return {
+                    'N°': idx + 1,
+                    'Profesional Titular / Servicio': b.cirujano,
+                    'Ámbito': b.ambito === 'CENTRAL' ? 'Quirófano Central' : 'Hospital de Día',
+                    'Sala Asignada': b.quirofano,
+                    'Día Semanal': b.dia,
+                    'Franja Horaria': b.horario,
+                    'Hs Semanales': b.horasSemanales,
+                    'Hs Asignadas Mes': b.horasMes,
+                    'Hs Efectivas Titular': b.horasTitular,
+                    'Hs Ociosas': b.horasOciosas,
+                    '% Ocupación': `${b.ocupacionTitularPct}%`,
+                    'Alerta Liberación 7d': b.alerta ? 'LIBERAR' : 'CONFIRMADO',
+                    'Desglose Semanal Auditado': semResumen,
+                    'Observaciones Auditoría': b.nota
+                };
+            });
+
+            // Fila de Total Consolidado
+            rowsMatriz.push({
+                'N°': 'TOTAL',
+                'Profesional Titular / Servicio': 'TOTAL CONSOLIDADO INSTITUCIONAL',
+                'Ámbito': 'GLOBAL',
+                'Sala Asignada': 'Qx 1, Qx 4, Qx 6',
+                'Día Semanal': 'Lunes a Jueves',
+                'Franja Horaria': 'Franjas Asignadas',
+                'Hs Semanales': Number(activeBloquesData.reduce((acc, b) => acc + (b.horasSemanales || 0), 0).toFixed(1)),
+                'Hs Asignadas Mes': bloquesMetricsSummary.totalAsignadas,
+                'Hs Efectivas Titular': bloquesMetricsSummary.totalTitular,
+                'Hs Ociosas': bloquesMetricsSummary.totalOciosas,
+                '% Ocupación': `${bloquesMetricsSummary.pctUsoTitular}%`,
+                'Alerta Liberación 7d': `${bloquesMetricsSummary.alertasLiberar} a liberar`,
+                'Desglose Semanal Auditado': '10 Bloques Institucionales Auditados',
+                'Observaciones Auditoría': `Período: ${effectiveBloquesPeriod} · Sanatorio Argentino`
+            });
+
+            const wsMatriz = XLSX.utils.json_to_sheet(rowsMatriz);
+            wsMatriz['!cols'] = [
+                { wch: 6 },
+                { wch: 32 },
+                { wch: 18 },
+                { wch: 16 },
+                { wch: 22 },
+                { wch: 30 },
+                { wch: 14 },
+                { wch: 18 },
+                { wch: 20 },
+                { wch: 14 },
+                { wch: 14 },
+                { wch: 20 },
+                { wch: 65 },
+                { wch: 38 }
+            ];
+            XLSX.utils.book_append_sheet(wb, wsMatriz, 'Matriz_Bloques');
+
+            // 2. Hoja 2: Detalle Semanal de Auditoría (Fila por cada semana)
+            const rowsDetalle = [];
+            activeBloquesData.forEach((b) => {
+                (b.semanas || []).forEach((s) => {
+                    const hsOciosas = s.usada ? 0 : (s.hs === 0 ? b.horasSemanales : Math.max(0, b.horasSemanales - s.hs));
+                    rowsDetalle.push({
+                        'Profesional': b.cirujano,
+                        'Ámbito': b.ambito === 'CENTRAL' ? 'Central' : 'Hospital de Día',
+                        'Sala': b.quirofano,
+                        'Día Asignado': b.dia,
+                        'Franja Horaria': b.horario,
+                        'Semana / Turno': s.label,
+                        'Fecha / Rango': s.fecha || '—',
+                        'Estado Operativo': s.usada ? 'OPERADO' : 'OCIOSO',
+                        'Horas Operadas': s.hs,
+                        'Horas Ociosas': hsOciosas,
+                        'Detalle Auditoría': s.detalle || (s.usada ? 'Uso efectivo del bloque' : 'Sin cirugías programadas')
+                    });
+                });
+            });
+
+            const wsDetalle = XLSX.utils.json_to_sheet(rowsDetalle);
+            wsDetalle['!cols'] = [
+                { wch: 32 },
+                { wch: 16 },
+                { wch: 14 },
+                { wch: 18 },
+                { wch: 26 },
+                { wch: 14 },
+                { wch: 18 },
+                { wch: 16 },
+                { wch: 16 },
+                { wch: 14 },
+                { wch: 45 }
+            ];
+            XLSX.utils.book_append_sheet(wb, wsDetalle, 'Desglose_Semanal');
+
+            const cleanPeriod = effectiveBloquesPeriod.replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `Matriz_Bloques_Quirurgicos_${cleanPeriod}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            addToast?.(`Matriz de Bloques exportada en Excel (.xlsx) con éxito`, 'success');
+        } catch (e) {
+            console.error('Error exportando matriz de bloques a Excel:', e);
+            addToast?.('Error al exportar la matriz de bloques a Excel', 'error');
         }
     };
 
@@ -3970,8 +4207,30 @@ export default function QuirofanoDashboard({
                                         Trazabilidad oficial de horas asignadas, uso titular efectivo, capacidad ociosa y condición de liberación a 7 días.
                                     </p>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#334155', padding: '4px 10px', borderRadius: '8px', fontWeight: 700 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleExportBloquesExcel}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '7px',
+                                            padding: '7px 15px',
+                                            borderRadius: '8px',
+                                            background: '#16A34A',
+                                            border: 'none',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title="Descargar matriz consolidada y desglose semanal de auditoría en Excel (.xlsx)"
+                                    >
+                                        <FileSpreadsheet size={15} /> Descargar Matriz en Excel (.xlsx)
+                                    </button>
+                                    <span style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#334155', padding: '6px 12px', borderRadius: '8px', fontWeight: 700 }}>
                                         {activeBloquesData.length} franjas auditadas
                                     </span>
                                 </div>
@@ -3989,6 +4248,7 @@ export default function QuirofanoDashboard({
                                             <th style={{ padding: '10px 12px', textAlign: 'right', background: '#F0FDF4', color: '#166534' }}>Hs Titular</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Ociosas</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Ocupación</th>
+                                            <th style={{ padding: '10px 12px' }}>Desglose Semanal</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'center' }}>Alerta 7d</th>
                                             <th style={{ padding: '10px 12px' }}>Condición Operativa</th>
                                         </tr>
@@ -4030,6 +4290,47 @@ export default function QuirofanoDashboard({
                                                 <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: b.ocupacionTitularPct >= 75 ? '#15803D' : b.ocupacionTitularPct >= 50 ? '#D97706' : '#DC2626' }}>
                                                     {b.ocupacionTitularPct}%
                                                 </td>
+                                                <td style={{ padding: '8px 12px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                                        {(b.semanas || []).map((sem, sIdx) => {
+                                                            const isUsada = sem.usada;
+                                                            return (
+                                                                <button
+                                                                    key={sIdx}
+                                                                    type="button"
+                                                                    onClick={() => setSelectedBloqueDetail({ bloque: b, semana: sem })}
+                                                                    title={`${b.cirujano} • ${sem.label} (${sem.fecha || ''}): ${isUsada ? '✓ Utilizado (' + sem.hs + 'h)' : '✗ Ocioso (0h)'}. Clic para ver desglose auditado.`}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '3px',
+                                                                        padding: '3px 8px',
+                                                                        borderRadius: '6px',
+                                                                        fontSize: '0.70rem',
+                                                                        fontWeight: 700,
+                                                                        border: isUsada ? '1px solid #86EFAC' : '1px solid #FCA5A5',
+                                                                        background: isUsada ? '#DCFCE7' : '#FEE2E2',
+                                                                        color: isUsada ? '#15803D' : '#DC2626',
+                                                                        cursor: 'pointer',
+                                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                                        transition: 'all 0.15s ease'
+                                                                    }}
+                                                                >
+                                                                    <span style={{ fontSize: '0.65rem', opacity: 0.85 }}>{sem.label}:</span>
+                                                                    {isUsada ? (
+                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
+                                                                            <Check size={11} strokeWidth={3} /> {sem.hs}h
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
+                                                                            <X size={11} strokeWidth={3} /> 0h
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </td>
                                                 <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                                                     {b.alerta ? (
                                                         <span style={{ background: '#FEE2E2', color: '#DC2626', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
@@ -4056,6 +4357,7 @@ export default function QuirofanoDashboard({
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.totalTitular}h</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#DC2626' }}>{bloquesMetricsSummary.totalOciosas}h</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.pctUsoTitular}%</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#64748B' }}>Auditado por semanas</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'center', color: '#DC2626' }}>{bloquesMetricsSummary.alertasLiberar} a liberar</td>
                                             <td style={{ padding: '10px 12px' }}>10 Bloques Institucionales</td>
                                         </tr>
@@ -4317,6 +4619,213 @@ export default function QuirofanoDashboard({
                                     </div>
                                 </div>
 
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL INTERACTIVO DE DETALLE DE BLOQUE Y SEMANA AUDITADA */}
+                    {selectedBloqueDetail && (
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            style={{
+                                position: 'fixed',
+                                inset: 0,
+                                background: 'rgba(15, 23, 42, 0.65)',
+                                backdropFilter: 'blur(4px)',
+                                zIndex: 9999,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '20px'
+                            }}
+                            onClick={() => setSelectedBloqueDetail(null)}
+                        >
+                            <div
+                                style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '16px',
+                                    maxWidth: '560px',
+                                    width: '100%',
+                                    boxShadow: '0 20px 45px rgba(0, 0, 0, 0.25)',
+                                    overflow: 'hidden',
+                                    border: '1px solid #E2E8F0',
+                                    animation: 'fadeIn 0.2s ease-out'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {/* Header del Modal */}
+                                <div style={{
+                                    background: selectedBloqueDetail.semana.usada
+                                        ? 'linear-gradient(135deg, #166534 0%, #15803D 100%)'
+                                        : 'linear-gradient(135deg, #991B1B 0%, #DC2626 100%)',
+                                    color: '#FFFFFF',
+                                    padding: '16px 22px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{
+                                            width: '36px',
+                                            height: '36px',
+                                            borderRadius: '8px',
+                                            background: 'rgba(255, 255, 255, 0.2)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}>
+                                            {selectedBloqueDetail.semana.usada ? <Check size={20} strokeWidth={3} /> : <AlertTriangle size={20} />}
+                                        </div>
+                                        <div>
+                                            <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                                                {selectedBloqueDetail.bloque.cirujano}
+                                            </h4>
+                                            <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.9 }}>
+                                                Auditoría de Bloque Quirúrgico · {effectiveBloquesPeriod}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedBloqueDetail(null)}
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.15)',
+                                            border: 'none',
+                                            color: '#FFFFFF',
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Body del Modal */}
+                                <div style={{ padding: '22px' }}>
+                                    {/* Ficha Resumen */}
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(2, 1fr)',
+                                        gap: '12px',
+                                        background: '#F8FAFC',
+                                        padding: '14px',
+                                        borderRadius: '10px',
+                                        border: '1px solid #E2E8F0',
+                                        marginBottom: '16px',
+                                        fontSize: '0.80rem'
+                                    }}>
+                                        <div>
+                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Sala & Ámbito</span>
+                                            <strong style={{ color: '#1E40AF' }}>{selectedBloqueDetail.bloque.quirofano}</strong> ({selectedBloqueDetail.bloque.ambito === 'CENTRAL' ? 'Quirófano Central' : 'Hospital de Día'})
+                                        </div>
+                                        <div>
+                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Franja Horaria</span>
+                                            <strong>{selectedBloqueDetail.bloque.dia}</strong>: {selectedBloqueDetail.bloque.horario}
+                                        </div>
+                                        <div>
+                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Semana Seleccionada</span>
+                                            <span style={{ fontWeight: 800, color: '#0F172A' }}>{selectedBloqueDetail.semana.label}</span> ({selectedBloqueDetail.semana.fecha || 'Rango oficial'})
+                                        </div>
+                                        <div>
+                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Estado Operativo</span>
+                                            <span style={{
+                                                padding: '2px 8px',
+                                                borderRadius: '6px',
+                                                fontWeight: 800,
+                                                fontSize: '0.72rem',
+                                                background: selectedBloqueDetail.semana.usada ? '#DCFCE7' : '#FEE2E2',
+                                                color: selectedBloqueDetail.semana.usada ? '#15803D' : '#DC2626'
+                                            }}>
+                                                {selectedBloqueDetail.semana.usada ? `✓ OPERADO (${selectedBloqueDetail.semana.hs}h)` : '✗ OCIOSO (0h)'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Explicación Didáctica y de Auditoría */}
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <h5 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', fontWeight: 800, color: '#0F172A' }}>
+                                            Detalle de la Semana Auditada
+                                        </h5>
+                                        <div style={{
+                                            background: selectedBloqueDetail.semana.usada ? '#F0FDF4' : '#FEF2F2',
+                                            border: `1px solid ${selectedBloqueDetail.semana.usada ? '#BBF7D0' : '#FECACA'}`,
+                                            borderRadius: '8px',
+                                            padding: '12px 14px',
+                                            fontSize: '0.80rem',
+                                            color: selectedBloqueDetail.semana.usada ? '#166534' : '#991B1B',
+                                            lineHeight: 1.5
+                                        }}>
+                                            {selectedBloqueDetail.semana.detalle}
+                                        </div>
+                                    </div>
+
+                                    {/* Desglose Completo de Todas las Semanas del Mes para este Bloque */}
+                                    <div>
+                                        <h5 style={{ margin: '0 0 8px 0', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                                            Trazabilidad Completa del Mes ({effectiveBloquesPeriod})
+                                        </h5>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {(selectedBloqueDetail.bloque.semanas || []).map((s, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => setSelectedBloqueDetail({ bloque: selectedBloqueDetail.bloque, semana: s })}
+                                                    style={{
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        padding: '8px 12px',
+                                                        borderRadius: '8px',
+                                                        cursor: 'pointer',
+                                                        border: s.label === selectedBloqueDetail.semana.label ? '2px solid #2563EB' : '1px solid #E2E8F0',
+                                                        background: s.label === selectedBloqueDetail.semana.label ? '#EFF6FF' : '#FFFFFF',
+                                                        fontSize: '0.75rem',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontWeight: 800, color: '#1E293B', width: '60px' }}>{s.label}</span>
+                                                        <span style={{ color: '#64748B', fontSize: '0.72rem' }}>{s.fecha}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{
+                                                            fontSize: '0.70rem',
+                                                            fontWeight: 800,
+                                                            color: s.usada ? '#15803D' : '#DC2626'
+                                                        }}>
+                                                            {s.usada ? `✓ ${s.hs}h operadas` : '✗ Ocioso'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Footer Botón Cerrar */}
+                                    <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedBloqueDetail(null)}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: '8px',
+                                                background: '#0F172A',
+                                                border: 'none',
+                                                color: '#FFFFFF',
+                                                fontSize: '0.80rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Entendido / Cerrar
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
