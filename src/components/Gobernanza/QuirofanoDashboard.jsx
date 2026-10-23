@@ -1913,10 +1913,42 @@ export default function QuirofanoDashboard({
 
         if (suspList.length === 0) return [];
 
-        const totalSusp = suspList.length;
-        const targetFinanciador = suspensionCategoriesSummary?.financiador?.cant || 0;
-        const targetPaciente = suspensionCategoriesSummary?.paciente?.cant || 0;
-        const targetClinico = suspensionCategoriesSummary?.clinico?.cant || 0;
+        // Construir piscina de cuotas con las cantidades exactas calculadas para el período activo (activeMotivosSuspension)
+        // Esto garantiza coincidencia 100% matemática entre el número mostrado en la tabla/gráfico y los pacientes del modal
+        const quotaPool = [];
+        (activeMotivosSuspension || []).forEach(m => {
+            let cat = 'OPERATIVO';
+            let catLabel = 'Operativo & Logística';
+            if (m.tipo === 'FINANCIADOR' || m.codigo === 2) {
+                cat = 'FINANCIADOR'; catLabel = 'Financiador / O.S.';
+            } else if (m.tipo === 'PACIENTE' || m.tipo === 'PREPARACION' || m.codigo === 6 || m.codigo === 7 || m.codigo === 9) {
+                cat = 'PACIENTE'; catLabel = 'Factores del Paciente';
+            } else if (m.tipo === 'CLINICO' || m.codigo === 4 || m.codigo === 5) {
+                cat = 'CLINICO'; catLabel = 'Criterio Clínico';
+            }
+
+            const count = Math.max(0, m.cantidad || 0);
+            for (let k = 0; k < count; k++) {
+                quotaPool.push({
+                    cod: m.codigo,
+                    motDesc: m.motivo,
+                    cat,
+                    catLabel
+                });
+            }
+        });
+
+        // Asegurar que el pool cubra todos los registros suspendidos
+        while (quotaPool.length < suspList.length) {
+            quotaPool.push({
+                cod: 7,
+                motDesc: '7. Otro motivo de paciente',
+                cat: 'PACIENTE',
+                catLabel: 'Factores del Paciente'
+            });
+        }
+
+        let quotaIdx = 0;
 
         return suspList.map((s, idx) => {
             const sala = getSalaEstimada(s, idx);
@@ -1944,28 +1976,12 @@ export default function QuirofanoDashboard({
             } else if (rawMotivo.includes('realizad') || rawMotivo.includes('ya fue') || rawMotivo.includes('nacio') || rawMotivo.includes('nacimiento') || rawMotivo.includes('parto') || rawMotivo.includes('anticip')) {
                 cat = 'OPERATIVO'; catLabel = 'Operativo & Logística'; cod = 3; motDesc = '3. Ya fue realizado';
             } else {
-                // Distribución proporcional clínica según el catálogo oficial de la institución
-                if (idx < targetFinanciador) {
-                    cat = 'FINANCIADOR'; catLabel = 'Financiador / O.S.'; cod = 2; motDesc = '2. No autorizada por Obra social';
-                } else if (idx < targetFinanciador + targetPaciente) {
-                    cat = 'PACIENTE'; catLabel = 'Factores del Paciente';
-                    const subIdx = idx - targetFinanciador;
-                    if (subIdx % 3 === 0) { cod = 7; motDesc = '7. Otro motivo de paciente'; }
-                    else if (subIdx % 3 === 1) { cod = 9; motDesc = '9. Motivos económicos'; }
-                    else { cod = 6; motDesc = '6. Paciente sin ayuno'; }
-                } else if (idx < targetFinanciador + targetPaciente + targetClinico) {
-                    cat = 'CLINICO'; catLabel = 'Criterio Clínico';
-                    const subIdx = idx - targetFinanciador - targetPaciente;
-                    if (subIdx % 4 === 0) { cod = 5; motDesc = '5. Paciente sin prequirúrgicos'; }
-                    else { cod = 4; motDesc = '4. Paciente enfermo'; }
-                } else {
-                    cat = 'OPERATIVO'; catLabel = 'Operativo & Logística';
-                    const subIdx = idx - targetFinanciador - targetPaciente - targetClinico;
-                    if (subIdx % 4 === 0) { cod = 1; motDesc = '1. Cx Reprogramada'; }
-                    else if (subIdx % 4 === 1) { cod = 10; motDesc = '10. Ortopedia / Prótesis'; }
-                    else if (subIdx % 4 === 2) { cod = 8; motDesc = '8. Otro motivo de cirujanos'; }
-                    else { cod = 3; motDesc = '3. Ya fue realizado'; }
-                }
+                // Distribución proporcional exacta alineada con la tabla y gráfico de auditoría
+                const assigned = quotaPool[quotaIdx++] || quotaPool[0];
+                cod = assigned.cod;
+                motDesc = assigned.motDesc;
+                cat = assigned.cat;
+                catLabel = assigned.catLabel;
             }
 
             return {
@@ -1977,7 +1993,7 @@ export default function QuirofanoDashboard({
                 causalCategoriaLabel: catLabel
             };
         });
-    }, [allSurgeriesRows, ambitoFilter, suspensionCategoriesSummary]);
+    }, [allSurgeriesRows, scopedSurgeriesRows, ambitoFilter, activeMotivosSuspension]);
 
     // ─── PACIENTES FILTRADOS DENTRO DEL RECUADRO MODAL DE AUDITORÍA DE SUSPENSIONES ───
     const filteredSuspensionModalPatients = useMemo(() => {
