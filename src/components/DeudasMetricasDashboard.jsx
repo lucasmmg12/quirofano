@@ -34,7 +34,8 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
             const fileName = await descargarInformeCobranzasExcel({
                 preset: periodoPreset,
                 fechaDesde: customFrom,
-                fechaHasta: customTo
+                fechaHasta: customTo,
+                metricasData: data
             });
             addToast?.(`Excel generado con éxito: ${fileName}`, 'success');
         } catch (err) {

@@ -1420,9 +1420,12 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
  * Incluye pacientes cobrados, planes vigentes, deuda restante, gestores y movimientos de caja
  */
 export async function descargarInformeCobranzasExcel(filtros = {}) {
-    const { preset = 'este_mes', fechaDesde = null, fechaHasta = null } = filtros;
+    const { preset = 'este_mes', fechaDesde = null, fechaHasta = null, metricasData = null } = filtros;
     const rango = getRangoFechasPreset(preset, fechaDesde, fechaHasta);
     const { fechaDesde: effDesde, fechaHasta: effHasta, label: periodoLabel } = rango;
+
+    // Obtener métricas consolidadas (garantiza paridad 100% con la pantalla)
+    const metricas = metricasData || await fetchMetricasAvanzadasDeudas(filtros);
 
     // 1. Obtener todos los pacientes
     const { data: pacientes = [] } = await supabase
@@ -1449,13 +1452,77 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         planesPorPaciente[pl.paciente_id].push(pl);
     });
 
-    // 4. Identificar pagos y armar cobros por paciente
+    // Map para búsqueda por NHC
+    const nhcToPacMap = {};
+    pacientes.forEach(p => { if (p.nhc) nhcToPacMap[p.nhc] = p; });
+
+    // 4. Obtener cobros reales de caja SALUS (deudas_cobros)
+    const nhcs = [...new Set(pacientes.map(p => p.nhc).filter(Boolean))];
+    let cobrosSalus = [];
+    if (nhcs.length > 0) {
+        const { data: cobrosData } = await supabase
+            .from('deudas_cobros')
+            .select('nhc, importe, fecha, forma_pago, descripcion')
+            .in('nhc', nhcs)
+            .order('fecha', { ascending: true });
+        cobrosSalus = cobrosData || [];
+    }
+
+    // 5. Identificar pagos y armar cobros por paciente
     const movimientosCaja = [];
     const cobrosPorPaciente = {}; // pacId -> { totalPeriodo, totalHistorico, ultimoCobroFecha, ultimoComprobante, ultimoOperador }
+
+    // A) Procesar cobros de caja SALUS
+    cobrosSalus.forEach(c => {
+        const pac = nhcToPacMap[c.nhc];
+        if (!pac) return;
+        const pacId = pac.id;
+        const monto = Number(c.importe) || 0;
+        if (monto <= 0) return;
+
+        const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
+        const cDateTime = c.fecha ? c.fecha.replace('T', ' ').substring(0, 16) : '';
+
+        if (!cobrosPorPaciente[pacId]) {
+            cobrosPorPaciente[pacId] = {
+                totalPeriodo: 0,
+                totalHistorico: 0,
+                ultimoCobroFecha: cDate,
+                ultimoComprobante: c.descripcion || '',
+                ultimoOperador: 'Caja SALUS',
+            };
+        }
+        cobrosPorPaciente[pacId].totalHistorico += monto;
+
+        const inRange = effDesde && effHasta 
+            ? (cDate >= effDesde && cDate <= effHasta)
+            : true;
+
+        if (inRange) {
+            cobrosPorPaciente[pacId].totalPeriodo += monto;
+            cobrosPorPaciente[pacId].ultimoCobroFecha = cDate;
+            if (c.descripcion) cobrosPorPaciente[pacId].ultimoComprobante = c.descripcion;
+
+            movimientosCaja.push({
+                fecha: cDateTime,
+                paciente: pac.nombre,
+                nhc: pac.nhc,
+                monto,
+                concepto: 'Cobranza Caja SALUS',
+                medio: c.forma_pago || 'Caja / Transferencia',
+                comprobante: c.descripcion || '-',
+                usuario: 'Caja SALUS',
+                detalle: c.descripcion || ''
+            });
+        }
+    });
+
+    const nhcsConCobrosSalus = new Set(cobrosSalus.map(c => c.nhc));
 
     seguimientos.forEach(s => {
         if (s.tipo === 'pago' && s.monto > 0) {
             const pac = pacientesMap[s.paciente_id];
+            if (pac && pac.nhc && nhcsConCobrosSalus.has(pac.nhc)) return;
             const pacNombre = pac ? pac.nombre : 'Paciente Desconocido';
             const pacNhc = pac ? (pac.nhc || 'S/D') : 'S/D';
             const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
@@ -1637,15 +1704,15 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
     const totalHistoricoCanceladasCount = pacientes.filter(p => p.categoria === 'deuda_cancelada').length;
 
     const resumen = {
-        totalCobradoPeriodo,
-        montoCanceladas,
-        cantCanceladas,
-        montoCuotas,
+        totalCobradoPeriodo: metricas?.totalDeudaCobrada ?? totalCobradoPeriodo,
+        montoCanceladas: metricas?.montoDeudasCanceladas ?? montoCanceladas,
+        cantCanceladas: metricas?.countDeudasCanceladas ?? cantCanceladas,
+        montoCuotas: metricas?.montoCobrosCuotasYSeg ?? montoCuotas,
         cantConPlan,
         saldoDeudaPendiente,
-        totalHistoricoCobrado,
-        totalHistoricoCanceladasMonto,
-        totalHistoricoCanceladasCount
+        totalHistoricoCobrado: metricas?.totalHistoricoCobrado ?? totalHistoricoCobrado,
+        totalHistoricoCanceladasMonto: metricas?.totalHistoricoCanceladasMonto ?? totalHistoricoCanceladasMonto,
+        totalHistoricoCanceladasCount: metricas?.totalHistoricoCanceladasCount ?? totalHistoricoCanceladasCount
     };
 
     return await generarExcelCobranzas({
