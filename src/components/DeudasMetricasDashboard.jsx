@@ -615,25 +615,17 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                             verticalAlign="top"
                                             align="right"
                                             iconType="circle"
-                                            wrapperStyle={{ fontSize: '0.76rem', paddingBottom: '10px' }}
+                                            wrapperStyle={{ fontSize: '0.78rem', paddingBottom: '10px' }}
+                                            formatter={(value, entry) => (
+                                                <span style={{ color: entry.color, fontWeight: 700, marginRight: '12px' }}>
+                                                    {value}
+                                                </span>
+                                            )}
                                         />
-                                        <Bar
-                                            name="Deuda Gestionada"
-                                            dataKey="deudaGestionada"
-                                            radius={[5, 5, 0, 0]}
-                                            maxBarSize={38}
-                                        >
-                                            {data.barrasMesAMes.map((entry, index) => (
-                                                <Cell
-                                                    key={`cell-gest-${index}`}
-                                                    fill={entry.inPeriod ? '#2563eb' : '#94a3b8'}
-                                                    opacity={entry.inPeriod ? 1 : 0.35}
-                                                />
-                                            ))}
-                                        </Bar>
                                         <Bar
                                             name="Deuda Cobrada"
                                             dataKey="deudaCobrada"
+                                            fill="#16a34a"
                                             radius={[5, 5, 0, 0]}
                                             maxBarSize={38}
                                         >
@@ -641,6 +633,21 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                                 <Cell
                                                     key={`cell-cobr-${index}`}
                                                     fill={entry.inPeriod ? '#16a34a' : '#86efac'}
+                                                    opacity={entry.inPeriod ? 1 : 0.35}
+                                                />
+                                            ))}
+                                        </Bar>
+                                        <Bar
+                                            name="Deuda Gestionada"
+                                            dataKey="deudaGestionada"
+                                            fill="#2563eb"
+                                            radius={[5, 5, 0, 0]}
+                                            maxBarSize={38}
+                                        >
+                                            {data.barrasMesAMes.map((entry, index) => (
+                                                <Cell
+                                                    key={`cell-gest-${index}`}
+                                                    fill={entry.inPeriod ? '#2563eb' : '#94a3b8'}
                                                     opacity={entry.inPeriod ? 1 : 0.35}
                                                 />
                                             ))}
@@ -679,7 +686,12 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                             verticalAlign="top"
                                             align="right"
                                             iconType="circle"
-                                            wrapperStyle={{ fontSize: '0.76rem', paddingBottom: '10px' }}
+                                            wrapperStyle={{ fontSize: '0.78rem', paddingBottom: '10px' }}
+                                            formatter={(value, entry) => (
+                                                <span style={{ color: entry.color || '#0284c7', fontWeight: 700 }}>
+                                                    {value}
+                                                </span>
+                                            )}
                                         />
                                         <Area
                                             type="monotone"
