@@ -1282,6 +1282,9 @@ const CustomSuspensionTooltip = ({ active, payload }) => {
                         {data.cantidad} <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600 }}>({data.pct}%)</span>
                     </span>
                 </div>
+                <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #E2E8F0', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.70rem', color: '#2563EB', fontWeight: 700 }}>
+                    <span>🖱️ Clic en la barra para ver pacientes y exportar</span>
+                </div>
             </div>
         );
     }
@@ -2046,6 +2049,60 @@ export default function QuirofanoDashboard({
         } catch (e) {
             console.error('Error exportando suspensiones a Excel:', e);
             addToast?.('Error al generar Excel de suspensiones', 'error');
+        }
+    };
+
+    // ─── EXPORTACIÓN A EXCEL DE LA DISTRIBUCIÓN DE MOTIVOS CODIFICADOS ───
+    const handleExportMotivosSuspensionExcel = () => {
+        try {
+            if (!displayMotivosSuspension || displayMotivosSuspension.length === 0) {
+                addToast?.('No hay motivos de suspensión para exportar', 'warning');
+                return;
+            }
+            const wb = XLSX.utils.book_new();
+            const totalSusp = displayMotivosSuspension.reduce((sum, m) => sum + (m.cantidad || 0), 0);
+            
+            const excelRows = displayMotivosSuspension.map((m, idx) => ({
+                'N°': idx + 1,
+                'Cód. Causal': m.codigo ? `#${m.codigo}` : '—',
+                'Motivo Oficial de Suspensión': m.motivo || '—',
+                'Categoría / Tipo': m.tipo || 'GENERAL',
+                'Cantidad de Casos': m.cantidad || 0,
+                '% del Período': `${m.pct || 0}%`,
+                'Impacto Operativo': (m.pct >= 15) ? 'Crítico (Alto Impacto)' : (m.pct >= 5) ? 'Moderado' : 'Bajo'
+            }));
+
+            // Fila de total
+            excelRows.push({
+                'N°': '',
+                'Cód. Causal': 'TOTAL',
+                'Motivo Oficial de Suspensión': `Total de suspensiones en ${activePeriodLabel}`,
+                'Categoría / Tipo': 'CONSOLIDADO',
+                'Cantidad de Casos': totalSusp,
+                '% del Período': '100%',
+                'Impacto Operativo': ''
+            });
+
+            const ws = XLSX.utils.json_to_sheet(excelRows);
+            ws['!cols'] = [
+                { wch: 6 },
+                { wch: 14 },
+                { wch: 38 },
+                { wch: 22 },
+                { wch: 18 },
+                { wch: 16 },
+                { wch: 24 }
+            ];
+            
+            const cleanPeriod = activePeriodLabel.replace(/[^a-zA-Z0-9]/g, '_');
+            const sheetName = 'Motivos_Suspension';
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            const fileName = `Distribucion_Suspensiones_${cleanPeriod}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            addToast?.(`Excel de motivos de suspensión descargado con éxito`, 'success');
+        } catch (e) {
+            console.error('Error exportando motivos a Excel:', e);
+            addToast?.('Error al generar Excel de motivos de suspensión', 'error');
         }
     };
 
@@ -3804,10 +3861,44 @@ export default function QuirofanoDashboard({
                                     </button>
                                 </div>
 
+                                <button
+                                    type="button"
+                                    onClick={handleExportMotivosSuspensionExcel}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '5px 12px',
+                                        background: '#16A34A',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 1px 3px rgba(22, 163, 74, 0.3)',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                    title="Descargar distribución de causales de suspensión en Excel (.xlsx)"
+                                >
+                                    <FileSpreadsheet size={14} /> Descargar en Excel
+                                </button>
+
                                 <span style={{ fontSize: '0.78rem', background: '#F8FAFC', color: '#334155', padding: '5px 12px', borderRadius: '8px', fontWeight: 700, border: '1px solid #E2E8F0' }}>
                                     Total período: <strong style={{ color: '#DC2626' }}>{dynamicMetrics ? dynamicMetrics.suspendidas : 250}</strong> suspensiones
                                 </span>
                             </div>
+                        </div>
+
+                        {/* Banner interactivo que indica que las barras se pueden tocar */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', padding: '8px 14px', marginBottom: '14px', fontSize: '0.75rem', color: '#0369A1' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                                <Eye size={14} color="#0284C7" />
+                                <span><strong>Modo interactivo:</strong> Haz clic en cualquier barra o etiqueta de motivo para abrir el detalle nominal de pacientes y su exportación a Excel / PDF.</span>
+                            </span>
+                            <span style={{ fontSize: '0.70rem', background: '#FFFFFF', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid #BAE6FD', color: '#0284C7' }}>
+                                🖱️ Clic activo
+                            </span>
                         </div>
 
                         {/* Contenedor del gráfico con dimensiones ampliadas para visualización clínica sin solapamiento */}
@@ -3818,6 +3909,17 @@ export default function QuirofanoDashboard({
                                     layout="vertical" 
                                     margin={{ top: 10, right: 90, left: 10, bottom: 10 }}
                                     barCategoryGap={8}
+                                    onClick={(state) => {
+                                        const entry = state?.activePayload?.[0]?.payload;
+                                        if (entry && entry.codigo) {
+                                            setSelectedSuspensionGroup({
+                                                key: 'CAUSAL',
+                                                codigo: entry.codigo,
+                                                label: entry.motivo,
+                                                causales: `Causal #${entry.codigo} (${entry.tipo || 'Catálogo Oficial'})`
+                                            });
+                                        }
+                                    }}
                                 >
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
                                     <XAxis 
@@ -3830,12 +3932,48 @@ export default function QuirofanoDashboard({
                                         type="category" 
                                         dataKey="motivo" 
                                         width={245} 
-                                        tick={{ fontSize: 12, fill: '#1E293B', fontWeight: 600 }}
+                                        tick={(props) => {
+                                            const { x, y, payload } = props;
+                                            const item = displayMotivosSuspension.find(m => m.motivo === payload.value);
+                                            return (
+                                                <g 
+                                                    transform={`translate(${x},${y})`} 
+                                                    style={{ cursor: 'pointer' }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (item) {
+                                                            setSelectedSuspensionGroup({
+                                                                key: 'CAUSAL',
+                                                                codigo: item.codigo,
+                                                                label: item.motivo,
+                                                                causales: `Causal #${item.codigo} (${item.tipo || 'Catálogo Oficial'})`
+                                                            });
+                                                        }
+                                                    }}
+                                                >
+                                                    <text 
+                                                        x={0} 
+                                                        y={4} 
+                                                        textAnchor="end" 
+                                                        fill="#1E293B" 
+                                                        fontSize="12px" 
+                                                        fontWeight="600"
+                                                    >
+                                                        {payload.value}
+                                                    </text>
+                                                </g>
+                                            );
+                                        }}
                                         axisLine={{ stroke: '#CBD5E1' }}
                                         tickLine={false}
                                     />
                                     <RechartsTooltip content={<CustomSuspensionTooltip />} />
-                                    <Bar dataKey="cantidad" radius={[0, 6, 6, 0]} barSize={22}>
+                                    <Bar 
+                                        dataKey="cantidad" 
+                                        radius={[0, 6, 6, 0]} 
+                                        barSize={22}
+                                        style={{ cursor: 'pointer' }}
+                                    >
                                         <LabelList 
                                             dataKey="cantidad" 
                                             position="right" 
@@ -3850,6 +3988,7 @@ export default function QuirofanoDashboard({
                                                         fill="#334155" 
                                                         fontSize="11px" 
                                                         fontWeight="700"
+                                                        style={{ cursor: 'pointer' }}
                                                     >
                                                         {value} ({item.pct}%)
                                                     </text>
@@ -3857,7 +3996,20 @@ export default function QuirofanoDashboard({
                                             }}
                                         />
                                         {displayMotivosSuspension.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={entry.color} 
+                                                style={{ cursor: 'pointer' }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedSuspensionGroup({
+                                                        key: 'CAUSAL',
+                                                        codigo: entry.codigo,
+                                                        label: entry.motivo,
+                                                        causales: `Causal #${entry.codigo} (${entry.tipo || 'Catálogo Oficial'})`
+                                                    });
+                                                }}
+                                            />
                                         ))}
                                     </Bar>
                                 </BarChart>
