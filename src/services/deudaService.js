@@ -1317,6 +1317,15 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         };
     });
 
+    // Métricas globales y categorías de descuento (definidas antes del cálculo de stock)
+    const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
+    const deudaBruta = pacientes.reduce((s, p) => s + Number(p.deuda_total), 0);
+    const deudaDescontada = pacientes
+        .filter(p => CATEGORIAS_DESCUENTO.includes(p.categoria))
+        .reduce((s, p) => s + Number(p.deuda_total), 0);
+    const totalDeudaActiva = deudaBruta - deudaDescontada;
+    const deudoresActivos = pacientes.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).length;
+
     // 2. Datos para Gráfico de Líneas: Evolución de la Deuda Total (Stock de Pasivo Vivo al cierre de cada mes)
     const stockPorMes = {};
     const curYm = new Date().toISOString().substring(0, 7);
@@ -1360,7 +1369,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     });
 
     // 3. Datos para Gráfico de Barras: Top Pacientes con Mayor Deuda
-    const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
     const topDeudores = pacientes
         .filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria))
         .slice(0, 12)
@@ -1376,14 +1384,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             telefono: p.telefono,
             gestionadoEnPeriodo: patientHasGestionInRange.has(p.id) || (effDesde && effHasta ? false : true),
         }));
-
-    // Métricas globales
-    const deudaBruta = pacientes.reduce((s, p) => s + Number(p.deuda_total), 0);
-    const deudaDescontada = pacientes
-        .filter(p => CATEGORIAS_DESCUENTO.includes(p.categoria))
-        .reduce((s, p) => s + Number(p.deuda_total), 0);
-    const totalDeudaActiva = deudaBruta - deudaDescontada;
-    const deudoresActivos = pacientes.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).length;
 
     const tasaRecuperacionGestionada = totalDeudaGestionada > 0 
         ? Math.round((totalDeudaCobrada / totalDeudaGestionada) * 100) 
