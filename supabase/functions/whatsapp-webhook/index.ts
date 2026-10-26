@@ -3462,6 +3462,8 @@ function describeTurnoGestion(t: any): string {
 function snapshotTurnoGestion(t: any) {
     return {
         id: t?.id ?? null,
+        dni: t?.dni ?? null,
+        paciente_nombre: t?.paciente_nombre ?? null,
         fecha: t?.fecha ?? null,
         hora: t?.hora ?? null,
         medico: t?.medico || null,
@@ -3515,10 +3517,23 @@ async function handleGestionTurnoFlow(params: {
     const isActionIntent = intent === 'cancelar_turno_online' || intent === 'reprogramar_turno_online';
     const saludo = whatsappName && whatsappName !== 'Paciente' ? ` *${whatsappName}*` : '';
 
-    let g: any = inFlow && prevSummary.gestion_turno ? { ...prevSummary.gestion_turno } : {};
+    let g: any = prevSummary.gestion_turno ? { ...prevSummary.gestion_turno } : {};
     if (intent === 'cancelar_turno_online') g.accion = 'cancelar';
     else if (intent === 'reprogramar_turno_online') g.accion = 'reprogramar';
     if (!g.accion) g.accion = 'cancelar';
+    if (!g.dni) {
+        g.dni = knownDni || dniInMessage || conv?.dni || prevSummary?.turnos_consultados?.[0]?.dni || null;
+    }
+    if (!g.paciente_nombre) {
+        g.paciente_nombre = conv?.nombre_completo || prevSummary?.turnos_consultados?.[0]?.paciente_nombre || null;
+    }
+    if (!g.turnos || g.turnos.length === 0) {
+        if (Array.isArray(turnosConocidos) && turnosConocidos.length > 0) {
+            g.turnos = turnosConocidos.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion);
+        } else if (Array.isArray(prevSummary?.turnos_consultados) && prevSummary.turnos_consultados.length > 0) {
+            g.turnos = prevSummary.turnos_consultados.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion);
+        }
+    }
     const verbo = () => (g.accion === 'reprogramar' ? 'reprogramar' : 'cancelar');
     const nombrePaciente = () => toTitleCaseNombre(g.paciente_nombre);
     const seleccionados = () => (g.seleccion || []).map((i: number) => g.turnos?.[i]).filter(Boolean);
@@ -3532,7 +3547,13 @@ async function handleGestionTurnoFlow(params: {
             bot_active: true,
             motivo_consulta: `Gestión de turno (${verbo()}) en curso`,
             tags: [g.accion === 'reprogramar' ? 'Reprogramación' : 'Cancelación'],
-            ai_summary: { ...prevSummary, gestion_turno: { ...g, updated_at: Date.now() } },
+            dni: g.dni || conv?.dni || extra.dni || null,
+            nombre_completo: g.paciente_nombre || conv?.nombre_completo || extra.nombre_completo || null,
+            ai_summary: {
+                ...prevSummary,
+                turnos_consultados: (g.turnos && g.turnos.length > 0) ? g.turnos : prevSummary.turnos_consultados,
+                gestion_turno: { ...g, updated_at: Date.now() }
+            },
             ...extra
         }
     });
@@ -3545,6 +3566,8 @@ async function handleGestionTurnoFlow(params: {
             bot_active: false,
             motivo_consulta: buildGestionMotivo(g),
             tags: [g.accion === 'reprogramar' ? 'Reprogramación' : 'Cancelación'],
+            dni: g.dni || conv?.dni || null,
+            nombre_completo: g.paciente_nombre || conv?.nombre_completo || null,
             medico_o_especialidad: seleccionados()[0]?.medico || seleccionados()[0]?.especialidad || null,
             ai_summary: { ...prevSummary, gestion_turno: { ...g, estado: 'derivado_agente', updated_at: Date.now() } }
         }
@@ -3582,6 +3605,7 @@ async function handleGestionTurnoFlow(params: {
                 'esperando_confirmacion_cancelacion'
             );
         }
+
         return persist(
             `${encabezado}\n\n${detalleSeleccion()}\n\n` +
             `¿Qué días u horarios te quedan mejor para el nuevo turno? Podés escribirlo libremente (ej.: *"martes o jueves por la tarde"*) o elegir una opción:\n\n` +
@@ -3592,15 +3616,29 @@ async function handleGestionTurnoFlow(params: {
     };
 
     const loadTurnos = async (dni: string): Promise<any[]> => {
-        if (turnosDni && dni === turnosDni && Array.isArray(turnosConocidos) && turnosConocidos.length > 0) {
-            return turnosConocidos;
+        const cleanD = String(dni || '').replace(/\D/g, '');
+        // 1. Memoria directa de turnos conocidos pasados como argumento
+        if (Array.isArray(turnosConocidos) && turnosConocidos.length > 0) {
+            const match = turnosConocidos.filter(t => !cleanD || !t.dni || String(t.dni).replace(/\D/g, '') === cleanD);
+            if (match.length > 0) return match;
         }
+        // 2. Memoria de turnos previamente consultados en ai_summary
+        const consultados = prevSummary?.turnos_consultados || prevSummary?.gestion_turno?.turnos;
+        if (Array.isArray(consultados) && consultados.length > 0) {
+            const match = consultados.filter((t: any) => !cleanD || !t.dni || String(t.dni).replace(/\D/g, '') === cleanD);
+            if (match.length > 0) return match;
+        }
+        // 3. Consulta a la base de datos RPC buscar_turnos_proximos
         try {
             const { data, error } = await supabase.rpc('buscar_turnos_proximos', { p_dni: dni, p_telefono: null });
-            if (!error && Array.isArray(data)) return data;
+            if (!error && Array.isArray(data) && data.length > 0) return data;
             if (error) console.warn('[gestion-turno] Error RPC buscar_turnos_proximos:', error);
         } catch (e) {
             console.warn('[gestion-turno] Excepción buscando turnos:', e);
+        }
+        // 4. Último recurso: si el RPC dio vacío pero teníamos turnos en memoria del summary
+        if (Array.isArray(consultados) && consultados.length > 0) {
+            return consultados;
         }
         return [];
     };
@@ -3611,7 +3649,7 @@ async function handleGestionTurnoFlow(params: {
         g.turnos = turnos.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion);
         g.seleccion = [];
         g.intentos = 0;
-        g.paciente_nombre = turnos[0]?.paciente_nombre || (conv?.dni === dni ? conv?.nombre_completo : null) || null;
+        g.paciente_nombre = turnos[0]?.paciente_nombre || (conv?.dni === dni ? conv?.nombre_completo : null) || g.paciente_nombre || null;
 
         if (g.turnos.length === 0) {
             return persist(
@@ -3630,16 +3668,30 @@ async function handleGestionTurnoFlow(params: {
         const lista = g.turnos.map((t: any, i: number) => `*${i + 1})* ${describeTurnoGestion(t)}`).join('\n');
         return persist(
             `Encontramos *${g.turnos.length} turnos* próximos${nombre ? ` de *${nombre}*` : ''}:\n\n${lista}\n\n` +
-            `¿Cuál querés *${verbo()}*? Respondé con el número (podés indicar varios, ej.: *1 y 3*) o escribí *Todos*.\n\n` +
+            `¿Cuál querés *${verbo()}*? Respondé con el número (podés indicar varios, ej.: *1 y 2*) o escribí *Todos*.\n\n` +
             `💡 Si es de otro paciente, escribí su *DNI*.` + GESTION_FOOTER,
             'esperando_seleccion_turno_gestion'
         );
     };
 
-    // ---- ENTRADA NUEVA AL FLUJO ----
+    // ---- ENTRADA NUEVA AL FLUJO O TRANSICIÓN DESDE TURNO_CONSULTADO ----
     if (!inFlow) {
-        g = { accion: g.accion };
-        const dni = dniInMessage || knownDni;
+        const dni = dniInMessage || knownDni || g.dni;
+        // Si ya disponemos de turnos para este paciente
+        if (g.turnos && g.turnos.length > 0) {
+            if (g.turnos.length === 1) {
+                g.seleccion = [0];
+                return askAfterSelection(true);
+            }
+            const nombre = nombrePaciente();
+            const lista = g.turnos.map((t: any, i: number) => `*${i + 1})* ${describeTurnoGestion(t)}`).join('\n');
+            return persist(
+                `Encontramos *${g.turnos.length} turnos* próximos${nombre ? ` de *${nombre}*` : ''}:\n\n${lista}\n\n` +
+                `¿Cuál querés *${verbo()}*? Respondé con el número (podés indicar varios, ej.: *1 y 2*) o escribí *Todos*.\n\n` +
+                `💡 Si es de otro paciente, escribí su *DNI*.` + GESTION_FOOTER,
+                'esperando_seleccion_turno_gestion'
+            );
+        }
         if (!dni) return askDni();
         return await presentTurnos(dni);
     }
@@ -3653,9 +3705,24 @@ async function handleGestionTurnoFlow(params: {
     // ---- CAMBIO DE ACCIÓN A MITAD DE FLUJO (ej.: "mejor reprogramalo") ----
     if (isActionIntent) {
         if (currentStage === 'esperando_dni_gestion' && !g.turnos?.length) return askDni();
-        if (currentStage === 'esperando_seleccion_turno_gestion' && g.dni) return await presentTurnos(g.dni);
+        if (currentStage === 'esperando_seleccion_turno_gestion' && (g.turnos?.length || g.dni)) {
+            if (g.turnos?.length === 1) {
+                g.seleccion = [0];
+                return askAfterSelection(true);
+            }
+            if (g.turnos?.length > 1) {
+                const nombre = nombrePaciente();
+                const lista = g.turnos.map((t: any, i: number) => `*${i + 1})* ${describeTurnoGestion(t)}`).join('\n');
+                return persist(
+                    `Encontramos *${g.turnos.length} turnos* próximos${nombre ? ` de *${nombre}*` : ''}:\n\n${lista}\n\n` +
+                    `¿Cuál querés *${verbo()}*? Respondé con el número (podés indicar varios, ej.: *1 y 2*) o escribí *Todos*.\n\n` +
+                    `💡 Si es de otro paciente, escribí su *DNI*.` + GESTION_FOOTER,
+                    'esperando_seleccion_turno_gestion'
+                );
+            }
+            return await presentTurnos(g.dni);
+        }
         if ((g.seleccion || []).length > 0) return askAfterSelection(false);
-        if (g.dni) return await presentTurnos(g.dni);
         return askDni();
     }
 
@@ -4584,10 +4651,10 @@ async function handleChatbotTriage(
             intent: analysis.intent,
             currentStage,
             conv,
-            knownDni: resolvedDni || conv?.dni || null,
+            knownDni: resolvedDni || conv?.dni || (conv?.ai_summary as any)?.gestion_turno?.dni || (conv?.ai_summary as any)?.turnos_consultados?.[0]?.dni || null,
             dniInMessage: dniInMessage || candidateDni || null,
-            turnosDni: resolvedDni,
-            turnosConocidos: turnosActivosProximos,
+            turnosDni: resolvedDni || (conv?.ai_summary as any)?.gestion_turno?.dni || (conv?.ai_summary as any)?.turnos_consultados?.[0]?.dni || null,
+            turnosConocidos: (turnosActivosProximos && turnosActivosProximos.length > 0) ? turnosActivosProximos : ((conv?.ai_summary as any)?.turnos_consultados || (conv?.ai_summary as any)?.gestion_turno?.turnos || []),
             whatsappName
         });
         console.log(`[triage-bot] Gestión de turno (${analysis.intent}) ${currentStage} → ${gestion.stage}`);
@@ -4890,10 +4957,10 @@ async function handleChatbotTriage(
                 intent: gestionAccion === 'cancelar' ? 'cancelar_turno_online' : 'reprogramar_turno_online',
                 currentStage: 'esperando_seleccion_turno_gestion',
                 conv,
-                knownDni: resolvedDni || conv?.dni || null,
+                knownDni: resolvedDni || conv?.dni || (conv?.ai_summary as any)?.gestion_turno?.dni || (conv?.ai_summary as any)?.turnos_consultados?.[0]?.dni || null,
                 dniInMessage: dniInMsg,
-                turnosDni: resolvedDni,
-                turnosConocidos: turnosActivosProximos,
+                turnosDni: resolvedDni || (conv?.ai_summary as any)?.gestion_turno?.dni || (conv?.ai_summary as any)?.turnos_consultados?.[0]?.dni || null,
+                turnosConocidos: (turnosActivosProximos && turnosActivosProximos.length > 0) ? turnosActivosProximos : ((conv?.ai_summary as any)?.turnos_consultados || (conv?.ai_summary as any)?.gestion_turno?.turnos || []),
                 whatsappName
             });
             nextStage = res.stage;
@@ -4919,6 +4986,22 @@ async function handleChatbotTriage(
             const nomFinal = turnosDni?.[0]?.paciente_nombre || pFound?.nombre || `DNI ${dniInMsg}`;
             replyText = formatTurnosActivosReply(turnosDni || [], nomFinal, true, dniInMsg);
             updates.bot_active = true;
+            updates.dni = dniInMsg;
+            updates.nombre_completo = nomFinal;
+            const prevSumm = (conv?.ai_summary && typeof conv.ai_summary === 'object') ? conv.ai_summary : {};
+            if (turnosDni && turnosDni.length > 0) {
+                updates.ai_summary = {
+                    ...prevSumm,
+                    turnos_consultados: turnosDni,
+                    gestion_turno: {
+                        dni: dniInMsg,
+                        paciente_nombre: nomFinal,
+                        turnos: turnosDni.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion),
+                        accion: 'reprogramar',
+                        updated_at: Date.now()
+                    }
+                };
+            }
             nextStage = 'turno_consultado';
             updates.motivo_consulta = `Consulta Turno DNI ${dniInMsg}`;
             return await finalizeAndSend(replyText, nextStage, updates);
@@ -6114,6 +6197,19 @@ async function handleChatbotTriage(
                         updates.motivo_consulta = `Consulta de Turno Propio: ${turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad} (${turnosActivosProximos[0].fecha})`;
                         updates.medico_o_especialidad = turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad;
                         updates.bot_active = true;
+                        if (resolvedDni) updates.dni = resolvedDni;
+                        const prevSumm = (conv?.ai_summary && typeof conv.ai_summary === 'object') ? conv.ai_summary : {};
+                        updates.ai_summary = {
+                            ...prevSumm,
+                            turnos_consultados: turnosActivosProximos,
+                            gestion_turno: {
+                                dni: resolvedDni || conv?.dni || null,
+                                paciente_nombre: fullName || conv?.nombre_completo || null,
+                                turnos: turnosActivosProximos.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion),
+                                accion: 'reprogramar',
+                                updated_at: Date.now()
+                            }
+                        };
                         nextStage = 'turno_consultado';
                     } else if (resolvedDni) {
                         dniToSearch = resolvedDni;
@@ -6157,6 +6253,20 @@ async function handleChatbotTriage(
                         : `Consulta de Turno Propio: ${turnosDni[0].medico || turnosDni[0].especialidad} (${turnosDni[0].fecha})`;
                     updates.medico_o_especialidad = turnosDni[0].medico || turnosDni[0].especialidad;
                     updates.bot_active = true;
+                    updates.dni = dniToSearch;
+                    updates.nombre_completo = nombreFinal;
+                    const prevSumm = (conv?.ai_summary && typeof conv.ai_summary === 'object') ? conv.ai_summary : {};
+                    updates.ai_summary = {
+                        ...prevSumm,
+                        turnos_consultados: turnosDni,
+                        gestion_turno: {
+                            dni: dniToSearch,
+                            paciente_nombre: nombreFinal,
+                            turnos: turnosDni.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion),
+                            accion: 'reprogramar',
+                            updated_at: Date.now()
+                        }
+                    };
                     nextStage = 'turno_consultado';
                 } else if (pacInfo) {
                     const pFirstName = (pacInfo.nombre || '').includes(',') ? pacInfo.nombre.split(',')[1].trim().split(' ')[0] : pacInfo.nombre.split(' ')[0];
@@ -6953,6 +7063,19 @@ async function handleChatbotTriage(
             updates.motivo_consulta = `Consulta Turno: ${turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad} (${turnosActivosProximos[0].fecha})`;
             updates.medico_o_especialidad = turnosActivosProximos[0].medico || turnosActivosProximos[0].especialidad;
             updates.bot_active = true;
+            if (resolvedDni) updates.dni = resolvedDni;
+            const prevSumm = (conv?.ai_summary && typeof conv.ai_summary === 'object') ? conv.ai_summary : {};
+            updates.ai_summary = {
+                ...prevSumm,
+                turnos_consultados: turnosActivosProximos,
+                gestion_turno: {
+                    dni: resolvedDni || conv?.dni || null,
+                    paciente_nombre: fullName || conv?.nombre_completo || null,
+                    turnos: turnosActivosProximos.slice(0, GESTION_MAX_TURNOS_LISTADOS).map(snapshotTurnoGestion),
+                    accion: 'reprogramar',
+                    updated_at: Date.now()
+                }
+            };
             nextStage = 'turno_consultado';
         } else if (!isAskingNewTurno && turnoOnlineProximo) {
             const sedeLine = (turnoOnlineProximo.sede && String(turnoOnlineProximo.sede).trim() !== '')
