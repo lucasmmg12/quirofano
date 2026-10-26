@@ -155,7 +155,7 @@ export function rehydrateSlimMessage(m) {
 }
 
 // Administradores con acceso maestro permanente
-export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya'];
+export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya', 'smanzano'];
 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
