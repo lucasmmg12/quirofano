@@ -310,12 +310,57 @@ export default function HospitalDeDiaDashboard({
         try {
             const wb = XLSX.utils.book_new();
 
-            // ── Solapa 1: Resumen Ejecutivo Gerencial ──
+            const filtroNom = filterTipo === 'HIERRO' ? 'Solo Hierro' : filterTipo === 'QUIRURGICO' ? 'Solo Quirúrgicos' : 'Todos';
+            const asistenciaNom = filterAsistencia === 'EFECTIVOS' ? 'Solo Atendidos' : filterAsistencia === 'SUSPENDIDOS' ? 'Solo Suspendidos' : 'Todos';
+
+            // ── Solapa 1: Detalle Nominal Filtrado (Prioridad de visualización) ──
+            const detalleRows = filteredRecords.map((r, idx) => ({
+                'N°': idx + 1,
+                'Fecha': r.fecha,
+                'Hora': r.hora || '--:--',
+                'Paciente': r.paciente_nombre,
+                'DNI': r.paciente_dni || 'S/D',
+                'NHC': r.paciente_nhc || 'S/D',
+                'Obra Social / Prepaga': r.obra_social,
+                'Agenda SALUS': r.agenda,
+                'Tipo de Actividad': r.tipo_actividad === 'PROCEDIMIENTO_QUIRURGICO' ? 'PROCEDIMIENTO QUIRÚRGICO' : 'INFUSIÓN DE HIERRO',
+                'Práctica / Cirugía': r.descripcion_practica || r.agenda,
+                'Fármaco Administrado': r.farmaco_hierro || (r.tipo_actividad === 'PROCEDIMIENTO_QUIRURGICO' ? 'No aplica' : 'Hierro EV'),
+                'Médico / Responsable': r.medico_responsable,
+                'Asistencia / Estado': r.asistencia,
+                'ID Visita SALUS': r.id_visita,
+                'Motivo Ausencia / Comentarios': r.motivo_ausencia || r.motivo_o_comentarios || ''
+            }));
+
+            const wsDetalle = XLSX.utils.json_to_sheet(detalleRows);
+            wsDetalle['!cols'] = [
+                { wch: 5 },
+                { wch: 12 },
+                { wch: 8 },
+                { wch: 32 },
+                { wch: 12 },
+                { wch: 10 },
+                { wch: 26 },
+                { wch: 18 },
+                { wch: 26 },
+                { wch: 38 },
+                { wch: 24 },
+                { wch: 28 },
+                { wch: 16 },
+                { wch: 14 },
+                { wch: 32 }
+            ];
+            const sheetTitle = filterTipo === 'HIERRO' ? 'Solo Hierro' : filterTipo === 'QUIRURGICO' ? 'Solo Quirúrgicos' : 'Trazabilidad Nominal';
+            XLSX.utils.book_append_sheet(wb, wsDetalle, sheetTitle);
+
+            // ── Solapa 2: Resumen Ejecutivo Gerencial ──
             const resumenAOA = [
                 ['SANATORIO ARGENTINO — GOBERNANZA DE DATOS & AUDITORÍA QUIRÚRGICA'],
                 ['INFORME GERENCIAL: HOSPITAL DE DÍA (PROCEDIMIENTOS VS INFUSIONES DE HIERRO)'],
                 [''],
                 ['Período Auditado (Filtro Telar):', `Desde ${effectiveDesde} hasta ${effectiveHasta}`],
+                ['Filtros Aplicados en Trazabilidad:', `Tipo: ${filtroNom} | Asistencia: ${asistenciaNom} | Búsqueda: "${searchTerm || 'Sin filtro'}"`],
+                ['Registros Filtrados / Exportados:', `${filteredRecords.length} de ${records.length} totales del período`],
                 ['Fecha de Emisión del Reporte:', new Date().toLocaleString('es-AR')],
                 ['Fuente de Datos SALUS:', "VLISE_Visitas filtrado por [Grupo Agenda] = 'QUIRÓFANOS HdD'"],
                 [''],
@@ -347,50 +392,13 @@ export default function HospitalDeDiaDashboard({
             ];
             XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen Gerencial');
 
-            // ── Solapa 2: Detalle Nominal Completo ──
-            const detalleRows = filteredRecords.map((r, idx) => ({
-                'N°': idx + 1,
-                'ID Visita SALUS': r.id_visita,
-                'Fecha': r.fecha,
-                'Hora': r.hora || '--:--',
-                'Paciente': r.paciente_nombre,
-                'DNI': r.paciente_dni || 'S/D',
-                'NHC': r.paciente_nhc || 'S/D',
-                'Obra Social / Prepaga': r.obra_social,
-                'Agenda SALUS': r.agenda,
-                'Tipo de Actividad': r.tipo_actividad === 'PROCEDIMIENTO_QUIRURGICO' ? 'PROCEDIMIENTO QUIRÚRGICO' : 'INFUSIÓN DE HIERRO',
-                'Práctica / Cirugía': r.descripcion_practica || r.agenda,
-                'Fármaco Administrado': r.farmaco_hierro || (r.tipo_actividad === 'PROCEDIMIENTO_QUIRURGICO' ? 'No aplica' : 'Hierro EV'),
-                'Médico / Responsable': r.medico_responsable,
-                'Asistencia / Estado': r.asistencia,
-                'Motivo Ausencia / Comentarios': r.motivo_ausencia || r.motivo_o_comentarios || ''
-            }));
-
-            const wsDetalle = XLSX.utils.json_to_sheet(detalleRows);
-            wsDetalle['!cols'] = [
-                { wch: 5 },
-                { wch: 14 },
-                { wch: 12 },
-                { wch: 8 },
-                { wch: 30 },
-                { wch: 12 },
-                { wch: 10 },
-                { wch: 26 },
-                { wch: 18 },
-                { wch: 26 },
-                { wch: 38 },
-                { wch: 24 },
-                { wch: 28 },
-                { wch: 16 },
-                { wch: 32 }
-            ];
-            XLSX.utils.book_append_sheet(wb, wsDetalle, 'Detalle Nominal');
-
-            const fileName = `Reporte_Hospital_de_Dia_Sanatorio_Argentino_${effectiveDesde}_a_${effectiveHasta}.xlsx`;
+            const tagTipo = filterTipo === 'HIERRO' ? '_Solo_Hierro' : filterTipo === 'QUIRURGICO' ? '_Solo_Quirurgicos' : '';
+            const tagAsistencia = filterAsistencia === 'EFECTIVOS' ? '_Atendidos' : filterAsistencia === 'SUSPENDIDOS' ? '_Suspendidos' : '';
+            const fileName = `Trazabilidad_Hospital_de_Dia${tagTipo}${tagAsistencia}_${effectiveDesde}_a_${effectiveHasta}.xlsx`;
             XLSX.writeFile(wb, fileName);
 
             if (addToast) {
-                addToast(`Informe exportado exitosamente (${filteredRecords.length} registros)`, 'success');
+                addToast(`Informe exportado exitosamente (${filteredRecords.length} registros con filtros aplicados)`, 'success');
             }
         } catch (err) {
             console.error('[HospitalDeDiaDashboard] Error al exportar Excel:', err);
@@ -1280,6 +1288,33 @@ export default function HospitalDeDiaDashboard({
                                 }}
                             />
                         </div>
+
+                        {/* Botón Exportar a Excel con filtros colocados */}
+                        <button
+                            type="button"
+                            onClick={handleExportExcel}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 14px',
+                                borderRadius: '8px',
+                                border: '1.5px solid #10B981',
+                                background: '#ECFDF5',
+                                color: '#047857',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                boxShadow: '0 1px 2px rgba(16, 185, 129, 0.08)'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#D1FAE5'; e.currentTarget.style.borderColor = '#059669'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#10B981'; }}
+                            title={`Exportar a Excel los ${filteredRecords.length} turnos filtrados actualmente`}
+                        >
+                            <FileSpreadsheet size={15} color="#059669" />
+                            <span>Exportar Excel ({filteredRecords.length})</span>
+                        </button>
                     </div>
                 </div>
 
