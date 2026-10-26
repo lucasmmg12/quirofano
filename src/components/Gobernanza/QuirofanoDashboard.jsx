@@ -1648,13 +1648,13 @@ export default function QuirofanoDashboard({
         if (yD && yD === yH && mD === mH) {
             const mesKey = `${yD}-${mD}`;
             const globalTotal = dynamicMetrics.globalTotal || dynamicMetrics.total || 600;
-            const centralTotal = dynamicMetrics.centrales || Math.round(globalTotal * 0.65);
-            const hddTotal = dynamicMetrics.hdd || Math.max(0, globalTotal - centralTotal);
+            const totalCentral = dynamicMetrics.centrales || Math.round(globalTotal * 0.65);
+            const totalHdd = dynamicMetrics.hdd || Math.max(0, globalTotal - totalCentral);
             const urgencias = dynamicMetrics.urgencias > 0 
                 ? dynamicMetrics.urgencias 
-                : Math.round(centralTotal * 0.16); // ~67 urgencias en Quirófano Central
-            const centralPresentes = Math.max(0, centralTotal - urgencias);
-            const hddPresentes = hddTotal;
+                : Math.round(totalCentral * 0.16); // ~67 urgencias en Quirófano Central
+            const centralPresentes = Math.max(0, totalCentral - urgencias);
+            const hddPresentes = totalHdd;
 
             const filtered = enrichedBase.filter(t => t.mes !== mesKey);
             return [
