@@ -14,12 +14,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
     const isUciOnly = username === 'naguilera';
+    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes(username);
     const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username);
     const isLMarinero = ['lmarinero', 'lucas marinero'].includes(username) || MASTER_ADMINS.includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
+        if (isGobernanzaDashboardOnly) {
+            return id === 'gobernanza_indicadores';
+        }
+
         if (isGobernanzaOnly) {
             return ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id);
         }
@@ -404,7 +409,19 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             </div>
 
             <nav className="sidebar__nav">
-                {isGobernanzaOnly ? (
+                {isGobernanzaDashboardOnly ? (
+                    <Link
+                        to="/gobernanza_indicadores"
+                        className={`sidebar__item ${activeView === 'gobernanza_indicadores' ? 'sidebar__item--active' : ''}`}
+                        onClick={() => onViewChange && onViewChange('gobernanza_indicadores', true)}
+                        title={collapsed ? 'Dashboard e Indicadores' : undefined}
+                        style={{ display: 'flex', textDecoration: 'none' }}
+                    >
+                        <BarChart3 size={20} className="sidebar__item-icon" />
+                        {!collapsed && <span className="sidebar__item-label">Dashboard e Indicadores</span>}
+                        {activeView === 'gobernanza_indicadores' && <div className="sidebar__item-indicator" />}
+                    </Link>
+                ) : isGobernanzaOnly ? (
                     <>
                         {/* Gobernanza de Datos */}
                         {renderGroup({
@@ -613,7 +630,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             </nav>
 
             <div className="sidebar__footer" style={{ padding: collapsed ? '12px 0' : '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                {!isUciOnly && (
+                {!isUciOnly && !isGobernanzaDashboardOnly && (
                     <>
                         {/* ─── Beto Animated Avatar ─── */}
                         <button
