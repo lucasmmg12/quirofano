@@ -416,7 +416,15 @@ export async function saveGestionTurnoOnline({ key, estado, agenteId, agenteNomb
         }
     }
 
-    return { success: true, gestion: updatePayload };
+    const returnGestion = {
+        ...updatePayload,
+        agenteId: updatePayload.agente_id,
+        agenteNombre: updatePayload.agente_nombre,
+        fechaContacto: updatePayload.fecha_contacto,
+        updatedAt: updatePayload.updated_at
+    };
+
+    return { success: true, gestion: returnGestion };
 }
 
 /**

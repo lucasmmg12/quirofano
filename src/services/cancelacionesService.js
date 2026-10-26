@@ -121,6 +121,36 @@ export async function marcarCanceladoEnSalus({ id, agenteId, agenteNombre, notas
             .single();
 
         if (error) throw error;
+
+        // Auto-reconciliar con contact_center_turnos_online si existía conflicto de turnos online
+        if (data?.dni || data?.phone) {
+            try {
+                const phoneDigits = String(data.phone || '').replace(/\D/g, '');
+                const last10 = phoneDigits.slice(-10);
+                let q = supabase
+                    .from('contact_center_turnos_online')
+                    .update({
+                        estado: 'resuelto',
+                        agente_id: agenteId,
+                        agente_nombre: agenteNombre,
+                        notas: `Turno anulado en SALUS desde Cancelaciones (${notas || ''})`,
+                        updated_at: new Date().toISOString()
+                    })
+                    .in('estado', ['pendiente', 'contactado']);
+
+                if (data.dni && last10) {
+                    q = q.or(`dni.eq.${data.dni},telefono.ilike.%${last10}%`);
+                } else if (data.dni) {
+                    q = q.eq('dni', String(data.dni).trim());
+                } else if (last10) {
+                    q = q.ilike('telefono', `%${last10}%`);
+                }
+                await q;
+            } catch (syncErr) {
+                console.warn('[cancelacionesService] Error auto-resolviendo turnos online:', syncErr);
+            }
+        }
+
         return { success: true, data };
     } catch (err) {
         console.error('[cancelacionesService] Error al marcar cancelado:', err);

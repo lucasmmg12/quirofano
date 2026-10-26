@@ -23,9 +23,11 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     const [filtroDias, setFiltroDias] = useState(1); // 1 = ayer/hoy
     const [fechaCustom, setFechaCustom] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-    const [filtroEstado, setFiltroEstado] = useState('todos'); // 'todos', 'pendiente', 'contactado', 'resuelto'
+    const [filtroEstado, setFiltroEstado] = useState('pendiente'); // 'pendiente' por defecto para bandeja Inbox Zero
+    const [ocultarPasados, setOcultarPasados] = useState(true); // Ocultar automáticamente turnos con fechas transcurridas
     const [showGuiaModal, setShowGuiaModal] = useState(false);
     const [showQuickTips, setShowQuickTips] = useState(true);
+    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     
     const [stats, setStats] = useState({
         totalTurnosAnalizados: 0,
@@ -96,6 +98,14 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             if (filtroEstado !== 'todos' && c.gestion.estado !== filtroEstado) {
                 return false;
             }
+
+            // Ocultar turnos cuya fecha ya pasó (si está activo el toggle y no hay término de búsqueda manual)
+            if (ocultarPasados && !searchTerm.trim() && filtroEstado === 'pendiente') {
+                const fechas = (c.turnos || []).map(t => t.fechaTurno).filter(Boolean);
+                const todosPasados = fechas.length > 0 && fechas.every(f => f < todayStr);
+                if (todosPasados) return false;
+            }
+
             // Filtro de búsqueda
             if (searchTerm.trim()) {
                 const term = searchTerm.toLowerCase().trim();
@@ -107,7 +117,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             }
             return true;
         });
-    }, [casos, filtroEstado, searchTerm]);
+    }, [casos, filtroEstado, searchTerm, ocultarPasados, todayStr]);
 
     // 3. Manejar cambio de estado de gestión
     const handleUpdateEstado = async (caso, nuevoEstado, notaText = null) => {
@@ -122,7 +132,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             });
 
             if (res.success) {
-                setCasos(prev => prev.map(c => c.key === caso.key ? { ...c, gestion: res.gestion } : c));
+                setCasos(prev => prev.map(c => c.key === caso.key ? { ...c, gestion: { ...c.gestion, ...res.gestion } } : c));
                 // Recalcular stats locales
                 setStats(prev => {
                     const prevEstado = caso.gestion.estado;
@@ -130,9 +140,9 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     if (prevEstado === nextEstado) return prev;
                     return {
                         ...prev,
-                        totalPendientes: prev.totalPendientes + (nextEstado === 'pendiente' ? 1 : prevEstado === 'pendiente' ? -1 : 0),
-                        totalContactados: prev.totalContactados + (nextEstado === 'contactado' ? 1 : prevEstado === 'contactado' ? -1 : 0),
-                        totalResueltos: prev.totalResueltos + (nextEstado === 'resuelto' ? 1 : prevEstado === 'resuelto' ? -1 : 0),
+                        totalPendientes: Math.max(0, prev.totalPendientes + (nextEstado === 'pendiente' ? 1 : prevEstado === 'pendiente' ? -1 : 0)),
+                        totalContactados: Math.max(0, prev.totalContactados + (nextEstado === 'contactado' ? 1 : prevEstado === 'contactado' ? -1 : 0)),
+                        totalResueltos: Math.max(0, prev.totalResueltos + (nextEstado === 'resuelto' ? 1 : prevEstado === 'resuelto' ? -1 : 0)),
                     };
                 });
                 if (addToast) addToast(`Caso actualizado a "${nuevoEstado}"`, 'success');
@@ -554,42 +564,69 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     />
                 </div>
 
-                {/* Filtro por estado */}
-                <div style={{
-                    display: 'flex',
-                    background: '#FFFFFF',
-                    borderRadius: '12px',
-                    padding: '3px',
-                    border: '1.5px solid #CBD5E1'
-                }}>
-                    {[
-                        { id: 'todos', label: 'Todos', count: casos.length },
-                        { id: 'pendiente', label: 'Pendientes', count: stats.totalPendientes },
-                        { id: 'contactado', label: 'Contactados', count: stats.totalContactados },
-                        { id: 'resuelto', label: 'Resueltos', count: stats.totalResueltos },
-                    ].map(f => (
+                {/* Filtro por estado y toggle de fechas pasadas */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{
+                        display: 'flex',
+                        background: '#FFFFFF',
+                        borderRadius: '12px',
+                        padding: '3px',
+                        border: '1.5px solid #CBD5E1'
+                    }}>
+                        {[
+                            { id: 'pendiente', label: 'Pendientes', count: stats.totalPendientes },
+                            { id: 'contactado', label: 'Contactados', count: stats.totalContactados },
+                            { id: 'resuelto', label: 'Resueltos', count: stats.totalResueltos },
+                            { id: 'todos', label: 'Todos', count: casos.length },
+                        ].map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setFiltroEstado(f.id)}
+                                style={{
+                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    background: filtroEstado === f.id ? '#0F2942' : 'transparent',
+                                    color: filtroEstado === f.id ? '#FFFFFF' : '#64748B',
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                {f.label}
+                                <span style={{
+                                    background: filtroEstado === f.id ? 'rgba(255,255,255,0.2)' : '#F1F5F9',
+                                    color: filtroEstado === f.id ? '#FFFFFF' : '#64748B',
+                                    fontSize: '0.7rem', padding: '1px 6px', borderRadius: '8px'
+                                }}>
+                                    {f.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {filtroEstado === 'pendiente' && (
                         <button
-                            key={f.id}
-                            onClick={() => setFiltroEstado(f.id)}
+                            type="button"
+                            onClick={() => setOcultarPasados(prev => !prev)}
                             style={{
-                                padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                background: filtroEstado === f.id ? '#0F2942' : 'transparent',
-                                color: filtroEstado === f.id ? '#FFFFFF' : '#64748B',
-                                display: 'flex', alignItems: 'center', gap: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 12px',
+                                borderRadius: '10px',
+                                border: '1px solid #CBD5E1',
+                                background: ocultarPasados ? '#EFF6FF' : '#FFFFFF',
+                                color: ocultarPasados ? '#1D4ED8' : '#64748B',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
                                 transition: 'all 0.15s'
                             }}
+                            title="Oculta o muestra casos donde todas las fechas de los turnos ya transcurrieron"
                         >
-                            {f.label}
-                            <span style={{
-                                background: filtroEstado === f.id ? 'rgba(255,255,255,0.2)' : '#F1F5F9',
-                                color: filtroEstado === f.id ? '#FFFFFF' : '#64748B',
-                                fontSize: '0.7rem', padding: '1px 6px', borderRadius: '8px'
-                            }}>
-                                {f.count}
-                            </span>
+                            <Calendar size={14} />
+                            {ocultarPasados ? 'Ocultando fechas pasadas' : 'Mostrando todas las fechas'}
                         </button>
-                    ))}
+                    )}
                 </div>
             </div>
 
@@ -895,8 +932,13 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                                 Pedido: {new Date(t.fechaCreacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                             </span>
                                                         </div>
-                                                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0D3B66', marginBottom: '4px' }}>
-                                                            {t.fechaTurno} a las {t.horaInicio}
+                                                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0D3B66', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span>{t.fechaTurno} a las {t.horaInicio}</span>
+                                                            {t.fechaTurno && t.fechaTurno < todayStr && (
+                                                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEE2E2', color: '#B91C1C', padding: '2px 6px', borderRadius: '4px' }}>
+                                                                    Fecha pasada
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div style={{ fontSize: '0.8rem', color: '#475569' }}>
                                                             Agenda: <span style={{ fontWeight: 700 }}>{t.agenda}</span>
@@ -1024,6 +1066,25 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                     <XCircle size={13} />
                                                     Descartar
                                                 </button>
+
+                                                {isPendiente && caso.turnos?.length > 0 && caso.turnos.every(t => t.fechaTurno && t.fechaTurno < todayStr) && (
+                                                    <button
+                                                        disabled={savingKey === caso.key}
+                                                        onClick={() => handleUpdateEstado(caso, 'resuelto', 'Archivado automáticamente (Fecha del turno transcurrida)')}
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                            padding: '5px 10px', borderRadius: '8px',
+                                                            border: '1px solid #CBD5E1',
+                                                            background: '#F8FAFC', color: '#475569',
+                                                            fontSize: '0.76rem', fontWeight: 700,
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        title="Las fechas de estos turnos ya pasaron. Archivar como resuelto."
+                                                    >
+                                                        <Check size={13} />
+                                                        Archivar vencido
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

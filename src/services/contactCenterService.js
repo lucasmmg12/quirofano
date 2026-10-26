@@ -2374,6 +2374,35 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
             } else if (updatedCancels && updatedCancels.length > 0) {
                 console.log(`[contact-center] ✅ ${updatedCancels.length} cancelacion(es) vinculada(s) marcada(s) como procesadas en SALUS automáticamente al cerrar chat.`);
             }
+
+            // 3.c Sincronizar y marcar automáticamente en contact_center_turnos_online si existía conflicto de turnos duplicados
+            try {
+                let qTurnos = supabase
+                    .from('contact_center_turnos_online')
+                    .update({
+                        estado: 'resuelto',
+                        agente_id: agenteId,
+                        agente_nombre: agenteNombre,
+                        notas: `Gestionado y resuelto desde Chat WhatsApp (${resolutionReason || 'Cancelación confirmada'})`,
+                        updated_at: now.toISOString()
+                    })
+                    .in('estado', ['pendiente', 'contactado']);
+
+                if (dniChat && String(dniChat).trim()) {
+                    qTurnos = qTurnos.or(`telefono.eq.${norm},telefono.like.%${last10},dni.eq.${String(dniChat).trim()}`);
+                } else {
+                    qTurnos = qTurnos.or(`telefono.eq.${norm},telefono.like.%${last10}`);
+                }
+
+                const { data: updatedTurnos, error: turnosErr } = await qTurnos.select('id');
+                if (turnosErr) {
+                    console.warn('[contact-center] Error actualizando turnos online vinculados al cerrar chat:', turnosErr);
+                } else if (updatedTurnos && updatedTurnos.length > 0) {
+                    console.log(`[contact-center] ✅ ${updatedTurnos.length} caso(s) de turnos online resuelto(s) automáticamente al cerrar chat.`);
+                }
+            } catch (tErr) {
+                console.warn('[contact-center] Excepción sincronizando turnos online al cerrar chat:', tErr);
+            }
         } catch (cancErr) {
             console.warn('[contact-center] Excepción sincronizando cancelaciones al cerrar chat:', cancErr);
         }
