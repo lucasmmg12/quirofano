@@ -12,8 +12,7 @@ import {
     sendTemplateTurnosMismoDia,
     buildVariablesTurnosMismoDia,
     renderTemplateBody,
-    META_TEMPLATE_TURNOS_MISMO_DIA,
-    PLANTILLAS_TURNOS_ONLINE 
+    META_TEMPLATE_TURNOS_MISMO_DIA
 } from '../../services/turnosOnlineService';
 
 const META_OPTION_ID = 'meta_turnos_mismo_dia';
@@ -146,52 +145,18 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         }
     };
 
-    // 4. Abrir modal de WhatsApp con plantilla adecuada
+    // 4. Abrir modal de WhatsApp con plantilla oficial de Meta
     const handleOpenWhatsappModal = (caso) => {
-        // Mismo día: plantilla oficial de Meta (permite iniciar la charla aunque no haya ventana de 24h)
-        if (caso.esMismoDia) {
-            setModalData({
-                caso,
-                plantillaId: META_OPTION_ID,
-                metaVars: buildVariablesTurnosMismoDia(caso),
-                texto: '',
-                sending: false
-            });
-            return;
-        }
-
-        const defaultTemplate = PLANTILLAS_TURNOS_ONLINE[1];
-        const initialText = defaultTemplate.generateText(caso.nombre, caso.profesional, caso.turnos);
-
         setModalData({
             caso,
-            plantillaId: defaultTemplate.id,
-            texto: initialText,
+            plantillaId: META_OPTION_ID,
+            metaVars: buildVariablesTurnosMismoDia(caso),
+            texto: '',
             sending: false
         });
     };
 
-    // 5. Cambiar plantilla en el modal
-    const handleChangePlantilla = (tplId) => {
-        if (!modalData) return;
-        if (tplId === META_OPTION_ID) {
-            setModalData(prev => ({
-                ...prev,
-                plantillaId: META_OPTION_ID,
-                metaVars: prev.metaVars || buildVariablesTurnosMismoDia(prev.caso)
-            }));
-            return;
-        }
-        const tpl = PLANTILLAS_TURNOS_ONLINE.find(p => p.id === tplId) || PLANTILLAS_TURNOS_ONLINE[0];
-        const newText = tpl.generateText(modalData.caso.nombre, modalData.caso.profesional, modalData.caso.turnos);
-        setModalData(prev => ({
-            ...prev,
-            plantillaId: tplId,
-            texto: newText
-        }));
-    };
-
-    const isMetaSelected = modalData?.plantillaId === META_OPTION_ID;
+    const isMetaSelected = true;
     const canSendModal = modalData && !modalData.sending && (
         isMetaSelected
             ? (modalData.metaVars || []).every(v => String(v || '').trim())
@@ -1114,61 +1079,31 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             </button>
                         </div>
 
-                        {/* Selector de Plantilla */}
+                        {/* Plantilla Oficial Meta */}
                         <div style={{ marginBottom: '14px' }}>
                             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', marginBottom: '6px' }}>
-                                Seleccionar Tipo de Plantilla / Mensaje:
+                                Plantilla Oficial Meta:
                             </label>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {modalData.caso.esMismoDia && (
-                                    <div
-                                        onClick={() => handleChangePlantilla(META_OPTION_ID)}
-                                        style={{
-                                            padding: '10px 14px', borderRadius: '12px',
-                                            border: isMetaSelected ? '2px solid #0284C7' : '1.5px solid #E2E8F0',
-                                            background: isMetaSelected ? '#F0F9FF' : '#FFFFFF',
-                                            cursor: 'pointer', transition: 'all 0.15s',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                                        }}
-                                    >
-                                        <div>
-                                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isMetaSelected ? '#075985' : '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                Plantilla oficial Meta · {META_TEMPLATE_TURNOS_MISMO_DIA.name}
-                                                <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D' }}>Aprobada</span>
-                                            </div>
-                                            <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                Inicia la conversación aunque el paciente nunca haya escrito. Incluye botones de respuesta.
-                                            </div>
+                                <div
+                                    style={{
+                                        padding: '12px 14px', borderRadius: '12px',
+                                        border: '2px solid #0284C7',
+                                        background: '#F0F9FF',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#075985', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            Plantilla oficial Meta · {META_TEMPLATE_TURNOS_MISMO_DIA.name}
+                                            <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: '#DCFCE7', color: '#15803D' }}>Aprobada</span>
                                         </div>
-                                        {isMetaSelected && <Check size={18} color="#0284C7" />}
+                                        <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '2px' }}>
+                                            Inicia la conversación aunque el paciente nunca haya escrito. Incluye botones de respuesta rápida.
+                                        </div>
                                     </div>
-                                )}
-                                {PLANTILLAS_TURNOS_ONLINE.filter(p => !(modalData.caso.esMismoDia && p.id === 'aviso_duplicado_mismo_dia')).map(p => {
-                                    const isSelected = modalData.plantillaId === p.id;
-                                    return (
-                                        <div
-                                            key={p.id}
-                                            onClick={() => handleChangePlantilla(p.id)}
-                                            style={{
-                                                padding: '10px 14px', borderRadius: '12px',
-                                                border: isSelected ? '2px solid #10B981' : '1.5px solid #E2E8F0',
-                                                background: isSelected ? '#F0FDF4' : '#FFFFFF',
-                                                cursor: 'pointer', transition: 'all 0.15s',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                                            }}
-                                        >
-                                            <div>
-                                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: isSelected ? '#065F46' : '#0F172A' }}>
-                                                    {p.titulo}
-                                                </div>
-                                                <div style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                    {p.descripcion}
-                                                </div>
-                                            </div>
-                                            {isSelected && <Check size={18} color="#10B981" />}
-                                        </div>
-                                    );
-                                })}
+                                    <Check size={18} color="#0284C7" />
+                                </div>
                             </div>
                         </div>
 
