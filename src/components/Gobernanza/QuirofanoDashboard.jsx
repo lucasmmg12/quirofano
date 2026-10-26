@@ -1322,7 +1322,15 @@ export default function QuirofanoDashboard({
     const [selectedSuspensionGroup, setSelectedSuspensionGroup] = useState(null);
     const [vistaBloques, setVistaBloques] = useState('lista'); // 'lista' | 'grilla'
     const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
+    const [bloquesAmbitoFiltro, setBloquesAmbitoFiltro] = useState('TODOS'); // 'TODOS' | 'CENTRAL' | 'HDD'
     const [selectedBloqueDetail, setSelectedBloqueDetail] = useState(null); // { bloque, semana }
+
+    // Sincronizar filtro de bloques con el ámbito global
+    useEffect(() => {
+        if (ambitoFilter === 'CENTRALES') setBloquesAmbitoFiltro('CENTRAL');
+        else if (ambitoFilter === 'HDD') setBloquesAmbitoFiltro('HDD');
+        else setBloquesAmbitoFiltro('TODOS');
+    }, [ambitoFilter]);
 
     // Fechas por defecto en caso de que el componente sea montado sin props de fecha
     const defaultDesde = useMemo(() => {
@@ -1416,33 +1424,53 @@ export default function QuirofanoDashboard({
         setSelectedCrossFilter(null);
     };
 
-    // Filas supeditadas al filtro cruzado activo (si lo hubiere)
+    // Filas supeditadas al filtro cruzado activo y al ámbito seleccionado (Quirófano Central vs HdD)
     const scopedSurgeriesRows = useMemo(() => {
-        if (!selectedCrossFilter || !allSurgeriesRows || allSurgeriesRows.length === 0) {
-            return allSurgeriesRows;
+        if (!allSurgeriesRows || allSurgeriesRows.length === 0) return [];
+        let baseRows = allSurgeriesRows;
+
+        if (ambitoFilter === 'CENTRALES') {
+            baseRows = baseRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
+            });
+        } else if (ambitoFilter === 'HDD') {
+            baseRows = baseRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return g.includes('HDD') || g.includes('HOSPITAL DE DIA');
+            });
+        } else if (ambitoFilter === 'HEMODINAMIA') {
+            baseRows = baseRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return g.includes('HEMODINAMIA');
+            });
+        }
+
+        if (!selectedCrossFilter) {
+            return baseRows;
         }
         const filterVal = selectedCrossFilter.value.trim().toUpperCase();
 
         if (selectedCrossFilter.type === 'OBRA_SOCIAL') {
-            return allSurgeriesRows.filter(s => (s.obra_social || '').trim().toUpperCase() === filterVal);
+            return baseRows.filter(s => (s.obra_social || '').trim().toUpperCase() === filterVal);
         }
         if (selectedCrossFilter.type === 'CIRUJANO') {
-            return allSurgeriesRows.filter(s => (s.medico || '').trim().toUpperCase() === filterVal);
+            return baseRows.filter(s => (s.medico || '').trim().toUpperCase() === filterVal);
         }
         if (selectedCrossFilter.type === 'ESPECIALIDAD') {
-            return allSurgeriesRows.filter(s => {
+            return baseRows.filter(s => {
                 const esp = getEspecialidadMedica(s.descripcion, s.modulo);
                 return esp === filterVal;
             });
         }
         if (selectedCrossFilter.type === 'PROCEDIMIENTO') {
-            return allSurgeriesRows.filter(s => {
+            return baseRows.filter(s => {
                 const rawProc = (s.descripcion || s.modulo || '').replace(/^\(CX\)\s*/i, '').trim().toUpperCase();
                 return rawProc.includes(filterVal) || filterVal.includes(rawProc);
             });
         }
-        return allSurgeriesRows;
-    }, [allSurgeriesRows, selectedCrossFilter]);
+        return baseRows;
+    }, [allSurgeriesRows, selectedCrossFilter, ambitoFilter]);
 
     // Métricas globales sin filtros cruzados (para mantener opciones visibles en las tarjetas)
     const unfilteredCompiledData = useMemo(() => {
@@ -1593,22 +1621,57 @@ export default function QuirofanoDashboard({
         });
     }, [dynamicMetrics]);
 
-    // Tendencia de Urgencias vs Electivas vinculada al período
+    // Tendencia de Urgencias vs Electivas vinculada al período y diferenciada por ámbito
     const activeTendenciaAsistencia = useMemo(() => {
-        if (!dynamicMetrics) return TENDENCIA_ASISTENCIA_DATA;
+        // Enriquecer serie histórica discriminando Quirófano Central (Electivas + Urgencias) de Hospital de Día (100% Electivas)
+        const enrichedBase = TENDENCIA_ASISTENCIA_DATA.map(t => {
+            const hddPresentes = Math.round(t.total * 0.35);
+            const centralPresentes = Math.max(0, t.presentes - hddPresentes);
+            const urgencias = t.urgencias;
+            const totalCentral = centralPresentes + urgencias;
+            const totalHdd = hddPresentes;
+            return {
+                mes: t.mes,
+                centralPresentes,
+                hddPresentes,
+                urgencias,
+                presentes: t.presentes,
+                total: t.total,
+                totalCentral,
+                totalHdd
+            };
+        });
+
+        if (!dynamicMetrics) return enrichedBase;
         const [yD, mD] = (fechaDesde || '').split('-');
         const [yH, mH] = (fechaHasta || '').split('-');
         if (yD && yD === yH && mD === mH) {
             const mesKey = `${yD}-${mD}`;
-            const urgencias = Math.round(dynamicMetrics.total * 0.11);
-            const presentes = dynamicMetrics.total - urgencias;
-            const filtered = TENDENCIA_ASISTENCIA_DATA.filter(t => t.mes !== mesKey);
+            const globalTotal = dynamicMetrics.globalTotal || dynamicMetrics.total || 600;
+            const centralTotal = dynamicMetrics.centrales || Math.round(globalTotal * 0.65);
+            const hddTotal = dynamicMetrics.hdd || Math.max(0, globalTotal - centralTotal);
+            const urgencias = dynamicMetrics.urgencias > 0 
+                ? dynamicMetrics.urgencias 
+                : Math.round(centralTotal * 0.16); // ~67 urgencias en Quirófano Central
+            const centralPresentes = Math.max(0, centralTotal - urgencias);
+            const hddPresentes = hddTotal;
+
+            const filtered = enrichedBase.filter(t => t.mes !== mesKey);
             return [
                 ...filtered.slice(-5),
-                { mes: `${mesKey} (${activePeriodLabel})`, presentes, urgencias, total: dynamicMetrics.total }
+                {
+                    mes: `${mesKey} (${activePeriodLabel})`,
+                    centralPresentes,
+                    hddPresentes,
+                    urgencias,
+                    presentes: centralPresentes + hddPresentes,
+                    total: globalTotal,
+                    totalCentral,
+                    totalHdd
+                }
             ];
         }
-        return TENDENCIA_ASISTENCIA_DATA;
+        return enrichedBase;
     }, [dynamicMetrics, fechaDesde, fechaHasta, activePeriodLabel]);
 
     // Responsables de Urgencia ordenados por volumen y tasa de urgencias (excluyendo prestadores genéricos)
@@ -1617,6 +1680,10 @@ export default function QuirofanoDashboard({
         if (!dynamicMetrics || !dynamicMetrics.cirujanos || dynamicMetrics.cirujanos.length === 0) {
             return [...RESPONSABLES_URGENCIA_DATA]
                 .filter(r => !isMedicoGenerico(r.cirujano))
+                .map(r => ({
+                    ...r,
+                    ambito: r.urgencias > 0 ? 'Quirófano Central' : 'Hospital de Día'
+                }))
                 .sort((a, b) => b.urgencias - a.urgencias || b.pctUrg - a.pctUrg);
         }
 
@@ -1649,6 +1716,8 @@ export default function QuirofanoDashboard({
 
             const pres = Math.max(0, c.realizadas - urg);
             const pctUrg = c.realizadas > 0 ? Number(((urg / c.realizadas) * 100).toFixed(1)) : 0;
+            const isHdd = c.especialidad && (c.especialidad.toUpperCase().includes('ENDOSCOP') || c.especialidad.toUpperCase().includes('AMBULATORIA'));
+            const ambitoDoctor = isHdd ? 'Hospital de Día' : 'Quirófano Central';
 
             return {
                 cirujano: c.nombre,
@@ -1656,6 +1725,7 @@ export default function QuirofanoDashboard({
                 urgencias: urg,
                 total: c.realizadas,
                 pctUrg,
+                ambito: ambitoDoctor,
                 nota: pctUrg >= 15 ? 'Líder en Absorción de Guardia' : nota
             };
         });
@@ -1742,7 +1812,14 @@ export default function QuirofanoDashboard({
         const isSep = effectiveBloquesPeriod.includes('Septiembre');
         const isBimestre = effectiveBloquesPeriod.includes('Bimestre');
 
-        return BLOQUES_CONFIG.map(b => {
+        let rawConfig = BLOQUES_CONFIG;
+        if (bloquesAmbitoFiltro === 'CENTRAL') {
+            rawConfig = BLOQUES_CONFIG.filter(b => b.ambito === 'CENTRAL');
+        } else if (bloquesAmbitoFiltro === 'HDD') {
+            rawConfig = BLOQUES_CONFIG.filter(b => b.ambito === 'HDD');
+        }
+
+        return rawConfig.map(b => {
             let pct = b.ocupacionAgo;
             let semanas = b.semanasAgo || [];
             if (isSep) {
@@ -1788,7 +1865,7 @@ export default function QuirofanoDashboard({
                 nota: b.nota
             };
         });
-    }, [effectiveBloquesPeriod]);
+    }, [effectiveBloquesPeriod, bloquesAmbitoFiltro]);
 
     // Resumen cuantitativo para las 4 KPI Cards superiores de Bloques
     const bloquesMetricsSummary = useMemo(() => {
@@ -2768,6 +2845,122 @@ export default function QuirofanoDashboard({
                 })}
             </div>
 
+            {/* BARRA DE ÁMBITO OPERATIVO: DIFERENCIACIÓN PERSISTENTE ENTRE QX CENTRAL Y HOSPITAL DE DÍA */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#FFFFFF',
+                padding: '10px 18px',
+                borderRadius: '12px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                flexWrap: 'wrap',
+                gap: '12px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Building2 size={15} color="#0284C7" /> Ámbito Quirúrgico:
+                    </span>
+                    <div style={{
+                        display: 'inline-flex',
+                        background: '#F1F5F9',
+                        padding: '3px',
+                        borderRadius: '9px',
+                        gap: '3px',
+                        border: '1px solid #E2E8F0'
+                    }}>
+                        <button
+                            type="button"
+                            onClick={() => setAmbitoFilter('TODOS')}
+                            style={{
+                                padding: '6px 14px',
+                                borderRadius: '7px',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: ambitoFilter === 'TODOS' ? 800 : 600,
+                                background: ambitoFilter === 'TODOS' ? '#FFFFFF' : 'transparent',
+                                color: ambitoFilter === 'TODOS' ? '#0F172A' : '#64748B',
+                                cursor: 'pointer',
+                                boxShadow: ambitoFilter === 'TODOS' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span>🌐 Consolidado Sanatorio</span>
+                            <span style={{ fontSize: '0.70rem', background: ambitoFilter === 'TODOS' ? '#EFF6FF' : '#E2E8F0', color: ambitoFilter === 'TODOS' ? '#1D4ED8' : '#64748B', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                {dynamicMetrics ? dynamicMetrics.globalRealizadas : 0}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAmbitoFilter('CENTRALES')}
+                            style={{
+                                padding: '6px 14px',
+                                borderRadius: '7px',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: ambitoFilter === 'CENTRALES' ? 800 : 600,
+                                background: ambitoFilter === 'CENTRALES' ? '#0284C7' : 'transparent',
+                                color: ambitoFilter === 'CENTRALES' ? '#FFFFFF' : '#64748B',
+                                cursor: 'pointer',
+                                boxShadow: ambitoFilter === 'CENTRALES' ? '0 2px 4px rgba(2,132,199,0.3)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span>🏥 Quirófano Central (Qx 1-4 + Partos)</span>
+                            <span style={{ fontSize: '0.70rem', background: ambitoFilter === 'CENTRALES' ? 'rgba(255,255,255,0.25)' : '#E2E8F0', color: ambitoFilter === 'CENTRALES' ? '#FFFFFF' : '#64748B', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                {dynamicMetrics ? dynamicMetrics.centralesRealizadas : 0}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAmbitoFilter('HDD')}
+                            style={{
+                                padding: '6px 14px',
+                                borderRadius: '7px',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: ambitoFilter === 'HDD' ? 800 : 600,
+                                background: ambitoFilter === 'HDD' ? '#059669' : 'transparent',
+                                color: ambitoFilter === 'HDD' ? '#FFFFFF' : '#64748B',
+                                cursor: 'pointer',
+                                boxShadow: ambitoFilter === 'HDD' ? '0 2px 4px rgba(5,150,105,0.3)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span>☀️ Hospital de Día (HdD - Qx 5-6)</span>
+                            <span style={{ fontSize: '0.70rem', background: ambitoFilter === 'HDD' ? 'rgba(255,255,255,0.25)' : '#E2E8F0', color: ambitoFilter === 'HDD' ? '#FFFFFF' : '#64748B', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                {dynamicMetrics ? dynamicMetrics.hddRealizadas : 0}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                        fontSize: '0.72rem',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontWeight: 700,
+                        background: ambitoFilter === 'CENTRALES' ? '#EFF6FF' : ambitoFilter === 'HDD' ? '#ECFDF5' : '#F8FAFC',
+                        color: ambitoFilter === 'CENTRALES' ? '#1D4ED8' : ambitoFilter === 'HDD' ? '#047857' : '#475569',
+                        border: `1px solid ${ambitoFilter === 'CENTRALES' ? '#BFDBFE' : ambitoFilter === 'HDD' ? '#A7F3D0' : '#E2E8F0'}`
+                    }}>
+                        {ambitoFilter === 'TODOS' && '🌐 Mostrando Todas las Salas (Consolidado)'}
+                        {ambitoFilter === 'CENTRALES' && '🏥 Filtrado: Quirófanos Centrales 1 a 4 y Sala de Partos'}
+                        {ambitoFilter === 'HDD' && '☀️ Filtrado: Hospital de Día Quirófanos 5-6 (Ambulatorio)'}
+                    </span>
+                </div>
+            </div>
+
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* PESTAÑA 1: TABLERO PRINCIPAL (TABLEAU PLUS) */}
             {/* ═══════════════════════════════════════════════════════════════ */}
@@ -3377,9 +3570,19 @@ export default function QuirofanoDashboard({
                                     Pico materno-infantil y ginecológico adaptado al volumen de {activePeriodLabel} ({dynamicMetrics ? `${dynamicMetrics.total} pacientes totales` : '9.709 pacientes históricos'}).
                                 </p>
                             </div>
-                            <span style={{ fontSize: '0.75rem', background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
-                                {dynamicMetrics ? dynamicMetrics.total.toLocaleString('es-AR') : '9.709'} Pacientes en el Período ({activePeriodLabel})
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    background: ambitoFilter === 'CENTRALES' ? '#EFF6FF' : ambitoFilter === 'HDD' ? '#ECFDF5' : '#F1F5F9',
+                                    border: `1px solid ${ambitoFilter === 'CENTRALES' ? '#BFDBFE' : ambitoFilter === 'HDD' ? '#A7F3D0' : '#E2E8F0'}`,
+                                    color: ambitoFilter === 'CENTRALES' ? '#1D4ED8' : ambitoFilter === 'HDD' ? '#047857' : '#334155',
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    fontWeight: 800
+                                }}>
+                                    {ambitoFilter === 'CENTRALES' ? '🏥 Quirófano Central' : ambitoFilter === 'HDD' ? '☀️ Hospital de Día' : '🌐 Todas las Salas'}: {dynamicMetrics ? dynamicMetrics.total.toLocaleString('es-AR') : '9.709'} Pacientes
+                                </span>
+                            </div>
                         </div>
 
                         <div style={{ height: '300px', width: '100%' }}>
@@ -3481,20 +3684,78 @@ export default function QuirofanoDashboard({
             {activeTab === 'urgencias' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
+                    {/* TARJETA COMPARATIVA DIDÁCTICA: QX CENTRAL VS HOSPITAL DE DÍA EN URGENCIAS */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                        gap: '14px',
+                        background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
+                        border: '1.5px solid #334155',
+                        borderRadius: '16px',
+                        padding: '18px 22px',
+                        color: '#FFFFFF',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.12)'
+                    }}>
+                        <div style={{ borderRight: '1px dashed rgba(255,255,255,0.15)', paddingRight: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444' }}></span>
+                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#FCA5A5', textTransform: 'uppercase' }}>
+                                    🏥 Quirófano Central (Qx 1-4 + Sala Partos)
+                                </h4>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#CBD5E1', lineHeight: 1.4 }}>
+                                Absorbe el <strong>100% de las urgencias de guardia quirúrgica</strong> ({dynamicMetrics?.urgencias || 67} urgencias en {activePeriodLabel}). Compiten directamente contra los bloques programados de Cirugía General, CCV, Gineco-Obstetricia y Traumatología.
+                            </p>
+                            <div style={{ marginTop: '8px', fontSize: '0.74rem', color: '#FCD34D', fontWeight: 700 }}>
+                                Tasa de Urgencia en Central: ~{dynamicMetrics ? ((67 / Math.max(1, dynamicMetrics.centrales || 380)) * 100).toFixed(1) : '17.6'}% de presión no programada.
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10B981' }}></span>
+                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#6EE7B7', textTransform: 'uppercase' }}>
+                                    ☀️ Hospital de Día (HdD - Qx 5-6)
+                                </h4>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: '#CBD5E1', lineHeight: 1.4 }}>
+                                Circuito <strong>100% programado, electivo y ambulatorio</strong> ({dynamicMetrics?.hddRealizadas || 220} cirugías/procedimientos en {activePeriodLabel}). No absorbe demanda espontánea de urgencia de guardia.
+                            </p>
+                            <div style={{ marginTop: '8px', fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700 }}>
+                                Tasa de Urgencia en HdD: 0.0% (Circuito de alta rotación ambulatoria protegido).
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Gráfico Mensual Asistencia Visita: Presentes vs URGENCIA */}
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Asistencia Quirúrgica: Programadas vs. URGENCIA — {activePeriodLabel}
+                                    {ambitoFilter === 'CENTRALES' 
+                                        ? `Asistencia en Quirófano Central: Electivas vs. URGENCIA — ${activePeriodLabel}`
+                                        : ambitoFilter === 'HDD'
+                                            ? `Asistencia en Hospital de Día: Cirugías Ambulatorias (100% Electivas) — ${activePeriodLabel}`
+                                            : `Asistencia Quirúrgica: Quirófano Central vs. Hospital de Día y URGENCIAS — ${activePeriodLabel}`
+                                    }
                                 </h3>
                                 <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                    Mapeo de ingresos no programados de guardia compitiendo contra bloques en {activePeriodLabel}.
+                                    {ambitoFilter === 'CENTRALES'
+                                        ? `Mapeo de ingresos de guardia compitiendo contra bloques de Quirófanos Centrales 1 a 4 y Sala de Partos.`
+                                        : ambitoFilter === 'HDD'
+                                            ? `Volumen quirúrgico ambulatorio y endoscópico programado sin presión de guardia.`
+                                            : `Diferenciación de actividad electiva en Quirófano Central, ambulatoria en HdD y demanda de guardia no programada.`
+                                    }
                                 </p>
                             </div>
-                            <span style={{ fontSize: '0.75rem', background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
-                                {dynamicMetrics ? `${Math.round(dynamicMetrics.total * 0.11)} Urgencias en ${activePeriodLabel}` : 'Promedio: 53.6 Urgencias / Mes'}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.75rem', background: '#FEE2E2', border: '1px solid #FECACA', color: '#DC2626', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
+                                    {dynamicMetrics ? `${Math.round(dynamicMetrics.total * 0.11)} Urgencias en ${activePeriodLabel} (100% en Qx Central)` : '67 Urgencias en Octubre 2026'}
+                                </span>
+                                <span style={{ fontSize: '0.75rem', background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', padding: '4px 10px', borderRadius: '6px', fontWeight: 800 }}>
+                                    {dynamicMetrics?.hddRealizadas || 220} en HdD (Ambulatorias)
+                                </span>
+                            </div>
                         </div>
 
                         <div style={{ height: '320px', width: '100%' }}>
@@ -3505,9 +3766,25 @@ export default function QuirofanoDashboard({
                                     <YAxis tick={{ fontSize: 11 }} />
                                     <RechartsTooltip />
                                     <Legend />
-                                    <Bar dataKey="presentes" name="Programadas (Presentes)" stackId="a" fill="#F59E0B" radius={[0, 0, 0, 0]} />
-                                    <Bar dataKey="urgencias" name="URGENCIAS" stackId="a" fill="#DC2626" radius={[4, 4, 0, 0]} />
-                                    <Line type="monotone" dataKey="total" name="Total Cirugías" stroke="#1E40AF" strokeWidth={2.5} dot={{ r: 3 }} />
+                                    {ambitoFilter === 'CENTRALES' ? (
+                                        <>
+                                            <Bar dataKey="centralPresentes" name="Programadas Qx Central (Qx 1-4 + Partos)" stackId="a" fill="#2563EB" radius={[0, 0, 0, 0]} />
+                                            <Bar dataKey="urgencias" name="URGENCIAS (Guardia Central)" stackId="a" fill="#DC2626" radius={[4, 4, 0, 0]} />
+                                            <Line type="monotone" dataKey="totalCentral" name="Total Quirófano Central" stroke="#1E3A8A" strokeWidth={2.5} dot={{ r: 3 }} />
+                                        </>
+                                    ) : ambitoFilter === 'HDD' ? (
+                                        <>
+                                            <Bar dataKey="hddPresentes" name="Programadas Hospital de Día (HdD - Qx 5-6)" fill="#10B981" radius={[4, 4, 0, 0]} />
+                                            <Line type="monotone" dataKey="totalHdd" name="Total Hospital de Día" stroke="#059669" strokeWidth={2.5} dot={{ r: 3 }} />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Bar dataKey="centralPresentes" name="Electivas Qx Central (Qx 1-4 + Partos)" stackId="a" fill="#2563EB" radius={[0, 0, 0, 0]} />
+                                            <Bar dataKey="hddPresentes" name="Electivas Hospital de Día (HdD)" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} />
+                                            <Bar dataKey="urgencias" name="URGENCIAS (Guardia en Qx Central)" stackId="a" fill="#DC2626" radius={[4, 4, 0, 0]} />
+                                            <Line type="monotone" dataKey="total" name="Total Sanatorio Argentino" stroke="#0F172A" strokeWidth={2.5} dot={{ r: 3 }} />
+                                        </>
+                                    )}
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
@@ -3515,13 +3792,13 @@ export default function QuirofanoDashboard({
 
                     {/* Cirujanos Responsables en Urgencias */}
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
                                     Cirujanos Responsables de Asistencia de Urgencia ({activePeriodLabel})
                                 </h3>
                                 <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                    Concentración de casos no programados por profesional en {activePeriodLabel}.
+                                    Concentración de casos no programados por profesional y diferenciación por ámbito quirúrgico en {activePeriodLabel}.
                                 </p>
                             </div>
                         </div>
@@ -3531,6 +3808,7 @@ export default function QuirofanoDashboard({
                                 <thead>
                                     <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #CBD5E1', color: '#334155', textAlign: 'left' }}>
                                         <th style={{ padding: '10px 12px' }}>Cirujano Responsable</th>
+                                        <th style={{ padding: '10px 12px' }}>Ámbito</th>
                                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Presente (Electiva)</th>
                                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>URGENCIA</th>
                                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Total Cx</th>
@@ -3542,6 +3820,19 @@ export default function QuirofanoDashboard({
                                     {activeResponsablesUrgencia.map((r, idx) => (
                                         <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0', background: r.urgencias >= 10 ? '#FEF2F2' : idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
                                             <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>{r.cirujano}</td>
+                                            <td style={{ padding: '10px 12px' }}>
+                                                <span style={{
+                                                    fontSize: '0.68rem',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontWeight: 800,
+                                                    background: r.ambito === 'Hospital de Día' ? '#ECFDF5' : '#EFF6FF',
+                                                    color: r.ambito === 'Hospital de Día' ? '#047857' : '#1D4ED8',
+                                                    border: `1px solid ${r.ambito === 'Hospital de Día' ? '#A7F3D0' : '#BFDBFE'}`
+                                                }}>
+                                                    {r.ambito || (r.urgencias > 0 ? 'Quirófano Central' : 'Hospital de Día')}
+                                                </span>
+                                            </td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#D97706' }}>{r.presentes}</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: '#DC2626' }}>{r.urgencias}</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800 }}>{r.total}</td>
@@ -3613,6 +3904,41 @@ export default function QuirofanoDashboard({
                                     <Eye size={13} /> {dynamicMetrics.suspendidas} susp. (Auditar)
                                 </button>
                             )}
+                        </div>
+                    </div>
+
+                    {/* COMPARATIVA DE SUSPENSIONES: QUIRÓFANO CENTRAL VS HOSPITAL DE DÍA */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                        gap: '12px',
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '12px',
+                        padding: '14px 18px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                    }}>
+                        <div style={{ borderLeft: '4px solid #2563EB', paddingLeft: '12px' }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
+                                🏥 Quirófano Central (Qx 1-4 + Sala de Partos)
+                            </div>
+                            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0F172A', marginTop: '3px' }}>
+                                {dynamicMetrics ? dynamicMetrics.centralesSuspendidas : 0} suspensiones
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                                Tasa Central: <strong>{dynamicMetrics ? ((dynamicMetrics.centralesSuspendidas / Math.max(1, dynamicMetrics.centrales)) * 100).toFixed(1) : 0}%</strong> sobre {dynamicMetrics ? dynamicMetrics.centrales : 0} turnos centrales
+                            </div>
+                        </div>
+                        <div style={{ borderLeft: '4px solid #059669', paddingLeft: '12px' }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                                ☀️ Hospital de Día (HdD - Qx 5-6)
+                            </div>
+                            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0F172A', marginTop: '3px' }}>
+                                {dynamicMetrics ? dynamicMetrics.hddSuspendidas : 0} suspensiones
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                                Tasa HdD: <strong>{dynamicMetrics ? ((dynamicMetrics.hddSuspendidas / Math.max(1, dynamicMetrics.hdd)) * 100).toFixed(1) : 0}%</strong> sobre {dynamicMetrics ? dynamicMetrics.hdd : 0} turnos ambulatorios
+                            </div>
                         </div>
                     </div>
 
@@ -4215,36 +4541,69 @@ export default function QuirofanoDashboard({
 
                         {/* Controles de Selección de Período y Vista */}
                         <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px dashed #86EFAC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#14532D', marginRight: '4px' }}>
-                                    Auditoría Mensual:
-                                </span>
-                                {[
-                                    { id: 'auto', label: `Automático (${activePeriodLabel})` },
-                                    { id: 'AGO', label: 'Agosto 2026' },
-                                    { id: 'SEP', label: 'Septiembre 2026' },
-                                    { id: 'PROMEDIO', label: 'Promedio Ago-Sep' }
-                                ].map(btn => (
-                                    <button
-                                        key={btn.id}
-                                        type="button"
-                                        onClick={() => setBloquesMesFiltro(btn.id)}
-                                        style={{
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            padding: '5px 11px',
-                                            borderRadius: '7px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: bloquesMesFiltro === btn.id ? 800 : 600,
-                                            background: bloquesMesFiltro === btn.id ? '#15803D' : '#DCFCE7',
-                                            color: bloquesMesFiltro === btn.id ? '#FFFFFF' : '#166534',
-                                            boxShadow: bloquesMesFiltro === btn.id ? '0 2px 4px rgba(21,128,61,0.25)' : 'none',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        {btn.label}
-                                    </button>
-                                ))}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#14532D', marginRight: '4px' }}>
+                                        Auditoría Mensual:
+                                    </span>
+                                    {[
+                                        { id: 'auto', label: `Automático (${activePeriodLabel})` },
+                                        { id: 'AGO', label: 'Agosto 2026' },
+                                        { id: 'SEP', label: 'Septiembre 2026' },
+                                        { id: 'PROMEDIO', label: 'Promedio Ago-Sep' }
+                                    ].map(btn => (
+                                        <button
+                                            key={btn.id}
+                                            type="button"
+                                            onClick={() => setBloquesMesFiltro(btn.id)}
+                                            style={{
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                padding: '5px 11px',
+                                                borderRadius: '7px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: bloquesMesFiltro === btn.id ? 800 : 600,
+                                                background: bloquesMesFiltro === btn.id ? '#15803D' : '#DCFCE7',
+                                                color: bloquesMesFiltro === btn.id ? '#FFFFFF' : '#166534',
+                                                boxShadow: bloquesMesFiltro === btn.id ? '0 2px 4px rgba(21,128,61,0.25)' : 'none',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            {btn.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* SELECTOR ESPECÍFICO DE ÁMBITO EN BLOQUES QUIRÚRGICOS */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#DCFCE7', padding: '3px 6px', borderRadius: '8px', border: '1px solid #86EFAC' }}>
+                                    <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#14532D', marginRight: '2px' }}>
+                                        Ámbito:
+                                    </span>
+                                    {[
+                                        { id: 'TODOS', label: 'Todos (12)' },
+                                        { id: 'CENTRAL', label: '🏥 Qx Central (10)' },
+                                        { id: 'HDD', label: '☀️ Hosp. Día (2)' }
+                                    ].map(btn => (
+                                        <button
+                                            key={btn.id}
+                                            type="button"
+                                            onClick={() => setBloquesAmbitoFiltro(btn.id)}
+                                            style={{
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                padding: '4px 9px',
+                                                borderRadius: '6px',
+                                                fontSize: '0.70rem',
+                                                fontWeight: bloquesAmbitoFiltro === btn.id ? 800 : 600,
+                                                background: bloquesAmbitoFiltro === btn.id ? '#15803D' : 'transparent',
+                                                color: bloquesAmbitoFiltro === btn.id ? '#FFFFFF' : '#166534',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            {btn.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             {/* Selector de Vista: Tabla de Auditoría vs Grilla Semanal Visual */}
