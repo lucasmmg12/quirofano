@@ -14,10 +14,11 @@ import { sendMetaTemplate } from './metaTemplateService';
  * Body: {{1}} nombre · {{2}} fecha · {{3}} detalle de turnos. Botones Quick Reply sin parámetros.
  */
 export const META_TEMPLATE_TURNOS_MISMO_DIA = {
-    name: 'turnos_multiples_mismo_dia',
-    language: 'es_AR',
+    name: 'turnos_duplicados',
+    language: 'en',
+    header: 'Sanatorio Argentino Contact Center',
     body: 'Hola {{1}}, nos comunicamos de *Sanatorio Argentino*.\n\n*Registramos en nuestro sistema que tenés más de un turno agendado para el día {{2}}:*\n{{3}}\n\nTe consultamos si vas a asistir a todas las consultas o si deseás anular o reprogramar alguna para liberar el lugar a otros pacientes.\n\n*Por favor, seleccioná una de las siguientes opciones o respondé a este mensaje. ¡Muchas gracias!*',
-    buttons: ['Asistiré a todos', 'Deseo anular uno']
+    buttons: ['Gestionar']
 };
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];

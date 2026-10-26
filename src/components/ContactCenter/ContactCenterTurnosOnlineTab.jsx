@@ -1136,12 +1136,32 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 </div>
                                 <div style={{ background: '#EFEAE2', borderRadius: '10px', padding: '12px' }}>
                                     <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', marginBottom: '6px', textTransform: 'uppercase' }}>Vista previa del mensaje que recibirá el paciente</div>
-                                    <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '10px 12px', fontSize: '0.82rem', lineHeight: 1.45, color: '#0F172A', whiteSpace: 'pre-wrap', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+                                    <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '12px 14px', fontSize: '0.84rem', lineHeight: 1.45, color: '#0F172A', whiteSpace: 'pre-wrap', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+                                        <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '8px', fontSize: '0.86rem' }}>
+                                            {META_TEMPLATE_TURNOS_MISMO_DIA.header || 'Sanatorio Argentino Contact Center'}
+                                        </div>
                                         {renderTemplateBody(META_TEMPLATE_TURNOS_MISMO_DIA.body, (modalData.metaVars || []).map(v => v || '—')).replace(/\*/g, '')}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                                    <div style={{ display: 'flex', marginTop: '6px' }}>
                                         {META_TEMPLATE_TURNOS_MISMO_DIA.buttons.map(b => (
-                                            <div key={b} style={{ flex: 1, textAlign: 'center', background: '#FFFFFF', borderRadius: '8px', padding: '7px', fontSize: '0.78rem', fontWeight: 700, color: '#0284C7' }}>{b}</div>
+                                            <div key={b} style={{
+                                                flex: 1,
+                                                textAlign: 'center',
+                                                background: '#FFFFFF',
+                                                borderRadius: '8px',
+                                                padding: '9px 12px',
+                                                fontSize: '0.84rem',
+                                                fontWeight: 700,
+                                                color: '#008069',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '6px',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
+                                            }}>
+                                                <span style={{ fontSize: '0.9rem' }}>📋</span>
+                                                <span>{b}</span>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
