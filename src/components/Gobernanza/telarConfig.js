@@ -396,6 +396,17 @@ export const DEFAULT_ACTIVE_GUARDIA_IDS = INDICADORES_GUARDIA_CATALOGO.map(i => 
 // ─── CATÁLOGO DE INDICADORES DE CENTRO QUIRÚRGICO (QUIRÓFANO CENTRAL & HOSPITAL DE DÍA) ───
 export const INDICADORES_QUIROFANO_CATALOGO = [
     {
+        id: 'quirofano_hospital_de_dia_actividad',
+        label: 'Hospital de Día: Quirúrgico vs Hierro',
+        grupo: 'Capacidad y Ocupación',
+        tipo: 'grafico',
+        icon: 'Sun',
+        descripcion: 'Segregación en QUIRÓFANOS HdD: Procedimientos Quirúrgicos (Qx 5 / 6) vs Pases de Hierro (Hemoterapia).',
+        benchmark: 'Separación 100% trazable',
+        origen: 'SALUS: VLISE_Visitas (Grupo Agenda QUIRÓFANOS HdD)',
+        isDefault: true
+    },
+    {
         id: 'quirofano_ocupacion_salas',
         label: 'Ocupación por Sala & HdD (Qx 1 a 7)',
         grupo: 'Capacidad y Ocupación',

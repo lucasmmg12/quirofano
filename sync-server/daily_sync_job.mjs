@@ -23,6 +23,7 @@ import { syncDiagnosticos } from './sync_diagnosticos.mjs';
 import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 import { syncTurnosOnlineToSupabase } from './sync_turnos_online.mjs';
+import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -466,7 +467,7 @@ async function runDailySync() {
     // ──────────────────────────────────────────────────────────
     // PASO 8: Turnos Online y Gestión de Inconsistencias (Contact Center)
     // ──────────────────────────────────────────────────────────
-    log('PASO 8/8: Sincronizando Turnos Online e Inconsistencias desde SALUS (últimos 7 días)...');
+    log('PASO 8/9: Sincronizando Turnos Online e Inconsistencias desde SALUS (últimos 7 días)...');
     let syncedTurnos = 0;
     try {
         pool = await sql.connect(SQL_CONFIG);
@@ -478,10 +479,27 @@ async function runDailySync() {
         log(`⚠️ Error no bloqueante en Paso 8 (Turnos Online): ${eTurnos.message}`);
     }
 
+    // ──────────────────────────────────────────────────────────
+    // PASO 9: Hospital de Día (Procedimientos vs Pases de Hierro)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 9/9: Sincronizando Actividad de Hospital de Día desde SALUS (últimos 60 días)...');
+    let syncedHdD = 0;
+    try {
+        const d = new Date();
+        const dPast = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+        const fDesde = `${dPast.getFullYear()}-${String(dPast.getMonth() + 1).padStart(2, '0')}-${String(dPast.getDate()).padStart(2, '0')}`;
+        const fHasta = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const hddRes = await syncHospitalDeDia(fDesde, fHasta);
+        syncedHdD = hddRes?.upserted || 0;
+        log(`Paso 9 completado: ${syncedHdD} registros de Hospital de Día sincronizados.`);
+    } catch (eHdd) {
+        log(`⚠️ Error no bloqueante en Paso 9 (Hospital de Día): ${eHdd.message}`);
+    }
+
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     log('========================================================');
     log(`✅ Sincronización Diaria completada con éxito en ${elapsed}s.`);
-    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos, ${syncedKine} kinesiología/ARM, ${syncedDocs} médicos, ${syncedTurnos} turnos online.`);
+    log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos, ${syncedKine} kinesiología/ARM, ${syncedDocs} médicos, ${syncedTurnos} turnos online, ${syncedHdD} Hospital de Día.`);
     log('========================================================');
 }
 

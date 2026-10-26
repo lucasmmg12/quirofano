@@ -10,8 +10,9 @@ import {
     Scissors, Stethoscope, Droplets, Building2, Flame, Check,
     AlertCircle, FileText, ArrowUpRight, ArrowDownRight, Layers, UserCheck,
     BookOpen, HelpCircle, X, Search, Info, FileSpreadsheet, Download,
-    Lock, Unlock, Filter
+    Lock, Unlock, Filter, Sun
 } from 'lucide-react';
+import HospitalDeDiaDashboard from './HospitalDeDiaDashboard';
 import {
     ResponsiveContainer,
     ComposedChart,
@@ -2728,6 +2729,7 @@ export default function QuirofanoDashboard({
             }}>
                 {[
                     { id: 'resumen', label: 'Tablero Principal (Tableau Plus)', icon: BarChart3 },
+                    { id: 'hospitalDeDia', label: 'Hospital de Día (HdD vs Hierro)', icon: Sun },
                     { id: 'demografia', label: 'Demografía & Procedimientos', icon: Stethoscope },
                     { id: 'urgencias', label: 'Urgencias vs Electivas', icon: Flame },
                     { id: 'suspensiones', label: 'Detalle de Suspendidas (Causales 1..13)', icon: AlertTriangle },
@@ -3345,6 +3347,17 @@ export default function QuirofanoDashboard({
 
                     </div>
                 </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════════ */}
+            {/* PESTAÑA: HOSPITAL DE DÍA (PROCEDIMIENTOS VS INFUSIONES HIERRO) */}
+            {/* ═══════════════════════════════════════════════════════════════ */}
+            {activeTab === 'hospitalDeDia' && (
+                <HospitalDeDiaDashboard 
+                    fechaDesde={effectiveDesde}
+                    fechaHasta={effectiveHasta}
+                    addToast={addToast}
+                />
             )}
 
             {/* ═══════════════════════════════════════════════════════════════ */}

@@ -33,6 +33,7 @@ import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
 import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turnos_contact_center.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { getDxIAnalytics } from './sync_dxi.mjs';
+import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
 
 
 
@@ -130,6 +131,17 @@ app.post('/api/salus/turnos-online/gestion', async (req, res) => {
         res.json({ success: true, gestion: updated });
     } catch (err) {
         console.error('❌ Error guardando gestión de turno online:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/salus/hospital-de-dia/sync', async (req, res) => {
+    try {
+        const { desde, hasta } = req.body || {};
+        const result = await syncHospitalDeDia(desde || '2026-01-01', hasta || '2026-12-31');
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('❌ Error sincronizando Hospital de Día:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
