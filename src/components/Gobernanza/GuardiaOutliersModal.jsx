@@ -31,6 +31,8 @@ export default function GuardiaOutliersModal({
     const isTriage = chartType === 'triage_severidad' || chartType === 'triage_evolution';
     const isEpicrisis = chartType === 'adherencia_epicrisis';
     const isConversionCirugia = chartType === 'conversion_cirugia';
+    const isDestinos = chartType === 'destinos_postguardia';
+    const isDemandaTotal = chartType === 'demanda_total';
 
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
@@ -150,10 +152,16 @@ export default function GuardiaOutliersModal({
                     subtitle: 'Seguimiento de seguridad de los pacientes asistidos en el circuito de urgencias',
                     badge: 'Calidad & Seguridad'
                 };
+            case 'demanda_total':
+                return {
+                    title: 'Demanda Total Asistencial — Consultas Efectivas de Guardia',
+                    subtitle: 'Registro nominal de todas las consultas asistenciales atendidas en Guardia Clínica',
+                    badge: 'Demanda Asistencial'
+                };
             case 'destinos_postguardia':
                 return {
                     title: 'Destinos Post-Guardia Efectivos — Casos y Derivaciones',
-                    subtitle: 'Auditoría de egresos, pases a Quirófano, internación en Piso Clínico y UCI',
+                    subtitle: 'Auditoría de egresos a domicilio, internación en Piso Clínico, pases a Quirófano y UCI',
                     badge: 'Derivación Post-Guardia'
                 };
             case 'tiempos_espera':
@@ -166,9 +174,48 @@ export default function GuardiaOutliersModal({
         }
     }, [chartType]);
 
+    // Estadísticas de Destinos Post-Guardia y Demanda Asistencial
+    const destinosStats = useMemo(() => {
+        if (!isDestinos && !isDemandaTotal) return {};
+        const total = records.length;
+        const domicilio = records.filter(r => (r.destino || '').toLowerCase().includes('domicilio') || (r.destino || '').toLowerCase().includes('alta')).length;
+        const piso = records.filter(r => (r.destino || '').toLowerCase().includes('piso')).length;
+        const quirofano = records.filter(r => (r.destino || '').toLowerCase().includes('quirófano') || (r.destino || '').toLowerCase().includes('quirofano')).length;
+        const uci = records.filter(r => (r.destino || '').toLowerCase().includes('uci') || (r.destino || '').toLowerCase().includes('crítico') || (r.destino || '').toLowerCase().includes('critico')).length;
+        const internacionGral = records.filter(r => (r.destino || '').toLowerCase().includes('internación general') || (r.destino || '').toLowerCase().includes('internacion general')).length;
+        const conTriage = records.filter(r => r.nivel_triage && !r.nivel_triage.toLowerCase().includes('sin triage')).length;
+        const conEspera = records.filter(r => r.minutos_espera != null);
+        const avgEspera = conEspera.length > 0 ? Math.round(conEspera.reduce((acc, r) => acc + r.minutos_espera, 0) / conEspera.length) : 0;
+        const meta30 = conEspera.filter(r => r.minutos_espera <= 30).length;
+        const demora60 = conEspera.filter(r => r.minutos_espera > 60).length;
+        const derivados = total - domicilio;
+
+        return {
+            total,
+            domicilio,
+            domicilioPct: total > 0 ? ((domicilio / total) * 100).toFixed(1) : '0',
+            piso,
+            pisoPct: total > 0 ? ((piso / total) * 100).toFixed(1) : '0',
+            quirofano,
+            quirofanoPct: total > 0 ? ((quirofano / total) * 100).toFixed(1) : '0',
+            uci,
+            uciPct: total > 0 ? ((uci / total) * 100).toFixed(1) : '0',
+            internacionGral,
+            internacionGralPct: total > 0 ? ((internacionGral / total) * 100).toFixed(1) : '0',
+            conTriage,
+            conTriagePct: total > 0 ? ((conTriage / total) * 100).toFixed(1) : '0',
+            avgEspera,
+            meta30,
+            meta30Pct: total > 0 ? ((meta30 / total) * 100).toFixed(1) : '0',
+            demora60,
+            derivados,
+            derivadosPct: total > 0 ? ((derivados / total) * 100).toFixed(1) : '0'
+        };
+    }, [records, isDestinos, isDemandaTotal]);
+
     // Estadísticas de Outliers de Tiempo
     const stats = useMemo(() => {
-        if (isTriage || isEpicrisis || isConversionCirugia) return {};
+        if (isTriage || isEpicrisis || isConversionCirugia || isDestinos || isDemandaTotal) return {};
         const total = records.length;
         const conEspera = records.filter(r => r.minutos_espera != null);
         const meta30 = conEspera.filter(r => r.minutos_espera <= 30).length;
@@ -388,6 +435,41 @@ export default function GuardiaOutliersModal({
                     return true;
                 }
 
+                if (isDestinos) {
+                    if (activeFilter === 'domicilio') {
+                        return (r.destino || '').toLowerCase().includes('domicilio') || (r.destino || '').toLowerCase().includes('alta');
+                    }
+                    if (activeFilter === 'piso') {
+                        return (r.destino || '').toLowerCase().includes('piso');
+                    }
+                    if (activeFilter === 'quirofano') {
+                        return (r.destino || '').toLowerCase().includes('quirófano') || (r.destino || '').toLowerCase().includes('quirofano');
+                    }
+                    if (activeFilter === 'uci') {
+                        return (r.destino || '').toLowerCase().includes('uci') || (r.destino || '').toLowerCase().includes('crítico') || (r.destino || '').toLowerCase().includes('critico');
+                    }
+                    if (activeFilter === 'internacion') {
+                        return (r.destino || '').toLowerCase().includes('internación general') || (r.destino || '').toLowerCase().includes('internacion general');
+                    }
+                    return true;
+                }
+
+                if (isDemandaTotal) {
+                    if (activeFilter === 'con_triage') {
+                        return r.nivel_triage && !r.nivel_triage.toLowerCase().includes('sin triage');
+                    }
+                    if (activeFilter === 'meta_30') {
+                        return r.minutos_espera != null && r.minutos_espera <= 30;
+                    }
+                    if (activeFilter === 'demora_60') {
+                        return r.minutos_espera != null && r.minutos_espera > 60;
+                    }
+                    if (activeFilter === 'derivados') {
+                        return r.destino && !r.destino.toLowerCase().includes('domicilio') && !r.destino.toLowerCase().includes('alta');
+                    }
+                    return true;
+                }
+
                 // Filtro por categoría de outlier de tiempo
                 if (activeFilter === 'outliers_all') {
                     return (r.minutos_espera != null && r.minutos_espera > 60) || (r.minutos_permanencia != null && r.minutos_permanencia > 180);
@@ -464,7 +546,7 @@ export default function GuardiaOutliersModal({
                 if (sortBy === 'paciente_asc') return (a.paciente || '').localeCompare(b.paciente || '');
                 return 0;
             });
-    }, [records, searchTerm, activeFilter, sortBy, isTriage, isEpicrisis, isConversionCirugia]);
+    }, [records, searchTerm, activeFilter, sortBy, isTriage, isEpicrisis, isConversionCirugia, isDestinos, isDemandaTotal]);
 
     // ── Exportación a Excel ──
     const handleExportExcel = async () => {
@@ -566,6 +648,90 @@ export default function GuardiaOutliersModal({
             XLSX.utils.book_append_sheet(wb, wsDetail, 'Pacientes Triageados');
 
             const fileName = `Guardia_Triage_Pacientes_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            return;
+        }
+
+        if (isDestinos) {
+            // Hoja 1: Resumen Destinos
+            const summaryData = [
+                ['SANATORIO ARGENTINO — AUDITORÍA DE CALIDAD & GOBERNANZA'],
+                ['INFORME DE DESTINOS POST-GUARDIA EFECTIVOS Y DERIVACIONES'],
+                [`Período Auditado: ${periodoNombre} (${periodo})`],
+                [`Fecha de Extracción: ${new Date().toLocaleString('es-AR')}`],
+                [`Filtro Activo en Reporte: ${activeFilter.toUpperCase()} | Total Registros Exportados: ${filteredRecords.length}`],
+                [],
+                ['DESTINO POST-GUARDIA', 'CANTIDAD PACIENTES', 'DISTRIBUCIÓN %', 'RESOLUCIÓN ASISTENCIAL'],
+                ['Total Demanda del Período', destinosStats.total, '100.0%', 'Censo Completo de Urgencias'],
+                ['Alta Médica a Domicilio', destinosStats.domicilio, `${destinosStats.domicilioPct}%`, 'Resolución ambulatoria de guardia'],
+                ['Pases a Piso Clínico (Internación)', destinosStats.piso, `${destinosStats.pisoPct}%`, 'Ingreso a camas de internación en sala'],
+                ['Pases Directos a Quirófano', destinosStats.quirofano, `${destinosStats.quirofanoPct}%`, 'Intervención quirúrgica de urgencia (<= 48hs)'],
+                ['Derivaciones a UCI / Cuidados Críticos', destinosStats.uci, `${destinosStats.uciPct}%`, 'Terapia Intensiva / Cuidados Críticos'],
+                ['Internación General / Otros', destinosStats.internacionGral, `${destinosStats.internacionGralPct}%`, 'Derivación hospitalaria general']
+            ];
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Destinos');
+
+            const detailRows = filteredRecords.map((r, idx) => ({
+                'N°': idx + 1,
+                'Paciente': r.paciente,
+                'NHC': r.nhc,
+                'Obra Social': r.obra_social,
+                'Fecha Visita': r.fecha_visita,
+                'Hora Llegada': r.hora_llegada,
+                'Hora Atención': r.hora_atencion || 'Sin registro',
+                'Hora Egreso': r.hora_egreso || 'Sin registro',
+                'Destino Post-Guardia': r.destino || 'Alta a Domicilio',
+                'Triage Real': r.nivel_triage,
+                'Espera Médico (min)': r.minutos_espera != null ? r.minutos_espera : 'N/D',
+                'Permanencia Total (min)': r.minutos_permanencia != null ? r.minutos_permanencia : 'N/D'
+            }));
+            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+            XLSX.utils.book_append_sheet(wb, wsDetail, 'Casos y Destinos');
+
+            const fileName = `Guardia_Destinos_Efectivos_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            return;
+        }
+
+        if (isDemandaTotal) {
+            // Hoja 1: Resumen Demanda Total
+            const summaryData = [
+                ['SANATORIO ARGENTINO — AUDITORÍA DE CALIDAD & GOBERNANZA'],
+                ['INFORME NOMINAL DE DEMANDA TOTAL ASISTENCIAL DE GUARDIA CLÍNICA'],
+                [`Período Auditado: ${periodoNombre} (${periodo})`],
+                [`Fecha de Extracción: ${new Date().toLocaleString('es-AR')}`],
+                [`Filtro Activo en Reporte: ${activeFilter.toUpperCase()} | Total Registros Exportados: ${filteredRecords.length}`],
+                [],
+                ['INDICADOR DE DEMANDA', 'VALOR AUDITADO', 'DISTRIBUCIÓN %', 'ESTÁNDAR'],
+                ['Total Consultas Atendidas', destinosStats.total, '100.0%', 'Asistencia Presente en VLISE_Visitas'],
+                ['Con Triage de Enfermería', destinosStats.conTriage, `${destinosStats.conTriagePct}%`, 'Protocolo 621 SALUS'],
+                ['En Meta Oportunidad (<= 30 min)', destinosStats.meta30, `${destinosStats.meta30Pct}%`, 'Meta institucional'],
+                ['Espera Media al Médico', `${destinosStats.avgEspera} min`, '-', 'Promedio puerta a médico'],
+                ['Alta Médica a Domicilio', destinosStats.domicilio, `${destinosStats.domicilioPct}%`, 'Resolución ambulatoria'],
+                ['Derivados a Camas / Cirugía', destinosStats.derivados, `${destinosStats.derivadosPct}%`, 'Requerimiento de internación']
+            ];
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Demanda');
+
+            const detailRows = filteredRecords.map((r, idx) => ({
+                'N°': idx + 1,
+                'Paciente': r.paciente,
+                'NHC': r.nhc,
+                'Obra Social': r.obra_social,
+                'Fecha Visita': r.fecha_visita,
+                'Hora Llegada': r.hora_llegada,
+                'Hora Atención': r.hora_atencion || 'Sin registro',
+                'Hora Egreso': r.hora_egreso || 'Sin registro',
+                'Espera Médico (min)': r.minutos_espera != null ? r.minutos_espera : 'N/D',
+                'Permanencia Total (min)': r.minutos_permanencia != null ? r.minutos_permanencia : 'N/D',
+                'Triage': r.nivel_triage,
+                'Destino': r.destino
+            }));
+            const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+            XLSX.utils.book_append_sheet(wb, wsDetail, 'Consultas Guardia');
+
+            const fileName = `Guardia_Demanda_Total_${periodo}_${new Date().toISOString().split('T')[0]}.xlsx`;
             XLSX.writeFile(wb, fileName);
             return;
         }
@@ -778,6 +944,74 @@ export default function GuardiaOutliersModal({
             return;
         }
 
+        if (isDestinos) {
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text('AUDITORÍA DE DESTINOS POST-GUARDIA EFECTIVOS Y DERIVACIONES', 14, 26);
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Trazabilidad de egresos ambulatorios e internación hospitalaria. Filtro: ${activeFilter.toUpperCase()} (${filteredRecords.length} pacientes).`, 14, 31);
+
+            autoTable(doc, {
+                startY: 35,
+                theme: 'grid',
+                head: [['Total Demanda', 'Alta a Domicilio', 'Piso Clínico', 'Pase a Quirófano', 'UCI / Críticos', 'Internación Gral']],
+                body: [[
+                    `${destinosStats.total}`,
+                    `${destinosStats.domicilio} (${destinosStats.domicilioPct}%)`,
+                    `${destinosStats.piso} (${destinosStats.pisoPct}%)`,
+                    `${destinosStats.quirofano} (${destinosStats.quirofanoPct}%)`,
+                    `${destinosStats.uci} (${destinosStats.uciPct}%)`,
+                    `${destinosStats.internacionGral} (${destinosStats.internacionGralPct}%)`
+                ]],
+                headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
+                bodyStyles: { fontSize: 8, textColor: [30, 41, 59], fontStyle: 'bold' },
+                styles: { halign: 'center', cellPadding: 2 }
+            });
+
+            const tableRows = filteredRecords.slice(0, 100).map((r, i) => [
+                i + 1,
+                r.paciente,
+                r.nhc,
+                (r.obra_social || '').substring(0, 25),
+                r.fecha_visita,
+                r.hora_llegada,
+                r.hora_atencion || '-',
+                r.destino || 'Alta a Domicilio',
+                r.nivel_triage || 'Sin Triage',
+                r.minutos_espera != null ? `${r.minutos_espera}m` : '-'
+            ]);
+
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 5,
+                theme: 'striped',
+                head: [['N°', 'Paciente', 'NHC', 'Obra Social', 'Fecha', 'Llegada', 'Atención', 'Destino Post-Guardia', 'Triage', 'Espera']],
+                body: tableRows,
+                headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+                bodyStyles: { fontSize: 7, textColor: [15, 23, 42] },
+                columnStyles: {
+                    0: { cellWidth: 8, halign: 'center' },
+                    1: { cellWidth: 50, fontStyle: 'bold' },
+                    2: { cellWidth: 18, halign: 'center' },
+                    3: { cellWidth: 42 },
+                    4: { cellWidth: 18, halign: 'center' },
+                    5: { cellWidth: 16, halign: 'center' },
+                    6: { cellWidth: 16, halign: 'center' },
+                    7: { cellWidth: 46, fontStyle: 'bold' },
+                    8: { cellWidth: 32 },
+                    9: { cellWidth: 16, halign: 'center' }
+                },
+                styles: { overflow: 'ellipsize', cellPadding: 1.5 }
+            });
+
+            const fileName = `Informe_Destinos_Guardia_${periodo}_${new Date().toISOString().split('T')[0]}.pdf`;
+            doc.save(fileName);
+            return;
+        }
+
         // Título del Reporte Outliers de Tiempo
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(12);
@@ -898,7 +1132,7 @@ export default function GuardiaOutliersModal({
                             justifyContent: 'center',
                             color: isEpicrisis ? '#16A34A' : '#2563EB'
                         }}>
-                            {isEpicrisis ? <FileCheck2 size={22} /> : isTriage ? <ClipboardList size={22} /> : <Clock size={22} />}
+                            {isEpicrisis ? <FileCheck2 size={22} /> : isTriage ? <ClipboardList size={22} /> : isDestinos ? <Bed size={22} /> : isDemandaTotal ? <Activity size={22} /> : <Clock size={22} />}
                         </div>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1387,6 +1621,167 @@ export default function GuardiaOutliersModal({
                             </div>
                         </div>
                     </div>
+                ) : isDestinos ? (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '12px',
+                        padding: '16px 24px',
+                        background: '#F1F5F9',
+                        borderBottom: '1px solid #E2E8F0'
+                    }}>
+                        {/* Total Pacientes */}
+                        <div style={{ background: '#FFFFFF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #CBD5E1' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Total Pacientes Período
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+                                {(destinosStats.total || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                100% de la demanda asistencial
+                            </div>
+                        </div>
+
+                        {/* Alta Médica a Domicilio */}
+                        <div style={{ background: '#F0FDF4', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BBF7D0' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Alta Médica a Domicilio
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D', marginTop: '4px' }}>
+                                {(destinosStats.domicilio || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#166534' }}>
+                                <strong>{destinosStats.domicilioPct}%</strong> resolución ambulatoria
+                            </div>
+                        </div>
+
+                        {/* Pases a Piso Clínico */}
+                        <div style={{ background: '#EEF2FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #C7D2FE' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#3730A3', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Pases a Piso Clínico
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#4338CA', marginTop: '4px' }}>
+                                {(destinosStats.piso || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#3730A3' }}>
+                                <strong>{destinosStats.pisoPct}%</strong> internación en sala
+                            </div>
+                        </div>
+
+                        {/* Pases a Quirófano */}
+                        <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BFDBFE' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Pase Directo a Quirófano
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1D4ED8', marginTop: '4px' }}>
+                                {(destinosStats.quirofano || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#1E40AF' }}>
+                                <strong>{destinosStats.quirofanoPct}%</strong> cirugías derivadas
+                            </div>
+                        </div>
+
+                        {/* UCI / Cuidados Críticos */}
+                        <div style={{ background: '#FEF2F2', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FECACA' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#991B1B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                UCI / Cuidados Críticos
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#DC2626', marginTop: '4px' }}>
+                                {(destinosStats.uci || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#991B1B' }}>
+                                <strong>{destinosStats.uciPct}%</strong> terapia intensiva
+                            </div>
+                        </div>
+
+                        {/* Internación General */}
+                        <div style={{ background: '#FFFBEB', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FDE68A' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Internación General
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
+                                {(destinosStats.internacionGral || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#92400E' }}>
+                                <strong>{destinosStats.internacionGralPct}%</strong> derivación general
+                            </div>
+                        </div>
+                    </div>
+                ) : isDemandaTotal ? (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '12px',
+                        padding: '16px 24px',
+                        background: '#F1F5F9',
+                        borderBottom: '1px solid #E2E8F0'
+                    }}>
+                        {/* Total Consultas */}
+                        <div style={{ background: '#FFFFFF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #CBD5E1' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Total Consultas Guardia
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+                                {(destinosStats.total || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                100% asistencias presentes
+                            </div>
+                        </div>
+
+                        {/* Con Triage */}
+                        <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BFDBFE' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Con Triage de Enfermería
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1D4ED8', marginTop: '4px' }}>
+                                {(destinosStats.conTriage || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#1E40AF' }}>
+                                <strong>{destinosStats.conTriagePct}%</strong> evaluados Protocolo 621
+                            </div>
+                        </div>
+
+                        {/* En Meta <= 30m */}
+                        <div style={{ background: '#F0FDF4', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BBF7D0' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                                En Meta (&le; 30 min)
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D', marginTop: '4px' }}>
+                                {(destinosStats.meta30 || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#166534' }}>
+                                <strong>{destinosStats.meta30Pct}%</strong> oportunidad médica
+                            </div>
+                        </div>
+
+                        {/* Espera Promedio */}
+                        <div style={{ background: '#FFFBEB', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FDE68A' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Espera Media al Médico
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
+                                {destinosStats.avgEspera} min
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#92400E' }}>
+                                Puerta de entrada a consultorio
+                            </div>
+                        </div>
+
+                        {/* Derivación Camas / Qx */}
+                        <div style={{ background: '#FAF5FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E9D5FF' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#6B21A8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Derivados a Internación / Qx
+                            </div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7E22CE', marginTop: '4px' }}>
+                                {(destinosStats.derivados || 0).toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#6B21A8' }}>
+                                <strong>{destinosStats.derivadosPct}%</strong> requieren cama hospitalaria
+                            </div>
+                        </div>
+                    </div>
                 ) : (
                     <div style={{
                         display: 'grid',
@@ -1579,6 +1974,65 @@ export default function GuardiaOutliersModal({
                                     </button>
                                 );
                             })
+                        ) : isDestinos ? (
+                            [
+                                { id: 'all', label: `Todos (${destinosStats.total || 0})` },
+                                { id: 'domicilio', label: `🏠 Alta a Domicilio (${destinosStats.domicilio || 0})`, color: '#15803D' },
+                                { id: 'piso', label: `🛏️ Piso Clínico (${destinosStats.piso || 0})`, color: '#4338CA' },
+                                { id: 'quirofano', label: `✂️ Quirófano (${destinosStats.quirofano || 0})`, color: '#2563EB' },
+                                { id: 'uci', label: `🛡️ UCI / Críticos (${destinosStats.uci || 0})`, color: '#DC2626' },
+                                { id: 'internacion', label: `🏥 Internación Gral (${destinosStats.internacionGral || 0})`, color: '#92400E' }
+                            ].map(f => {
+                                const active = activeFilter === f.id;
+                                return (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setActiveFilter(f.id)}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 700,
+                                            border: active ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                            background: active ? '#EFF6FF' : '#FFFFFF',
+                                            color: active ? '#1D4ED8' : (f.color || '#475569'),
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {f.label}
+                                    </button>
+                                );
+                            })
+                        ) : isDemandaTotal ? (
+                            [
+                                { id: 'all', label: `Todas (${destinosStats.total || 0})` },
+                                { id: 'con_triage', label: `🩺 Con Triage (${destinosStats.conTriage || 0})`, color: '#2563EB' },
+                                { id: 'meta_30', label: `✅ Espera ≤ 30m (${destinosStats.meta30 || 0})`, color: '#15803D' },
+                                { id: 'demora_60', label: `⚠️ Demoras > 60m (${destinosStats.demora60 || 0})`, color: '#B45309' },
+                                { id: 'derivados', label: `🏥 Derivados Camas/Qx (${destinosStats.derivados || 0})`, color: '#7E22CE' }
+                            ].map(f => {
+                                const active = activeFilter === f.id;
+                                return (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setActiveFilter(f.id)}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.78rem',
+                                            fontWeight: 700,
+                                            border: active ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                            background: active ? '#EFF6FF' : '#FFFFFF',
+                                            color: active ? '#1D4ED8' : (f.color || '#475569'),
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {f.label}
+                                    </button>
+                                );
+                            })
                         ) : (
                             [
                                 { id: 'all', label: `Todos (${stats.total || 0})` },
@@ -1618,7 +2072,7 @@ export default function GuardiaOutliersModal({
                             <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
                             <input
                                 type="text"
-                                placeholder={isConversionCirugia ? "Buscar por paciente, cirugía, cirujano, especialidad o NHC..." : isEpicrisis ? "Buscar por paciente, NHC, médico o habitación..." : isTriage ? "Buscar por paciente, NHC, síntoma u obra social..." : "Buscar paciente, NHC u obra social..."}
+                                placeholder={isConversionCirugia ? "Buscar por paciente, cirugía, cirujano, especialidad o NHC..." : isEpicrisis ? "Buscar por paciente, NHC, médico o habitación..." : isTriage ? "Buscar por paciente, NHC, síntoma u obra social..." : isDestinos ? "Buscar por paciente, destino, NHC u obra social..." : isDemandaTotal ? "Buscar consulta por paciente, NHC u obra social..." : "Buscar paciente, NHC u obra social..."}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 style={{
@@ -2116,8 +2570,29 @@ export default function GuardiaOutliersModal({
                                                     {r.nivel_triage || 'Sin Triage'}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '9px 8px', fontSize: '0.76rem', color: '#475569' }}>
-                                                {r.destino || 'Alta a Domicilio'}
+                                            <td style={{ padding: '9px 8px', fontSize: '0.76rem' }}>
+                                                <span style={{
+                                                    display: 'inline-block',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '5px',
+                                                    fontWeight: 700,
+                                                    background: (r.destino || '').toLowerCase().includes('domicilio') || (r.destino || '').toLowerCase().includes('alta') ? '#F0FDF4' :
+                                                                (r.destino || '').toLowerCase().includes('piso') ? '#EEF2FF' :
+                                                                (r.destino || '').toLowerCase().includes('quirófano') || (r.destino || '').toLowerCase().includes('quirofano') ? '#EFF6FF' :
+                                                                (r.destino || '').toLowerCase().includes('uci') ? '#FEF2F2' : '#FFFBEB',
+                                                    color: (r.destino || '').toLowerCase().includes('domicilio') || (r.destino || '').toLowerCase().includes('alta') ? '#15803D' :
+                                                           (r.destino || '').toLowerCase().includes('piso') ? '#4338CA' :
+                                                           (r.destino || '').toLowerCase().includes('quirófano') || (r.destino || '').toLowerCase().includes('quirofano') ? '#1D4ED8' :
+                                                           (r.destino || '').toLowerCase().includes('uci') ? '#DC2626' : '#B45309',
+                                                    border: `1px solid ${
+                                                        (r.destino || '').toLowerCase().includes('domicilio') || (r.destino || '').toLowerCase().includes('alta') ? '#BBF7D0' :
+                                                        (r.destino || '').toLowerCase().includes('piso') ? '#C7D2FE' :
+                                                        (r.destino || '').toLowerCase().includes('quirófano') || (r.destino || '').toLowerCase().includes('quirofano') ? '#BFDBFE' :
+                                                        (r.destino || '').toLowerCase().includes('uci') ? '#FECACA' : '#FDE68A'
+                                                    }`
+                                                }}>
+                                                    {r.destino || 'Alta a Domicilio'}
+                                                </span>
                                             </td>
                                         </tr>
                                     );

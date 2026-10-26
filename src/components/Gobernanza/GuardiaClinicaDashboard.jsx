@@ -964,7 +964,7 @@ export default function GuardiaClinicaDashboard({
                                 metaStatus="ok"
                                 detalle="Total de pacientes admitidos en ventanilla con Asistencia = 'Presente' en Grupo Agenda GUARDIA CLINICA."
                                 origen="VLISE_Visitas (Asistencia = Presente)"
-                                onClick={() => setSelectedOutlierModal('conversion_cirugia')}
+                                onClick={() => setSelectedOutlierModal('demanda_total')}
                             />
 
                             {/* 2. Puerta – Triage */}
