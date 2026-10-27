@@ -2789,13 +2789,34 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         context?.botStage === 'esperando_datos_nuevo' ||
         context?.botStage === 'esperando_orden_foto';
 
-    // 1. RECONOCIMIENTO DEL MENÚ DE BIENVENIDA / PRINCIPAL
+    // 1. SUBMENÚ "MÁS INFORMACIÓN" (opción 5 del menú de bienvenida)
+    // Opciones: 1: Laboratorio | 2: Radiografías | 3: Agente
+    // CRÍTICO: Debe evaluarse con prioridad ante la presencia de su texto característico
+    const isLastBotMasInfoMenu =
+        !isWaitingForUserData &&
+        (
+            context?.botStage === 'menu_mas_info' ||
+            lastBotContent.includes('sobre qué te gustaría saber') ||
+            lastBotContent.includes('sobre que te gustaria saber') ||
+            (lastBotContent.includes('laboratorio') && lastBotContent.includes('radiografías') && !lastBotContent.includes('solicitar un nuevo turno')) ||
+            (lastBotContent.includes('1️⃣ *laboratorio*') && !lastBotContent.includes('solicitar un nuevo turno')) ||
+            (lastBotContent.includes('1️⃣ laboratorio') && !lastBotContent.includes('solicitar un nuevo turno'))
+        ) &&
+        !lastBotContent.includes('solicitar un nuevo turno') &&
+        !lastBotContent.includes('en qué podemos ayudarte hoy') &&
+        !lastBotContent.includes('en que podemos ayudarte hoy');
+
+    // 2. RECONOCIMIENTO DEL MENÚ DE BIENVENIDA / PRINCIPAL
     // Es el menú institucional raíz con opciones 1: Turno | 2: Mis turnos | 3: Autorizaciones | 4: Guardia | 5: Más info
-    // Posee PRIORIDAD MÁXIMA frente a cualquier submenú.
+    // Posee PRIORIDAD frente a texto genérico pero NUNCA frente a un submenú activo.
     const isLastBotWelcomeMenu = 
         !isWaitingForUserData &&
+        !isLastBotMasInfoMenu &&
         !lastBotContent.includes('recibimos tu imagen') &&
-        context?.botStage !== 'menu_imagen' && (
+        context?.botStage !== 'menu_imagen' &&
+        context?.botStage !== 'menu_mas_info' &&
+        !lastBotContent.includes('sobre qué te gustaría saber') &&
+        !lastBotContent.includes('sobre que te gustaria saber') && (
             lastBotContent.includes('en qué podemos ayudarte hoy') ||
             lastBotContent.includes('en que podemos ayudarte hoy') ||
             lastBotContent.includes('solicitar un nuevo turno') ||
@@ -2805,25 +2826,12 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             (context?.botStage === 'inicio' && !lastBotContent.includes('recibimos tu imagen'))
         );
 
-    // 2. RECONOCIMIENTO DEL MENÚ DE IMAGEN RECIBIDA
-    const isLastBotImageMenu = !isWaitingForUserData && !isLastBotWelcomeMenu && (
+    // 3. RECONOCIMIENTO DEL MENÚ DE IMAGEN RECIBIDA
+    const isLastBotImageMenu = !isWaitingForUserData && !isLastBotWelcomeMenu && !isLastBotMasInfoMenu && (
         context?.botStage === 'menu_imagen' ||
         lastBotContent.includes('recibimos tu imagen') || 
         lastBotContent.includes('presupuesto o aranceles particulares')
     );
-
-    // 3. SUBMENÚ "MÁS INFORMACIÓN" (opción 5 del menú de bienvenida)
-    // Opciones: 1: Laboratorio | 2: Radiografías | 3: Agente
-    // CRÍTICO: NUNCA debe activarse si el último mensaje fue el menú de bienvenida raíz
-    const isLastBotMasInfoMenu =
-        !isWaitingForUserData &&
-        !isLastBotWelcomeMenu &&
-        !isLastBotImageMenu && (
-            (context?.botStage === 'menu_mas_info' && !lastBotContent.includes('solicitar un nuevo turno') && !lastBotContent.includes('en qué podemos ayudarte hoy') && !lastBotContent.includes('en que podemos ayudarte hoy')) ||
-            lastBotContent.includes('sobre qué te gustaría saber') ||
-            lastBotContent.includes('sobre que te gustaria saber') ||
-            (lastBotContent.includes('1️⃣ *laboratorio*') && !lastBotContent.includes('solicitar un nuevo turno'))
-        );
 
     // 4. SUBMENÚ RESOLUCIÓN DE CONSULTA INFORMATIVA (Fase 1 Footer)
     // Opciones: 1: Sí, todo claro | 2: Necesito hablar con un agente
@@ -2854,7 +2862,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 
     // DESPACHO POR DÍGITOS / OPCIONES NUMÉRICAS SEGÚN EL ÁRBOL ACTIVO:
     if (isLastBotMasInfoMenu) {
-        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(clean)) {
+        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(clean) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones|resultado|resultados)\b/i.test(clean)) {
             return { intent: 'servicio_laboratorio', doctorCandidate: null, doctorRecord: null, isExplicitNumberOption: '1' };
         }
         if (/^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(clean) || /\b(radiograf[ií]a|radiograf[ií]as|rayos|rx)\b/i.test(clean)) {
@@ -4423,7 +4431,8 @@ async function handleChatbotTriage(
         return { replyText: reply, nextStage: finalStage };
     };
 
-    if (wasClosed || isSessionExpiredByInactivity || isExplicitGreetingOrMenu) {
+    const isExplicitRestartToMenu = isNavigationBackOrMenu(cleanText);
+    if (wasClosed || isSessionExpiredByInactivity || isExplicitRestartToMenu) {
         updates.closed_at = null;
         updates.resolution_reason = null;
         updates.closed_by_agent_id = null;
@@ -5706,12 +5715,11 @@ async function handleChatbotTriage(
     // no cayó en el intent correspondiente, capturarlo de inmediato antes de cualquier otro flujo:
     // CRÍTICO: NUNCA interceptar si el último mensaje fue el menú de bienvenida raíz ni si la intención fue turno/consulta/autorización/guardia.
     else if (
-        (currentStage === 'menu_mas_info' || lastBotContent.includes('sobre qué te gustaría saber') || lastBotContent.includes('sobre que te gustaria saber') || (lastBotContent.includes('1️⃣ *laboratorio*') && !lastBotContent.includes('solicitar un nuevo turno'))) &&
+        (currentStage === 'menu_mas_info' || lastBotContent.includes('sobre qué te gustaría saber') || lastBotContent.includes('sobre que te gustaria saber') || ((lastBotContent.includes('1️⃣ *laboratorio*') || lastBotContent.includes('1️⃣ laboratorio')) && !lastBotContent.includes('solicitar un nuevo turno'))) &&
         !lastBotContent.includes('solicitar un nuevo turno') &&
         !lastBotContent.includes('en qué podemos ayudarte hoy') &&
         !lastBotContent.includes('en que podemos ayudarte hoy') &&
         currentStage !== 'menu_bienvenida' &&
-        analysis.intent !== 'turno' &&
         analysis.intent !== 'consultar_turno' &&
         analysis.intent !== 'autorizacion' &&
         analysis.intent !== 'guardia' &&
@@ -5720,7 +5728,7 @@ async function handleChatbotTriage(
         analysis.intent !== 'saludo_inicial' &&
         !isNavigationBackOrMenu(cleanText)
     ) {
-        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(cleanText.trim()) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones)\b/i.test(cleanText)) {
+        if (/^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(cleanText.trim()) || /\b(laboratorio|an[aá]lisis|sangre|orina|extracci[oó]n|extracciones|resultado|resultados)\b/i.test(cleanText)) {
             updates.motivo_consulta = 'Laboratorio: Extracciones y Consultas (Sede 1 y Santa Fe)';
             replyText = `🩸 *Laboratorio de Análisis Clínicos — Sanatorio Argentino*\n\n` +
                 `Las extracciones en laboratorio son de *7.30hs a 10hs* por orden de llegada en:\n` +
