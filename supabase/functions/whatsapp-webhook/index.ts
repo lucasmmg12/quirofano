@@ -799,11 +799,25 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
             }
         }
 
+        // 1.5 Detección explícita de audios / notas de voz desde BuilderBot y WhatsApp
+        const isExplicitVoiceNote = Boolean(
+            data.type === 'audio' ||
+            data.type === 'voice' ||
+            data.fileData?.voice === true ||
+            (typeof data.fileData?.mime_type === 'string' && data.fileData.mime_type.toLowerCase().includes('audio')) ||
+            (typeof rawContent === 'string' && rawContent.startsWith('_event_voice_note_')) ||
+            (typeof data.body === 'string' && data.body.startsWith('_event_voice_note_')) ||
+            (Array.isArray(data.attachment) && data.attachment.some(a => typeof a === 'string' && /\.(oga|ogg|opus|mp3|m4a|wav|aac|webm)($|\?)/i.test(a)))
+        );
+        if (isExplicitVoiceNote) {
+            mediaType = 'audio';
+        }
+
         // 2. Detectar tipo desde data.message (Baileys/WAWebJS message keys)
-        if (data.message) {
+        if (data.message && mediaType === 'text') {
             const msg = data.message;
-            if (msg.imageMessage) mediaType = 'image';
-            else if (msg.audioMessage) mediaType = 'audio';
+            if (msg.audioMessage) mediaType = 'audio';
+            else if (msg.imageMessage) mediaType = 'image';
             else if (msg.videoMessage) mediaType = 'video';
             else if (msg.stickerMessage) mediaType = 'sticker';
             else if (msg.documentMessage || msg.documentWithCaptionMessage) mediaType = 'document';
@@ -1276,7 +1290,7 @@ async function persistMediaToStorage(
         return null;
     }
 
-    // Deducir mime type específico si se conoce el nombre de archivo del documento
+    // Deducir mime type específico si se conoce el nombre de archivo del documento o audio
     let detectedMime: string | null = null;
     if (originalFilename) {
         const lowerName = originalFilename.toLowerCase();
@@ -1286,12 +1300,24 @@ async function persistMediaToStorage(
         else if (lowerName.endsWith('.xlsx')) detectedMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
         else if (lowerName.endsWith('.xls')) detectedMime = 'application/vnd.ms-excel';
         else if (lowerName.endsWith('.csv')) detectedMime = 'text/csv';
+        else if (lowerName.endsWith('.oga') || lowerName.endsWith('.ogg') || lowerName.endsWith('.opus')) detectedMime = 'audio/ogg';
+        else if (lowerName.endsWith('.mp3')) detectedMime = 'audio/mpeg';
+        else if (lowerName.endsWith('.m4a')) detectedMime = 'audio/mp4';
     }
 
-    // Determinar content-type: priorizar tipo detectado o tipo conocido de WhatsApp
-    const contentType = detectedMime || (getMimeForMediaType(mediaType) !== 'application/octet-stream'
-        ? getMimeForMediaType(mediaType)
-        : (responseContentType || getMimeForMediaType(mediaType)));
+    // Determinar content-type: si mediaType es audio, forzar MIME de audio para que los navegadores lo decodifiquen sin problema
+    let contentType = detectedMime;
+    if (!contentType) {
+        if (mediaType === 'audio') {
+            contentType = (responseContentType && responseContentType.startsWith('audio/'))
+                ? responseContentType
+                : 'audio/ogg';
+        } else {
+            contentType = (getMimeForMediaType(mediaType) !== 'application/octet-stream')
+                ? getMimeForMediaType(mediaType)
+                : (responseContentType || getMimeForMediaType(mediaType));
+        }
+    }
 
     let extension = originalFilename ? getExtensionFromMime(contentType, originalFilename, mediaType) : '';
     if (!extension || extension === 'bin') {
@@ -1351,16 +1377,28 @@ function getMimeForMediaType(mediaType: string): string {
  * Determina la extensión del archivo a partir del MIME type, URL o tipo de media
  */
 function getExtensionFromMime(contentType: string, url: string, mediaType: string): string {
+    // Si mediaType es audio, SIEMPRE retornar una extensión de audio válida (ogg, mp3, etc.)
+    if (mediaType === 'audio') {
+        const lowerUrl = (url || '').toLowerCase();
+        if (lowerUrl.includes('.mp3')) return 'mp3';
+        if (lowerUrl.includes('.m4a')) return 'm4a';
+        if (lowerUrl.includes('.wav')) return 'wav';
+        return 'ogg';
+    }
+
     // Intentar extraer extensión de la URL original
     const urlExtMatch = url.match(/\.([a-zA-Z0-9]{2,5})(?:\?|$)/);
     if (urlExtMatch) {
         const ext = urlExtMatch[1].toLowerCase();
         // Validar que sea una extensión conocida
         const validExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg',
-            'mp3', 'ogg', 'opus', 'wav', 'm4a', 'aac', 'weba', 'webm',
+            'mp3', 'ogg', 'oga', 'opus', 'wav', 'm4a', 'aac', 'weba', 'webm',
             'mp4', 'mov', 'avi', 'mkv', '3gp',
             'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'ppt', 'pptx'];
-        if (validExts.includes(ext)) return ext;
+        if (validExts.includes(ext)) {
+            if (ext === 'oga') return 'ogg';
+            return ext;
+        }
     }
 
     // Mapeo de MIME a extensión
@@ -1376,6 +1414,7 @@ function getExtensionFromMime(contentType: string, url: string, mediaType: strin
         'audio/mp4': 'm4a',
         'audio/wav': 'wav',
         'audio/webm': 'weba',
+        'audio/aac': 'aac',
         'video/mp4': 'mp4',
         'video/webm': 'webm',
         'video/3gpp': '3gp',
@@ -1459,6 +1498,15 @@ function normalizePhone(phone) {
 function inferMediaType(url, attachment) {
     const lower = url.toLowerCase();
 
+    // Si attachment es un string con nombre de archivo
+    if (typeof attachment === 'string') {
+        const attLower = attachment.toLowerCase();
+        if (/\.(mp3|ogg|oga|opus|wav|m4a|aac|weba|webm)(\?|$)/i.test(attLower)) return 'audio';
+        if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(attLower)) return 'image';
+        if (/\.(mp4|mov|avi|mkv|3gp)(\?|$)/i.test(attLower)) return 'video';
+        if (/\.(pdf|doc|docx|xls|xlsx|csv|txt|ppt|pptx)(\?|$)/i.test(attLower)) return 'document';
+    }
+
     if (attachment?.type) {
         const type = attachment.type.toLowerCase();
         if (type.includes('audio')) return 'audio';
@@ -1468,24 +1516,24 @@ function inferMediaType(url, attachment) {
         if (type.includes('document')) return 'document';
     }
 
-    // Por extensión
+    // Por extensión en URL
+    if (/\.(mp3|ogg|oga|opus|wav|m4a|aac|weba|webm)(\?|$)/i.test(lower) && !lower.includes('video')) return 'audio';
     if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(lower)) return 'image';
-    if (/\.(mp3|ogg|opus|wav|m4a|aac|weba|webm)(\?|$)/i.test(lower) && !lower.includes('video')) return 'audio';
     if (/\.(mp4|mov|avi|mkv|3gp)(\?|$)/i.test(lower)) return 'video';
     if (/\.(pdf|doc|docx|xls|xlsx|csv|txt|ppt|pptx)(\?|$)/i.test(lower)) return 'document';
 
     // Por MIME en el attachment
     if (attachment?.mimetype || attachment?.mime) {
         const mime = (attachment.mimetype || attachment.mime).toLowerCase();
-        if (mime.startsWith('image/')) return 'image';
         if (mime.startsWith('audio/')) return 'audio';
+        if (mime.startsWith('image/')) return 'image';
         if (mime.startsWith('video/')) return 'video';
         if (mime.startsWith('application/')) return 'document';
     }
 
     // Si la URL contiene indicios
+    if (lower.includes('/audio') || lower.includes('ptt') || lower.includes('voice')) return 'audio';
     if (lower.includes('/image') || lower.includes('img')) return 'image';
-    if (lower.includes('/audio') || lower.includes('ptt')) return 'audio';
     if (lower.includes('/video')) return 'video';
 
     return 'image'; // Default para media sin tipo claro

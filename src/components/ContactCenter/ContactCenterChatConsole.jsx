@@ -104,8 +104,12 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
             filename = '';
         }
     }
-    if (isAudio && (!filename || filename.startsWith('_event_'))) {
-        filename = 'audio_whatsapp.ogg';
+    if (isAudio) {
+        if (!filename || filename.startsWith('_event_') || /\.(jpe?g|png|bin)$/i.test(filename)) {
+            filename = 'audio_whatsapp.ogg';
+        } else if (!/\.(ogg|opus|mp3|m4a|wav|aac|weba|webm)$/i.test(filename)) {
+            filename += '.ogg';
+        }
     } else if (!filename) {
         filename = `${label}.${ext.toLowerCase()}`;
     }
@@ -119,6 +123,117 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
         ext,
         filename
     };
+}
+
+/**
+ * Descarga archivos de audio de forma segura mediante Blob para preservar siempre
+ * la extensión .ogg y evitar que URLs externas o cabeceras cruzadas fuercen .jpg
+ */
+async function downloadAudioMedia(url, fallbackName = 'audio_whatsapp.ogg') {
+    try {
+        let safeName = fallbackName || 'audio_whatsapp.ogg';
+        if (/\.(jpe?g|png|bin)$/i.test(safeName)) {
+            safeName = safeName.replace(/\.(jpe?g|png|bin)$/i, '.ogg');
+        }
+        if (!/\.(ogg|opus|mp3|m4a|wav|aac|weba|webm)$/i.test(safeName)) {
+            safeName += '.ogg';
+        }
+
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const audioBlob = new Blob([blob], { type: 'audio/ogg; codecs=opus' });
+        const blobUrl = URL.createObjectURL(audioBlob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = safeName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err) {
+        console.warn('[audio-download] Error descargando audio como blob, fallback directo:', err);
+        window.open(url, '_blank');
+    }
+}
+
+/**
+ * Reproductor de audio robusto para WhatsApp.
+ * Si el archivo fue persistido con extensión .jpg o cabeceras MIME no-audio,
+ * o si el navegador bloquea la decodificación directa, lo transforma a
+ * un ObjectURL con tipo explícito audio/ogg; codecs=opus para reproducción garantizada.
+ */
+function WhatsAppAudioPlayer({ mediaUrl }) {
+    const audioRef = useRef(null);
+    const [audioSrc, setAudioSrc] = useState(mediaUrl);
+    const [errorMsg, setErrorMsg] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        let blobUrl = null;
+
+        const isJpgAudio = mediaUrl && /\.(jpe?g|png)$/i.test(mediaUrl);
+
+        if (isJpgAudio) {
+            fetch(mediaUrl)
+                .then(r => r.blob())
+                .then(blob => {
+                    if (!isMounted) return;
+                    const audioBlob = new Blob([blob], { type: 'audio/ogg; codecs=opus' });
+                    blobUrl = URL.createObjectURL(audioBlob);
+                    setAudioSrc(blobUrl);
+                })
+                .catch(() => {
+                    if (isMounted) setAudioSrc(mediaUrl);
+                });
+        } else {
+            setAudioSrc(mediaUrl);
+        }
+
+        return () => {
+            isMounted = false;
+            if (blobUrl) URL.revokeObjectURL(blobUrl);
+        };
+    }, [mediaUrl]);
+
+    const handleAudioError = () => {
+        if (!audioSrc || audioSrc.startsWith('blob:')) {
+            setErrorMsg(true);
+            return;
+        }
+        fetch(mediaUrl)
+            .then(r => r.blob())
+            .then(blob => {
+                const audioBlob = new Blob([blob], { type: 'audio/ogg; codecs=opus' });
+                const blobUrl = URL.createObjectURL(audioBlob);
+                setAudioSrc(blobUrl);
+                setErrorMsg(false);
+            })
+            .catch(() => setErrorMsg(true));
+    };
+
+    return (
+        <div style={{ marginBottom: '10px' }}>
+            <audio
+                ref={audioRef}
+                controls
+                preload="metadata"
+                src={audioSrc}
+                onError={handleAudioError}
+                style={{
+                    width: '100%',
+                    height: '38px',
+                    borderRadius: '20px',
+                    outline: 'none'
+                }}
+            />
+            {errorMsg && (
+                <div style={{ fontSize: '0.70rem', color: '#DC2626', marginTop: '4px' }}>
+                    Tu navegador no pudo reproducir este audio directamente. Por favor descárgalo con el botón superior.
+                </div>
+            )}
+        </div>
+    );
 }
 
 /**
@@ -6225,11 +6340,13 @@ export default function ContactCenterChatConsole({
 
                                                                 {/* Descarga de audio */}
                                                                 {msg.mediaUrl && (
-                                                                    <a
-                                                                        href={msg.mediaUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        download={docMeta?.filename || 'audio.ogg'}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            downloadAudioMedia(msg.mediaUrl, docMeta?.filename || 'audio_whatsapp.ogg');
+                                                                        }}
                                                                         style={{
                                                                             padding: '4px 8px',
                                                                             borderRadius: '6px',
@@ -6238,33 +6355,21 @@ export default function ContactCenterChatConsole({
                                                                             color: '#6D28D9',
                                                                             fontSize: '0.72rem',
                                                                             fontWeight: 600,
-                                                                            textDecoration: 'none',
                                                                             display: 'flex',
                                                                             alignItems: 'center',
-                                                                            gap: '4px'
+                                                                            gap: '4px',
+                                                                            cursor: 'pointer'
                                                                         }}
-                                                                        title="Descargar audio original"
+                                                                        title="Descargar audio original (.ogg)"
                                                                     >
                                                                         <Download size={13} />
-                                                                    </a>
+                                                                    </button>
                                                                 )}
                                                             </div>
 
-                                                            {/* Reproductor de Audio HTML5 */}
+                                                            {/* Reproductor de Audio HTML5 Robusto */}
                                                             {msg.mediaUrl && (
-                                                                <div style={{ marginBottom: '10px' }}>
-                                                                    <audio
-                                                                        controls
-                                                                        preload="metadata"
-                                                                        src={msg.mediaUrl}
-                                                                        style={{
-                                                                            width: '100%',
-                                                                            height: '38px',
-                                                                            borderRadius: '20px',
-                                                                            outline: 'none'
-                                                                        }}
-                                                                    />
-                                                                </div>
+                                                                <WhatsAppAudioPlayer mediaUrl={msg.mediaUrl} />
                                                             )}
 
                                                             {/* SECCIÓN DE TRANSCRIPCIÓN IA */}

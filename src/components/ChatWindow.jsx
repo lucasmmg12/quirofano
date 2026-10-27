@@ -251,8 +251,12 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
             filename = '';
         }
     }
-    if (isAudio && (!filename || filename.startsWith('_event_'))) {
-        filename = 'audio_whatsapp.ogg';
+    if (isAudio) {
+        if (!filename || filename.startsWith('_event_') || /\.(jpe?g|png|bin)$/i.test(filename)) {
+            filename = 'audio_whatsapp.ogg';
+        } else if (!/\.(ogg|opus|mp3|m4a|wav|aac|weba|webm)$/i.test(filename)) {
+            filename += '.ogg';
+        }
     } else if (!filename) {
         filename = `${label}.${ext.toLowerCase()}`;
     }
@@ -1378,12 +1382,49 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
     // AUDIO PLAYER (para mensajes recibidos)
     // ==========================================
     const toggleAudio = (msgId, url) => {
+        if (!url) return;
         const audio = audioRefs.current[msgId];
         if (!audio) {
+            const isJpg = /\.(jpe?g|png)$/i.test(url);
+            if (isJpg) {
+                fetch(url)
+                    .then(r => r.blob())
+                    .then(blob => {
+                        const audioBlob = new Blob([blob], { type: 'audio/ogg; codecs=opus' });
+                        const blobUrl = URL.createObjectURL(audioBlob);
+                        const newAudio = new Audio(blobUrl);
+                        audioRefs.current[msgId] = newAudio;
+                        newAudio.onended = () => setPlayingAudio(null);
+                        Object.values(audioRefs.current).forEach(a => a.pause());
+                        newAudio.play().catch(e => console.warn('Audio play failed:', e));
+                        setPlayingAudio(msgId);
+                    })
+                    .catch(() => {
+                        const newAudio = new Audio(url);
+                        audioRefs.current[msgId] = newAudio;
+                        newAudio.onended = () => setPlayingAudio(null);
+                        newAudio.play().catch(e => console.warn('Audio play failed:', e));
+                        setPlayingAudio(msgId);
+                    });
+                return;
+            }
+
             const newAudio = new Audio(url);
             audioRefs.current[msgId] = newAudio;
             newAudio.onended = () => setPlayingAudio(null);
-            newAudio.play();
+            newAudio.onerror = () => {
+                fetch(url)
+                    .then(r => r.blob())
+                    .then(blob => {
+                        const audioBlob = new Blob([blob], { type: 'audio/ogg; codecs=opus' });
+                        const blobUrl = URL.createObjectURL(audioBlob);
+                        newAudio.src = blobUrl;
+                        newAudio.play().catch(e => console.warn('Audio play failed:', e));
+                    })
+                    .catch(() => {});
+            };
+            Object.values(audioRefs.current).forEach(a => a.pause());
+            newAudio.play().catch(e => console.warn('Audio play failed:', e));
             setPlayingAudio(msgId);
         } else if (playingAudio === msgId) {
             audio.pause();
@@ -1391,7 +1432,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
         } else {
             Object.values(audioRefs.current).forEach(a => a.pause());
             audio.currentTime = 0;
-            audio.play();
+            audio.play().catch(e => console.warn('Audio play failed:', e));
             setPlayingAudio(msgId);
         }
     };
