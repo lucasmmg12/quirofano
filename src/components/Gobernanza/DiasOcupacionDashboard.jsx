@@ -781,7 +781,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     .range(page * pageSize, (page + 1) * pageSize - 1);
 
                 if (sectorId === 'UCI') {
-                    q = q.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
+                    q = q.or('servicio.in.("UCI","TERAPIA INTERMEDIA"),habitacion.ilike.222%,habitacion.ilike.223%,habitacion.ilike.224%,habitacion.ilike.225%,habitacion.ilike.226%,habitacion.ilike.227%,habitacion.ilike.228%,habitacion.ilike.229%');
                 } else if (sectorId && sectorId !== 'TODOS') {
                     q = q.eq('servicio', sectorId);
                 }
@@ -812,7 +812,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                     .or('motivo_de_alta.ilike.%defunc%,motivo_de_alta.ilike.%fallec%,motivo_de_alta.ilike.%obito%');
 
                 if (sectorId === 'UCI') {
-                    qDefs = qDefs.in('servicio', ['UCI', 'TERAPIA INTERMEDIA']);
+                    qDefs = qDefs.or('servicio.in.("UCI","TERAPIA INTERMEDIA"),habitacion.ilike.222%,habitacion.ilike.223%,habitacion.ilike.224%,habitacion.ilike.225%,habitacion.ilike.226%,habitacion.ilike.227%,habitacion.ilike.228%,habitacion.ilike.229%');
                 } else if (sectorId && sectorId !== 'TODOS') {
                     qDefs = qDefs.eq('servicio', sectorId);
                 }
@@ -887,13 +887,20 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
             // 4. Cargar Historial Granular de Camas y Traslados de UCI
             try {
-                const { data: histData, error: histErr } = await supabase
+                let qHist = supabase
                     .from('calidad_admisiones_camas_historial')
                     .select('*')
-                    .in('servicio', ['UCI', 'TERAPIA INTERMEDIA'])
                     .or(`fecha_fin.gte.${fechaDesde}T00:00:00,fecha_fin.is.null`)
                     .lte('fecha_inicio', `${fechaHasta}T23:59:59`)
                     .order('fecha_inicio', { ascending: true });
+
+                if (sectorId === 'UCI') {
+                    qHist = qHist.or('servicio.in.("UCI","TERAPIA INTERMEDIA"),habitacion.ilike.222%,habitacion.ilike.223%,habitacion.ilike.224%,habitacion.ilike.225%,habitacion.ilike.226%,habitacion.ilike.227%,habitacion.ilike.228%,habitacion.ilike.229%');
+                } else if (sectorId && sectorId !== 'TODOS') {
+                    qHist = qHist.eq('servicio', sectorId);
+                }
+
+                const { data: histData, error: histErr } = await qHist;
 
                 if (!histErr && histData) {
                     setCamasHistorialRows(histData);
@@ -914,15 +921,42 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const normalizeHab = (hab) => {
         if (!hab) return 'Sin Asignar';
         const h = hab.trim().toUpperCase();
-        const boxM = h.match(/^BOX\s*0?([1-8])$/i) || h.match(/^BOX\s*AUXILIAR\s*0?([1-8])$/i);
+        const boxM = h.match(/^BOX\s*0?([1-8])([^\d]|$)/i) || h.match(/^BOX\s*AUXILIAR\s*0?([1-8])([^\d]|$)/i);
         if (boxM) return 'BOX ' + boxM[1];
-        const habIntM = h.match(/^HABITACI[OÓ]N\s*(22[2-9])$/i) || h.match(/^(22[2-9])$/);
+        const habIntM = h.match(/^(?:HABITACI[OÓ]N\s*|HAB\s*)?(22[2-9])([^\d]|$)/i);
         if (habIntM) return 'HAB ' + habIntM[1];
         return h;
     };
 
     const isUciBed = (normH) => {
-        return /^BOX\s*[1-8]$/.test(normH) || /^HAB\s*22[2-9]$/.test(normH) || /^22[2-9]$/.test(normH);
+        return /^BOX\s*[1-8]$/i.test(normH) || /^HAB\s*22[2-9]$/i.test(normH) || /^22[2-9]$/.test(normH);
+    };
+
+    const isIntensivaBed = (normH) => {
+        return /^BOX\s*[1-8]$/i.test(normH);
+    };
+
+    const isIntermediaBed = (normH) => {
+        return /^HAB\s*22[2-9]$/i.test(normH) || /^22[2-9]/.test(normH);
+    };
+
+    // Helper unificado para clasificar registros en UCI según cama física (BOX 1-8 vs Hab 222-229) y servicio SALUS
+    const matchUciSubNivel = (row, targetSubNivel) => {
+        const normH = normalizeHab(row.habitacion);
+        const s = (row.servicio || '').trim().toUpperCase();
+        // Terapia Intermedia: Habitaciones 222 a 229 O servicio explícito 'TERAPIA INTERMEDIA'
+        const isIntermedia = isIntermediaBed(normH) || s === 'TERAPIA INTERMEDIA';
+        // Terapia Intensiva: Box 1 a 8 O servicio 'UCI' (excluyendo camas físicas de Intermedia 222-229)
+        const isIntensiva = isIntensivaBed(normH) || (s === 'UCI' && !isIntermedia);
+
+        if (targetSubNivel === 'INTENSIVA') {
+            return isIntensiva;
+        }
+        if (targetSubNivel === 'INTERMEDIA') {
+            return isIntermedia;
+        }
+        // CONSOLIDADO (16 camas totales: 8 Intensiva + 8 Intermedia)
+        return isIntensiva || isIntermedia;
     };
 
     // Filtrar filas según Período General, Sub-Nivel de UCI, Box, Especialidades y Regla Censal de Días Cama:
@@ -935,11 +969,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         }
         // 2. Filtro por Sector y Sub-Nivel
         if (sectorId === 'UCI') {
-            if (uciSubNivel === 'INTENSIVA') {
-                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'UCI');
-            } else if (uciSubNivel === 'INTERMEDIA') {
-                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'TERAPIA INTERMEDIA');
-            }
+            list = list.filter(r => matchUciSubNivel(r, uciSubNivel));
         } else if (sectorId && sectorId !== 'TODOS') {
             list = list.filter(r => (r.servicio || '').trim().toUpperCase() === sectorId.toUpperCase());
         }
@@ -969,11 +999,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             });
         }
         if (sectorId === 'UCI') {
-            if (uciSubNivel === 'INTENSIVA') {
-                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'UCI');
-            } else if (uciSubNivel === 'INTERMEDIA') {
-                list = list.filter(r => (r.servicio || '').trim().toUpperCase() === 'TERAPIA INTERMEDIA');
-            }
+            list = list.filter(r => matchUciSubNivel(r, uciSubNivel));
         } else if (sectorId && sectorId !== 'TODOS') {
             list = list.filter(r => (r.servicio || '').trim().toUpperCase() === sectorId.toUpperCase());
         }

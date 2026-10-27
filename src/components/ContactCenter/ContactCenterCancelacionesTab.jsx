@@ -21,7 +21,8 @@ export default function ContactCenterCancelacionesTab({
     onOpenChatWithPhone, 
     onBackToConsole,
     onPendingCountChange,
-    onRefreshPendingCount
+    onRefreshPendingCount,
+    onConversationClosed
 }) {
     const [loading, setLoading] = useState(false);
     const [casos, setCasos] = useState([]);
@@ -159,6 +160,9 @@ export default function ContactCenterCancelacionesTab({
                     agente_nombre: agenteNombre,
                     procesado_at: ahoraIso,
                     notas_agente: notasAccion,
+                    chat_status: 'archivado',
+                    chat_closed_at: ahoraIso,
+                    chat_assigned_agent: null,
                     updated_at: ahoraIso
                 };
             }
@@ -176,6 +180,17 @@ export default function ContactCenterCancelacionesTab({
             if (onPendingCountChange) {
                 onPendingCountChange(prev => Math.max(0, (prev || 1) - 1));
             }
+        }
+
+        // Notificar al panel principal para finalizar el chat en memoria y removerlo de "Sin Asignar" de inmediato
+        if (onConversationClosed && casoTarget.phone) {
+            onConversationClosed(casoTarget.phone, {
+                status: 'archivado',
+                resolution_reason: tipoAccion === 'cancelar' ? 'Cancelación / Reprogramación Confirmada' : (notasAccion || 'Cancelación Descartada'),
+                closed_at: ahoraIso,
+                closed_by_agent_id: agenteId,
+                closed_by_agent_name: agenteNombre
+            });
         }
 
         // Cerrar modal de inmediato para permitir a la agente seguir trabajando sin bloqueo

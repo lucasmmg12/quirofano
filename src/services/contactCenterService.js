@@ -981,9 +981,42 @@ export async function fetchLiveAndDemoChats() {
             const lastHumanIdx = messages.findIndex(m => isHumanAgentMessage(m));
             const unansweredMessages = lastHumanIdx === -1 ? messages : messages.slice(0, lastHumanIdx);
 
-            // Determinar cuándo comenzó la espera (primer mensaje del paciente en este bloque)
-            const patientMsg = [...unansweredMessages].reverse().find(m => m.direction === 'incoming') || unansweredMessages[unansweredMessages.length - 1];
-            const waitingSinceMs = patientMsg?.created_at ? new Date(patientMsg.created_at).getTime() : lastDateMs;
+            // Filtrar únicamente mensajes entrantes no respondidos (messages[0] es el más reciente en orden DESC)
+            const incomingUnanswered = unansweredMessages.filter(m => m.direction === 'incoming');
+            if (incomingUnanswered.length === 0) {
+                return { isWaitingResponse: false, waitingMinutes: 0, waitingTimeText: 'Respondido', badgeTimeText: 'Respondido' };
+            }
+
+            // Determinar cuándo comenzó la espera de la sesión activa:
+            // REGLA DE INACTIVIDAD / NUEVA SESIÓN (30 minutos):
+            // Si el paciente vuelve a escribir tras una brecha de inactividad (> 30 minutos sin mensajes)
+            // o tras un cierre previo (closed_at), la espera NO debe arrastrar mensajes de hace 8 horas.
+            // La espera inicia en el primer mensaje de la ráfaga continua actual.
+            const closedAtMs = conv?.closed_at ? new Date(conv.closed_at).getTime() : 0;
+            const INACTIVITY_GAP_MS = 30 * 60 * 1000; // 30 minutos de corte de sesión
+            let sessionStartMsg = incomingUnanswered[0];
+
+            for (let i = 0; i < incomingUnanswered.length - 1; i++) {
+                const currentMsgTime = incomingUnanswered[i].created_at ? new Date(incomingUnanswered[i].created_at).getTime() : 0;
+                const olderMsgTime = incomingUnanswered[i + 1].created_at ? new Date(incomingUnanswered[i + 1].created_at).getTime() : 0;
+
+                // Si el mensaje anterior es previo al último cierre formal de la conversación, se corta
+                if (closedAtMs > 0 && olderMsgTime <= closedAtMs) {
+                    sessionStartMsg = incomingUnanswered[i];
+                    break;
+                }
+
+                // Si entre el mensaje actual y el anterior hay una brecha de inactividad mayor a 30m, se corta
+                if (currentMsgTime - olderMsgTime > INACTIVITY_GAP_MS) {
+                    sessionStartMsg = incomingUnanswered[i];
+                    break;
+                }
+
+                // Si están dentro de la misma ventana de atención continua, extender inicio de espera
+                sessionStartMsg = incomingUnanswered[i + 1];
+            }
+
+            const waitingSinceMs = sessionStartMsg?.created_at ? new Date(sessionStartMsg.created_at).getTime() : lastDateMs;
 
             const diffMs = Math.max(0, Date.now() - waitingSinceMs);
             const diffMinutes = Math.floor(diffMs / 60000);

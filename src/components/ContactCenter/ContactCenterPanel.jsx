@@ -507,6 +507,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     const next = prevChats.map(c => {
                         if (normalizeArgentinePhone(c.phone) !== normPhone) return c;
                         const isClosing = isClosedOrArchived(conv.status) || Boolean(conv.closed_at);
+                        const convLastMsgTime = conv.last_message_at ? new Date(conv.last_message_at).getTime() : null;
                         const updated = {
                             ...c,
                             contactName: conv.nombre_completo || c.contactName,
@@ -520,7 +521,10 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             resolutionReason: conv.resolution_reason !== undefined ? conv.resolution_reason : c.resolutionReason,
                             closedByAgentId: conv.closed_by_agent_id !== undefined ? conv.closed_by_agent_id : c.closedByAgentId,
                             closedByAgentName: conv.closed_by_agent_name !== undefined ? conv.closed_by_agent_name : c.closedByAgentName,
-                            lastMessageTimestamp: conv.closed_at ? Math.max(c.lastMessageTimestamp || 0, new Date(conv.closed_at).getTime()) : c.lastMessageTimestamp,
+                            lastMessage: conv.last_message_text || c.lastMessage,
+                            lastMessageTimestamp: convLastMsgTime
+                                ? Math.max(c.lastMessageTimestamp || 0, convLastMsgTime)
+                                : (conv.closed_at ? Math.max(c.lastMessageTimestamp || 0, new Date(conv.closed_at).getTime()) : c.lastMessageTimestamp),
                             aiSummary: conv.ai_summary !== undefined ? conv.ai_summary : c.aiSummary,
                             customFields: {
                                 ...c.customFields,
@@ -537,7 +541,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         changed = true;
                         return updated;
                     });
-                    return changed ? next : prevChats;
+                    if (!changed) return prevChats;
+                    return [...next].sort((a, b) => {
+                        const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
+                        const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
+                        if (bKey !== aKey) return bKey - aKey;
+                        return String(b.id || '').localeCompare(String(a.id || ''));
+                    });
                 });
             }
         });
@@ -1171,6 +1181,34 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         setActiveSubTab('conversaciones');
     };
 
+    // Callback cuando una cancelación es gestionada o descartada en Cancelaciones:
+    // finaliza el chat en memoria de inmediato para sacarlo de "Sin Asignar" y "Todos los chats"
+    const handleConversationClosedFromCancelaciones = useCallback((phone, closeInfo = {}) => {
+        if (!phone) return;
+        const normPhone = normalizeArgentinePhone(phone);
+        const nowIso = closeInfo.closed_at || new Date().toISOString();
+        setChats(prevChats => {
+            let changed = false;
+            const next = prevChats.map(c => {
+                if (normalizeArgentinePhone(c.phone) !== normPhone) return c;
+                changed = true;
+                return {
+                    ...c,
+                    status: 'archivado',
+                    closedAt: nowIso,
+                    closed_at: nowIso,
+                    resolutionReason: closeInfo.resolution_reason || 'Cancelación / Reprogramación Confirmada',
+                    closedByAgentId: closeInfo.closed_by_agent_id || activeAgent?.id || null,
+                    closedByAgentName: closeInfo.closed_by_agent_name || activeAgent?.name || 'Agente',
+                    assignedTo: null,
+                    assignedToName: null,
+                    botActive: true
+                };
+            });
+            return changed ? next : prevChats;
+        });
+    }, [activeAgent]);
+
     return (
         <div 
             className="content no-print" 
@@ -1192,6 +1230,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     onBackToConsole={() => handleNavigateTab('conversaciones')}
                     onPendingCountChange={setPendingCancelacionesCount}
                     onRefreshPendingCount={() => getPendingCancelacionesCount().then(c => setPendingCancelacionesCount(c))}
+                    onConversationClosed={handleConversationClosedFromCancelaciones}
                 />
             )}
 

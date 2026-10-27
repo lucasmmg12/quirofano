@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { normalizeArgentinePhone } from './builderbotApi';
 
 /**
  * Servicio para la gestión de la Bolsa de Turnos a Cancelar en Contact Center
@@ -103,18 +104,20 @@ export async function getPendingCancelacionesCount() {
 
 /**
  * Marcar un turno como cancelado en SALUS por una agente
+ * Y finalizar automáticamente la conversación en Contact Center para que no quede en "Sin Asignar"
  */
 export async function marcarCanceladoEnSalus({ id, agenteId, agenteNombre, notas = '' }) {
     try {
+        const nowIso = new Date().toISOString();
         const { data, error } = await supabase
             .from('contact_center_cancelaciones')
             .update({
                 estado: 'procesado_salus',
                 agente_id: agenteId,
                 agente_nombre: agenteNombre,
-                procesado_at: new Date().toISOString(),
+                procesado_at: nowIso,
                 notas_agente: notas,
-                updated_at: new Date().toISOString()
+                updated_at: nowIso
             })
             .eq('id', id)
             .select()
@@ -134,7 +137,7 @@ export async function marcarCanceladoEnSalus({ id, agenteId, agenteNombre, notas
                         agente_id: agenteId,
                         agente_nombre: agenteNombre,
                         notas: `Turno anulado en SALUS desde Cancelaciones (${notas || ''})`,
-                        updated_at: new Date().toISOString()
+                        updated_at: nowIso
                     })
                     .in('estado', ['pendiente', 'contactado']);
 
@@ -151,6 +154,48 @@ export async function marcarCanceladoEnSalus({ id, agenteId, agenteNombre, notas
             }
         }
 
+        // =========================================================================
+        // FINALIZAR AUTOMÁTICAMENTE EL CHAT EN CONTACT CENTER CONVERSATIONS:
+        // Si el caso fue gestionado y marcado cancelado en SALUS, el chat debe finalizarse
+        // inmediatamente para no seguir figurando en "Sin Asignar" ni en "Todos los chats".
+        // =========================================================================
+        if (data?.phone) {
+            try {
+                const phoneDigits = String(data.phone).replace(/\D/g, '');
+                const normPhone = normalizeArgentinePhone(data.phone) || phoneDigits;
+
+                await supabase
+                    .from('contact_center_conversations')
+                    .update({
+                        status: 'archivado',
+                        resolution_reason: 'Cancelación / Reprogramación Confirmada',
+                        closed_at: nowIso,
+                        closed_by_agent_id: agenteId || null,
+                        closed_by_agent_name: agenteNombre || null,
+                        assigned_agent_id: null,
+                        assigned_agent_name: null,
+                        bot_active: true,
+                        bot_stage: 'inicio',
+                        updated_at: nowIso
+                    })
+                    .or(`phone.eq.${normPhone},phone.eq.${data.phone},phone.eq.${phoneDigits}`);
+
+                // Dejar constancia en la bitácora de mensajes del chat
+                await supabase
+                    .from('whatsapp_messages')
+                    .insert({
+                        phone: normPhone,
+                        direction: 'note',
+                        content: `📋 [Cancelaciones]: Turno cancelado en SALUS por ${agenteNombre}. Conversación finalizada automáticamente.`,
+                        sender_name: agenteNombre,
+                        line_id: 'contact_center',
+                        created_at: nowIso
+                    });
+            } catch (convErr) {
+                console.warn('[cancelacionesService] Error finalizando conversación en contact_center_conversations:', convErr);
+            }
+        }
+
         return { success: true, data };
     } catch (err) {
         console.error('[cancelacionesService] Error al marcar cancelado:', err);
@@ -160,24 +205,52 @@ export async function marcarCanceladoEnSalus({ id, agenteId, agenteNombre, notas
 
 /**
  * Descartar un caso (ej. ya estaba cancelado previamente o error de tipeo)
+ * Y finalizar la conversación asociada si corresponde
  */
 export async function descartarCancelacion({ id, agenteId, agenteNombre, notas = '' }) {
     try {
+        const nowIso = new Date().toISOString();
         const { data, error } = await supabase
             .from('contact_center_cancelaciones')
             .update({
                 estado: 'descartado',
                 agente_id: agenteId,
                 agente_nombre: agenteNombre,
-                procesado_at: new Date().toISOString(),
+                procesado_at: nowIso,
                 notas_agente: notas,
-                updated_at: new Date().toISOString()
+                updated_at: nowIso
             })
             .eq('id', id)
             .select()
             .single();
 
         if (error) throw error;
+
+        if (data?.phone) {
+            try {
+                const phoneDigits = String(data.phone).replace(/\D/g, '');
+                const normPhone = normalizeArgentinePhone(data.phone) || phoneDigits;
+
+                await supabase
+                    .from('contact_center_conversations')
+                    .update({
+                        status: 'archivado',
+                        resolution_reason: notas || 'Cancelación Descartada / Ya Procesada',
+                        closed_at: nowIso,
+                        closed_by_agent_id: agenteId || null,
+                        closed_by_agent_name: agenteNombre || null,
+                        assigned_agent_id: null,
+                        assigned_agent_name: null,
+                        bot_active: true,
+                        bot_stage: 'inicio',
+                        updated_at: nowIso
+                    })
+                    .or(`phone.eq.${normPhone},phone.eq.${data.phone},phone.eq.${phoneDigits}`);
+            } catch (convErr) {
+                console.warn('[cancelacionesService] Error finalizando conversación al descartar:', convErr);
+            }
+        }
+
         return { success: true, data };
     } catch (err) {
         console.error('[cancelacionesService] Error al descartar:', err);

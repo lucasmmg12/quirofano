@@ -4083,6 +4083,7 @@ async function handleChatbotTriage(
     // REACTIVAR TODO A CERO para que el paciente hable con el bot desde 'inicio' como NUEVA SESIÓN
     if (wasClosed || (isSessionExpiredByInactivity && !conv?.assigned_agent_id)) {
         console.log(`[triage-bot] Chat ${phone} ${wasClosed ? 'estaba cerrado' : `inactivo por ${minutesSinceLastMsg.toFixed(1)} min (umbral ${INACTIVITY_TIMEOUT_MINUTES} min)`}. REACTIVANDO SESIÓN A CERO.`);
+        const nowIso = new Date().toISOString();
         await supabase
             .from('contact_center_conversations')
             .update({
@@ -4099,7 +4100,9 @@ async function handleChatbotTriage(
                 motivo_consulta: null,
                 medico_o_especialidad: null,
                 ai_summary: null,
-                updated_at: new Date().toISOString()
+                last_message_at: nowIso,
+                last_message_text: cleanText,
+                updated_at: nowIso
             })
             .eq('phone', phone);
 
@@ -4117,6 +4120,8 @@ async function handleChatbotTriage(
             conv.motivo_consulta = null;
             conv.medico_o_especialidad = null;
             conv.ai_summary = null;
+            conv.last_message_at = nowIso;
+            conv.last_message_text = cleanText;
         }
     }
 
