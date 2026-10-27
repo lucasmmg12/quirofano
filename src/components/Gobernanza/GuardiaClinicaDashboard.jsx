@@ -317,8 +317,9 @@ export default function GuardiaClinicaDashboard({
     const [showPuertaMedicoProgression, setShowPuertaMedicoProgression] = useState(false);
     const [activeDashboardTab, setActiveDashboardTab] = useState('resumen'); // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
     const [cirugiasConversionAll, setCirugiasConversionAll] = useState([]);
-    const [triagePacientesAll, setTriagePacientesAll] = useState([]);
     const [franjaFiltro, setFranjaFiltro] = useState('diurna'); // 'diurna' | 'nocturna' | '24hs'
+    const [franjasTiemposData, setFranjasTiemposData] = useState([]);
+    const [admisionesClinicasData, setAdmisionesClinicasData] = useState([]);
 
     // Cargar datos consolidados desde Supabase
     useEffect(() => {
@@ -414,10 +415,16 @@ export default function GuardiaClinicaDashboard({
     const fetchResumenData = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('guardia_indicadores_resumen')
-                .select('*')
-                .order('periodo', { ascending: false });
+            const [resInd, resFranjas, resAdm] = await Promise.all([
+                supabase.from('guardia_indicadores_resumen').select('*').order('periodo', { ascending: false }),
+                supabase.from('guardia_franjas_tiempos').select('*').order('periodo', { ascending: false }),
+                supabase.from('guardia_admisiones_clinicas_resumen').select('*').order('periodo', { ascending: false })
+            ]);
+
+            if (resFranjas.data) setFranjasTiemposData(resFranjas.data);
+            if (resAdm.data) setAdmisionesClinicasData(resAdm.data);
+
+            const { data, error } = resInd;
 
             if (error) throw error;
             if (data && data.length > 0) {
@@ -526,6 +533,16 @@ export default function GuardiaClinicaDashboard({
         }
         return `${mD}/${yD} al ${mH}/${yH}`;
     }, [selectedPeriodo, fechaDesde, fechaHasta]);
+
+    const currentFranjas = useMemo(() => {
+        if (!selectedPeriodo) return [];
+        return franjasTiemposData.filter(f => f.periodo === selectedPeriodo);
+    }, [franjasTiemposData, selectedPeriodo]);
+
+    const currentAdmisiones = useMemo(() => {
+        if (!selectedPeriodo) return null;
+        return admisionesClinicasData.find(a => a.periodo === selectedPeriodo) || null;
+    }, [admisionesClinicasData, selectedPeriodo]);
 
     // Lista de accesos directos de períodos disponibles para el panel
     const availablePeriodsList = useMemo(() => {
@@ -1868,6 +1885,101 @@ export default function GuardiaClinicaDashboard({
                             </ResponsiveContainer>
                         </div>
                     </div>
+
+                    {/* Widget Destacado: Tiempos Puerta-Médico por Franjas Horarias Normadas */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '12px',
+                        border: '1px solid #E2E8F0',
+                        padding: '18px 20px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '14px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0D3B66', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>⏱️</span> Tiempo Puerta – Médico por Franjas Horarias
+                                </h4>
+                                <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                    Turnos Operativos Normados: 08 a 13 hs · 13 a 21 hs · 21 a 08 hs · Período {formatPeriodoLabel(selectedPeriodo)}
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px', background: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                                Auditoría SALUS · VLISE_Visitas
+                            </span>
+                        </div>
+
+                        {/* Grid de 3 Columnas por Franja */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                            gap: '14px'
+                        }}>
+                            {[
+                                { franja: '08 a 13', label: 'Franja Mañana (08:00 a 13:00)', icon: '🌅', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+                                { franja: '13 a 21', label: 'Franja Tarde (13:00 a 21:00)', icon: '☀️', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },
+                                { franja: '21 a 08', label: 'Franja Noche (21:00 a 08:00)', icon: '🌙', color: '#4F46E5', bg: '#EEF2FF', border: '#C7D2FE' }
+                            ].map(item => {
+                                const fData = currentFranjas.find(f => f.franja === item.franja);
+                                const total = fData?.consultas_total || 0;
+                                const min = fData?.espera_min != null ? Math.round(fData.espera_min) : '—';
+                                const max = fData?.espera_max != null ? Math.round(fData.espera_max) : '—';
+                                const avg = fData?.espera_avg != null ? Number(fData.espera_avg).toFixed(1) : '—';
+                                const metaPct = fData?.cumplimiento_meta_pct || 0;
+
+                                return (
+                                    <div key={item.franja} style={{
+                                        background: item.bg,
+                                        borderRadius: '10px',
+                                        border: `1.5px solid ${item.border}`,
+                                        padding: '16px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '10px',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: item.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <span>{item.icon}</span> {item.label}
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 700, background: '#FFFFFF', padding: '2px 8px', borderRadius: '10px', color: '#475569', border: '1px solid #E2E8F0' }}>
+                                                {total.toLocaleString('es-AR')} pac.
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
+                                            {/* Tiempo Mínimo */}
+                                            <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '10px', border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>Tiempo Mínimo</div>
+                                                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#16A34A', marginTop: '2px' }}>
+                                                    {min} <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>min</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Tiempo Máximo */}
+                                            <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '10px', border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>Tiempo Máximo</div>
+                                                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#DC2626', marginTop: '2px' }}>
+                                                    {max} <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>min</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '6px', borderTop: `1px solid ${item.border}` }}>
+                                            <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
+                                                Promedio: <strong style={{ color: '#0F172A' }}>{avg} min</strong>
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: metaPct >= 60 ? '#15803D' : '#D97706' }}>
+                                                &lt;30 min: {metaPct}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 
                 </div>
             )}
@@ -1875,6 +1987,97 @@ export default function GuardiaClinicaDashboard({
             {/* ─── PESTAÑA 4: RESOLUCIÓN, DESTINOS & QUIRÓFANO ─── */}
             {activeDashboardTab === 'resolucion' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Tarjeta Destacada: Admisiones Médicas Clínicas (Total, Destinos y Reinternaciones 72h) */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '12px',
+                        border: '1px solid #E2E8F0',
+                        padding: '18px 20px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '14px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0D3B66', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span>🏥</span> Admisiones Médicas Clínicas: Destinos Asistenciales & Reinternaciones
+                                </h4>
+                                <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                    Trazabilidad de derivación hacia Quirófano, Internado Piso o UCI · Período {formatPeriodoLabel(selectedPeriodo)}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 800, background: '#EFF6FF', color: '#1D4ED8', padding: '4px 10px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
+                                    Total: {currentAdmisiones?.total_admisiones_clinicas || 0} admisiones
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Cards de Destinos + Reinternaciones */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                            gap: '12px'
+                        }}>
+                            {/* Pase a Quirófano */}
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EC4899' }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#BE185D', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>✂️</span> Pase a Quirófano
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
+                                    {currentAdmisiones?.destino_quirofano_count || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748B', marginLeft: '6px' }}>
+                                        ({currentAdmisiones?.destino_quirofano_pct || 0}%)
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Derivación quirúrgica urgente</span>
+                            </div>
+
+                            {/* Internado General (Piso) */}
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #2563EB' }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>🛌</span> Internado (Piso Clínico)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
+                                    {currentAdmisiones?.destino_internado_count || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748B', marginLeft: '6px' }}>
+                                        ({currentAdmisiones?.destino_internado_pct || 0}%)
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Internación en salas generales</span>
+                            </div>
+
+                            {/* UCI / Cuidados Críticos */}
+                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EF4444' }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>🫀</span> UCI / Cuidados Críticos
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
+                                    {currentAdmisiones?.destino_uci_count || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748B', marginLeft: '6px' }}>
+                                        ({currentAdmisiones?.destino_uci_pct || 0}%)
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Camas de alta complejidad</span>
+                            </div>
+
+                            {/* Reinternación <= 72 hs */}
+                            <div style={{ background: '#FEF3C7', borderRadius: '10px', border: '1px solid #FDE68A', padding: '14px', borderLeft: '4px solid #D97706' }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>🔁</span> Reinternación &le; 72 hs
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#92400E', marginTop: '4px' }}>
+                                    {currentAdmisiones?.reinternaciones_72h_count || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#B45309', marginLeft: '6px' }}>
+                                        ({currentAdmisiones?.reinternaciones_72h_pct || 0}%)
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: '0.68rem', color: '#78350F' }}>Meta de seguridad: &lt; 5%</span>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Tarjeta de discriminación entre Urgencias Reales y Programadas Excluidas */}
                     <div style={{
                         background: '#FFFFFF',

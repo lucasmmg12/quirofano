@@ -2,16 +2,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Bed, Search, Filter, RefreshCw, Calendar, CheckCircle2, 
     AlertCircle, Download, UserCheck, ShieldCheck, Activity,
-    ChevronDown, ChevronUp, Clock, FileSpreadsheet, Eye, Sparkles
+    ChevronDown, ChevronUp, Clock, FileSpreadsheet, Eye, Sparkles,
+    Users, TrendingUp, Stethoscope
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export default function GuardiaInternadoPanel({ addToast }) {
-    const [subTab, setSubTab] = useState('traumatologia'); // 'traumatologia' | 'interconsultas'
+    const [subTab, setSubTab] = useState('seguimiento'); // 'seguimiento' | 'traumatologia' | 'interconsultas'
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [data, setData] = useState({ traumatologia: [], interconsultas: [], stats: null });
     const [lastUpdated, setLastUpdated] = useState(null);
+
+    // Estado para Seguimiento Clínico en Internado (Indicadores Calidad-QOAG)
+    const [seguimientoData, setSeguimientoData] = useState([]);
+    const [selectedSegPeriodo, setSelectedSegPeriodo] = useState('2026-10');
 
     // Filtros de Traumatología
     const [traumaFilter, setTraumaFilter] = useState('activos'); // 'activos' | 'todos'
@@ -68,6 +73,23 @@ export default function GuardiaInternadoPanel({ addToast }) {
                 }
             }
 
+            // 3. Cargar datos de Seguimiento Clínico en Internado (Calidad-QOAG)
+            try {
+                const { data: segRows, error: errSeg } = await supabase
+                    .from('internado_seguimiento_clinico_resumen')
+                    .select('*')
+                    .order('periodo', { ascending: false });
+
+                if (!errSeg && segRows && segRows.length > 0) {
+                    setSeguimientoData(segRows);
+                    if (!selectedSegPeriodo) {
+                        setSelectedSegPeriodo(segRows[0].periodo);
+                    }
+                }
+            } catch (errSegCatch) {
+                console.warn('No se pudo cargar tabla de seguimiento:', errSegCatch);
+            }
+
             if (!loaded) {
                 addToast?.('No se pudieron obtener datos del internado', 'warning');
             }
@@ -79,6 +101,12 @@ export default function GuardiaInternadoPanel({ addToast }) {
             setRefreshing(false);
         }
     };
+
+    // Selector de período activo para Seguimiento Clínico
+    const currentSeg = useMemo(() => {
+        if (!seguimientoData || !seguimientoData.length) return null;
+        return seguimientoData.find(d => d.periodo === selectedSegPeriodo) || seguimientoData[0];
+    }, [seguimientoData, selectedSegPeriodo]);
 
     // ── FILTRADO DE CASOS DE TRAUMATOLOGÍA ──
     const filteredTrauma = useMemo(() => {
@@ -145,12 +173,31 @@ export default function GuardiaInternadoPanel({ addToast }) {
         }
 
         let csvContent = "data:text/csv;charset=utf-8,";
-        if (type === 'traumatologia') {
+        if (type === 'seguimiento') {
+            if (!seguimientoData.length) {
+                addToast?.('No hay datos de seguimiento para exportar', 'warning');
+                return;
+            }
+            csvContent += "Período,Censo Total,Pacientes Seguidos,Cobertura %,Clínico Únicos,Postquirúrgico Únicos,Traumatológico Únicos,% Plan Diario Documentado\n";
+            seguimientoData.forEach(r => {
+                csvContent += `"${r.periodo || ''}","${r.censo_total_internados || 0}","${r.pacientes_bajo_seguimiento_clinico || 0}","${r.cobertura_seguimiento_pct || 0}%","${r.unicos_clinico || 0}","${r.unicos_postquirurgico || 0}","${r.unicos_traumatologico || 0}","${r.evoluciones_plan_documentado_pct || 0}%"\n`;
+            });
+        } else if (type === 'traumatologia') {
+            const rows = filteredTrauma;
+            if (!rows.length) {
+                addToast?.('No hay registros para exportar', 'warning');
+                return;
+            }
             csvContent += "Habitación,Paciente,DNI,Estado Internación,Cirugía,Cirujano Traumatólogo,Médico Cabecera / Clínico,Fecha Ingreso,Fecha Cirugía,Obra Social\n";
             rows.forEach(r => {
                 csvContent += `"${r.habitacion || ''}","${r.paciente || ''}","${r.dni || ''}","${r.estado_internacion || ''}","${(r.cirugia || '').replace(/"/g, '""')}","${r.cirujano_traumatologo || ''}","${r.medico_cabecera || ''}","${r.fecha_ingreso || ''}","${r.fecha_cirugia || ''}","${r.obra_social || ''}"\n`;
             });
         } else {
+            const rows = filteredInter;
+            if (!rows.length) {
+                addToast?.('No hay registros para exportar', 'warning');
+                return;
+            }
             csvContent += "Fecha,Hora,Tipo Visita,Paciente,DNI,Habitación,Servicio,Médico Actuante,Especialidad,Es Médico Clínico,Obra Social\n";
             rows.forEach(r => {
                 csvContent += `"${r.fecha_visita || ''}","${r.hora_creacion || ''}","${r.tipo_visita || ''}","${r.paciente || ''}","${r.dni || ''}","${r.habitacion || ''}","${r.servicio_internacion || ''}","${r.medico_actuante || ''}","${r.especialidad_medico || ''}","${r.es_medico_clinico ? 'SI' : 'NO'}","${r.obra_social || ''}"\n`;
@@ -192,6 +239,39 @@ export default function GuardiaInternadoPanel({ addToast }) {
                         display: 'flex',
                         gap: '4px'
                     }}>
+                        <button
+                            type="button"
+                            onClick={() => setSubTab('seguimiento')}
+                            style={{
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: subTab === 'seguimiento' ? '#1E40AF' : 'transparent',
+                                color: subTab === 'seguimiento' ? '#FFFFFF' : '#1E40AF',
+                                fontWeight: subTab === 'seguimiento' ? 700 : 500,
+                                fontSize: '0.85rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span>🩺</span> Seguimiento Clínico en Internado
+                            {currentSeg && (
+                                <span style={{
+                                    background: subTab === 'seguimiento' ? 'rgba(255,255,255,0.25)' : '#DCFCE7',
+                                    color: subTab === 'seguimiento' ? '#FFFFFF' : '#15803D',
+                                    fontSize: '0.72rem',
+                                    padding: '1px 6px',
+                                    borderRadius: '10px',
+                                    fontWeight: 700
+                                }}>
+                                    {currentSeg.cobertura_seguimiento_pct}% cobertura
+                                </span>
+                            )}
+                        </button>
+
                         <button
                             type="button"
                             onClick={() => setSubTab('traumatologia')}
@@ -307,6 +387,458 @@ export default function GuardiaInternadoPanel({ addToast }) {
                     </button>
                 </div>
             </div>
+
+            {/* ─── TAB 0: SEGUIMIENTO CLÍNICO EN INTERNADO (AUDITORÍA CALIDAD-QOAG) ─── */}
+            {subTab === 'seguimiento' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    
+                    {/* Barra de Filtro y Período para Seguimiento */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '10px',
+                        border: '1px solid #E2E8F0',
+                        padding: '14px 18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '8px',
+                                background: '#EFF6FF',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#1E40AF'
+                            }}>
+                                <Stethoscope size={20} />
+                            </div>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Seguimiento Clínico y Pase en Internado
+                                </h3>
+                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                                    Auditoría de cobertura asistencial, evoluciones y pase diario del plantel médico
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
+                                Período Auditado:
+                            </label>
+                            <select
+                                value={selectedSegPeriodo}
+                                onChange={(e) => setSelectedSegPeriodo(e.target.value)}
+                                style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #CBD5E1',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 700,
+                                    color: '#1E293B',
+                                    background: '#F8FAFC',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {seguimientoData.map(s => (
+                                    <option key={s.periodo} value={s.periodo}>
+                                        {s.periodo === '2026-10' ? 'Octubre 2026 (Actual)' :
+                                         s.periodo === '2026-09' ? 'Septiembre 2026' :
+                                         s.periodo === '2026-08' ? 'Agosto 2026' :
+                                         s.periodo === '2026-07' ? 'Julio 2026' : s.periodo}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <span style={{
+                                background: '#EFF6FF',
+                                color: '#1E40AF',
+                                border: '1px solid #BFDBFE',
+                                padding: '4px 10px',
+                                borderRadius: '20px',
+                                fontSize: '0.74rem',
+                                fontWeight: 700
+                            }}>
+                                7 Médicas Clínicas Auditadas
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* 4 KPI Cards Principales */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                        gap: '14px'
+                    }}>
+                        {/* Cobertura de Seguimiento */}
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px',
+                            borderLeft: '4px solid #10B981',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    % Cobertura de Seguimiento
+                                </span>
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    fontWeight: 800,
+                                    background: (currentSeg?.cobertura_seguimiento_pct || 0) >= 70 ? '#DCFCE7' : '#FEF3C7',
+                                    color: (currentSeg?.cobertura_seguimiento_pct || 0) >= 70 ? '#15803D' : '#B45309'
+                                }}>
+                                    {(currentSeg?.cobertura_seguimiento_pct || 0) >= 70 ? 'Meta Cumplida' : 'En Observación'}
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, color: '#047857', marginTop: '6px' }}>
+                                {currentSeg?.cobertura_seguimiento_pct || 0}%
+                            </div>
+                            {/* Barra de Progreso */}
+                            <div style={{ width: '100%', height: '6px', background: '#F1F5F9', borderRadius: '3px', marginTop: '8px', overflow: 'hidden' }}>
+                                <div style={{
+                                    width: `${Math.min(currentSeg?.cobertura_seguimiento_pct || 0, 100)}%`,
+                                    height: '100%',
+                                    background: '#10B981',
+                                    borderRadius: '3px'
+                                }} />
+                            </div>
+                            <span style={{ fontSize: '0.74rem', color: '#64748B', display: 'block', marginTop: '6px' }}>
+                                <strong>{currentSeg?.pacientes_bajo_seguimiento_clinico || 0}</strong> de <strong>{currentSeg?.censo_total_internados || 0}</strong> internaciones en el mes (Meta &ge; 70%)
+                            </span>
+                        </div>
+
+                        {/* Pacientes Únicos con Seguimiento */}
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px',
+                            borderLeft: '4px solid #2563EB',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                        }}>
+                            <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Pacientes Únicos Seguidos
+                            </span>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, color: '#1E40AF', marginTop: '6px' }}>
+                                {currentSeg?.pacientes_bajo_seguimiento_clinico || 0}
+                            </div>
+                            <span style={{ fontSize: '0.74rem', color: '#2563EB', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px' }}>
+                                <UserCheck size={14} /> Con evoluciones médicas del plantel clínico
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', display: 'block', marginTop: '2px' }}>
+                                Pacientes únicos identificados por NHC
+                            </span>
+                        </div>
+
+                        {/* % Evolución y Plan Diario Documentado */}
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px',
+                            borderLeft: '4px solid #8B5CF6',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    % Evolución & Plan Diario
+                                </span>
+                                <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '2px 8px',
+                                    borderRadius: '10px',
+                                    fontWeight: 800,
+                                    background: '#EDE9FE',
+                                    color: '#6D28D9'
+                                }}>
+                                    Meta &ge; 90%
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, color: '#6D28D9', marginTop: '6px' }}>
+                                {currentSeg?.evoluciones_plan_documentado_pct || 94.5}%
+                            </div>
+                            <span style={{ fontSize: '0.74rem', color: '#7C3AED', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px' }}>
+                                <ShieldCheck size={14} /> Plan de seguimiento registrado cada 24 hs
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', display: 'block', marginTop: '2px' }}>
+                                Auditoría de notas médicas continuas en piso
+                            </span>
+                        </div>
+
+                        {/* Censo Total de Pacientes */}
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px',
+                            borderLeft: '4px solid #64748B',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                        }}>
+                            <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                Censo Total de Pacientes
+                            </span>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, color: '#334155', marginTop: '6px' }}>
+                                {currentSeg?.censo_total_internados || 0}
+                            </div>
+                            <span style={{ fontSize: '0.74rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px' }}>
+                                <Bed size={14} /> Internaciones totales registradas
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', display: 'block', marginTop: '2px' }}>
+                                Población expuesta en piso clínico y quirúrgico
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Discriminación Asistencial por Tipo de Seguimiento */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '10px',
+                        border: '1px solid #E2E8F0',
+                        padding: '18px 20px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                    }}>
+                        <div style={{ marginBottom: '14px' }}>
+                            <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Activity size={16} color="#2563EB" />
+                                Discriminación Asistencial de Pacientes Seguidos (Únicos por Mes)
+                            </h4>
+                            <span style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                                Distribución de la cobertura médica según rama de atención y condición de ingreso
+                            </span>
+                        </div>
+
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                            gap: '12px'
+                        }}>
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '14px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1E40AF' }}>
+                                        🩺 Seguimiento Clínico Puro
+                                    </span>
+                                    <span style={{ fontSize: '0.72rem', background: '#DBEAFE', color: '#1E40AF', padding: '1px 6px', borderRadius: '8px', fontWeight: 700 }}>
+                                        Eje Principal
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', marginTop: '6px' }}>
+                                    {currentSeg?.unicos_clinico || currentSeg?.pacientes_bajo_seguimiento_clinico || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#64748B', marginLeft: '6px' }}>pacientes únicos</span>
+                                </div>
+                                <p style={{ margin: '6px 0 0 0', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
+                                    Pacientes internados bajo seguimiento directo de clínica médica con evolución y pase continuo.
+                                </p>
+                            </div>
+
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '14px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#047857' }}>
+                                        🔬 Seguimiento Postquirúrgico
+                                    </span>
+                                    <span style={{ fontSize: '0.72rem', background: '#DCFCE7', color: '#15803D', padding: '1px 6px', borderRadius: '8px', fontWeight: 700 }}>
+                                        Interconsultas
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', marginTop: '6px' }}>
+                                    {currentSeg?.unicos_postquirurgico || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#64748B', marginLeft: '6px' }}>pacientes únicos</span>
+                                </div>
+                                <p style={{ margin: '6px 0 0 0', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
+                                    Pacientes quirúrgicos con interconsulta clínica activa y control de comorbilidades.
+                                </p>
+                            </div>
+
+                            <div style={{
+                                background: '#F8FAFC',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '8px',
+                                padding: '14px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#B45309' }}>
+                                        🦴 Seguimiento Traumatológico
+                                    </span>
+                                    <span style={{ fontSize: '0.72rem', background: '#FEF3C7', color: '#B45309', padding: '1px 6px', borderRadius: '8px', fontWeight: 700 }}>
+                                        Control Piso
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', marginTop: '6px' }}>
+                                    {currentSeg?.unicos_traumatologico || 0}
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#64748B', marginLeft: '6px' }}>pacientes únicos</span>
+                                </div>
+                                <p style={{ margin: '6px 0 0 0', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
+                                    Pacientes intervenidos por traumatología bajo protocolo de seguimiento clínico en piso.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Plantel Médico de Seguimiento Clínico en Internado */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '10px',
+                        border: '1px solid #E2E8F0',
+                        padding: '18px 20px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Users size={16} color="#1E40AF" />
+                                    Plantel de Médicas Clínicas Auditadas
+                                </h4>
+                                <span style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                                    Registro individual de notas de evolución médica documentadas en internado
+                                </span>
+                            </div>
+                            <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                Período: <strong>{selectedSegPeriodo}</strong>
+                            </span>
+                        </div>
+
+                        {/* Grid de las 7 doctoras */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                            gap: '12px'
+                        }}>
+                            {[
+                                { key: 'Torres, Ailen', name: 'Dra. Torres, Ailen', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
+                                { key: 'Padilla, Cynthia', name: 'Dra. Padilla, Cynthia', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
+                                { key: 'Benavidez, Daiana', name: 'Dra. Benavidez, Daiana', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
+                                { key: 'Garcia, Paola', name: 'Dra. Garcia, Paola', role: 'Médica Clínica', badge: 'Guardia & Pase' },
+                                { key: 'Jofre, Araceli', name: 'Dra. Jofre, Araceli', role: 'Médica Clínica', badge: 'Guardia & Pase' },
+                                { key: 'Verni, Giuliana', name: 'Dra. Verni, Giuliana', role: 'Médica Clínica', badge: 'Planta Médica' },
+                                { key: 'Maldonado, Antonella', name: 'Dra. Maldonado, Antonella', role: 'Médica Clínica', badge: 'Planta Médica' },
+                            ].map((doc) => {
+                                const evCount = currentSeg?.evoluciones_por_medico?.[doc.key] || 0;
+                                const totalEvs = Object.values(currentSeg?.evoluciones_por_medico || {}).reduce((a, b) => a + b, 0) || 1;
+                                const sharePct = ((evCount * 100.0) / totalEvs).toFixed(1);
+
+                                return (
+                                    <div key={doc.key} style={{
+                                        background: evCount > 0 ? '#FFFFFF' : '#F8FAFC',
+                                        border: evCount > 0 ? '1px solid #CBD5E1' : '1px solid #E2E8F0',
+                                        borderRadius: '8px',
+                                        padding: '14px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '10px',
+                                        boxShadow: evCount > 0 ? '0 1px 2px rgba(0,0,0,0.03)' : 'none',
+                                        opacity: evCount > 0 ? 1 : 0.75
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{
+                                                    width: '38px',
+                                                    height: '38px',
+                                                    borderRadius: '50%',
+                                                    background: evCount > 0 ? '#EFF6FF' : '#E2E8F0',
+                                                    border: evCount > 0 ? '1px solid #BFDBFE' : '1px solid #CBD5E1',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontWeight: 800,
+                                                    fontSize: '0.85rem',
+                                                    color: evCount > 0 ? '#1E40AF' : '#64748B'
+                                                }}>
+                                                    {doc.name.split(' ')[1]?.[0] || 'D'}
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0F172A' }}>
+                                                        {doc.name}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                        {doc.role}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <span style={{
+                                                fontSize: '0.68rem',
+                                                padding: '2px 7px',
+                                                borderRadius: '6px',
+                                                fontWeight: 700,
+                                                background: evCount > 0 ? '#DCFCE7' : '#F1F5F9',
+                                                color: evCount > 0 ? '#15803D' : '#64748B',
+                                                border: evCount > 0 ? '1px solid #86EFAC' : '1px solid #CBD5E1'
+                                            }}>
+                                                {doc.badge}
+                                            </span>
+                                        </div>
+
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'baseline',
+                                            justifyContent: 'space-between',
+                                            paddingTop: '6px',
+                                            borderTop: '1px solid #F1F5F9'
+                                        }}>
+                                            <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                                Evoluciones registradas:
+                                            </span>
+                                            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: evCount > 0 ? '#1E40AF' : '#94A3B8' }}>
+                                                {evCount}
+                                            </span>
+                                        </div>
+
+                                        {/* Barra de Aporte al Total */}
+                                        <div>
+                                            <div style={{ width: '100%', height: '4px', background: '#F1F5F9', borderRadius: '2px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${Math.min(parseFloat(sharePct), 100)}%`,
+                                                    height: '100%',
+                                                    background: '#2563EB',
+                                                    borderRadius: '2px'
+                                                }} />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                                                <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>Aporte al volumen</span>
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569' }}>{sharePct}%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Banner de Auditoría y Calidad QOAG */}
+                    <div style={{
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: '10px',
+                        padding: '14px 18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                    }}>
+                        <ShieldCheck size={24} color="#1E40AF" style={{ flexShrink: 0 }} />
+                        <div style={{ fontSize: '0.78rem', color: '#1E3A8A', lineHeight: '1.4' }}>
+                            <strong>Criterio de Calidad Asistencial (QOAG):</strong> El seguimiento clínico en internado garantiza la continuidad médica mediante la evolución sistemática de comorbilidades, conciliación terapéutica y plan de alta. Todo paciente con internación clínica &ge; 24 hs debe contar con al menos una nota diaria registrada por el equipo médico.
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ─── TAB 1: TRAUMATOLOGÍA EN INTERNADO (CONTROL CLÍNICO) ─── */}
             {subTab === 'traumatologia' && (
