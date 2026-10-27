@@ -1701,6 +1701,7 @@ const SPECIALTY_MAP: [RegExp, string][] = [
     [/\b(oftalmolog[ií]a|oftalm[oó]log[ao]s?|oculistas?)\b/i, 'Oftalmología'],
     [/\b(otorrino|otorrinolaringolog[ií]a|otorrinolaring[oó]log[ao]s?)\b/i, 'Otorrinolaringología'],
     [/\b(gastroenterolog[ií]a|gastroenter[oó]log[ao]s?|gastro)\b/i, 'Gastroenterología'],
+    [/\b(endocrinolog[ií]a\s+infantil|endocrinolog[ií]a\s+pedi[aá]trica|endocrin[oó]log[ao]s?\s+infantil(?:es)?|endocrin[oó]log[ao]s?\s+pedi[aá]tric[ao]s?)\b/i, 'Endocrinología Infantil'],
     [/\b(endocrinolog[ií]a|endocrin[oó]log[ao]s?)\b/i, 'Endocrinología'],
     [/\b(reumatolog[ií]a|reumat[oó]log[ao]s?)\b/i, 'Reumatología'],
     [/\b(neumonolog[ií]a|neumon[oó]log[ao]s?|neumolog[ií]a|pulmonar)\b/i, 'Neumonología'],
@@ -2547,6 +2548,12 @@ DIRECTIVAS PRINCIPALES:
 16. CHEQUEO ANUAL, CONTROL MUJER, PLAN MUJER Y PROGRAMA PREVENIR (LÍNEA EXCLUSIVA DE WHATSAPP):
    - Cuando el paciente consulte o solicite turno para "Chequeo anual", "Control mujer", "Plan mujer", "Chequeo preventivo de salud" o "Programa Prevenir (OSP)", debes indicarle OBLIGATORIAMENTE que Sanatorio Argentino cuenta con una línea exclusiva de atención personalizada para coordinar estos circuitos y programas especiales.
    - Proporciónale SIEMPRE el enlace directo de WhatsApp: 👉 https://wa.me/message/SEB4YT5AWGNBN1 e indícale que escriba directamente a ese número para que un asesor especializado coordine todos sus estudios integrados en una sola jornada.
+17. ENDOCRINOLOGÍA INFANTIL / PEDIÁTRICA (ATENCIÓN EXCLUSIVAMENTE PARTICULAR):
+   - Los especialistas en Endocrinología Infantil (o Endocrinología Pediátrica) NO reciben obras sociales ni prepagas.
+   - La atención en esta especialidad es EXCLUSIVAMENTE PARTICULAR (el paciente debe abonar la consulta como particular).
+   - Si el paciente consulta si reciben obra social o solicita turno para endocrinología infantil / pediátrica:
+     - Infórmale con claridad y cordialidad que los profesionales de endocrinología infantil atienden únicamente de forma particular (sin cobertura de obras sociales ni prepagas).
+     - Consúltale amablemente si desea coordinar un turno particular para el paciente.
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {

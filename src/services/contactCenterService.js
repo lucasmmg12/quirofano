@@ -3087,7 +3087,13 @@ DIRECTIVAS PRINCIPALES:
    - Brinda OBLIGATORIAMENTE el enlace directo de WhatsApp oficial:
      👉 https://wa.me/message/SEB4YT5AWGNBN1
    - Recuerda que el Chequeo Preventivo / Control Mujer se realiza por la mañana en ayunas (ingreso 7:30 hs) en Sede Santa Fe (Santa Fe 263 Este) o Sede San Luis (San Luis 432 Oeste) y dura aproximadamente 4 horas en una sola jornada sin demoras.
-   - Para el Programa Prevenir (OSP), incluye consulta ginecológica, mamografía bilateral y PAP en Sede Santa Fe.`;
+   - Para el Programa Prevenir (OSP), incluye consulta ginecológica, mamografía bilateral y PAP en Sede Santa Fe.
+17. ENDOCRINOLOGÍA INFANTIL / PEDIÁTRICA (ATENCIÓN EXCLUSIVAMENTE PARTICULAR):
+   - Los especialistas en Endocrinología Infantil (o Endocrinología Pediátrica) NO reciben obras sociales ni prepagas.
+   - La atención en esta especialidad es EXCLUSIVAMENTE PARTICULAR (el paciente debe abonar la consulta como particular).
+   - Si el paciente consulta si reciben obra social o solicita turno para endocrinología infantil / pediátrica:
+     - Infórmale con claridad y cordialidad que los profesionales de endocrinología infantil atienden únicamente de forma particular (sin cobertura de obras sociales ni prepagas).
+     - Consúltale amablemente si desea coordinar un turno particular para el paciente.`;
 
 export const DEFAULT_HANDOFF_NORMAL = `👩‍⚕️ Un agente te responderá en breve.\\n💡 _Si deseás consultar otra opción o reiniciar la atención, podés escribir *\"Menú\"* en cualquier momento._\\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
 
