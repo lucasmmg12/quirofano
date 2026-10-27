@@ -10,7 +10,7 @@ import {
     TrendingUp, Users, PhoneOff, Send, Clock, CheckCircle,
     XCircle, Edit3, Plus, ArrowLeft, RefreshCw, BarChart3,
     Eye, Banknote, UserCheck, UserX, History, Activity, Percent,
-    Download, CreditCard, Calendar,
+    Download, CreditCard, Calendar, Columns, Table, Maximize2, Minimize2,
 } from 'lucide-react';
 import {
     fetchDeudores, fetchFacturas, fetchSeguimiento, addSeguimiento,
@@ -35,6 +35,7 @@ const VIEWS = { LIST: 'list', DETAIL: 'detail', LIBRE_DEUDA: 'libre_deuda' };
 export default function DeudasPanel({ addToast, currentUser }) {
     // ─── State principal ───
     const [view, setView] = useState(VIEWS.LIST);
+    const [layoutMode, setLayoutMode] = useState('split'); // 'split' | 'table'
     const [activeSubmodule, setActiveSubmodule] = useState('gestion'); // 'gestion' | 'libre_deuda'
     const [libreDeudaPatient, setLibreDeudaPatient] = useState(null);
     const [deudores, setDeudores] = useState([]);
@@ -234,9 +235,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
     }, [addToast]);
 
     // ─── Load detail ───
-    const openDetail = useCallback(async (deudor) => {
+    const openDetail = useCallback(async (deudor, stayInSplitView = false) => {
         setSelectedDeudor(deudor);
-        setView(VIEWS.DETAIL);
+        if (!stayInSplitView) {
+            setView(VIEWS.DETAIL);
+        }
         setDetailLoading(true);
         setEditingPhone(false);
         setPhoneInput(deudor.telefono || '');
@@ -795,6 +798,43 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Selector de Layout: Split View vs Tabla */}
+                        <div style={{
+                            display: 'inline-flex', padding: '3px', background: '#F1F5F9',
+                            borderRadius: '10px', border: '1px solid #E2E8F0', marginRight: '4px'
+                        }}>
+                            <button
+                                onClick={() => setLayoutMode('split')}
+                                title="Vista Dividida: lista y ficha en vivo simultáneas"
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.75rem', fontWeight: layoutMode === 'split' ? 800 : 600,
+                                    background: layoutMode === 'split' ? '#FFFFFF' : 'transparent',
+                                    color: layoutMode === 'split' ? '#0D3B66' : '#64748B',
+                                    boxShadow: layoutMode === 'split' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    cursor: 'pointer', transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <Columns size={13} /> Split View
+                            </button>
+                            <button
+                                onClick={() => setLayoutMode('table')}
+                                title="Vista tradicional: tabla ancha completa"
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '5px',
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.75rem', fontWeight: layoutMode === 'table' ? 800 : 600,
+                                    background: layoutMode === 'table' ? '#FFFFFF' : 'transparent',
+                                    color: layoutMode === 'table' ? '#0D3B66' : '#64748B',
+                                    boxShadow: layoutMode === 'table' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    cursor: 'pointer', transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <Table size={13} /> Tabla
+                            </button>
+                        </div>
+
                         <button onClick={exportToExcel} style={{ ...st.btnSmall, background: '#16A34A', color: '#fff', border: 'none' }} disabled={!deudores.length}>
                             <Download size={14} /> Excel
                         </button>
@@ -1357,121 +1397,10 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <h3 style={{ margin: '12px 0 4px', color: '#475569' }}>Sin deudores registrados</h3>
                         <p style={{ color: '#94A3B8', fontSize: '0.9rem' }}>Importá el Excel de deudas desde SALUS para comenzar.</p>
                     </div>
+                ) : layoutMode === 'split' ? (
+                    renderSplitView()
                 ) : (
-                    <div style={st.tableWrap}>
-                        <table style={st.table}>
-                            <thead>
-                                <tr>
-                                    <th style={st.th}>Paciente</th>
-                                    <th style={{ ...st.th, width: '90px' }}>NHC</th>
-                                    <th style={{ ...st.th, width: '110px', cursor: 'pointer', userSelect: 'none' }}
-                                        onClick={() => {
-                                            if (sortBy === 'fecha_ultima_factura') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
-                                            else { setSortBy('fecha_ultima_factura'); setSortDir('desc'); }
-                                        }}
-                                    >
-                                        Fecha {sortBy === 'fecha_ultima_factura' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
-                                    </th>
-                                    <th style={{ ...st.th, width: '130px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
-                                        onClick={() => {
-                                            if (sortBy === 'deuda_total') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
-                                            else { setSortBy('deuda_total'); setSortDir('desc'); }
-                                        }}
-                                    >
-                                        Deuda {sortBy === 'deuda_total' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
-                                    </th>
-                                    <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
-                                    <th style={{ ...st.th, width: '120px' }}>Cobertura</th>
-                                    <th style={{ ...st.th, width: '155px' }}>Categoría</th>
-                                    <th style={{ ...st.th, width: '120px' }}>Responsable</th>
-                                    <th style={{ ...st.th, width: '120px' }}>Teléfono</th>
-                                    <th style={{ ...st.th, width: '80px', textAlign: 'center' }}>Contacto</th>
-                                    <th style={{ ...st.th, width: '36px' }}></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {deudores.map(d => {
-                                    const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
-                                    return (
-                                        <tr key={d.id} style={st.tr} onClick={() => openDetail(d)}
-                                            onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <td style={st.td}>
-                                                <span style={{ fontWeight: 700, color: '#0D3B66', fontSize: '0.85rem' }}>{d.nombre}</span>
-                                            </td>
-                                            <td style={{ ...st.td, fontFamily: 'monospace', fontSize: '0.78rem', color: '#64748B' }}>{d.nhc}</td>
-                                            <td style={{ ...st.td, fontSize: '0.75rem', color: '#475569' }}>
-                                                {d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
-                                            </td>
-                                            <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#D97706', fontSize: '0.88rem' }}>
-                                                {formatMoney(d.deuda_total)}
-                                            </td>
-                                            <td style={{ ...st.td, textAlign: 'center', fontSize: '0.82rem', color: '#475569' }}>{d.cantidad_facturas}</td>
-                                            <td style={{ ...st.td, fontSize: '0.72rem', color: '#64748B' }}>
-                                                {d.obra_social ? (
-                                                    <span style={{ padding: '2px 8px', borderRadius: '10px', background: '#EFF6FF', color: '#2563EB', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                                        {d.obra_social}
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>
-                                                )}
-                                            </td>
-                                            <td style={st.td}>
-                                                <span style={{
-                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                    padding: '4px 12px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
-                                                    background: cat.bg, color: cat.color, border: `1px solid ${cat.color}30`,
-                                                    whiteSpace: 'nowrap',
-                                                }}>
-                                                    {cat.icon} {cat.label}
-                                                </span>
-                                            </td>
-                                            <td style={st.td}>
-                                                {(() => {
-                                                    const rInfo = responsablesMap[d.nombre];
-                                                    if (!rInfo) return <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>;
-                                                    return (
-                                                        <span style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: '3px 10px', borderRadius: '16px', fontSize: '0.7rem', fontWeight: 600,
-                                                            background: rInfo.isOverride ? '#DCFCE7' : '#DBEAFE',
-                                                            color: rInfo.isOverride ? '#15803D' : '#1D4ED8',
-                                                            border: `1px solid ${rInfo.isOverride ? '#BBF7D0' : '#BFDBFE'}`,
-                                                            whiteSpace: 'nowrap', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis',
-                                                        }}>
-                                                            <UserCheck size={11} />
-                                                            {rInfo.responsable}
-                                                        </span>
-                                                    );
-                                                })()}
-                                            </td>
-                                            <td style={{ ...st.td, fontSize: '0.78rem', color: d.telefono_invalido ? '#EF4444' : (d.telefono ? '#16A34A' : '#CBD5E1') }}>
-                                                {d.telefono ? (
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        {d.telefono_invalido && <AlertTriangle size={12} />}
-                                                        {d.telefono_invalido ? d.telefono : `···${d.telefono.slice(-4)}`}
-                                                    </span>
-                                                ) : 'Sin teléfono'}
-                                            </td>
-                                            <td style={{ ...st.td, fontSize: '0.75rem', textAlign: 'center' }}>
-                                                {d.ultimo_contacto_at ? (
-                                                    <span style={{ color: '#3B82F6', fontWeight: 600 }}>
-                                                        {timeAgo(d.ultimo_contacto_at)}
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: '#CBD5E1' }}>—</span>
-                                                )}
-                                            </td>
-                                            <td style={st.td}>
-                                                <ChevronRight size={16} style={{ color: '#94A3B8' }} />
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                    renderTableView()
                 )}
 
                 <style>{`
@@ -1482,8 +1411,341 @@ export default function DeudasPanel({ addToast, currentUser }) {
         );
     }
 
+    // ─── VISTA: TABLA CLÁSICA (COMPLETA) ───
+    function renderTableView() {
+        return (
+            <div style={st.tableWrap}>
+                <table style={st.table}>
+                    <thead>
+                        <tr>
+                            <th style={st.th}>Paciente</th>
+                            <th style={{ ...st.th, width: '90px' }}>NHC</th>
+                            <th style={{ ...st.th, width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                                onClick={() => {
+                                    if (sortBy === 'fecha_ultima_factura') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
+                                    else { setSortBy('fecha_ultima_factura'); setSortDir('desc'); }
+                                }}
+                            >
+                                Fecha {sortBy === 'fecha_ultima_factura' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
+                            </th>
+                            <th style={{ ...st.th, width: '130px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                                onClick={() => {
+                                    if (sortBy === 'deuda_total') setSortDir(p => p === 'desc' ? 'asc' : 'desc');
+                                    else { setSortBy('deuda_total'); setSortDir('desc'); }
+                                }}
+                            >
+                                Deuda {sortBy === 'deuda_total' ? (sortDir === 'desc' ? '▼' : '▲') : ''}
+                            </th>
+                            <th style={{ ...st.th, width: '50px', textAlign: 'center' }}>Fact.</th>
+                            <th style={{ ...st.th, width: '120px' }}>Cobertura</th>
+                            <th style={{ ...st.th, width: '155px' }}>Categoría</th>
+                            <th style={{ ...st.th, width: '120px' }}>Responsable</th>
+                            <th style={{ ...st.th, width: '120px' }}>Teléfono</th>
+                            <th style={{ ...st.th, width: '80px', textAlign: 'center' }}>Contacto</th>
+                            <th style={{ ...st.th, width: '36px' }}></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {deudores.map(d => {
+                            const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+                            return (
+                                <tr key={d.id} style={st.tr} onClick={() => openDetail(d, false)}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <td style={st.td}>
+                                        <span style={{ fontWeight: 700, color: '#0D3B66', fontSize: '0.85rem' }}>{d.nombre}</span>
+                                    </td>
+                                    <td style={{ ...st.td, fontFamily: 'monospace', fontSize: '0.78rem', color: '#64748B' }}>{d.nhc}</td>
+                                    <td style={{ ...st.td, fontSize: '0.75rem', color: '#475569' }}>
+                                        {d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+                                    </td>
+                                    <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#D97706', fontSize: '0.88rem' }}>
+                                        {formatMoney(d.deuda_total)}
+                                    </td>
+                                    <td style={{ ...st.td, textAlign: 'center', fontSize: '0.82rem', color: '#475569' }}>{d.cantidad_facturas}</td>
+                                    <td style={{ ...st.td, fontSize: '0.72rem', color: '#64748B' }}>
+                                        {d.obra_social ? (
+                                            <span style={{ padding: '2px 8px', borderRadius: '10px', background: '#EFF6FF', color: '#2563EB', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                {d.obra_social}
+                                            </span>
+                                        ) : (
+                                            <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>
+                                        )}
+                                    </td>
+                                    <td style={st.td}>
+                                        <span style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                            padding: '4px 12px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
+                                            background: cat.bg, color: cat.color, border: `1px solid ${cat.color}30`,
+                                            whiteSpace: 'nowrap',
+                                        }}>
+                                            {cat.icon} {cat.label}
+                                        </span>
+                                    </td>
+                                    <td style={st.td}>
+                                        {(() => {
+                                            const rInfo = responsablesMap[d.nombre];
+                                            if (!rInfo) return <span style={{ color: '#CBD5E1', fontSize: '0.72rem' }}>—</span>;
+                                            return (
+                                                <span style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                    padding: '3px 10px', borderRadius: '16px', fontSize: '0.7rem', fontWeight: 600,
+                                                    background: rInfo.isOverride ? '#DCFCE7' : '#DBEAFE',
+                                                    color: rInfo.isOverride ? '#15803D' : '#1D4ED8',
+                                                    border: `1px solid ${rInfo.isOverride ? '#BBF7D0' : '#BFDBFE'}`,
+                                                    whiteSpace: 'nowrap', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis',
+                                                }}>
+                                                    <UserCheck size={11} />
+                                                    {rInfo.responsable}
+                                                </span>
+                                            );
+                                        })()}
+                                    </td>
+                                    <td style={{ ...st.td, fontSize: '0.78rem', color: d.telefono_invalido ? '#EF4444' : (d.telefono ? '#16A34A' : '#CBD5E1') }}>
+                                        {d.telefono ? (
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                {d.telefono_invalido && <AlertTriangle size={12} />}
+                                                {d.telefono_invalido ? d.telefono : `···${d.telefono.slice(-4)}`}
+                                            </span>
+                                        ) : 'Sin teléfono'}
+                                    </td>
+                                    <td style={{ ...st.td, fontSize: '0.75rem', textAlign: 'center' }}>
+                                        {d.ultimo_contacto_at ? (
+                                            <span style={{ color: '#3B82F6', fontWeight: 600 }}>
+                                                {timeAgo(d.ultimo_contacto_at)}
+                                            </span>
+                                        ) : (
+                                            <span style={{ color: '#CBD5E1' }}>—</span>
+                                        )}
+                                    </td>
+                                    <td style={st.td}>
+                                        <ChevronRight size={16} style={{ color: '#94A3B8' }} />
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
+
+    // ─── VISTA: MASTER-DETAIL / SPLIT VIEW (OPCIÓN 2) ───
+    function renderSplitView() {
+        return (
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(330px, 370px) 1fr',
+                gap: '16px',
+                height: 'calc(100vh - 270px)',
+                minHeight: '620px',
+                alignItems: 'stretch',
+            }}>
+                {/* Panel Izquierdo: Lista scrolleable de Pacientes Deudores */}
+                <div style={{
+                    display: 'flex', flexDirection: 'column',
+                    background: '#FFFFFF', borderRadius: '14px',
+                    border: '1px solid #E2E8F0', overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                }}>
+                    {/* Encabezado del feed */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Users size={15} style={{ color: '#0D3B66' }} />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0D3B66' }}>
+                                Deudores ({deudores.length})
+                            </span>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                            Orden: {sortBy === 'deuda_total' ? 'Monto' : 'Fecha'}
+                        </span>
+                    </div>
+
+                    {/* Contenedor scrolleable de cards */}
+                    <div style={{
+                        flex: 1, overflowY: 'auto', padding: '10px',
+                        display: 'flex', flexDirection: 'column', gap: '8px',
+                    }}>
+                        {deudores.map(d => {
+                            const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+                            const isSelected = selectedDeudor?.id === d.id;
+                            const initials = (d.nombre || '?')
+                                .split(' ')
+                                .filter(Boolean)
+                                .slice(0, 2)
+                                .map(n => n[0])
+                                .join('')
+                                .toUpperCase();
+
+                            return (
+                                <div
+                                    key={d.id}
+                                    onClick={() => openDetail(d, true)}
+                                    style={{
+                                        padding: '12px 14px',
+                                        borderRadius: '10px',
+                                        background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                                        border: isSelected ? '1.5px solid #2563EB' : '1px solid #E2E8F0',
+                                        borderLeft: isSelected ? '4px solid #2563EB' : '1px solid #E2E8F0',
+                                        boxShadow: isSelected ? '0 4px 12px rgba(37,99,235,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                        display: 'flex', flexDirection: 'column', gap: '8px',
+                                    }}
+                                    onMouseEnter={e => {
+                                        if (!isSelected) {
+                                            e.currentTarget.style.background = '#F8FAFC';
+                                            e.currentTarget.style.borderColor = '#CBD5E1';
+                                        }
+                                    }}
+                                    onMouseLeave={e => {
+                                        if (!isSelected) {
+                                            e.currentTarget.style.background = '#FFFFFF';
+                                            e.currentTarget.style.borderColor = '#E2E8F0';
+                                        }
+                                    }}
+                                >
+                                    {/* Fila 1: Avatar + Nombre + Categoría */}
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                            <div style={{
+                                                width: '32px', height: '32px', borderRadius: '50%',
+                                                background: isSelected ? '#DBEAFE' : '#F1F5F9',
+                                                color: isSelected ? '#1E40AF' : '#0D3B66',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: '0.74rem', fontWeight: 800, flexShrink: 0,
+                                            }}>
+                                                {initials}
+                                            </div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{
+                                                    fontSize: '0.84rem', fontWeight: 700,
+                                                    color: isSelected ? '#1E40AF' : '#0D3B66',
+                                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                                }}>
+                                                    {d.nombre}
+                                                </div>
+                                                <div style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace' }}>
+                                                    NHC: {d.nhc}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <span style={{
+                                            padding: '2px 8px', borderRadius: '12px',
+                                            fontSize: '0.65rem', fontWeight: 700,
+                                            background: cat.bg, color: cat.color,
+                                            border: `1px solid ${cat.color}30`,
+                                            whiteSpace: 'nowrap', flexShrink: 0,
+                                        }}>
+                                            {cat.icon} {cat.label}
+                                        </span>
+                                    </div>
+
+                                    {/* Fila 2: Monto + Obra Social */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#D97706' }}>
+                                            {formatMoney(d.deuda_total)}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.68rem', color: '#64748B', background: '#F1F5F9', padding: '2px 6px', borderRadius: '6px' }}>
+                                                {d.cantidad_facturas} fact.
+                                            </span>
+                                            {d.obra_social && (
+                                                <span style={{
+                                                    fontSize: '0.66rem', fontWeight: 600, color: '#2563EB',
+                                                    background: '#EFF6FF', padding: '2px 6px', borderRadius: '6px',
+                                                    maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                                                }}>
+                                                    {d.obra_social}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Fila 3: Teléfono y Responsable */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748B', paddingTop: '4px', borderTop: '1px solid #F1F5F9' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <Phone size={11} style={{ color: d.telefono ? '#16A34A' : '#94A3B8' }} />
+                                            <span style={{ color: d.telefono_invalido ? '#EF4444' : (d.telefono ? '#334155' : '#94A3B8') }}>
+                                                {d.telefono ? `···${d.telefono.slice(-4)}` : 'Sin tel'}
+                                            </span>
+                                        </div>
+                                        {responsablesMap[d.nombre] ? (
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#1D4ED8', fontWeight: 600 }}>
+                                                <UserCheck size={11} /> {responsablesMap[d.nombre].responsable}
+                                            </span>
+                                        ) : d.ultimo_contacto_at ? (
+                                            <span style={{ color: '#3B82F6', fontWeight: 500 }}>
+                                                {timeAgo(d.ultimo_contacto_at)}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Panel Derecho: Ficha Detallada en Vivo o Placeholder */}
+                <div style={{
+                    background: '#FFFFFF', borderRadius: '14px',
+                    border: '1px solid #E2E8F0', overflowY: 'auto',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                    display: 'flex', flexDirection: 'column',
+                }}>
+                    {selectedDeudor ? (
+                        renderDetail(true)
+                    ) : (
+                        <div style={{
+                            flex: 1, display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center',
+                            padding: '40px 24px', textAlign: 'center',
+                        }}>
+                            <div style={{
+                                width: '64px', height: '64px', borderRadius: '50%',
+                                background: '#EFF6FF', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center', marginBottom: '16px',
+                                border: '1px solid #BFDBFE'
+                            }}>
+                                <FileText size={32} style={{ color: '#2563EB' }} />
+                            </div>
+                            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 700, color: '#0D3B66' }}>
+                                Seleccioná un paciente para gestionar
+                            </h3>
+                            <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: '#64748B', maxWidth: '380px', lineHeight: 1.5 }}>
+                                Hacé clic en cualquiera de los pacientes del listado para inspeccionar su deuda consolidada de SALUS, registrar pagos, activar planes de cuotas y chatear por WhatsApp en tiempo real.
+                            </p>
+                            {deudores.length > 0 && (
+                                <button
+                                    onClick={() => openDetail(deudores[0], true)}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '9px 18px', borderRadius: '8px',
+                                        background: '#2563EB', color: '#FFFFFF',
+                                        border: 'none', fontSize: '0.82rem', fontWeight: 700,
+                                        cursor: 'pointer', boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+                                        transition: 'all 0.15s'
+                                    }}
+                                >
+                                    Gestionar primer paciente ({deudores[0]?.nombre?.split(' ')?.[0]})
+                                    <ChevronRight size={15} />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     // ─── VISTA: DETALLE DEL DEUDOR ───
-    function renderDetail() {
+    function renderDetail(isSplit = false) {
+        if (!selectedDeudor) return null;
         const cat = CATEGORIAS_DEUDOR[selectedDeudor.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
 
         // ─── Cálculos virtuales de cobro ───
@@ -1496,14 +1758,74 @@ export default function DeudasPanel({ addToast, currentUser }) {
         const saldoPendienteReal = Math.max(0, totalDeudaSalus - totalPagadoVirtual);
 
         return (
-            <div style={{ padding: '20px 28px' }}>
-                {/* Back button */}
-                <button onClick={goBack} style={st.backBtn}>
-                    <ArrowLeft size={16} /> Volver al listado
-                </button>
+            <div style={{
+                padding: isSplit ? '16px 20px' : '20px 28px',
+                height: isSplit ? '100%' : 'auto',
+                boxSizing: 'border-box',
+            }}>
+                {isSplit ? (
+                    /* Barra superior de control para Split View */
+                    <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 14px', marginBottom: '14px', background: '#F8FAFC',
+                        borderRadius: '10px', border: '1px solid #E2E8F0',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                                width: 8, height: 8, borderRadius: '50%',
+                                background: '#10B981', display: 'inline-block',
+                                boxShadow: '0 0 0 2px #A7F3D0'
+                            }} />
+                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0D3B66', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Ficha de Gestión en Vivo
+                            </span>
+                            {detailLoading && (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#2563EB', fontWeight: 600, marginLeft: '8px' }}>
+                                    <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Cargando datos...
+                                </span>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                                onClick={() => setView(VIEWS.DETAIL)}
+                                title="Abrir en pantalla completa individual"
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '5px 10px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#334155', fontSize: '0.72rem',
+                                    fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
+                                }}
+                            >
+                                <Maximize2 size={12} /> Pantalla Completa
+                            </button>
+                            <button
+                                onClick={() => setSelectedDeudor(null)}
+                                title="Cerrar ficha"
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    width: '26px', height: '26px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF', color: '#64748B', cursor: 'pointer', transition: 'all 0.15s'
+                                }}
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    /* Back button clásico */
+                    <button onClick={goBack} style={st.backBtn}>
+                        <ArrowLeft size={16} /> Volver al listado
+                    </button>
+                )}
 
                 {/* Patient Header */}
-                <div style={{ ...st.detailHeader, borderColor: cat.color + '30' }}>
+                <div style={{
+                    ...st.detailHeader,
+                    borderColor: cat.color + '30',
+                    padding: isSplit ? '16px' : '24px',
+                    flexWrap: 'wrap',
+                    gap: '14px',
+                }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
                         <div style={{
                             ...st.iconBadge, width: '56px', height: '56px',
@@ -1636,7 +1958,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 </div>
 
                 {/* Grid: Info + Seguimiento */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isSplit ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr 1fr',
+                    gap: '16px',
+                    marginTop: '16px'
+                }}>
                     {/* LEFT: Teléfono + Categoría + Facturas */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {/* Teléfono */}
