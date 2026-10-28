@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_557', selectedPeriodoProp }) {
+export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_557', selectedPeriodoProp, onOpenEpicrisisIa }) {
     const [subTab, setSubTab] = useState(initialSubTab); // 'admisiones_557' | 'seguimiento' | 'traumatologia' | 'interconsultas'
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -1050,28 +1050,55 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                                     </td>
 
                                                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedFicha557(r);
-                                                            }}
-                                                            style={{
-                                                                padding: '5px 10px',
-                                                                borderRadius: '6px',
-                                                                border: '1px solid #BFDBFE',
-                                                                background: '#EFF6FF',
-                                                                color: '#1E40AF',
-                                                                fontSize: '0.73rem',
-                                                                fontWeight: 700,
-                                                                cursor: 'pointer',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: '4px'
-                                                            }}
-                                                        >
-                                                            <Eye size={13} /> Ver 557
-                                                        </button>
+                                                        <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setSelectedFicha557(r);
+                                                                }}
+                                                                style={{
+                                                                    padding: '5px 9px',
+                                                                    borderRadius: '6px',
+                                                                    border: '1px solid #BFDBFE',
+                                                                    background: '#EFF6FF',
+                                                                    color: '#1E40AF',
+                                                                    fontSize: '0.72rem',
+                                                                    fontWeight: 700,
+                                                                    cursor: 'pointer',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}
+                                                            >
+                                                                <Eye size={13} /> Ver 557
+                                                            </button>
+                                                            {onOpenEpicrisisIa && r.nhc && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onOpenEpicrisisIa(r.nhc);
+                                                                    }}
+                                                                    title="Abrir en Agente IA de Epicrisis y Copiloto HC"
+                                                                    style={{
+                                                                        padding: '5px 8px',
+                                                                        borderRadius: '6px',
+                                                                        border: '1px solid #C7D2FE',
+                                                                        background: '#EEF2FF',
+                                                                        color: '#4338CA',
+                                                                        fontSize: '0.72rem',
+                                                                        fontWeight: 800,
+                                                                        cursor: 'pointer',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px'
+                                                                    }}
+                                                                >
+                                                                    <Sparkles size={12} /> IA
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1410,10 +1437,10 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <Users size={16} color="#1E40AF" />
-                                    Plantel de Médicas Clínicas Auditadas (Clic para filtrar sus Admisiones 557)
+                                    Plantel de Médicas Clínicas en Piso (Excluye Guardia, UCI, Hab. 227 Intermedio y Pediatría)
                                 </h4>
                                 <span style={{ fontSize: '0.76rem', color: '#64748B' }}>
-                                    Registro individual de admisiones clínicas (Protocolo 557) y notas de evolución documentadas en internado
+                                    Contabiliza exclusivamente evoluciones diarias, admisiones 557, altas y epicrisis en camas de Piso General (clic para filtrar)
                                 </span>
                             </div>
                             <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
@@ -1427,11 +1454,12 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             gap: '12px'
                         }}>
                             {[
+                                { key: 'Garcia, Paola', filterKey: 'paola_carga', name: 'Dra. Garcia, Paola', role: 'Jefa Guardia & Clínica', badge: 'Piso & Pase' },
+                                { key: 'Benavidez, Daiana', filterKey: 'BENAVIDEZ', name: 'Dra. Benavidez, Daiana', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
                                 { key: 'Torres, Ailen', filterKey: 'TORRES MASA', name: 'Dra. Torres, Ailen', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
                                 { key: 'Padilla, Cynthia', filterKey: 'PADILLA ROMAN', name: 'Dra. Padilla, Cynthia', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
-                                { key: 'Benavidez, Daiana', filterKey: 'BENAVIDEZ', name: 'Dra. Benavidez, Daiana', role: 'Médica Clínica', badge: 'Seguimiento Piso' },
-                                { key: 'Garcia, Paola', filterKey: 'paola_carga', name: 'Dra. Garcia, Paola', role: 'Jefa Guardia & Clínica', badge: 'Guardia & Pase' },
                                 { key: 'Verni, Giuliana', filterKey: 'VERNI', name: 'Dra. Verni, Giuliana', role: 'Médica Clínica', badge: 'Planta Médica' },
+                                { key: 'Gomez, Romina', filterKey: 'GOMEZ, ROMINA', name: 'Dra. Gómez, Romina', role: 'Médica Clínica', badge: 'Planta & Guardia' },
                                 { key: 'Jofre, Araceli', filterKey: 'JOFRE', name: 'Dra. Jofre, Araceli', role: 'Médica Clínica', badge: 'Guardia & Pase' },
                                 { key: 'Maldonado, Antonella', filterKey: 'MALDONADO', name: 'Dra. Maldonado, Antonella', role: 'Médica Clínica', badge: 'Planta Médica' },
                             ].map((doc) => {

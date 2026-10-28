@@ -207,6 +207,7 @@ export async function syncGuardiaInternado() {
                     OR c.[Nombre cirugía] LIKE '%LIGAMENTO%'
                 )
                 AND c.[Fecha programada] >= DATEADD(DAY, -60, GETDATE())
+                AND ISNULL(c.[Cirujano], '') NOT LIKE '%CHAPARRO%'
             ),
             AdmisionesRecientes AS (
                 SELECT 
@@ -223,8 +224,15 @@ export async function syncGuardiaInternado() {
                     LTRIM(RTRIM(a.[Cliente])) AS obra_social,
                     CASE WHEN a.[Fecha alta] IS NULL THEN 'Activo en Piso' ELSE 'Alta Otorgada' END AS estado_internacion
                 FROM [SALUS].[dbo].[TABLEAU_Admisiones] a
-                WHERE a.[Fecha ingreso] >= DATEADD(DAY, -60, GETDATE())
-                   OR a.[Fecha alta] IS NULL
+                WHERE (a.[Fecha ingreso] >= DATEADD(DAY, -60, GETDATE()) OR a.[Fecha alta] IS NULL)
+                  -- Regla Dra. Paola García: Solo camas de Piso (excluir Chaparro, UCI, Terapia Intermedia hab 227/222-229/207, Pediatría 201-203 y Boxes)
+                  AND ISNULL(a.[Doctor], '') NOT LIKE '%CHAPARRO%'
+                  AND ISNULL(a.[Servicio], '') NOT IN ('UCI', 'TERAPIA INTERMEDIA', 'TERAPIA PEDIÁTRICA', 'PEDIATRÍA', 'NEONATOLOGÍA', 'CHEQUEO', 'HOSPITAL DE DIA', 'SHOCK ROOM')
+                  AND ISNULL(a.[Habitación], '') NOT LIKE '22[2-9]%'
+                  AND ISNULL(a.[Habitación], '') NOT LIKE '20[1-3]%'
+                  AND ISNULL(a.[Habitación], '') NOT LIKE '207%'
+                  AND ISNULL(a.[Habitación], '') NOT LIKE 'BOX%'
+                  AND ISNULL(a.[Habitación], '') NOT LIKE 'CUNA%'
             )
             SELECT 
                 adm.id_admision,
