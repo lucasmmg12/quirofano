@@ -585,58 +585,6 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
             {/* ─── TAB NUEVA PRINCIPAL: ADMISIÓN CLÍNICA MÉDICA (PROTOCOLO SALUS 557) ─── */}
             {subTab === 'admisiones_557' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    
-                    {/* Banner Técnico Explicativo del Impacto en SALUS */}
-                    <div style={{
-                        background: 'linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 100%)',
-                        borderRadius: '10px',
-                        border: '1px solid #BFDBFE',
-                        padding: '14px 18px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: '12px'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                                width: '40px',
-                                height: '40px',
-                                borderRadius: '10px',
-                                background: '#1E40AF',
-                                color: '#FFFFFF',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 800
-                            }}>
-                                <ClipboardList size={20} />
-                            </div>
-                            <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
-                                        Trazabilidad Nominal de Internados — Formulario "Admisión Clínica" (Protocolo SALUS 557)
-                                    </h3>
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#DBEAFE', color: '#1E40AF', padding: '2px 8px', borderRadius: '6px' }}>
-                                        idQSOFT: 4ajvwqtu22 · (INT) ADMISION MEDICA CLINICA
-                                    </span>
-                                </div>
-                                <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: '#475569' }}>
-                                    Cruce 1 a 1 entre <strong>VLISE_Visitas</strong>, <strong>PR InstRespVisitaPaciente</strong> (44 campos clínicos en 3 grupos) y <strong>TABLEAU_Admisiones</strong> (<code>IdHospitalizacion = idAdmision</code>).
-                                </p>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.72rem', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '6px', color: '#334155', fontWeight: 700 }}>
-                                👩‍⚕️ Dra. Paola García (Cabecera): <strong style={{ color: '#1E40AF' }}>{data.stats?.paola_garcia_cabecera || 0}</strong>
-                            </span>
-                            <span style={{ fontSize: '0.72rem', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '4px 10px', borderRadius: '6px', color: '#334155', fontWeight: 700 }}>
-                                ✍️ Cargadas por su usuario: <strong style={{ color: '#047857' }}>{data.stats?.paola_garcia_cargadas || 0}</strong>
-                            </span>
-                        </div>
-                    </div>
-
                     {/* KPI Cards de Protocolo 557 */}
                     <div style={{
                         display: 'grid',
@@ -775,31 +723,6 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                         gap: '12px'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                            {/* Selector de Período */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>Mes:</span>
-                                <select
-                                    value={admPeriodoFilter}
-                                    onChange={(e) => setAdmPeriodoFilter(e.target.value)}
-                                    style={{
-                                        padding: '6px 10px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #CBD5E1',
-                                        fontSize: '0.78rem',
-                                        fontWeight: 700,
-                                        color: '#1E293B',
-                                        background: '#F8FAFC',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <option value="todos">Todos (Jul–Oct 2026)</option>
-                                    <option value="2026-10">Octubre 2026</option>
-                                    <option value="2026-09">Septiembre 2026</option>
-                                    <option value="2026-08">Agosto 2026</option>
-                                    <option value="2026-07">Julio 2026</option>
-                                </select>
-                            </div>
-
                             {/* Selector de Área / Estado */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>Sector:</span>
