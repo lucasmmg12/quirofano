@@ -879,8 +879,7 @@ export default function GuardiaClinicaDashboard({
                     { id: 'tiempos', label: 'Tiempos de Espera & Extremos', icon: Clock },
                     { id: 'resolucion', label: 'Resolución, Destinos & Quirófano', icon: Activity },
                     { id: 'calidad', label: 'Calidad & Seguridad (72 Horas)', icon: ShieldCheck },
-                    { id: 'internado', label: 'Internado & Piso', icon: Bed },
-                    { id: 'epicrisis_ia', label: '🧠 Agente IA Epicrisis & Copiloto HC', icon: Sparkles }
+                    { id: 'internado', label: 'Internado & Piso', icon: Bed }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeDashboardTab === tab.id;
@@ -921,10 +920,6 @@ export default function GuardiaClinicaDashboard({
                     selectedPeriodoProp={selectedPeriodo}
                     fechaDesde={fechaDesde}
                     fechaHasta={fechaHasta}
-                    onOpenEpicrisisIa={(nhc) => {
-                        setEpicrisisTargetNhc(nhc);
-                        setActiveDashboardTab('epicrisis_ia');
-                    }}
                 />
             )}
 
