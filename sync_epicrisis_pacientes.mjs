@@ -92,15 +92,23 @@ async function syncEpicrisisPeriod(pool, periodo, desde, hasta) {
 async function run() {
     const pool = await sql.connect(SQL_CONFIG);
     try {
-        await syncEpicrisisPeriod(pool, '2026-09', '2026-09-01', '2026-09-30');
-        await syncEpicrisisPeriod(pool, '2026-08', '2026-08-01', '2026-08-31');
-        await syncEpicrisisPeriod(pool, '2026-07', '2026-07-01', '2026-07-31');
-        await syncEpicrisisPeriod(pool, '2026-06', '2026-06-01', '2026-06-30');
-        await syncEpicrisisPeriod(pool, '2026-05', '2026-05-01', '2026-05-31');
-        await syncEpicrisisPeriod(pool, '2026-04', '2026-04-01', '2026-04-30');
-        await syncEpicrisisPeriod(pool, '2026-03', '2026-03-01', '2026-03-31');
-        await syncEpicrisisPeriod(pool, '2026-02', '2026-02-01', '2026-02-28');
-        await syncEpicrisisPeriod(pool, '2026-01', '2026-01-01', '2026-01-31');
+        const onlyPeriodo = process.argv[2];
+        const all = [
+            ['2026-10', '2026-10-01', '2026-10-31'],
+            ['2026-09', '2026-09-01', '2026-09-30'],
+            ['2026-08', '2026-08-01', '2026-08-31'],
+            ['2026-07', '2026-07-01', '2026-07-31'],
+            ['2026-06', '2026-06-01', '2026-06-30'],
+            ['2026-05', '2026-05-01', '2026-05-31'],
+            ['2026-04', '2026-04-01', '2026-04-30'],
+            ['2026-03', '2026-03-01', '2026-03-31'],
+            ['2026-02', '2026-02-01', '2026-02-28'],
+            ['2026-01', '2026-01-01', '2026-01-31']
+        ];
+        const targets = onlyPeriodo ? all.filter(x => x[0] === onlyPeriodo) : all;
+        for (const [p, d, h] of targets) {
+            await syncEpicrisisPeriod(pool, p, d, h);
+        }
     } finally {
         await pool.close();
     }

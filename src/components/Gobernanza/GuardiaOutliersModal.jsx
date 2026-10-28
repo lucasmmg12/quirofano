@@ -53,7 +53,10 @@ export default function GuardiaOutliersModal({
 
         const fetchData = async () => {
             try {
-                const targetPeriodo = periodo === '2026-ANUAL' ? '2026-09' : periodo;
+                const rawPer = String(periodo || '2026-10').trim();
+                const targetPeriodo = rawPer === '2026-ANUAL'
+                    ? '2026-10'
+                    : (/^\d{4}-\d{2}/.test(rawPer) ? rawPer.slice(0, 7) : '2026-10');
 
                 // Función de paginación automática para evitar el límite de 1.000 filas por request de Supabase/PostgREST
                 const fetchAllRows = async (tableName, applyFilters) => {

@@ -150,6 +150,7 @@ async function main() {
     const pool = await sql.connect(SQL_CONFIG);
 
     const periods = [
+        { p: '2026-10', d: '2026-10-01', h: '2026-10-31' },
         { p: '2026-09', d: '2026-09-01', h: '2026-09-30' },
         { p: '2026-08', d: '2026-08-01', h: '2026-08-31' },
         { p: '2026-07', d: '2026-07-01', h: '2026-07-31' },
@@ -161,7 +162,10 @@ async function main() {
         { p: '2026-01', d: '2026-01-01', h: '2026-01-31' }
     ];
 
-    for (const item of periods) {
+    const onlyPeriodo = process.argv[2];
+    const targetPeriods = onlyPeriodo ? periods.filter(x => x.p === onlyPeriodo) : periods;
+
+    for (const item of targetPeriods) {
         await syncPeriod(pool, item.p, item.d, item.h);
     }
 
