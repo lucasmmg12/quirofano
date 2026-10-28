@@ -146,10 +146,10 @@ export default function EpidemiologiaDashboard({
             if (filtroGrupoEtario === 'adulto' && !c.grupoEtario.includes('Adulto')) return false;
             if (searchTerm && searchTerm.trim()) {
                 const s = searchTerm.toLowerCase().trim();
-                const matchNom = c.paciente.toLowerCase().includes(s);
-                const matchDni = c.nhc.includes(s);
-                const matchCie = c.cie10.toLowerCase().includes(s);
-                const matchMed = c.medico.toLowerCase().includes(s);
+                const matchNom = String(c.paciente || '').toLowerCase().includes(s);
+                const matchDni = String(c.nhc || '').toLowerCase().includes(s);
+                const matchCie = String(c.cie10 || '').toLowerCase().includes(s);
+                const matchMed = String(c.medico || '').toLowerCase().includes(s);
                 if (!matchNom && !matchDni && !matchCie && !matchMed) return false;
             }
             return true;

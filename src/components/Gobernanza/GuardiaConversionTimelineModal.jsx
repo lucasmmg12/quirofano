@@ -163,9 +163,9 @@ export default function GuardiaConversionTimelineModal({
 
                             conversionList.push({
                                 id: c.id_visita || key,
-                                paciente: c.paciente,
-                                nhc: c.nhc || '-',
-                                dni: c.nif || '-',
+                                paciente: String(c.paciente || ''),
+                                nhc: String(c.nhc || '-'),
+                                dni: String(c.nif || '-'),
                                 cliente: c.cliente || 'Particular',
                                 fechaGuardia: c.fecha_visita,
                                 horaGuardia: c.hora_visita || '10:30',
@@ -252,13 +252,14 @@ export default function GuardiaConversionTimelineModal({
 
     // Filtrar casos por término de búsqueda y demora
     const filteredCases = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
         return cases.filter(c => {
-            const matchesSearch = !searchTerm.trim() || 
-                c.paciente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                c.procedimiento.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                c.cirujano.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                c.dni.includes(searchTerm.trim()) ||
-                c.nhc.includes(searchTerm.trim());
+            const matchesSearch = !q || 
+                String(c.paciente || '').toLowerCase().includes(q) ||
+                String(c.procedimiento || '').toLowerCase().includes(q) ||
+                String(c.cirujano || '').toLowerCase().includes(q) ||
+                String(c.dni || '').toLowerCase().includes(q) ||
+                String(c.nhc || '').toLowerCase().includes(q);
 
             if (!matchesSearch) return false;
 

@@ -117,11 +117,11 @@ export default function GuardiaInternadoPanel({ addToast }) {
             }
             if (traumaSearch.trim()) {
                 const q = traumaSearch.toLowerCase();
-                const matchName = item.paciente?.toLowerCase().includes(q);
-                const matchDni = item.dni?.includes(q);
-                const matchHab = item.habitacion?.toLowerCase().includes(q);
-                const matchDoc = item.cirujano_traumatologo?.toLowerCase().includes(q) || item.medico_cabecera?.toLowerCase().includes(q);
-                const matchCir = item.cirugia?.toLowerCase().includes(q);
+                const matchName = String(item.paciente || '').toLowerCase().includes(q);
+                const matchDni = String(item.dni || '').toLowerCase().includes(q) || String(item.nhc || '').toLowerCase().includes(q);
+                const matchHab = String(item.habitacion || '').toLowerCase().includes(q);
+                const matchDoc = String(item.cirujano_traumatologo || '').toLowerCase().includes(q) || String(item.medico_cabecera || '').toLowerCase().includes(q);
+                const matchCir = String(item.cirugia || '').toLowerCase().includes(q);
                 if (!matchName && !matchDni && !matchHab && !matchDoc && !matchCir) {
                     return false;
                 }
@@ -151,11 +151,11 @@ export default function GuardiaInternadoPanel({ addToast }) {
             // Búsqueda de texto
             if (interSearch.trim()) {
                 const q = interSearch.toLowerCase();
-                const matchName = item.paciente?.toLowerCase().includes(q);
-                const matchDni = item.dni?.includes(q);
-                const matchDoc = item.medico_actuante?.toLowerCase().includes(q);
-                const matchEsp = item.especialidad_medico?.toLowerCase().includes(q);
-                const matchHab = item.habitacion?.toLowerCase().includes(q);
+                const matchName = String(item.paciente || '').toLowerCase().includes(q);
+                const matchDni = String(item.dni || '').toLowerCase().includes(q) || String(item.nhc || '').toLowerCase().includes(q);
+                const matchDoc = String(item.medico_actuante || '').toLowerCase().includes(q);
+                const matchEsp = String(item.especialidad_medico || '').toLowerCase().includes(q);
+                const matchHab = String(item.habitacion || '').toLowerCase().includes(q);
                 if (!matchName && !matchDni && !matchDoc && !matchEsp && !matchHab) {
                     return false;
                 }

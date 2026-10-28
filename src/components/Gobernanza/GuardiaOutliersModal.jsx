@@ -364,17 +364,17 @@ export default function GuardiaOutliersModal({
                 // Filtro de búsqueda textual
                 if (searchTerm.trim()) {
                     const term = searchTerm.toLowerCase();
-                    const matchName = (r.paciente || '').toLowerCase().includes(term);
-                    const matchNhc = (r.nhc || '').toLowerCase().includes(term);
-                    const matchDni = (r.dni || '').toLowerCase().includes(term);
-                    const matchOs = (r.obra_social || '').toLowerCase().includes(term);
-                    const matchProc = (r.cirugia_procedimiento || '').toLowerCase().includes(term);
-                    const matchEsp = (r.especialidad || '').toLowerCase().includes(term);
-                    const matchCir = (r.cirujano || '').toLowerCase().includes(term);
-                    const matchObs = (r.observacion_enfermeria || '').toLowerCase().includes(term);
-                    const matchNivel = (r.nivel_triage || '').toLowerCase().includes(term);
-                    const matchDoc = (r.doctor || '').toLowerCase().includes(term);
-                    const matchHab = (r.habitacion || '').toLowerCase().includes(term);
+                    const matchName = String(r.paciente || '').toLowerCase().includes(term);
+                    const matchNhc = String(r.nhc || '').toLowerCase().includes(term);
+                    const matchDni = String(r.dni || '').toLowerCase().includes(term);
+                    const matchOs = String(r.obra_social || '').toLowerCase().includes(term);
+                    const matchProc = String(r.cirugia_procedimiento || '').toLowerCase().includes(term);
+                    const matchEsp = String(r.especialidad || '').toLowerCase().includes(term);
+                    const matchCir = String(r.cirujano || '').toLowerCase().includes(term);
+                    const matchObs = String(r.observacion_enfermeria || '').toLowerCase().includes(term);
+                    const matchNivel = String(r.nivel_triage || '').toLowerCase().includes(term);
+                    const matchDoc = String(r.doctor || '').toLowerCase().includes(term);
+                    const matchHab = String(r.habitacion || '').toLowerCase().includes(term);
                     if (!matchName && !matchNhc && !matchDni && !matchOs && !matchProc && !matchEsp && !matchCir && !matchObs && !matchNivel && !matchDoc && !matchHab) return false;
                 }
 
