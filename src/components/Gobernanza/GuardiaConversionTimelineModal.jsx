@@ -358,48 +358,12 @@ Destino Post-Qx: ${p.destinoPostQx}`;
                     flexShrink: 0
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{
-                            width: '46px',
-                            height: '46px',
-                            borderRadius: '12px',
-                            background: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 4px 10px rgba(37, 99, 235, 0.4)',
-                            flexShrink: 0
-                        }}>
-                            <Scissors size={24} color="#FFFFFF" />
-                        </div>
                         <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
                                     Trazabilidad Forense: Conversión de Guardia Clínica a Cirugía
                                 </h3>
-                                <span style={{
-                                    background: '#DBEAFE',
-                                    color: '#1E40AF',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 800,
-                                    padding: '2px 8px',
-                                    borderRadius: '10px'
-                                }}>
-                                    Ventana Estricta ≤ 48 hs
-                                </span>
-                                <span style={{
-                                    background: '#FEF3C7',
-                                    color: '#92400E',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 800,
-                                    padding: '2px 8px',
-                                    borderRadius: '10px'
-                                }}>
-                                    🛡️ Exclusivo Adultos (Sin Maternidad ni Gineco-Obstetricia)
-                                </span>
                             </div>
-                            <span style={{ fontSize: '0.76rem', opacity: 0.88, display: 'block', marginTop: '2px' }}>
-                                Cruce nominal VLISE_Visitas (Guardia Clínica) → TABLEAU_Cirugias • Excluye circuito independiente de Guardia Gineco-Obstétrica
-                            </span>
                         </div>
                     </div>
 
