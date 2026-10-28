@@ -420,17 +420,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <span>📋</span> Admisión Clínica Médica (Prot. 557)
-                            <span style={{
-                                background: subTab === 'admisiones_557' ? 'rgba(255,255,255,0.25)' : '#DBEAFE',
-                                color: subTab === 'admisiones_557' ? '#FFFFFF' : '#1E40AF',
-                                fontSize: '0.72rem',
-                                padding: '1px 7px',
-                                borderRadius: '10px',
-                                fontWeight: 800
-                            }}>
-                                {data.admisiones_clinicas?.length || 0} internados
-                            </span>
+                            <span>📋</span> Admisiones
                         </button>
 
                         <button
