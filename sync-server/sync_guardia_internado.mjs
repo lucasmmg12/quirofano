@@ -62,7 +62,7 @@ export async function syncGuardiaInternado() {
                     v.IdHospitalizacion AS id_hospitalizacion
                 FROM [SALUS].[dbo].[VLISE_Visitas] v
                 WHERE v.[Tipo Visita] = '(INT) ADMISION MEDICA CLINICA'
-                  AND v.[Fecha Visita] >= '2026-07-01'
+                  AND v.[Fecha Visita] >= '2026-01-01'
             ),
             RespuestasPivot AS (
                 SELECT 
@@ -206,7 +206,7 @@ export async function syncGuardiaInternado() {
                     OR c.[Nombre cirugía] LIKE '%RODILLA%'
                     OR c.[Nombre cirugía] LIKE '%LIGAMENTO%'
                 )
-                AND c.[Fecha programada] >= DATEADD(DAY, -60, GETDATE())
+                AND c.[Fecha programada] >= '2026-01-01'
                 AND ISNULL(c.[Cirujano], '') NOT LIKE '%CHAPARRO%'
             ),
             AdmisionesRecientes AS (
@@ -218,13 +218,14 @@ export async function syncGuardiaInternado() {
                     LTRIM(RTRIM(CAST(a.[NHC] AS VARCHAR(50)))) AS nhc,
                     LTRIM(RTRIM(a.[Habitación])) AS habitacion,
                     LTRIM(RTRIM(a.[Servicio])) AS servicio,
+                    CONVERT(VARCHAR(7), a.[Fecha ingreso], 120) AS periodo,
                     CONVERT(VARCHAR(10), a.[Fecha ingreso], 120) AS fecha_ingreso,
                     CONVERT(VARCHAR(10), a.[Fecha alta], 120) AS fecha_alta,
                     LTRIM(RTRIM(a.[Doctor])) AS medico_cabecera,
                     LTRIM(RTRIM(a.[Cliente])) AS obra_social,
                     CASE WHEN a.[Fecha alta] IS NULL THEN 'Activo en Piso' ELSE 'Alta Otorgada' END AS estado_internacion
                 FROM [SALUS].[dbo].[TABLEAU_Admisiones] a
-                WHERE (a.[Fecha ingreso] >= DATEADD(DAY, -60, GETDATE()) OR a.[Fecha alta] IS NULL)
+                WHERE (a.[Fecha ingreso] >= '2026-01-01' OR a.[Fecha alta] IS NULL)
                   -- Regla Dra. Paola García: Solo camas de Piso (excluir Chaparro, UCI, Terapia Intermedia hab 227/222-229/207, Pediatría 201-203 y Boxes)
                   AND ISNULL(a.[Doctor], '') NOT LIKE '%CHAPARRO%'
                   AND ISNULL(a.[Servicio], '') NOT IN ('UCI', 'TERAPIA INTERMEDIA', 'TERAPIA PEDIÁTRICA', 'PEDIATRÍA', 'NEONATOLOGÍA', 'CHEQUEO', 'HOSPITAL DE DIA', 'SHOCK ROOM')
@@ -242,11 +243,13 @@ export async function syncGuardiaInternado() {
                 adm.nhc,
                 adm.habitacion,
                 adm.servicio,
+                adm.periodo,
                 adm.fecha_ingreso,
                 adm.fecha_alta,
                 adm.medico_cabecera,
                 adm.obra_social,
                 adm.estado_internacion,
+                cir.fecha_programada AS fecha_cirugia_iso,
                 COALESCE(cir.fecha_cirugia_str, cir.fecha_programada) AS fecha_cirugia,
                 cir.hora_cirugia,
                 cir.cirugia,
@@ -255,6 +258,8 @@ export async function syncGuardiaInternado() {
                 cir.estado_cirugia
             FROM AdmisionesRecientes adm
             INNER JOIN CirugiasRecientes cir ON adm.dni = cir.dni
+              AND cir.fecha_programada >= CONVERT(VARCHAR(10), DATEADD(DAY, -2, CAST(adm.fecha_ingreso AS DATE)), 120)
+              AND cir.fecha_programada <= CONVERT(VARCHAR(10), ISNULL(CAST(adm.fecha_alta AS DATE), DATEADD(DAY, 15, CAST(adm.fecha_ingreso AS DATE))), 120)
             ORDER BY 
                 CASE WHEN adm.estado_internacion = 'Activo en Piso' THEN 0 ELSE 1 END,
                 adm.fecha_ingreso DESC;
@@ -262,12 +267,13 @@ export async function syncGuardiaInternado() {
 
         // ── 3. INTERCONSULTAS EN INTERNADO Y UCI (DETECCIÓN DE MÉDICOS CLÍNICOS) ──
         const qInterconsultas = `
-            SELECT TOP 250
+            SELECT
                 v.[idVisita] AS id_visita,
                 LTRIM(RTRIM(v.[Paciente])) AS paciente,
                 LTRIM(RTRIM(CAST(v.[NIF] AS VARCHAR(50)))) AS dni,
                 LTRIM(RTRIM(CAST(v.[NHC] AS VARCHAR(50)))) AS nhc,
                 v.IdHospitalizacion AS id_hospitalizacion,
+                CONVERT(VARCHAR(7), v.[Fecha Visita], 120) AS periodo,
                 CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS fecha_visita,
                 CONVERT(VARCHAR(8), v.[Fecha Hora Creacion], 108) AS hora_creacion,
                 v.[Tipo Visita] AS tipo_visita,
@@ -302,7 +308,7 @@ export async function syncGuardiaInternado() {
                 ORDER BY a.[Fecha ingreso] DESC
             ) adm
             WHERE v.[Tipo Visita] LIKE '%INTERCONSULTA%'
-              AND v.[Fecha Visita] >= DATEADD(DAY, -60, GETDATE())
+              AND v.[Fecha Visita] >= '2026-01-01'
             ORDER BY v.[Fecha Visita] DESC, v.[Fecha Hora Creacion] DESC;
         `;
 

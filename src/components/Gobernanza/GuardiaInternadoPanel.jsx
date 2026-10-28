@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_557', selectedPeriodoProp, onOpenEpicrisisIa }) {
+export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_557', selectedPeriodoProp, fechaDesde, fechaHasta, onOpenEpicrisisIa }) {
     const [subTab, setSubTab] = useState(initialSubTab); // 'admisiones_557' | 'seguimiento' | 'traumatologia' | 'interconsultas'
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -29,8 +29,8 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const [selectedFicha557, setSelectedFicha557] = useState(null);
     const [copiedFicha, setCopiedFicha] = useState(false);
 
-    // Filtros de Traumatología
-    const [traumaFilter, setTraumaFilter] = useState('activos'); // 'activos' | 'todos'
+    // Filtros de Traumatología (atados al período Telar por defecto)
+    const [traumaFilter, setTraumaFilter] = useState('todos'); // 'todos' | 'activos'
     const [traumaSearch, setTraumaSearch] = useState('');
 
     // Filtros de Interconsultas
@@ -179,13 +179,65 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
         }
     };
 
+    // Helper unificado de conexión con el filtro de fechas / período del Telar
+    const matchesTelarFilter = (dateStr, itemPeriodo) => {
+        const cleanDate = String(dateStr || '').slice(0, 10);
+        const derivedPeriodo = itemPeriodo || (cleanDate.length >= 7 ? cleanDate.slice(0, 7) : '');
+
+        if (fechaDesde && fechaHasta && cleanDate.length === 10) {
+            return cleanDate >= fechaDesde && cleanDate <= fechaHasta;
+        }
+        if (admPeriodoFilter !== 'todos' && derivedPeriodo) {
+            return derivedPeriodo === admPeriodoFilter;
+        }
+        return true;
+    };
+
+    // Conjuntos base filtrados por el Telar (Período / Rango de Fechas)
+    const periodAdmisiones = useMemo(() => {
+        if (!data.admisiones_clinicas) return [];
+        return data.admisiones_clinicas.filter(item =>
+            matchesTelarFilter(item.fecha_visita || item.fecha_ingreso, item.periodo)
+        );
+    }, [data.admisiones_clinicas, admPeriodoFilter, fechaDesde, fechaHasta]);
+
+    const periodTrauma = useMemo(() => {
+        if (!data.traumatologia) return [];
+        return data.traumatologia.filter(item =>
+            matchesTelarFilter(item.fecha_ingreso || item.fecha_cirugia_iso, item.periodo)
+        );
+    }, [data.traumatologia, admPeriodoFilter, fechaDesde, fechaHasta]);
+
+    const periodInter = useMemo(() => {
+        if (!data.interconsultas) return [];
+        return data.interconsultas.filter(item =>
+            matchesTelarFilter(item.fecha_visita, item.periodo)
+        );
+    }, [data.interconsultas, admPeriodoFilter, fechaDesde, fechaHasta]);
+
+    // Estadísticas dinámicas conectadas al filtro del Telar
+    const periodStats = useMemo(() => {
+        const clinicasInter = periodInter.filter(i => i.es_medico_clinico === 1).length;
+        return {
+            total_admisiones_557: periodAdmisiones.length,
+            con_ficha_557: periodAdmisiones.filter(a => a.tiene_ficha_557 === 1).length,
+            activos_piso_557: periodAdmisiones.filter(a => a.estado_internacion === 'Activo en Piso').length,
+            area_shock_room: periodAdmisiones.filter(item => item.area_form === 'Shock Room' || String(item.servicio_admision || '').toUpperCase().includes('SHOCK') || String(item.numero_admision || '').toUpperCase().startsWith('SR')).length,
+            area_internado: periodAdmisiones.filter(item => item.area_form === 'Internado' || String(item.servicio_admision || '').toUpperCase().includes('INTERN') || String(item.numero_admision || '').toUpperCase().startsWith('I')).length,
+            area_uci: periodAdmisiones.filter(item => item.area_form === 'UCI' || String(item.servicio_admision || '').toUpperCase().includes('UCI') || String(item.servicio_admision || '').toUpperCase().includes('TERAPIA') || String(item.numero_admision || '').toUpperCase().startsWith('UCI')).length,
+            reconsultas_72h_557: periodAdmisiones.filter(a => a.reconsulta_72h === 'Si').length,
+            reingresos_72h_557: periodAdmisiones.filter(a => a.reingreso_72h === 'Si').length,
+            total_traumatologia: periodTrauma.length,
+            activos_piso_trauma: periodTrauma.filter(t => t.estado_internacion === 'Activo en Piso').length,
+            total_interconsultas: periodInter.length,
+            interconsultas_clinicas: clinicasInter,
+            interconsultas_otras: periodInter.length - clinicasInter
+        };
+    }, [periodAdmisiones, periodTrauma, periodInter]);
+
     // ── FILTRADO DE ADMISIONES CLÍNICAS MÉDICAS (PROTOCOLO 557) ──
     const filteredAdmisiones557 = useMemo(() => {
-        if (!data.admisiones_clinicas) return [];
-        return data.admisiones_clinicas.filter(item => {
-            if (admPeriodoFilter !== 'todos' && item.periodo !== admPeriodoFilter) {
-                return false;
-            }
+        return periodAdmisiones.filter(item => {
             if (admAreaFilter === 'activos' && item.estado_internacion !== 'Activo en Piso') return false;
             if (admAreaFilter === 'shock_room') {
                 const isSr = item.area_form === 'Shock Room' || String(item.servicio_admision || '').toUpperCase().includes('SHOCK') || String(item.numero_admision || '').toUpperCase().startsWith('SR');
@@ -232,12 +284,11 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
             }
             return true;
         });
-    }, [data.admisiones_clinicas, admPeriodoFilter, admAreaFilter, admDoctorFilter, admSearch]);
+    }, [periodAdmisiones, admAreaFilter, admDoctorFilter, admSearch]);
 
-    // ── FILTRADO DE CASOS DE TRAUMATOLOGÍA ──
+    // ── FILTRADO DE CASOS DE TRAUMATOLOGÍA (CONECTADO AL TELAR) ──
     const filteredTrauma = useMemo(() => {
-        if (!data.traumatologia) return [];
-        return data.traumatologia.filter(item => {
+        return periodTrauma.filter(item => {
             if (traumaFilter === 'activos' && item.estado_internacion !== 'Activo en Piso') {
                 return false;
             }
@@ -254,12 +305,11 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
             }
             return true;
         });
-    }, [data.traumatologia, traumaFilter, traumaSearch]);
+    }, [periodTrauma, traumaFilter, traumaSearch]);
 
-    // ── FILTRADO DE INTERCONSULTAS ──
+    // ── FILTRADO DE INTERCONSULTAS (CONECTADO AL TELAR) ──
     const filteredInter = useMemo(() => {
-        if (!data.interconsultas) return [];
-        return data.interconsultas.filter(item => {
+        return periodInter.filter(item => {
             if (interClinicoFilter === 'solo_clinicos' && item.es_medico_clinico !== 1) return false;
             if (interClinicoFilter === 'otras_especialidades' && item.es_medico_clinico === 1) return false;
 
@@ -285,7 +335,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
             }
             return true;
         });
-    }, [data.interconsultas, interClinicoFilter, interServicioFilter, interSearch]);
+    }, [periodInter, interClinicoFilter, interServicioFilter, interSearch]);
 
     // Copiar ficha 557 al portapapeles
     const copyFichaToClipboard = (f) => {
@@ -483,7 +533,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 borderRadius: '10px',
                                 fontWeight: 700
                             }}>
-                                {data.stats?.activos_piso_trauma || 0} activos
+                                {periodStats.total_traumatologia} casos
                             </span>
                         </button>
 
@@ -514,7 +564,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 borderRadius: '10px',
                                 fontWeight: 700
                             }}>
-                                {data.stats?.interconsultas_clinicas || 0} clínicas
+                                {periodStats.interconsultas_clinicas} clínicas
                             </span>
                         </button>
                     </div>
@@ -576,11 +626,11 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1E40AF', marginTop: '4px' }}>
                                 {filteredAdmisiones557.length}
                                 <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600, marginLeft: '6px' }}>
-                                    / {data.stats?.total_admisiones_557 || 0}
+                                    / {periodStats.total_admisiones_557}
                                 </span>
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#059669', display: 'block', marginTop: '4px', fontWeight: 600 }}>
-                                {data.stats?.con_ficha_557 || 0} con historia clínica completa
+                                {periodStats.con_ficha_557} con historia clínica completa
                             </span>
                         </div>
 
@@ -600,7 +650,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Área: Shock Room (SR)
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0369A1', marginTop: '4px' }}>
-                                {data.stats?.area_shock_room || 0}
+                                {periodStats.area_shock_room}
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginTop: '4px' }}>
                                 Estabilización e internación abreviada
@@ -623,10 +673,10 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Área: Internado Piso Clínico
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#047857', marginTop: '4px' }}>
-                                {data.stats?.area_internado || 0}
+                                {periodStats.area_internado}
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginTop: '4px' }}>
-                                Camas de internación general ({data.stats?.activos_piso_557 || 0} activos hoy)
+                                Camas de internación general ({periodStats.activos_piso_557} activos en período)
                             </span>
                         </div>
 
@@ -646,7 +696,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Área: UCI / Terapia Intermedia
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#B91C1C', marginTop: '4px' }}>
-                                {data.stats?.area_uci || 0}
+                                {periodStats.area_uci}
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'block', marginTop: '4px' }}>
                                 Derivación crítica y pase de UCI a piso
@@ -669,7 +719,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Reconsulta / Reingreso 72h
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
-                                {data.stats?.reconsultas_72h_557 || 0} <span style={{ fontSize: '0.9rem', color: '#92400E' }}>/ {data.stats?.reingresos_72h_557 || 0}</span>
+                                {periodStats.reconsultas_72h_557} <span style={{ fontSize: '0.9rem', color: '#92400E' }}>/ {periodStats.reingresos_72h_557}</span>
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#92400E', display: 'block', marginTop: '4px' }}>
                                 Declarados en campos 13772 y 13773
@@ -1470,7 +1520,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Activos en Piso (Control Clínico)
                             </span>
                             <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1E40AF', marginTop: '4px' }}>
-                                {data.stats?.activos_piso_trauma || 0}
+                                {periodStats.activos_piso_trauma}
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                                 <CheckCircle2 size={13} /> Con cama asignada en piso actualmente
@@ -1489,10 +1539,10 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Total Cirugías Traumatológicas Internadas
                             </span>
                             <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0F766E', marginTop: '4px' }}>
-                                {data.stats?.total_traumatologia || 0}
+                                {periodStats.total_traumatologia}
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px', display: 'block' }}>
-                                Últimos 60 días acumulados (SALUS)
+                                Filtrado según período seleccionado en Telar ({selectedSegPeriodo})
                             </span>
                         </div>
 
@@ -1529,23 +1579,6 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             <div style={{ display: 'flex', gap: '4px' }}>
                                 <button
                                     type="button"
-                                    onClick={() => setTraumaFilter('activos')}
-                                    style={{
-                                        padding: '5px 12px',
-                                        borderRadius: '6px',
-                                        border: '1px solid',
-                                        borderColor: traumaFilter === 'activos' ? '#2563EB' : '#CBD5E1',
-                                        background: traumaFilter === 'activos' ? '#EFF6FF' : '#FFFFFF',
-                                        color: traumaFilter === 'activos' ? '#1D4ED8' : '#64748B',
-                                        fontSize: '0.78rem',
-                                        fontWeight: traumaFilter === 'activos' ? 700 : 500,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Solo Activos en Piso ({data.stats?.activos_piso_trauma || 0})
-                                </button>
-                                <button
-                                    type="button"
                                     onClick={() => setTraumaFilter('todos')}
                                     style={{
                                         padding: '5px 12px',
@@ -1559,7 +1592,24 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    Histórico Completo ({data.traumatologia?.length || 0})
+                                    Período Seleccionado ({periodStats.total_traumatologia})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setTraumaFilter('activos')}
+                                    style={{
+                                        padding: '5px 12px',
+                                        borderRadius: '6px',
+                                        border: '1px solid',
+                                        borderColor: traumaFilter === 'activos' ? '#2563EB' : '#CBD5E1',
+                                        background: traumaFilter === 'activos' ? '#EFF6FF' : '#FFFFFF',
+                                        color: traumaFilter === 'activos' ? '#1D4ED8' : '#64748B',
+                                        fontSize: '0.78rem',
+                                        fontWeight: traumaFilter === 'activos' ? 700 : 500,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Solo Activos en Piso ({periodStats.activos_piso_trauma})
                                 </button>
                             </div>
                         </div>
@@ -1737,7 +1787,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Interconsultas Médicos Clínicos
                             </span>
                             <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#047857', marginTop: '4px' }}>
-                                {data.stats?.interconsultas_clinicas || 0}
+                                {periodStats.interconsultas_clinicas}
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                                 <UserCheck size={13} /> Realizadas por médicos con especialidad clínica
@@ -1756,7 +1806,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Interconsultas Otras Especialidades
                             </span>
                             <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#4338CA', marginTop: '4px' }}>
-                                {data.stats?.interconsultas_otras || 0}
+                                {periodStats.interconsultas_otras}
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px', display: 'block' }}>
                                 Cardiología, Hematología, Cirugías, etc.
@@ -1775,12 +1825,12 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Tasa de Participación Clínica
                             </span>
                             <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
-                                {data.stats?.total_interconsultas 
-                                    ? Math.round((data.stats.interconsultas_clinicas / data.stats.total_interconsultas) * 100) 
+                                {periodStats.total_interconsultas 
+                                    ? Math.round((periodStats.interconsultas_clinicas / periodStats.total_interconsultas) * 100) 
                                     : 0}%
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '4px', display: 'block' }}>
-                                Sobre {data.stats?.total_interconsultas || 0} interconsultas recientes
+                                Sobre {periodStats.total_interconsultas} interconsultas en período ({selectedSegPeriodo})
                             </span>
                         </div>
                     </div>
@@ -1815,7 +1865,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        Todas ({data.interconsultas?.length || 0})
+                                        Todas ({periodStats.total_interconsultas})
                                     </button>
                                     <button
                                         type="button"
@@ -1832,7 +1882,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        🩺 Solo Clínicos ({data.stats?.interconsultas_clinicas || 0})
+                                        🩺 Solo Clínicos ({periodStats.interconsultas_clinicas})
                                     </button>
                                     <button
                                         type="button"
@@ -1849,7 +1899,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        Otras Especialidades ({data.stats?.interconsultas_otras || 0})
+                                        Otras Especialidades ({periodStats.interconsultas_otras})
                                     </button>
                                 </div>
                             </div>

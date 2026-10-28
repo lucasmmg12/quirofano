@@ -958,6 +958,8 @@ export default function GuardiaClinicaDashboard({
                 <GuardiaInternadoPanel
                     addToast={addToast}
                     selectedPeriodoProp={selectedPeriodo}
+                    fechaDesde={fechaDesde}
+                    fechaHasta={fechaHasta}
                     onOpenEpicrisisIa={(nhc) => {
                         setEpicrisisTargetNhc(nhc);
                         setActiveDashboardTab('epicrisis_ia');
