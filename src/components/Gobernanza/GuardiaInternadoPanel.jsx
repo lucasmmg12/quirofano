@@ -1076,11 +1076,8 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             </div>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Seguimiento Clínico y Pase en Internado (Vinculado a Protocolo 557)
+                                    Seguimiento Clínico y Pase en Internado
                                 </h3>
-                                <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
-                                    Auditoría de cobertura asistencial, admisiones clínicas médicas (Prot. 557) y evoluciones diarias del plantel
-                                </p>
                             </div>
                         </div>
 
