@@ -175,7 +175,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
         if (match) {
             setSelectedFicha557(match);
         } else {
-            addToast?.('Este paciente no registra formulario de Admisión Clínica (Protocolo 557) en el período', 'info');
+            addToast?.('Este paciente no registra formulario de Admisión Clínica en el período', 'info');
         }
     };
 
@@ -341,11 +341,11 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const copyFichaToClipboard = (f) => {
         if (!f) return;
         const text = [
-            `=== ADMISIÓN CLÍNICA MÉDICA (SALUS PROTOCOLO 557) ===`,
+            `=== ADMISIÓN CLÍNICA MÉDICA ===`,
             `Paciente: ${f.paciente} | NHC: ${f.nhc || 'S/D'} | DNI: ${f.dni || 'S/D'} | Edad: ${f.edad || '-'} años`,
             `N° Admisión: ${f.numero_admision || 'S/D'} | Habitación: ${f.habitacion || 'S/D'} | Servicio: ${f.servicio_admision || 'S/D'}`,
             `Fecha/Hora Visita: ${f.fecha_visita} ${f.hora_visita || ''} | Estado: ${f.estado_internacion}`,
-            `Médico que cargó Protocolo 557: ${f.medico_admision || 'S/D'} | Médico Cabecera: ${f.medico_cabecera || 'S/D'}`,
+            `Médico que cargó Admisión: ${f.medico_admision || 'S/D'} | Médico Cabecera: ${f.medico_cabecera || 'S/D'}`,
             `Destino (Form): ${f.destino_form || '-'} | Área (Form): ${f.area_form || '-'} | Reconsulta 72hs: ${f.reconsulta_72h || 'No'} | Reingreso 72hs: ${f.reingreso_72h || 'No'}`,
             ``,
             `1. ADMISIÓN CLÍNICA:`,
@@ -368,7 +368,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
 
         navigator.clipboard.writeText(text);
         setCopiedFicha(true);
-        addToast?.('Ficha de Admisión Clínica (Protocolo 557) copiada al portapapeles', 'success');
+        addToast?.('Ficha de Admisión Clínica copiada al portapapeles', 'success');
         setTimeout(() => setCopiedFicha(false), 2500);
     };
 
@@ -593,7 +593,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             }}
                         >
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Total Internados (Prot. 557)
+                                Total Internados
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1E40AF', marginTop: '4px' }}>
                                 {filteredAdmisiones557.length}
@@ -810,12 +810,12 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 }}>
                                     <tr>
                                         <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Fecha / Admisión</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Cama & Área (557)</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Cama & Área</th>
                                         <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Paciente</th>
                                         <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Médico Carga / Cabecera</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Motivo & Enfermedad Actual (Prot. 557)</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Motivo & Enfermedad Actual</th>
                                         <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>APP & Signos Vitales</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Ficha 557</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Ficha</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -823,7 +823,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         <tr>
                                             <td colSpan="7" style={{ padding: '36px', textAlign: 'center', color: '#64748B' }}>
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                                                    <RefreshCw size={18} className="spin" /> Cargando admisiones clínicas (Protocolo 557)...
+                                                    <RefreshCw size={18} className="spin" /> Cargando admisiones clínicas...
                                                 </div>
                                             </td>
                                         </tr>
@@ -1005,7 +1005,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                                                     gap: '4px'
                                                                 }}
                                                             >
-                                                                <Eye size={13} /> Ver 557
+                                                                <Eye size={13} /> Ver Ficha
                                                             </button>
                                                             {onOpenEpicrisisIa && r.nhc && (
                                                                 <button
@@ -1102,7 +1102,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     gap: '6px'
                                 }}
                             >
-                                <ClipboardList size={14} /> Ver Internados de {selectedSegPeriodo} (Prot. 557)
+                                <ClipboardList size={14} /> Ver Internados de {selectedSegPeriodo}
                             </button>
                         </div>
                     </div>
@@ -1169,7 +1169,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 {currentSeg?.pacientes_bajo_seguimiento_clinico || 0}
                             </div>
                             <span style={{ fontSize: '0.74rem', color: '#2563EB', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px' }}>
-                                <UserCheck size={14} /> Con Admisión Clínica (557) y/o evolución
+                                <UserCheck size={14} /> Con Admisión Clínica y/o evolución
                             </span>
                             <span style={{ fontSize: '0.72rem', color: '#94A3B8', display: 'block', marginTop: '2px' }}>
                                 Pacientes únicos identificados por NHC
@@ -1249,7 +1249,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 Discriminación Asistencial de Pacientes Seguidos (Únicos por Mes)
                             </h4>
                             <span style={{ fontSize: '0.76rem', color: '#64748B' }}>
-                                Distribución de la cobertura médica según rama de atención y condición de ingreso en Protocolo 557
+                                Distribución de la cobertura médica según rama de atención y condición de ingreso
                             </span>
                         </div>
 
@@ -1277,7 +1277,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#64748B', marginLeft: '6px' }}>pacientes únicos</span>
                                 </div>
                                 <p style={{ margin: '6px 0 0 0', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
-                                    Pacientes admitidos con Protocolo 557 bajo seguimiento directo de clínica médica con evolución y pase continuo.
+                                    Pacientes admitidos bajo seguimiento directo de clínica médica con evolución y pase continuo.
                                 </p>
                             </div>
 
@@ -1300,7 +1300,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#64748B', marginLeft: '6px' }}>pacientes únicos</span>
                                 </div>
                                 <p style={{ margin: '6px 0 0 0', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
-                                    Pacientes quirúrgicos con Admisión Clínica (557) e interconsulta clínica activa para control de comorbilidades.
+                                    Pacientes quirúrgicos con Admisión Clínica e interconsulta clínica activa para control de comorbilidades.
                                 </p>
                             </div>
 
@@ -1323,7 +1323,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#64748B', marginLeft: '6px' }}>pacientes únicos</span>
                                 </div>
                                 <p style={{ margin: '6px 0 0 0', fontSize: '0.72rem', color: '#64748B', lineHeight: '1.3' }}>
-                                    Pacientes intervenidos por traumatología bajo protocolo de admisión y seguimiento clínico en piso.
+                                    Pacientes intervenidos por traumatología bajo admisión y seguimiento clínico en piso.
                                 </p>
                             </div>
                         </div>
@@ -1344,7 +1344,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     Plantel de Médicas Clínicas en Piso (Excluye Guardia, UCI, Hab. 227 Intermedio y Pediatría)
                                 </h4>
                                 <span style={{ fontSize: '0.76rem', color: '#64748B' }}>
-                                    Contabiliza exclusivamente evoluciones diarias, admisiones 557, altas y epicrisis en camas de Piso General (clic para filtrar)
+                                    Contabiliza exclusivamente evoluciones diarias, admisiones, altas y epicrisis en camas de Piso General (clic para filtrar)
                                 </span>
                             </div>
                             <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
@@ -1440,7 +1440,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                             borderTop: '1px solid #F1F5F9'
                                         }}>
                                             <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                                Actos clínicos / Prot. 557:
+                                                Actos clínicos:
                                             </span>
                                             <span style={{ fontSize: '1.25rem', fontWeight: 800, color: evCount > 0 ? '#1E40AF' : '#94A3B8' }}>
                                                 {evCount}
@@ -1524,10 +1524,10 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
                         }}>
                             <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>
-                                Vinculación con Admisión Clínica (557)
+                                Vinculación con Admisión Clínica
                             </span>
                             <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#4C1D95', marginTop: '6px', lineHeight: '1.4' }}>
-                                Clic en "Ver 557" para abrir la Admisión Clínica Médica del paciente traumatológico
+                                Clic en "Ver Ficha" para abrir la Admisión Clínica Médica del paciente traumatológico
                             </div>
                         </div>
                     </div>
@@ -1625,7 +1625,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Cirugía Realizada</th>
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Cirujano Traumatólogo</th>
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Médico Cabecera</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Admisión Clínica (Prot. 557)</th>
+                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Admisión Clínica</th>
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Fecha Ingreso / Cx</th>
                                     </tr>
                                 </thead>
@@ -1715,7 +1715,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                                                     gap: '5px'
                                                                 }}
                                                             >
-                                                                <Eye size={13} /> Ver Ficha 557
+                                                                <Eye size={13} /> Ver Ficha
                                                             </button>
                                                         ) : (
                                                             <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Ingreso directo Qx</span>
@@ -1915,7 +1915,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Especialidad</th>
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Paciente</th>
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Ubicación / Cama</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Ficha Admisión 557</th>
+                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Ficha Admisión</th>
                                         <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Fecha / Hora</th>
                                     </tr>
                                 </thead>
@@ -2013,10 +2013,10 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                                                     gap: '5px'
                                                                 }}
                                                             >
-                                                                <Eye size={13} /> Ver Ficha 557
+                                                                <Eye size={13} /> Ver Ficha
                                                             </button>
                                                         ) : (
-                                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Sin Prot. 557</span>
+                                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Sin Ficha</span>
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>
@@ -2080,7 +2080,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: '0.68rem', fontWeight: 800, background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '6px' }}>
-                                        SALUS PROTOCOLO 557 · (INT) ADMISION MEDICA CLINICA
+                                        (INT) ADMISION MEDICA CLINICA
                                     </span>
                                     <span style={{ fontSize: '0.68rem', fontWeight: 700, background: selectedFicha557.estado_internacion === 'Activo en Piso' ? '#10B981' : 'rgba(255,255,255,0.15)', padding: '2px 8px', borderRadius: '6px' }}>
                                         {selectedFicha557.estado_internacion}
@@ -2163,7 +2163,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     <div style={{ fontSize: '0.72rem', color: '#475569' }}>{selectedFicha557.servicio_admision || 'INTERNACION CLINICA'}</div>
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Médico Carga (Prot. 557)</div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Médico Carga</div>
                                     <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#047857', marginTop: '2px' }}>
                                         ✍️ {selectedFicha557.medico_admision || 'S/D'}
                                     </div>

@@ -62,7 +62,7 @@ function buildEpicrisisDocument(dossier, enfoque = 'completa') {
             `INGRESO: ${adm.fecha_ingreso || 'S/D'} | EGRESO/ACTUAL: ${adm.fecha_alta || 'Internado Activo'} (${dossier.dias_estadia_episodio} días)`,
             `CIRCUITO ASISTENCIAL: ${circuitoStr}`,
             ``,
-            `1. DIAGNÓSTICO Y FOCO DE INGRESO (PROTOCOLO 557):`,
+            `1. DIAGNÓSTICO Y FOCO DE INGRESO:`,
             `   • Motivo de Consulta: ${p557.motivo_consulta || 'Evaluación de urgencia'}`,
             `   • Diagnóstico Presuntivo: ${p557.diagnostico_presuntivo || p557.otros_diagnostico || adm.especialidad || 'Clínico'}`,
             `   • Alergias Medicamentosas: ${p557.alergias || 'No'} ${p557.detalle_alergia ? `(${p557.detalle_alergia})` : ''}`,
@@ -90,7 +90,7 @@ function buildEpicrisisDocument(dossier, enfoque = 'completa') {
             `RECORRIDO DE CAMAS: ${circuitoStr} · Cama Actual/Última: ${adm.habitacion || 'S/D'}`,
             `MEDICACIÓN HABITUAL PREVIA: ${dossier.medicacion_previa_conciliada}`,
             ``,
-            `INGRESO POR GUARDIA / SHOCK ROOM (PROTOCOLO 557):`,
+            `INGRESO POR GUARDIA / SHOCK ROOM:`,
             `  • Fecha: ${p557.fecha_visita || adm.fecha_ingreso} · Profesional: ${p557.medico_admision || adm.medico_cabecera}`,
             `  • Cuadro de Ingreso: ${p557.enfermedad_actual || p557.motivo_consulta || 'Ver evolución inicial'}`,
             `  • Plan Inicial: ${p557.plan_terapeutico || 'Internación y monitoreo'}`,
@@ -113,7 +113,7 @@ function buildEpicrisisDocument(dossier, enfoque = 'completa') {
         `   • Circuito de Unidades: ${circuitoStr} (Última Habitación: ${adm.habitacion || 'S/D'})`,
         `   • Equipo Médico Tratante: ${medicosStr}`,
         ``,
-        `2. MOTIVO DE INGRESO Y ENFERMEDAD ACTUAL (PROTOCOLO SALUS 557)`,
+        `2. MOTIVO DE INGRESO Y ENFERMEDAD ACTUAL`,
         `   • Motivo de Ingreso: ${p557.motivo_consulta || 'Ingreso por Guardia Clínica / Shock Room'}`,
         `   • Enfermedad Actual al Ingreso: ${p557.enfermedad_actual || 'Paciente valorado en admisión clínica con requerimiento de internación.'}`,
         `   • Signos Vitales al Ingreso: TA ${p557.signos_vitales_ta || 'S/D'} | FC ${p557.fc || 'S/D'} lpm | FR ${p557.fr || 'S/D'} rpm | SatO2 ${p557.sato2 || 'S/D'}% | Tº ${p557.temperatura || 'S/D'}°C`,
@@ -160,7 +160,7 @@ function answerClinicalQuestion(question, dossier) {
 
     if (q.includes('medicac') || q.includes('tomaba') || q.includes('habitual') || q.includes('antecedente')) {
         return `💊 **Conciliación de Medicación Habitual y Antecedentes — ${dossier.paciente} (NHC ${dossier.nhc})**:\n\n` +
-            `• **Medicación Habitual Registrada (Prot. 557):** ${dossier.medicacion_previa_conciliada}\n` +
+            `• **Medicación Habitual Registrada:** ${dossier.medicacion_previa_conciliada}\n` +
             `• **Patologías Crónicas (APP):** ${p557.patologias || 'No especificadas'}\n` +
             `• **Alergias:** ${p557.alergias || 'No'} ${p557.detalle_alergia ? `(${p557.detalle_alergia})` : ''}\n` +
             `• **Cirugías Previas:** ${p557.cirugias_previas || 'No'} ${p557.detalle_cirugias ? `(${p557.detalle_cirugias})` : ''}\n` +
@@ -180,7 +180,7 @@ function answerClinicalQuestion(question, dossier) {
 
     if (q.includes('cirug') || q.includes('oper') || q.includes('quirof')) {
         if (cirugias.length === 0) {
-            return `✂️ **Intervenciones Quirúrgicas — ${dossier.paciente} (NHC ${dossier.nhc})**:\nNo registra fojas quirúrgicas en \`TABLEAU_Cirugias\` durante este episodio. Antecedentes quirúrgicos previos en Prot. 557: ${p557.cirugias_previas || 'No'} ${p557.detalle_cirugias || ''}.`;
+            return `✂️ **Intervenciones Quirúrgicas — ${dossier.paciente} (NHC ${dossier.nhc})**:\nNo registra fojas quirúrgicas en \`TABLEAU_Cirugias\` durante este episodio. Antecedentes quirúrgicos previos: ${p557.cirugias_previas || 'No'} ${p557.detalle_cirugias || ''}.`;
         }
         return `✂️ **Intervenciones Quirúrgicas Registradas (${cirugias.length}) — ${dossier.paciente} (NHC ${dossier.nhc})**:\n\n` +
             cirugias.map(c => `• **${c.fecha_cirugia}** (${c.hora_cirugia || 'S/H'}): **${c.nombre_cirugia}** — Cirujano: *${c.cirujano}* (${c.especialidad}) · Estado: ${c.estado}`).join('\n');
@@ -190,7 +190,7 @@ function answerClinicalQuestion(question, dossier) {
         const ultimaEv = evs[evs.length - 1];
         return `📋 **Condición de Egreso e Indicaciones — ${dossier.paciente} (NHC ${dossier.nhc})**:\n\n` +
             `• **Estado de Admisión:** ${adm.fecha_alta ? `Alta otorgada el ${adm.fecha_alta} (${adm.motivo_alta || 'Alta médica'})` : `Internado activo en habitación ${adm.habitacion || 'S/D'}`}\n` +
-            `• **Plan Terapéutico de Ingreso (Prot. 557):** ${p557.plan_terapeutico || 'No especificado'}\n` +
+            `• **Plan Terapéutico de Ingreso:** ${p557.plan_terapeutico || 'No especificado'}\n` +
             `• **Última Evolución Registrada (${ultimaEv?.fecha || 'S/F'} - ${ultimaEv?.profesional || 'Staff'}):**\n"${(ultimaEv?.texto_clinico || 'Sin texto').slice(0, 500)}"`;
     }
 
@@ -198,7 +198,7 @@ function answerClinicalQuestion(question, dossier) {
     const ultimas3 = evs.slice(-3).map(e => `• **[${e.fecha}] ${e.profesional}** (*${e.tipo_visita}*): ${(e.texto_clinico || '').slice(0, 250)}...`).join('\n');
     return `🩺 **Síntesis Longitudinal del Paciente — ${dossier.paciente} (NHC ${dossier.nhc})**:\n\n` +
         `• **Estadía:** ${dossier.dias_estadia_episodio} días (${adm.fecha_ingreso} → ${adm.fecha_alta || 'Activo'}) · Circuito: **${(dossier.sectores_recorridos || []).join(' → ')}**\n` +
-        `• **Motivo e Ingreso (Prot. 557):** ${p557.motivo_consulta || 'S/D'} — ${p557.diagnostico_presuntivo || adm.especialidad || ''}\n` +
+        `• **Motivo e Ingreso:** ${p557.motivo_consulta || 'S/D'} — ${p557.diagnostico_presuntivo || adm.especialidad || ''}\n` +
         `• **Medicación Previa:** ${dossier.medicacion_previa_conciliada}\n` +
         `• **Últimas 3 Evoluciones de ${dossier.total_evoluciones} totales:**\n${ultimas3 || 'Sin evoluciones adicionales.'}`;
 }
@@ -278,7 +278,7 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
                 {
                     role: 'assistant',
                     text: `👋 **Copiloto Clínico activado para ${currentDossier.paciente} (NHC \`${currentDossier.nhc}\`)**.\n` +
-                        `Estoy conectado únicamente a los **${currentDossier.total_evoluciones} registros evolutivos**, el **Protocolo 557** y las **${currentDossier.circuito_admisiones?.length || 1} admisiones** de este NHC (sin cruzar datos con otros pacientes).\n\n` +
+                        `Estoy conectado únicamente a los **${currentDossier.total_evoluciones} registros evolutivos**, la **Admisión Clínica** y las **${currentDossier.circuito_admisiones?.length || 1} admisiones** de este NHC (sin cruzar datos con otros pacientes).\n\n` +
                         `¿Qué necesitas consultar o resumir de su historia clínica?`
                 }
             ]);
@@ -329,7 +329,7 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
                     </div>
                     <pre>${editableEpicrisis.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                     <div class="footer">
-                        <span>Documento generado por Agente IA de Epicrisis (SALUS Protocolo 557 + Evoluciones)</span>
+                        <span>Documento generado por Agente IA de Epicrisis (Admisión Clínica + Evoluciones)</span>
                         <span>Firma y Sello Médico Tratante: _______________________________</span>
                     </div>
                 </body>
@@ -570,7 +570,7 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
                             }}>
                                 <div>
                                     <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                        <Pill size={13} /> Medicación Habitual Conciliada (Prot. 557)
+                                        <Pill size={13} /> Medicación Habitual Conciliada
                                     </div>
                                     <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#78350F', marginTop: '2px' }}>
                                         {currentDossier.medicacion_previa_conciliada}
