@@ -1910,9 +1910,6 @@ export default function GuardiaClinicaDashboard({
                                     Franjas solicitadas por Jefatura Guardia: <strong>08:00 a 14:00 hs</strong> · <strong>14:00 a 22:00 hs (Pico Crítico Tarde)</strong> · <strong>22:00 a 08:00 hs</strong> · Clic en una franja para ver quiénes tuvieron demoras extremas
                                 </span>
                             </div>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '20px', background: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
-                                Auditoría SALUS · VLISE_Visitas ({formatPeriodoLabel(selectedPeriodo)})
-                            </span>
                         </div>
 
                         {/* Grid de 3 Columnas por Franja */}
