@@ -556,29 +556,6 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                     >
                         <Download size={14} /> Exportar CSV
                     </button>
-
-                    <button
-                        type="button"
-                        onClick={() => loadData(true)}
-                        disabled={refreshing}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '7px 14px',
-                            background: '#1E40AF',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '0.8rem',
-                            fontWeight: 700,
-                            color: '#FFFFFF',
-                            cursor: refreshing ? 'not-allowed' : 'pointer',
-                            opacity: refreshing ? 0.7 : 1
-                        }}
-                    >
-                        <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
-                        {refreshing ? 'Sincronizando SALUS...' : 'Actualizar Live'}
-                    </button>
                 </div>
             </div>
 
