@@ -3606,7 +3606,7 @@ function CustomTriageEvolutionTooltip({ active, payload, label }) {
                 </div>
             ) : (
                 <div style={{ marginTop: '6px', fontSize: '0.7rem', color: '#64748B' }}>
-                    Protocolo 621: (ENF) Triage enfermería
+                    Triage de Enfermería
                 </div>
             )}
         </div>
