@@ -925,3 +925,4 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
         </div>
     );
 }
+
