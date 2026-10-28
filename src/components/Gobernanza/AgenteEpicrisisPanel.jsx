@@ -234,12 +234,15 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
                 .eq('key', 'epicrisis_agente_cache')
                 .maybeSingle();
 
-            if (!error && data?.value?.dossiers) {
-                setDossiers(data.value.dossiers);
-                setUltimaActualizacion(data.value.ultima_actualizacion || data.updated_at);
-                if (!initialNhc && data.value.dossiers.length > 0) {
-                    const hasRomano = data.value.dossiers.find(d => d.nhc === '109014');
-                    setSelectedNhc(hasRomano ? '109014' : data.value.dossiers[0].nhc);
+            if (!error && data?.value) {
+                const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+                if (parsed?.dossiers && Array.isArray(parsed.dossiers)) {
+                    setDossiers(parsed.dossiers);
+                    setUltimaActualizacion(parsed.ultima_actualizacion || data.updated_at);
+                    if (!initialNhc && parsed.dossiers.length > 0) {
+                        const hasRomano = parsed.dossiers.find(d => String(d.nhc) === '109014');
+                        setSelectedNhc(hasRomano ? '109014' : String(parsed.dossiers[0].nhc));
+                    }
                 }
             }
         } catch (err) {
@@ -262,8 +265,11 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
     }, [dossiers, searchQuery]);
 
     const currentDossier = useMemo(() => {
+        if (searchQuery.trim()) {
+            return filteredDossiers.find(d => String(d.nhc) === String(selectedNhc)) || filteredDossiers[0] || null;
+        }
         return dossiers.find(d => String(d.nhc) === String(selectedNhc)) || filteredDossiers[0] || null;
-    }, [dossiers, selectedNhc, filteredDossiers]);
+    }, [dossiers, selectedNhc, filteredDossiers, searchQuery]);
 
     useEffect(() => {
         if (currentDossier) {

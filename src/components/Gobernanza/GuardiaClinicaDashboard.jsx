@@ -430,7 +430,10 @@ export default function GuardiaClinicaDashboard({
 
             if (resFranjas.data) setFranjasTiemposData(resFranjas.data);
             if (resAdm.data) setAdmisionesClinicasData(resAdm.data);
-            if (resExt.data?.value?.periodos) setExtremosFranjasCache(resExt.data.value.periodos);
+            if (resExt.data?.value) {
+                const parsedExt = typeof resExt.data.value === 'string' ? JSON.parse(resExt.data.value) : resExt.data.value;
+                if (parsedExt?.periodos) setExtremosFranjasCache(parsedExt.periodos);
+            }
 
             const { data, error } = resInd;
 

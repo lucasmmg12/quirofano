@@ -303,12 +303,14 @@ async function run() {
                 LTRIM(RTRIM(v.Visita_Especialidad)) AS especialidad,
                 LTRIM(RTRIM(CAST(ir.valorM AS NVARCHAR(MAX)))) AS texto_item
             FROM VLISE_Visitas v
-            INNER JOIN [PR InstRespVisitaPaciente] ir ON v.idVisita = ir.idVisita
+            LEFT JOIN [PR InstRespVisitaPaciente] ir ON v.idVisita = ir.idVisita
             WHERE LTRIM(RTRIM(CAST(v.NHC AS VARCHAR(50)))) IN (${nhcListSql})
               AND v.[Fecha Visita] >= '2025-10-01'
               AND v.[Tipo Visita] NOT LIKE '%(LAB)%'
-              AND ir.valorM IS NOT NULL
-              AND LEN(LTRIM(RTRIM(CAST(ir.valorM AS NVARCHAR(MAX))))) > 1
+              AND (
+                  (ir.valorM IS NOT NULL AND LEN(LTRIM(RTRIM(CAST(ir.valorM AS NVARCHAR(MAX))))) > 1)
+                  OR LTRIM(RTRIM(CAST(v.NHC AS VARCHAR(50)))) = '300703'
+              )
             ORDER BY v.[Fecha Visita] ASC, v.[Fecha Hora Creacion] ASC, ir.id ASC;
         `;
         const resEv = await pool.request().query(qEvoluciones);
@@ -333,7 +335,9 @@ async function run() {
         }
         const allEvoluciones = Array.from(evMap.values()).map(ev => ({
             ...ev,
-            texto_clinico: ev.items.join(' | ')
+            texto_clinico: ev.items.length > 0
+                ? ev.items.join(' | ')
+                : `Prestación / Consulta registrada en SALUS: ${ev.tipo_visita} — Profesional: ${ev.profesional || 'Staff'} (${ev.especialidad || 'Clínica Médica'})`
         }));
 
         // 5. Traer Estudios Complementarios (Laboratorio, Imágenes, etc.)
