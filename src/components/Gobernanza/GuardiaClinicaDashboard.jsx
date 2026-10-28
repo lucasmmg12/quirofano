@@ -317,6 +317,7 @@ export default function GuardiaClinicaDashboard({
     const [showPuertaMedicoProgression, setShowPuertaMedicoProgression] = useState(false);
     const [activeDashboardTab, setActiveDashboardTab] = useState('resumen'); // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
     const [cirugiasConversionAll, setCirugiasConversionAll] = useState([]);
+    const [triagePacientesAll, setTriagePacientesAll] = useState([]);
     const [franjaFiltro, setFranjaFiltro] = useState('diurna'); // 'diurna' | 'nocturna' | '24hs'
     const [franjasTiemposData, setFranjasTiemposData] = useState([]);
     const [admisionesClinicasData, setAdmisionesClinicasData] = useState([]);
