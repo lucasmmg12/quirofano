@@ -875,7 +875,7 @@ export default function GuardiaClinicaDashboard({
             }}>
                 {[
                     { id: 'resumen', label: 'Tablero Principal (Demanda & KPIs)', icon: BarChart3 },
-                    { id: 'triage', label: 'Triage & Severidad (Protocolo 621)', icon: Stethoscope },
+                    { id: 'triage', label: 'Triage & Severidad', icon: Stethoscope },
                     { id: 'tiempos', label: 'Tiempos de Espera & Extremos', icon: Clock },
                     { id: 'resolucion', label: 'Resolución, Destinos & Quirófano', icon: Activity },
                     { id: 'calidad', label: 'Calidad & Seguridad (72 Horas)', icon: ShieldCheck },
@@ -1381,12 +1381,6 @@ export default function GuardiaClinicaDashboard({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, background: '#EFF6FF', color: '#1E40AF', padding: '3px 8px', borderRadius: '6px', border: '1px solid #DBEAFE' }}>
-                                        INDICADOR PRIORITARIO #1
-                                    </span>
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, background: '#DCFCE7', color: '#166534', padding: '3px 8px', borderRadius: '6px' }}>
-                                        SALUS Protocolo 621 · (ENF) Triage enfermeria
-                                    </span>
                                     <button
                                         type="button"
                                         onClick={() => setSelectedOutlierModal('triage_evolution')}
