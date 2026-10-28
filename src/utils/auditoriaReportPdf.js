@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { installSafePdfText } from './gobernanzaServiceProjectPdf';
 
 const COLORS = {
     primary: [30, 95, 166],        // #1E5FA6 Azul Sanatorio Argentino
@@ -16,6 +17,7 @@ const COLORS = {
 
 export function exportAuditorReportPdf(originalRows, kpis, columnMapping, groupedPatients = []) {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    installSafePdfText(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;

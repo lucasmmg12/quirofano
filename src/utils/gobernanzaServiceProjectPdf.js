@@ -3,6 +3,55 @@ import autoTable from 'jspdf-autotable';
 import { SANATORIO_LOGO_BASE64, getSanatorioLogoBase64 } from './sanatorioLogoBase64.js';
 
 /**
+ * Sanitiza cualquier texto para las fuentes estándar WinAnsi / ISO-8859-1 de jsPDF.
+ * Evita que caracteres fuera del rango 0x00-0xFF (como ≤, ≥, —, –, →, • o emojis)
+ * fuercen a jsPDF a emitir secuencias UTF-16BE que deforman el espaciado entre letras
+ * o reemplacen símbolos por caracteres erróneos (ej. ≤ -> "d).
+ */
+export function sanitizePdfText(input) {
+    if (input === null || input === undefined) return '';
+    if (Array.isArray(input)) return input.map(sanitizePdfText);
+    const str = String(input);
+    return str
+        .replace(/\u2264/g, '<=')                              // ≤ -> <=
+        .replace(/\u2265/g, '>=')                              // ≥ -> >=
+        .replace(/[\u2013\u2014\u2015\u2500\u2212]/g, '-')     // – — ― ─ − -> -
+        .replace(/\u2192/g, '->')                              // → -> ->
+        .replace(/\u2190/g, '<-')                              // ← -> <-
+        .replace(/[\u2022\u25CF\u25AA]/g, '-')                 // • ● ▪ -> -
+        .replace(/[\u201C\u201D\u201E\u00AB\u00BB]/g, '"')     // comillas tipográficas -> "
+        .replace(/[\u2018\u2019\u201A]/g, "'")                 // comillas simples -> '
+        .replace(/\u2026/g, '...')                             // … -> ...
+        .replace(/\u00A0/g, ' ')                               // espacio de no separación -> espacio normal
+        .replace(/[^\x00-\xFF]/g, '');                         // elimina cualquier carácter > 255 restante
+}
+
+/**
+ * Instala un interceptor seguro sobre una instancia de jsPDF para garantizar
+ * que todo texto medido (splitTextToSize) o renderizado (text) esté libre de
+ * caracteres fuera de ISO-8859-1 y mantenga charSpace = 0.
+ */
+export function installSafePdfText(doc) {
+    if (!doc || doc.__safeTextInstalled) return doc;
+    const origText = doc.text.bind(doc);
+    const origSplit = doc.splitTextToSize.bind(doc);
+
+    doc.text = function (text, x, y, options, transform) {
+        if (typeof doc.setCharSpace === 'function') {
+            doc.setCharSpace(0);
+        }
+        return origText(sanitizePdfText(text), x, y, options, transform);
+    };
+
+    doc.splitTextToSize = function (text, maxsize, options) {
+        return origSplit(sanitizePdfText(text), maxsize, options);
+    };
+
+    doc.__safeTextInstalled = true;
+    return doc;
+}
+
+/**
  * Catálogo maestro de los 5 Proyectos de Servicios Activos en los Dashboards de Gobernanza
  * Sanatorio Argentino — Innovación y Transformación Digital
  */
@@ -14,13 +63,13 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         titulo: 'Quirófano Central y Hospital de Día',
         subtitulo: 'Estandarización de Capacidad Instalada, Eficiencia de Bloques Quirúrgicos, Auditoría de Suspensiones y Trazabilidad Intraoperatoria',
         servicio: 'Centro Quirúrgico Central (Qx 1 a Qx 4), Hospital de Día (Qx 5 y Qx 6) y Sala de Partos',
-        estado: 'Activo — 100% Completado',
+        estado: 'Activo - 100% Completado',
         fechaEmision: 'Octubre 2026',
         resumenCorto: 'Transformación integral del monitoreo quirúrgico en Sanatorio Argentino: unificación de Quirófano Central y Hospital de Día, medición real de ocupación de bloques por sala (Qx 1 a Qx 6), clasificación forense de suspensiones (en el día vs >24 hs), ranking de productividad por cirujano/especialidad, soporte intraoperatorio (Rayos X y Laboratorio) y hemovigilancia transfusional.',
         queHemosHecho: [
             {
                 titulo: '1. Unificación del Ecosistema Quirúrgico (Quirófano Central + Hospital de Día)',
-                detalle: 'Se consolidó en un único tablero ejecutivo e interactivo la totalidad de la actividad quirúrgica del Sanatorio Argentino, integrando los 4 quirófanos centrales de alta complejidad (Qx 1 a Qx 4), los 2 quirófanos ambulatorios de Hospital de Día (Qx 5 y Qx 6) y la Sala de Partos. Esto permitió eliminar los reportes aislados y disponer de una serie histórica continua 2022–2026.'
+                detalle: 'Se consolidó en un único tablero ejecutivo e interactivo la totalidad de la actividad quirúrgica del Sanatorio Argentino, integrando los 4 quirófanos centrales de alta complejidad (Qx 1 a Qx 4), los 2 quirófanos ambulatorios de Hospital de Día (Qx 5 y Qx 6) y la Sala de Partos. Esto permitió eliminar los reportes aislados y disponer de una serie histórica continua 2022-2026.'
             },
             {
                 titulo: '2. Auditoría de Suspensiones y Reprogramaciones Quirúrgicas (En el Día vs >24 hs)',
@@ -54,8 +103,8 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Capacidad Auditada', valor: '7 Salas (Qx 1–4, Qx 5–6 HdD, Partos)', detalle: '100% de las salas físicas integradas' },
-            { etiqueta: 'Volumen Mensual Tipo', valor: '713 Cirugías / mes', detalle: '557 en Quirófano Central + 156 en HdD' },
+            { etiqueta: 'Capacidad Auditada', valor: '7 Salas Quirúrgicas', detalle: 'Qx 1 a Qx 4, Qx 5-6 HdD y Partos' },
+            { etiqueta: 'Volumen Mensual Tipo', valor: '713 Cirugías / mes', detalle: '557 en Qx Central + 156 en HdD' },
             { etiqueta: 'Ocupación Qx Central', valor: '84,2% Promedio', detalle: 'Liderado por Qx 1 (88,4% / 326,5 hs)' },
             { etiqueta: 'Indicadores Documentados', valor: '15 Indicadores SQL', detalle: '100% Finalizados y auditados en SALUS' }
         ],
@@ -69,7 +118,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             {
                 titulo: 'Ejemplo Real 2: Auditoría de Productividad y Tasa de Suspensión por Especialidad y Profesional',
                 contexto: 'El Comité de Quirófano busca identificar qué especialidades y prácticas concentran la mayor tasa de suspensión para reducir el lucro cesante de sala.',
-                analisisDatos: 'El ranking de especialidades muestra que Cirugía General (153 cx; 23,6%), Ginecología (146 cx; 22,6%) y Obstetricia (131 cx; 20,2%) concentran el 66,4% del volumen total. Al auditar nominalmente los profesionales de mayor volumen —Dr. Martín Galvarini Recabarren (31 realizadas, 3,1% suspensión), Dr. Marcelo Ponce Granados (29 realizadas, 3,3% suspensión) y Dr. Juan Pablo Gempel (28 realizadas, 3,4% suspensión)— se observa alta adherencia a la programación. En cambio, en prácticas específicas como Histeroscopía Quirúrgica y Laparoscopía Ginecológica, las suspensiones superan el 12% debido a demoras en autorizaciones de obras sociales.',
+                analisisDatos: 'El ranking de especialidades muestra que Cirugía General (153 cx; 23,6%), Ginecología (146 cx; 22,6%) y Obstetricia (131 cx; 20,2%) concentran el 66,4% del volumen total. Al auditar nominalmente los profesionales de mayor volumen -Dr. Martín Galvarini Recabarren (31 realizadas, 3,1% suspensión), Dr. Marcelo Ponce Granados (29 realizadas, 3,3% suspensión) y Dr. Juan Pablo Gempel (28 realizadas, 3,4% suspensión)- se observa alta adherencia a la programación. En cambio, en prácticas específicas como Histeroscopía Quirúrgica y Laparoscopía Ginecológica, las suspensiones superan el 12% debido a demoras en autorizaciones de obras sociales.',
                 decisionGestion: 'Se implementa el check-in administrativo de autorización 48 horas antes de la fecha quirúrgica para prácticas ginecológicas y traumatológicas con implantes, reduciendo las suspensiones en el día.'
             },
             {
@@ -92,7 +141,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             ['10. Soporte Intraoperatorio (Rx/Lab)', 'SALUS: VLISE_Peticiones', 'Trazabilidad de uso de Arco en C, radiología y laboratorio durante el acto quirúrgico.', 'Finalizado'],
             ['11. Pirámide Demográfica Quirúrgica', 'SALUS: VLISE_DatosPaciente', 'Estratificación de pacientes operados por decenios de edad y sexo biológico.', 'Finalizado'],
             ['12. Trazabilidad Transfusional en Qx', 'SALUS: SER_HojaTransfusional', 'Unidades de GRD, PFC, Plaquetas y Crioprecipitados transfundidas en quirófano.', 'Finalizado'],
-            ['13. Evolución Histórica Hospital de Día', 'SALUS: TABLEAU_Quirofano', 'Serie histórica 2019–2026 exclusiva de cirugía mayor ambulatoria y endoscopía.', 'Finalizado'],
+            ['13. Evolución Histórica Hospital de Día', 'SALUS: TABLEAU_Quirofano', 'Serie histórica 2019-2026 exclusiva de cirugía mayor ambulatoria y endoscopía.', 'Finalizado'],
             ['14. Destino Post-Quirúrgico', 'SALUS: TABLEAU_Admisiones', 'Proporción de altas ambulatorias desde HdD vs pases a Piso General o UCI.', 'Finalizado'],
             ['15. Top Procedimientos Nomenclados', 'SALUS: NomencladorPracticas', 'Frecuencia de realización y tasa de suspensión específica por código de práctica.', 'Finalizado']
         ]
@@ -103,27 +152,27 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         projectNameMatch: ['guardia'],
         codigo: 'GOB-GUA-2026-02',
         titulo: 'Guardia Clínica y Seguimiento en Internado',
-        subtitulo: 'Triage y Severidad, Curva de Oportunidad por Franjas, Conversión Quirúrgica Auditada, Seguimiento en Piso e Inteligencia Artificial para Epicrisis',
+        subtitulo: 'Triage y Severidad, Curva de Oportunidad por Franjas, Conversión Quirúrgica Auditada y Seguimiento Clínico en Piso',
         servicio: 'Servicio de Guardia de Adultos, Shock Room, Internación Clínica, Traumatología e Interconsultas',
-        estado: 'Activo — 100% Completado',
+        estado: 'Activo - 100% Completado',
         fechaEmision: 'Octubre 2026',
-        resumenCorto: 'Gobernanza integral del flujo de urgencias y su continuidad en internación: monitoreo de Triage y Severidad, curva de espera puerta-médico por franjas de criticidad (≤30m, 31-60m, 61-90m, >90m) y permanencia (>3h), conversión quirúrgica real en ≤48h depurada de cirugías programadas, seguimiento clínico y traumatológico en piso, red de interconsultas y Agente IA Generador de Epicrisis y Copiloto de Historia Clínica.',
+        resumenCorto: 'Gobernanza integral del flujo de urgencias y su continuidad en internación: monitoreo de Triage y Severidad, curva de espera puerta-médico por franjas de criticidad (<=30m, 31-60m, 61-90m, >90m) y permanencia (>3h), conversión quirúrgica real en <=48h depurada de cirugías programadas, seguimiento clínico y traumatológico en piso y red de interconsultas hospitalarias.',
         queHemosHecho: [
             {
                 titulo: '1. Auditoría de Triage, Oportunidad de Atención y Detección de Outliers',
-                detalle: 'Se construyó un sistema de monitoreo de precisión sobre la recepción y atención en Guardia Clínica que mide la cobertura de categorización por niveles de severidad (Nivel 1 Emergencia, Nivel 2 Urgencia, Nivel 3 Urgencia Menor) y desglosa los tiempos de espera puerta-médico en 5 franjas operativas: En Meta (≤30 min), Demora Leve (31–60 min), Outliers Moderados (61–90 min), Outliers Críticos (>90 min) y Permanencia Prolongada en Guardia (>3 horas), con explicaciones claras en cada tarjeta e inspección nominal caso por caso.'
+                detalle: 'Se construyó un sistema de monitoreo de precisión sobre la recepción y atención en Guardia Clínica que mide la cobertura de categorización por niveles de severidad (Nivel 1 Emergencia, Nivel 2 Urgencia, Nivel 3 Urgencia Menor) y desglosa los tiempos de espera puerta-médico en 5 franjas operativas: En Meta (<=30 min), Demora Leve (31-60 min), Outliers Moderados (61-90 min), Outliers Críticos (>90 min) y Permanencia Prolongada en Guardia (>3 horas), con explicaciones claras en cada tarjeta e inspección nominal caso por caso.'
             },
             {
-                titulo: '2. Trazabilidad Exacta de Conversión Quirúrgica de Urgencia (≤ 48 hs)',
-                detalle: 'Se desarrolló el módulo de articulación Guardia → Quirófano que identifica a cada paciente adulto que ingresa por Guardia Clínica y requiere una intervención quirúrgica dentro de las 48 horas. Incluye un algoritmo de exclusión inteligente que separa las cirugías de urgencia real (apendicectomías, colecistectomías agudas, fracturas, abdomen agudo) de aquellos pacientes que solo registraron un paso administrativo por guardia previo a una cirugía programada/electiva (como fertilidad, plástica o controles).'
+                titulo: '2. Trazabilidad Exacta de Conversión Quirúrgica de Urgencia (<= 48 hs)',
+                detalle: 'Se desarrolló el módulo de articulación Guardia -> Quirófano que identifica a cada paciente adulto que ingresa por Guardia Clínica y requiere una intervención quirúrgica dentro de las 48 horas. Incluye un algoritmo de exclusión inteligente que separa las cirugías de urgencia real (apendicectomías, colecistectomías agudas, fracturas, abdomen agudo) de aquellos pacientes que solo registraron un paso administrativo por guardia previo a una cirugía programada/electiva.'
             },
             {
                 titulo: '3. Seguimiento Clínico y Pase en Internado, Traumatología e Interconsultas',
                 detalle: 'Se integró el panel de continuidad asistencial hospitalaria que audita qué ocurre con el paciente luego de su ingreso: cobertura de historias clínicas de admisión en piso, distribución por área (Shock Room, Internado General y UCI), desempeño individual del plantel médico clínico, seguimiento específico del servicio de Traumatología en internado y mapeo completo de la red de Interconsultas hospitalarias.'
             },
             {
-                titulo: '4. Agente IA Generador de Epicrisis y Copiloto de Historia Clínica',
-                detalle: 'Se implementó una herramienta de Inteligencia Artificial clínica conectada a la Historia Clínica Electrónica con aislamiento estricto por paciente (NHC) y por episodio de admisión. El sistema reconstruye automáticamente el recorrido longitudinal del paciente (Shock Room → Quirófano → UCI → Piso), consolida diagnósticos, conciliación de medicación habitual, esquemas de antibióticos con días efectivos de tratamiento, evolución clínica y genera borradores estructurados de Epicrisis listos para revisión y firma médica.'
+                titulo: '4. Auditoría de Seguridad del Paciente: Reconsultas y Reinternaciones a 72 Horas',
+                detalle: 'Se automatizó el seguimiento longitudinal post-alta para detectar tanto a los pacientes ambulatorios que reingresan a Guardia dentro de las 72 horas de su atención inicial como a los pacientes dados de alta de Piso Clínico que sufren una reinternación temprana no programada.'
             }
         ],
         comoLoHemosHecho: [
@@ -132,7 +181,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
                 explicacion: 'Se procesaron los sellos temporales nativos de SALUS: [Fecha Entrada Real] (arribo/check-in en recepción), [Fecha Hora Entrada] (llamado e inicio de atención por el médico en box) y [Fecha Salida Real] (alta o cierre del episodio). Se aplicaron reglas de validación forense para separar demoras operativas reales de turnos administrativos que quedaron abiertos sin cierre.'
             },
             {
-                paso: 'Fase 2: Cruce Multicapa Guardia → Internación → Quirófano',
+                paso: 'Fase 2: Cruce Multicapa Guardia -> Internación -> Quirófano',
                 explicacion: 'Mediante cruces temporales por [NHC] entre [VLISE_Visitas], [TABLEAU_Admisiones] y [TABLEAU_Cirugias] en una ventana estricta de 0 a 48 horas, se trazó la línea de tiempo individual de cada paciente convertido a cirugía, aislando exclusivamente el circuito de adultos (sin mezclar el circuito independiente de Guardia Gineco-Obstétrica).'
             },
             {
@@ -140,41 +189,41 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
                 explicacion: 'Se vincularon las tablas de respuestas clínicas estructuradas de SALUS ([PR InstRespVisitaPaciente], [PR InstRespEntrada] y [VLISE_Visitas]) para auditar la completitud de la admisión médica en piso, las evoluciones diarias del staff de Clínica Médica y Traumatología, y las solicitudes/respuestas de interconsultas entre especialidades.'
             },
             {
-                paso: 'Fase 4: Arquitectura de Aislamiento Estricto por NHC para el Copiloto IA',
-                explicacion: 'Para garantizar seguridad clínica absoluta (cero mezcla de datos entre pacientes), el motor del Agente IA indexa los registros exclusivamente bajo la clave primaria compuesta (NHC + idAdmision), estructurando un dossier JSON determinístico antes de ejecutar la síntesis clínica o responder preguntas en el chat médico.'
+                paso: 'Fase 4: Sincronización Continua de Pacientes y Tiempos por Período Mensual',
+                explicacion: 'Los registros nominales de cada mes (Enero a Octubre 2026) se sincronizan y deduplican por identificador de visita y admisión en Supabase, permitiendo filtrar en tiempo real cualquier subconjunto de pacientes y exportar reportes auditables en PDF y Excel.'
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Consultas Auditadas / Mes', valor: '1.830 Pacientes (Sep 2026)', detalle: '1.044 atendidos en meta ≤ 30 min (57,0%)' },
-            { etiqueta: 'Admisiones Clínicas Auditadas', valor: '1.862 Episodios (2026)', detalle: '1.089 Internado · 664 Shock Room · 270 UCI' },
-            { etiqueta: 'Traumatología en Piso', valor: '302 Internaciones Auditadas', detalle: 'Seguimiento nominal de ingresos y evoluciones' },
+            { etiqueta: 'Consultas Auditadas / Mes', valor: '1.830 Pacientes (Sep 2026)', detalle: '1.044 en meta <= 30 min (57,0%)' },
+            { etiqueta: 'Admisiones Clínicas Auditadas', valor: '1.862 Episodios (2026)', detalle: '1.089 Internado · 664 Shock · 270 UCI' },
+            { etiqueta: 'Traumatología en Piso', valor: '302 Internaciones Auditadas', detalle: 'Seguimiento nominal de evoluciones' },
             { etiqueta: 'Red de Interconsultas', valor: '3.233 Interconsultas (2026)', detalle: '238 Clínicas + 2.995 Especialidades' }
         ],
         ejemplosDetallados: [
             {
-                titulo: 'Ejemplo Real 1: Análisis de la Curva de Oportunidad y Outliers en Guardia (Septiembre 2026)',
+                titulo: 'Ejemplo Real 1: Análisis de la Curva de Oportunidad y Outliers en Guardia (Septiembre y Octubre 2026)',
                 contexto: 'La Jefatura de Guardia necesita identificar cuántos pacientes sufren esperas excesivas y distinguir entre saturación real de consultorios y errores de cierre administrativo.',
-                analisisDatos: 'En Septiembre 2026 se auditaron 1.830 consultas válidas en Guardia Clínica: 1.044 pacientes (57,0%) fueron atendidos dentro de la meta institucional (≤30 minutos) y 462 pacientes (25,2%) tuvieron una demora leve de 31 a 60 minutos (82,3% atendido en menos de 1 hora). Sin embargo, el detector de Outliers identificó 163 casos con espera de 61 a 90 minutos, 149 casos críticos con espera >90 minutos y 47 pacientes con permanencia total >3 horas.',
-                decisionGestion: 'Al hacer clic en la tarjeta interactiva "Outliers Críticos (>90 min)", la tabla nominal revela que los picos de demora se concentran los lunes y martes entre las 10:00 y las 13:00 hs y entre las 19:00 y las 22:00 hs, permitiendo reforzar un médico clínico de apoyo en esas franjas y corregir el hábito de dejar visitas abiertas al finalizar la guardia.'
+                analisisDatos: 'En Septiembre 2026 se auditaron 1.830 consultas válidas en Guardia Clínica: 1.044 pacientes (57,0%) fueron atendidos dentro de la meta institucional (<=30 minutos) y 462 pacientes (25,2%) tuvieron una demora leve de 31 a 60 minutos (82,3% atendido en menos de 1 hora). El detector de Outliers identificó 163 casos con espera de 61 a 90 minutos, 149 casos críticos con espera >90 minutos y 47 pacientes con permanencia total >3 horas. Asimismo, en Octubre 2026 se auditaron 1.550 consultas con 247 casos >60 min y 37 permanencias >3 hs.',
+                decisionGestion: 'Al hacer clic en la tarjeta interactiva "Outliers Críticos (>90 min)", la tabla nominal revela que los picos de demora se concentran en la franja vespertina (14 a 22 hs), permitiendo reforzar la dotación médica en horas pico y corregir turnos que quedan abiertos al cambio de guardia.'
             },
             {
-                titulo: 'Ejemplo Real 2: Depuración de la Tasa de Conversión Quirúrgica desde Guardia (Ventana ≤ 48 hs)',
+                titulo: 'Ejemplo Real 2: Depuración de la Tasa de Conversión Quirúrgica desde Guardia (Ventana <= 48 hs)',
                 contexto: 'Auditoría Médica observó que el cruce bruto entre visitas de guardia y cirugías incluía pacientes que habían ingresado para cirugías programadas.',
                 analisisDatos: 'El módulo de Conversión Quirúrgica separa automáticamente ambos universos: al activar el filtro "Solo Urgencias Reales", el sistema aísla las cirugías agudas genuinas (colecistectomías laparoscópicas por colecistitis aguda, apendicectomías, reducciones osteosintéticas de urgencia y laparotomías exploradoras), excluyendo las admisiones programadas que pasaron administrativamente por ventanilla de guardia.',
                 decisionGestion: 'Se obtiene un indicador puro de conversión quirúrgica de urgencias (2,4% a 3,1% mensual) con trazabilidad hora por hora desde el ingreso en guardia hasta el inicio de la anestesia en quirófano.'
             },
             {
-                titulo: 'Ejemplo Real 3: Auditoría de Seguimiento Clínico en Internado y Agente IA de Epicrisis',
-                contexto: 'Coordinación de Clínica Médica necesita auditar la cobertura documental en piso y acelerar la confección de epicrisis al alta.',
+                titulo: 'Ejemplo Real 3: Auditoría de Seguimiento Clínico en Internado, Traumatología e Interconsultas',
+                contexto: 'Coordinación de Clínica Médica necesita auditar la cobertura documental en piso y la respuesta de especialidades interconsultoras.',
                 analisisDatos: 'Sobre 1.862 admisiones clínicas auditadas en 2026, 1.461 cuentan con historia clínica de ingreso estructurada completa (78,5% de adherencia documental), distribuidas en 1.089 episodios en Piso de Internación, 664 en Shock Room y 270 pases a UCI, con una tasa controlada de reingreso a 72 hs de solo 20 casos (1,07%). Paralelamente, se auditan 302 episodios de Traumatología y 3.233 interconsultas.',
-                decisionGestion: 'Mediante el Agente IA de Epicrisis, el médico selecciona el NHC del paciente al momento del alta y obtiene en segundos el resumen cronológico completo del episodio (ingreso en Shock Room, paso por Quirófano/UCI, antibióticos administrados con días exactos y medicación habitual), reduciendo el tiempo de redacción documental en un 70%.'
+                decisionGestion: 'El panel permite identificar en tiempo real qué pacientes internados en piso requieren seguimiento evolutivo del día y auditar la productividad de cada especialista interconsultor.'
             }
         ],
         indicadoresTabla: [
             ['1. Cobertura y Severidad de Triage', 'SALUS: VLISE_Visitas', 'Distribución porcentual de consultas en Nivel 1 (Emergencia), Nivel 2 (Urgencia) y Nivel 3.', 'Finalizado'],
-            ['2. Tiempos de Espera y Outliers', 'SALUS: VLISE_Visitas', 'Segmentación puerta-médico en ≤30m (Meta), 31-60m, 61-90m, >90m y Permanencia >3 hs.', 'Finalizado'],
+            ['2. Tiempos de Espera y Outliers', 'SALUS: VLISE_Visitas', 'Segmentación puerta-médico en <=30m (Meta), 31-60m, 61-90m, >90m y Permanencia >3 hs.', 'Finalizado'],
             ['3. Destinos Post-Guardia (24 hs)', 'SALUS: Visitas + Admisiones', 'Proporción de Alta a Domicilio vs Internación en Piso Clínico, Pase a Quirófano o Derivación a UCI.', 'Finalizado'],
-            ['4. Conversión Quirúrgica Real (≤48h)', 'SALUS: Visitas + TABLEAU_Cirugias', 'Pacientes de guardia operados en ≤48h depurando cirugías programadas/electivas.', 'Finalizado'],
+            ['4. Conversión Quirúrgica Real (<=48h)', 'SALUS: Visitas + TABLEAU_Cirugias', 'Pacientes de guardia operados en <=48h depurando cirugías programadas/electivas.', 'Finalizado'],
             ['5. Tasa de Reconsulta en Guardia (72h)', 'SALUS: VLISE_Visitas (Self-Join)', 'Pacientes dados de alta de guardia que reingresan a consulta dentro de las 72 horas.', 'Finalizado'],
             ['6. Reinternación Temprana (72h)', 'SALUS: TABLEAU_Admisiones', 'Pacientes egresados de internación clínica que sufren reinternación dentro de las 72 hs.', 'Finalizado'],
             ['7. Intensidad Diagnóstica (TAC y Rx)', 'SALUS: VLISE_PeticionesRadiologia', 'Volumen de Tomografías y Radiografías solicitadas cada 100 consultas de guardia.', 'Finalizado'],
@@ -182,8 +231,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             ['9. Adherencia Documental de Epicrisis', 'SALUS: Admisiones + Respuestas', 'Porcentaje de egresos hospitalarios con epicrisis médica firmada al momento del alta.', 'Finalizado'],
             ['10. Articulación Guardia - Quirófano', 'SALUS: SalasQuirurgicas + Cirugias', 'Minutos promedio desde el ingreso en guardia hasta la incisión quirúrgica en urgencias.', 'Finalizado'],
             ['11. Seguimiento Clínico en Internado', 'SALUS: PR InstRespVisitaPaciente', 'Auditoría de 1.862 admisiones clínicas en Shock Room (664), Internado (1.089) y UCI (270).', 'Finalizado'],
-            ['12. Traumatología e Interconsultas', 'SALUS: Admisiones + Visitas', 'Monitoreo de 302 internaciones traumatológicas y 3.233 interconsultas hospitalarias.', 'Finalizado'],
-            ['13. Agente IA de Epicrisis & Copiloto HC', 'SALUS + Motor IA Sanatorio Argentino', 'Reconstrucción longitudinal por NHC (Shock Room → Qx → UCI → Piso) y síntesis de epicrisis.', 'Finalizado']
+            ['12. Traumatología e Interconsultas', 'SALUS: Admisiones + Visitas', 'Monitoreo de 302 internaciones traumatológicas y 3.233 interconsultas hospitalarias.', 'Finalizado']
         ]
     },
 
@@ -194,9 +242,9 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         titulo: 'Unidad de Cuidados Críticos (UCI)',
         subtitulo: 'Ocupación Dual sobre 16 Camas Reales (8 UTI + 8 Intermedios), Giro Cama, Auditoría Nominal de Mortalidad, Kinesiología Intensiva y Soporte VLISE',
         servicio: 'Unidad de Terapia Intensiva Adultos (8 Camas UTI) y Unidad de Cuidados Intermedios (8 Camas UCIM)',
-        estado: 'Activo — 100% Completado',
+        estado: 'Activo - 100% Completado',
         fechaEmision: 'Octubre 2026',
-        resumenCorto: 'Sistema integral de inteligencia clínica y operativa para la Unidad de Cuidados Críticos: cálculo exacto sobre las 16 camas operativas reales (8 UTI + 8 Cuidados Intermedios) bajo doble metodología (Censo de Medianoche y Horas Exactas), estancia media (ALOS), giro cama, trazabilidad por puerta de entrada, auditoría nominal de mortalidad (<48h vs ≥48h) con dossier clínico, kinesiología crítica, hemoterapia y soporte diagnóstico por box.',
+        resumenCorto: 'Sistema integral de inteligencia clínica y operativa para la Unidad de Cuidados Críticos: cálculo exacto sobre las 16 camas operativas reales (8 UTI + 8 Cuidados Intermedios) bajo doble metodología (Censo de Medianoche y Horas Exactas), estancia media (ALOS), giro cama, trazabilidad por puerta de entrada, auditoría nominal de mortalidad (<48h vs >=48h) con dossier clínico, kinesiología crítica, hemoterapia y soporte diagnóstico por box.',
         queHemosHecho: [
             {
                 titulo: '1. Parametrización Exacta de la Capacidad Instalada (16 Camas: 8 UTI + 8 Intermedios)',
@@ -208,7 +256,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             },
             {
                 titulo: '3. Modal de Auditoría Nominal de Mortalidad y Dossier Clínico Individual',
-                detalle: 'Se construyó un módulo especializado de morbimortalidad que calcula la tasa de defunción exclusivamente sobre egresos cerrados, separando la mortalidad precoz (<48 hs del ingreso, asociada a cuadros agudos irreversibles de ingreso) de la mortalidad intrahospitalaria tardía (≥48 hs), permitiendo abrir el Dossier Clínico completo de cada paciente.'
+                detalle: 'Se construyó un módulo especializado de morbimortalidad que calcula la tasa de defunción exclusivamente sobre egresos cerrados, separando la mortalidad precoz (<48 hs del ingreso, asociada a cuadros agudos irreversibles de ingreso) de la mortalidad intrahospitalaria tardía (>=48 hs), permitiendo abrir el Dossier Clínico completo de cada paciente.'
             },
             {
                 titulo: '4. Integración de Kinesiología Intensiva, Hemoterapia, Enfermería y Soporte VLISE por Box',
@@ -217,7 +265,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         ],
         comoLoHemosHecho: [
             {
-                paso: 'Fase 1: Extracción Multianual (2022–2026) desde TABLEAU_Admisiones',
+                paso: 'Fase 1: Extracción Multianual (2022-2026) desde TABLEAU_Admisiones',
                 explicacion: 'Se aislaron todos los episodios con Especialidad = "TERAPIA INTENSIVA" / "UCI", aplicando la regla crítica [Fecha alta] IS NOT NULL para las métricas de estancia media (ALOS) y mortalidad a fin de evitar que los pacientes actualmente internados sesguen los promedios.'
             },
             {
@@ -234,10 +282,10 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Dotación Oficial UCI', valor: '16 Camas Operativas', detalle: '8 Camas UTI + 8 Cuidados Intermedios' },
-            { etiqueta: 'Capacidad Mensual (30d)', valor: '480 Días-Cama Disp.', detalle: '496 Días-Cama en meses de 31 días' },
-            { etiqueta: 'Doble Motor de Cálculo', valor: 'Medianoche / Horas', detalle: 'Recorte exacto por período en Telar' },
-            { etiqueta: 'Indicadores Documentados', valor: '10 Indicadores SQL', detalle: '100% Finalizados (Ocupación, Mortalidad, Kine)' }
+            { etiqueta: 'Dotación Oficial UCI', valor: '16 Camas Operativas', detalle: '8 Camas UTI + 8 Intermedios' },
+            { etiqueta: 'Capacidad Mensual (30d)', valor: '480 Días-Cama Disp.', detalle: '496 Días-Cama en meses de 31d' },
+            { etiqueta: 'Doble Motor de Cálculo', valor: 'Medianoche / Horas', detalle: 'Recorte exacto por período Telar' },
+            { etiqueta: 'Indicadores Documentados', valor: '10 Indicadores SQL', detalle: '100% Finalizados y auditados' }
         ],
         ejemplosDetallados: [
             {
@@ -247,7 +295,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
                 decisionGestion: 'La Dirección valida que las 8 camas de Cuidados Intermedios absorben eficazmente los postoperatorios de mediana estancia, preservando las 8 camas de UTI para pacientes ventilados o hemodinámicamente inestables.'
             },
             {
-                titulo: 'Ejemplo Real 2: Auditoría Forense de Mortalidad Precoz (<48 hs) vs Tardía (≥48 hs)',
+                titulo: 'Ejemplo Real 2: Auditoría Forense de Mortalidad Precoz (<48 hs) vs Tardía (>=48 hs)',
                 contexto: 'El Comité de Calidad y Seguridad del Paciente requiere evaluar la tasa de mortalidad de UCI diferenciando la gravedad de ingreso de las complicaciones evolutivas.',
                 analisisDatos: 'Al abrir el Modal de Auditoría de Mortalidad desde el KPI "% Defunción", el sistema lista nominalmente los óbitos del período sobre el total de egresos confirmados. El desglose automático muestra qué proporción corresponde a fallecimientos en menos de 48 horas (pacientes ingresados desde Shock Room o derivación externa en shock refractario o ACV hemorrágico masivo) frente a pacientes con estancias prolongadas (>7 días).',
                 decisionGestion: 'Cada fila permite abrir el Dossier del Paciente con sus signos vitales, laboratorio crítico, evoluciones médicas y soporte ventilatorio, documentando de forma transparente las auditorías de morbimortalidad.'
@@ -262,7 +310,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         indicadoresTabla: [
             ['1. Tasa de Ocupación UCI (16 Camas)', 'SALUS: TABLEAU_Admisiones', 'Días-Cama Ocupados / (16 camas * días del período) * 100 (Modo Medianoche y Horas).', 'Finalizado'],
             ['2. Giro Cama e Intervalo Sustitución', 'SALUS: TABLEAU_Admisiones', 'Total Egresos UCI / 16 camas operativas; Intervalo libre entre egreso e ingreso.', 'Finalizado'],
-            ['3. Volumen de Admisiones UCI y UCIM', 'SALUS: TABLEAU_Admisiones', 'Evolución mensual e interanual (2022–2026) de ingresos críticos por especialidad y cobertura.', 'Finalizado'],
+            ['3. Volumen de Admisiones UCI y UCIM', 'SALUS: TABLEAU_Admisiones', 'Evolución mensual e interanual (2022-2026) de ingresos críticos por especialidad y cobertura.', 'Finalizado'],
             ['4. Promedio Días de Estancia (ALOS)', 'SALUS: TABLEAU_Admisiones', 'Promedio de días de internación sobre egresos cerrados ([Fecha alta] IS NOT NULL).', 'Finalizado'],
             ['5. Trazabilidad de Puerta de Entrada', 'SALUS: TABLEAU_Admisiones', 'Distribución de ingresos según origen: Quirófano, Guardia/Shockroom, Piso o Derivación.', 'Finalizado'],
             ['6. Tasa de Mortalidad Bruta y Neta', 'SALUS: TABLEAU_Admisiones', 'Defunciones / Total Egresos UCI * 100, discriminando mortalidad <48 hs vs >=48 hs.', 'Finalizado'],
@@ -280,7 +328,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         titulo: 'Vigilancia Epidemiológica y Neurocirugía (Dr. Romano)',
         subtitulo: 'Automatización de Planilla C2 Ministerial (SNVS 2.0), Curvas Epidémicas por Patología, Control Pediátrico Exacto (<24 Meses) y Actividad Neuroquirúrgica',
         servicio: 'Comité de Infectología, Vigilancia Epidemiológica Institucional y Servicio de Neurocirugía / Neurología',
-        estado: 'Activo — 100% Completado',
+        estado: 'Activo - 100% Completado',
         fechaEmision: 'Octubre 2026',
         resumenCorto: 'Automatización integral de los requerimientos de Vigilancia Epidemiológica de notificación obligatoria (Planilla C2 / Ministerio de Salud) y métricas de Neurocirugía lideradas por el Dr. Romano: detección automática por códigos CIE y texto diagnóstico de Bronquiolitis en menores de 2 años (<24 meses exactos), ETI (Influenza), Neumonías, Diarreas Agudas, Varicela e Infecciones de Transmisión Sexual (ETS/ITS), junto con el monitoreo quirúrgico de Neurocirugía.',
         queHemosHecho: [
@@ -294,7 +342,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             },
             {
                 titulo: '3. Estratificación por Grupo Etario, Sede de Atención y Auditoría Nominal C2',
-                detalle: 'El tablero clasifica automáticamente cada evento en Lactantes (<2 años), Pediátricos (2 a 14 años) y Adultos (≥15 años), desglosando por centro operativo (Sede Santa Fe, Mitre, San Luis) y ofreciendo un buscador nominal auditable con exportación directa a Excel oficial y Reporte PDF Epidemiológico.'
+                detalle: 'El tablero clasifica automáticamente cada evento en Lactantes (<2 años), Pediátricos (2 a 14 años) y Adultos (>=15 años), desglosando por centro operativo (Sede Santa Fe, Mitre, San Luis) y ofreciendo un buscador nominal auditable con exportación directa a Excel oficial y Reporte PDF Epidemiológico.'
             },
             {
                 titulo: '4. Módulo de Trazabilidad de Neurocirugía y Neurología Clínica',
@@ -312,7 +360,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             },
             {
                 paso: 'Fase 3: Construcción de Curvas Epidémicas Estacionales (Invierno vs Verano)',
-                explicacion: 'Se estructuró la serie continua mensual que permite visualizar con claridad la transición estacional entre el corredor de infecciones respiratorias agudas (pico mayo–julio) y el corredor de gastroenteritis agudas estivales (pico diciembre–febrero).'
+                explicacion: 'Se estructuró la serie continua mensual que permite visualizar con claridad la transición estacional entre el corredor de infecciones respiratorias agudas (pico mayo-julio) y el corredor de gastroenteritis agudas estivales (pico diciembre-febrero).'
             },
             {
                 paso: 'Fase 4: Generación Automática del Reporte Ministerial en PDF y Excel',
@@ -320,10 +368,10 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Casos Vigilados (12 Meses)', valor: '2.920 Notificaciones', detalle: 'Consolidado auditado Nov 2025 – Oct 2026' },
-            { etiqueta: 'Pico Invernal (Jun 2026)', valor: '483 Casos / mes', detalle: '240 ETI · 92 Neumonías · 88 Bronquiolitis <2a' },
-            { etiqueta: 'Corte Octubre 2026', valor: '156 Casos Auditados', detalle: '72 Respiratorias · 48 Diarreas · 17 ETS · 14 Bronq.' },
-            { etiqueta: 'Indicadores Documentados', valor: '7 Indicadores SQL', detalle: '100% Finalizados (6 Epidemiológicos + Neurocirugía)' }
+            { etiqueta: 'Casos Vigilados (12 Meses)', valor: '2.920 Notificaciones', detalle: 'Consolidado Nov 2025 - Oct 2026' },
+            { etiqueta: 'Pico Invernal (Jun 2026)', valor: '483 Casos / mes', detalle: '240 ETI · 92 Neumonías · 88 Bronq.' },
+            { etiqueta: 'Corte Octubre 2026', valor: '156 Casos Auditados', detalle: '72 Resp. · 48 Diarreas · 17 ETS' },
+            { etiqueta: 'Indicadores Documentados', valor: '7 Indicadores SQL', detalle: '100% Finalizados (6 Epi + NeuroCx)' }
         ],
         ejemplosDetallados: [
             {
@@ -361,14 +409,14 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         projectNameMatch: ['diagnóstico por imágenes', 'diagnostico por imagenes', 'dxi', 'imágenes', 'imagenes'],
         codigo: 'GOB-DXI-2026-05',
         titulo: 'Diagnóstico por Imágenes (DxI)',
-        subtitulo: 'Producción Multianual (2022–2026) en las 5 Modalidades Oficiales, Depuración de Contrastes en TC, Tasa de Efectividad, SLA de Informes y Médicos Solicitantes',
+        subtitulo: 'Producción Multianual (2022-2026) en las 5 Modalidades Oficiales, Depuración de Contrastes en TC, Tasa de Efectividad, SLA de Informes y Médicos Solicitantes',
         servicio: 'Servicio de Diagnóstico por Imágenes (Ecografía, Radiología, Mamografía, Tomografía Computada y Densitometría Ósea)',
-        estado: 'Activo — 100% Completado',
+        estado: 'Activo - 100% Completado',
         fechaEmision: 'Octubre 2026',
-        resumenCorto: 'Gobernanza integral del Servicio de Diagnóstico por Imágenes (2022–2026): clasificación estandarizada en las 5 prestaciones oficiales (Ecografía, Radiología, Mamografía, Tomografía Computada y Densitometría Ósea), algoritmo de exclusión de inyecciones de medio de contraste para evitar sobredimensionar Tomografía, auditoría de asistencia y ausentismo (No-Show), productividad de médicos realizadores e informantes, ranking de derivadores y mix de obras sociales.',
+        resumenCorto: 'Gobernanza integral del Servicio de Diagnóstico por Imágenes (2022-2026): clasificación estandarizada en las 5 prestaciones oficiales (Ecografía, Radiología, Mamografía, Tomografía Computada y Densitometría Ósea), algoritmo de exclusión de inyecciones de medio de contraste para evitar sobredimensionar Tomografía, auditoría de asistencia y ausentismo (No-Show), productividad de médicos realizadores e informantes, ranking de derivadores y mix de obras sociales.',
         queHemosHecho: [
             {
-                titulo: '1. Estandarización de las 5 Modalidades Oficiales y Serie Histórica 2022–2026',
+                titulo: '1. Estandarización de las 5 Modalidades Oficiales y Serie Histórica 2022-2026',
                 detalle: 'Se estructuró el universo completo de agendas y prestaciones de Diagnóstico por Imágenes en las 5 modalidades oficiales del Sanatorio Argentino: Ecografía (ECO), Radiología (RX), Mamografía, Tomografía Computada (TC) y Densitometría Ósea. El tablero permite navegar cualquier mes desde Enero 2022 hasta Octubre 2026 o seleccionar rangos personalizados desde el filtro global Telar.'
             },
             {
@@ -399,14 +447,14 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             },
             {
                 paso: 'Fase 4: Caché de Alta Velocidad en Supabase y Sincronización Directa SALUS',
-                explicacion: 'Para permitir consultas instantáneas sobre millones de registros históricos (2022–2026), se implementó una arquitectura híbrida entre el servidor de sincronización SALUS (/api/salus/dxi-analytics) y la capa de persistencia en Supabase (app_config.dxi_analytics_cache).'
+                explicacion: 'Para permitir consultas instantáneas sobre millones de registros históricos (2022-2026), se implementó una arquitectura híbrida entre el servidor de sincronización SALUS (/api/salus/dxi-analytics) y la capa de persistencia en Supabase (app_config.dxi_analytics_cache).'
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Estudios Efectivos (Oct 2026)', valor: '7.438 Estudios Realizados', detalle: 'Presentes + Internados + Urgencias + Sobreturnos' },
-            { etiqueta: 'Líder en Volumen: Ecografía', valor: '5.166 Ecografías (69,5%)', detalle: 'Seguido por Radiología con 1.266 estudios (17,0%)' },
-            { etiqueta: 'Alta Complejidad y Screening', valor: '477 Mamografías · 401 TC', detalle: 'Tomografía 100% depurada de contrastes + 128 DMO' },
-            { etiqueta: 'Indicadores Documentados', valor: '8 Indicadores SQL', detalle: '100% Finalizados y sincronizados con SALUS' }
+            { etiqueta: 'Estudios Efectivos (Oct 2026)', valor: '7.438 Estudios Realizados', detalle: 'Presentes, Internados y Urgencias' },
+            { etiqueta: 'Líder en Volumen: Ecografía', valor: '5.166 Ecografías (69,5%)', detalle: 'Seguido por RX con 1.266 (17,0%)' },
+            { etiqueta: 'Alta Complejidad y Screening', valor: '477 Mamo · 401 TC · 128 DMO', detalle: 'TC 100% depurada de contrastes' },
+            { etiqueta: 'Indicadores Documentados', valor: '8 Indicadores SQL', detalle: '100% Finalizados y auditados' }
         ],
         ejemplosDetallados: [
             {
@@ -419,17 +467,17 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
                 titulo: 'Ejemplo Real 2: Impacto de la Depuración de Contrastes en Tomografía y Auditoría de Informes',
                 contexto: 'Existía discrepancia entre la cantidad de ítems facturados en el tomógrafo y la cantidad real de pacientes estudiados, además de la necesidad de monitorear el SLA de informes firmados.',
                 analisisDatos: 'Al excluir algorítmicamente las inyecciones de medio de contraste endovenoso/oral, el tablero establece con exactitud 401 estudios tomográficos puros en Octubre 2026. Asimismo, al auditar la pestaña de "Profesionales Informantes" en prácticas como Densitometría Ósea Total (128 estudios presentes en Sede Santa Fe), el sistema detalla nominalmente que 120 estudios ya cuentan con informe firmado (93,8% de cumplimiento, liderado por Dra. Laura Orozco Mercado con 29 informes, Dra. Cecilia Tello con 22 y Dra. Malvina Gómez con 20) y alerta sobre exactamente 8 estudios pendientes de firma.',
-                decisionGestion: 'El jefe de servicio visualiza en tiempo real qué agendas tienen estudios realizados pendientes de informe para garantizar la entrega al paciente en menos de 24–48 horas.'
+                decisionGestion: 'El jefe de servicio visualiza en tiempo real qué agendas tienen estudios realizados pendientes de informe para garantizar la entrega al paciente en menos de 24-48 horas.'
             },
             {
-                titulo: 'Ejemplo Real 3: Auditoría de Ausentismo (No-Show) yRegistros sin Cierre por Financiador',
+                titulo: 'Ejemplo Real 3: Auditoría de Ausentismo (No-Show) y Registros sin Cierre por Financiador',
                 contexto: 'El área de Turnos y Recepción de Imágenes necesita reducir la capacidad ociosa de los equipos provocada por pacientes ausentes o turnos que quedan "Sin Registrar".',
                 analisisDatos: 'Tomando como caso testigo la agenda "(RX) DENSITOMETRIA OSEA TOTAL" en Sede Santa Fe durante Octubre 2026, sobre 190 turnos totales se registran 128 pacientes Presentes (67,4%), 19 Ausentes (6 ausencias injustificadas y 13 justificadas = 10,0% de No-Show) y 43 turnos en estado "SIN REGISTRAR" (22,6%). Al cruzar por Obra Social, "001 - PROVINCIA" concentra 84 presentes, 8 ausentes y 16 turnos sin cierre administrativo.',
                 decisionGestion: 'Se activa el recordatorio automatizado de confirmación de turno por WhatsApp 24 hs antes para Mamografía, Densitometría y Ecografía, y se instruye a recepción para cerrar diariamente los estados pendientes.'
             }
         ],
         indicadoresTabla: [
-            ['1. Volumen por Modalidad (2022–2026)', 'SALUS: VLISE_Visitas', 'Conteo mensual y diario de estudios efectivos en ECO, RX, Mamografía, TC y Densitometría.', 'Finalizado'],
+            ['1. Volumen por Modalidad (2022-2026)', 'SALUS: VLISE_Visitas', 'Conteo mensual y diario de estudios efectivos en ECO, RX, Mamografía, TC y Densitometría.', 'Finalizado'],
             ['2. Tomografía Depurada de Contrastes', 'SALUS: VLISE_Visitas + Peticiones', 'Exclusión estricta de ítems de medio de contraste para medir estudios tomográficos reales.', 'Finalizado'],
             ['3. Tasa de Efectividad y Ausentismo', 'SALUS: VLISE_Visitas (Asistencia)', 'Distribución porcentual: Presente, Internado, Urgencia, Sobreturno vs Ausente y Sin Registrar.', 'Finalizado'],
             ['4. Rendimiento por Agenda y Sede', 'SALUS: VLISE_Visitas (Agenda/Centro)', 'Producción comparativa por equipo/sala en Sede Santa Fe, San Luis Sede 3 y Mitre.', 'Finalizado'],
@@ -476,34 +524,35 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
     const JsPDFCtor = jsPDF?.jsPDF || jsPDF;
     const runAutoTable = typeof autoTable === 'function' ? autoTable : autoTable?.default;
 
-    const doc = new JsPDFCtor({
+    const doc = installSafePdfText(new JsPDFCtor({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
-    });
+    }));
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
     const contentWidth = pageWidth - margin * 2;
+    const bottomSafeY = pageHeight - 25;
 
     // Paleta Institucional Sanatorio Argentino (Limpia y Clínica)
-    const NAVY = [13, 59, 102];        // #0D3B66 Azul Institucional Profundo
-    const BLUE = [37, 99, 235];        // #2563EB Azul Institucional Vibrante
-    const SKY = [2, 132, 199];         // #0284C7 Celeste Clínico
-    const SLATE_DARK = [15, 23, 42];   // #0F172A Texto Principal
-    const SLATE_MED = [71, 85, 105];   // #475569 Texto Secundario
-    const ICE_BG = [240, 247, 255];    // #F0F7FF Fondo Clínico Suave
+    const NAVY = [13, 59, 102];          // #0D3B66 Azul Institucional Profundo
+    const BLUE = [37, 99, 235];          // #2563EB Azul Institucional Vibrante
+    const SKY = [2, 132, 199];           // #0284C7 Celeste Clínico
+    const SLATE_DARK = [15, 23, 42];     // #0F172A Texto Principal
+    const SLATE_MED = [71, 85, 105];     // #475569 Texto Secundario
+    const ICE_BG = [240, 247, 255];      // #F0F7FF Fondo Clínico Suave
     const BORDER_BLUE = [191, 219, 254]; // #BFDBFE Borde Suave
-    const EMERALD = [5, 150, 105];     // #059669 Verde Validación
+    const EMERALD = [5, 150, 105];       // #059669 Verde Validación
 
-    // Helper para verificar salto de página
+    // Helper para verificar salto de página con margen inferior seguro
     let currentY = 0;
     const ensureSpace = (neededMm) => {
-        if (currentY + neededMm > pageHeight - 22) {
+        if (currentY + neededMm > bottomSafeY) {
             doc.addPage();
             drawContinuationHeader();
-            currentY = 30;
+            currentY = 27;
         }
     };
 
@@ -527,12 +576,12 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
         doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9.5);
-        doc.text(`SANATORIO ARGENTINO · ${dossier.titulo.toUpperCase()}`, margin + 16, 8.5);
+        doc.text(`SANATORIO ARGENTINO · ${dossier.titulo.toUpperCase()}`, margin + 16, 8.2);
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(191, 219, 254);
-        doc.text('Innovación y Transformación Digital — Dossier Técnico de Gobernanza de Datos', margin + 16, 13.5);
+        doc.text('Innovación y Transformación Digital - Dossier Técnico de Gobernanza de Datos', margin + 16, 13.5);
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
@@ -541,27 +590,27 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
 
     // Helper para títulos de sección
     const drawSectionHeader = (numero, titulo, subtitulo) => {
-        ensureSpace(22);
+        ensureSpace(26);
         doc.setFillColor(...ICE_BG);
         doc.setDrawColor(...BORDER_BLUE);
-        doc.setLineWidth(0.3);
-        doc.roundedRect(margin, currentY, contentWidth, 13, 2, 2, 'FD');
+        doc.setLineWidth(0.35);
+        doc.roundedRect(margin, currentY, contentWidth, 14, 2, 2, 'FD');
 
         doc.setFillColor(...NAVY);
-        doc.roundedRect(margin, currentY, 3.5, 13, 1, 1, 'F');
+        doc.roundedRect(margin, currentY, 3.5, 14, 1, 1, 'F');
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10.5);
+        doc.setFontSize(10.2);
         doc.setTextColor(...NAVY);
-        doc.text(`${numero}. ${titulo}`, margin + 7, currentY + 6);
+        doc.text(`${numero}. ${titulo}`, margin + 7, currentY + 6.2);
 
         if (subtitulo) {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(7.8);
             doc.setTextColor(...SLATE_MED);
-            doc.text(subtitulo, margin + 7, currentY + 10.8);
+            doc.text(subtitulo, margin + 7, currentY + 11.2);
         }
-        currentY += 17;
+        currentY += 18;
     };
 
     // =========================================================================
@@ -585,18 +634,18 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
         // Fallback limpio
     }
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.8);
+    doc.setFontSize(6.6);
     doc.setTextColor(...NAVY);
     doc.text('SANATORIO ARGENTINO', margin + 22, 35.5, { align: 'center' });
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.5);
+    doc.setFontSize(5.4);
     doc.setTextColor(...BLUE);
     doc.text('Innovación y Transformación Digital', margin + 22, 39.5, { align: 'center' });
     doc.setDrawColor(...BORDER_BLUE);
     doc.setLineWidth(0.25);
     doc.line(margin + 4, 41.2, margin + 40, 41.2);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5);
+    doc.setFontSize(5.0);
     doc.setTextColor(...SLATE_MED);
     doc.text('Gobernanza Clínica y de Datos', margin + 22, 44.2, { align: 'center' });
 
@@ -610,79 +659,83 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
     doc.text(`PROYECTO DE GOBERNANZA DE DATOS · ${dossier.codigo}`, headerX, 13);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
+    doc.setFontSize(14.5);
     doc.setTextColor(255, 255, 255);
     const titleLines = doc.splitTextToSize(dossier.titulo, headerMaxW);
     doc.text(titleLines, headerX, 20.5);
 
-    const subtitleY = 20.5 + (titleLines.length * 6.2);
+    const subtitleY = 20.5 + (titleLines.length * 6.0);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.3);
+    doc.setFontSize(8.2);
     doc.setTextColor(219, 234, 254);
     const subLines = doc.splitTextToSize(dossier.subtitulo, headerMaxW);
     doc.text(subLines, headerX, subtitleY);
 
     // Metadatos del proyecto bajo el banner
-    currentY = 62;
+    currentY = 61;
     doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.3);
-    doc.roundedRect(margin, currentY, contentWidth, 18, 2, 2, 'FD');
+    doc.roundedRect(margin, currentY, contentWidth, 18.5, 2, 2, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(...SLATE_MED);
     doc.text('SERVICIO AUDITADO:', margin + 4, currentY + 5.5);
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     doc.setTextColor(...SLATE_DARK);
-    const servLines = doc.splitTextToSize(dossier.servicio, contentWidth - 45);
+    const servLines = doc.splitTextToSize(dossier.servicio, contentWidth - 42);
     doc.text(servLines[0], margin + 35, currentY + 5.5);
 
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     doc.setTextColor(...SLATE_MED);
-    doc.text('ÁREA RESPONSABLE:', margin + 4, currentY + 11);
+    doc.text('ÁREA RESPONSABLE:', margin + 4, currentY + 11.2);
     doc.setTextColor(...BLUE);
-    doc.text('Sanatorio Argentino — Innovación y Transformación Digital', margin + 35, currentY + 11);
+    doc.text('Sanatorio Argentino - Innovación y Transformación Digital', margin + 35, currentY + 11.2);
 
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     doc.setTextColor(...SLATE_MED);
-    doc.text('ESTADO DEL PROYECTO:', margin + 4, currentY + 15.8);
+    doc.text('ESTADO DEL PROYECTO:', margin + 4, currentY + 16.2);
     doc.setTextColor(...EMERALD);
-    doc.text(`${dossier.estado}   |   Período de Referencia: ${dossier.fechaEmision}`, margin + 39, currentY + 15.8);
+    doc.text(`${dossier.estado}   |   Período de Referencia: ${dossier.fechaEmision}`, margin + 39, currentY + 16.2);
 
     currentY += 23;
 
-    // 4 Tarjetas de Resumen Ejecutivo (KPIs del Proyecto)
-    const cardGap = 3;
+    // 4 Tarjetas de Resumen Ejecutivo (KPIs del Proyecto) con altura amplia y tipografía medida antes del split
+    const cardGap = 3.2;
     const cardW = (contentWidth - cardGap * 3) / 4;
-    const cardH = 21;
+    const cardH = 24;
 
     dossier.metricasResumen.forEach((m, idx) => {
         const cx = margin + idx * (cardW + cardGap);
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(...BORDER_BLUE);
         doc.setLineWidth(0.35);
-        doc.roundedRect(cx, currentY, cardW, cardH, 2, 2, 'FD');
+        doc.roundedRect(cx, currentY, cardW, cardH, 2.2, 2.2, 'FD');
 
         doc.setFillColor(...BLUE);
-        doc.rect(cx, currentY, cardW, 1.5, 'F');
+        doc.rect(cx, currentY, cardW, 1.6, 'F');
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.5);
+        doc.setFontSize(6.3);
         doc.setTextColor(...SLATE_MED);
-        doc.text(m.etiqueta.toUpperCase(), cx + 2.5, currentY + 5.5);
+        const etqLines = doc.splitTextToSize(m.etiqueta.toUpperCase(), cardW - 5);
+        doc.text(etqLines[0], cx + 2.5, currentY + 5.8);
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9.2);
+        doc.setFontSize(8.8);
         doc.setTextColor(...NAVY);
         const valSplit = doc.splitTextToSize(m.valor, cardW - 5);
-        doc.text(valSplit[0], cx + 2.5, currentY + 11.5);
+        doc.text(valSplit[0], cx + 2.5, currentY + 11.8);
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.2);
+        doc.setFontSize(6.6);
         doc.setTextColor(...SLATE_MED);
         const detSplit = doc.splitTextToSize(m.detalle, cardW - 5);
-        doc.text(detSplit.slice(0, 2), cx + 2.5, currentY + 16);
+        doc.text(detSplit.slice(0, 2), cx + 2.5, currentY + 16.8);
     });
 
     currentY += cardH + 6;
@@ -696,40 +749,54 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
         'Objetivos alcanzados, módulos desplegados y valor clínico-administrativo para Sanatorio Argentino'
     );
 
-    // Párrafo introductorio
+    // Párrafo introductorio en contenedor destacado
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(8.4);
+    const introLines = doc.splitTextToSize(dossier.resumenCorto, contentWidth - 10);
+    const introBoxH = 7 + introLines.length * 4.3;
+    ensureSpace(introBoxH + 4);
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.28);
+    doc.roundedRect(margin, currentY, contentWidth, introBoxH, 2, 2, 'FD');
     doc.setTextColor(...SLATE_DARK);
-    const introLines = doc.splitTextToSize(dossier.resumenCorto, contentWidth - 4);
-    ensureSpace(introLines.length * 4.2 + 6);
-    doc.text(introLines, margin + 2, currentY);
-    currentY += introLines.length * 4.2 + 4;
+    doc.text(introLines, margin + 5, currentY + 5.2);
+    currentY += introBoxH + 4;
 
     // Bloques detallados de "Qué hemos hecho"
     dossier.queHemosHecho.forEach((item) => {
-        const detLines = doc.splitTextToSize(item.detalle, contentWidth - 10);
-        const boxH = 9 + detLines.length * 4.1;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.8);
+        const itemTitleLines = doc.splitTextToSize(item.titulo, contentWidth - 12);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.2);
+        const detLines = doc.splitTextToSize(item.detalle, contentWidth - 12);
+
+        const boxH = 8 + (itemTitleLines.length * 4.4) + (detLines.length * 4.2) + 2.5;
         ensureSpace(boxH + 4);
 
         doc.setFillColor(255, 255, 255);
-        doc.setDrawColor(219, 234, 254);
-        doc.setLineWidth(0.3);
+        doc.setDrawColor(191, 219, 254);
+        doc.setLineWidth(0.32);
         doc.roundedRect(margin, currentY, contentWidth, boxH, 2, 2, 'FD');
 
         doc.setFillColor(...SKY);
-        doc.roundedRect(margin, currentY, 2.5, boxH, 1, 1, 'F');
+        doc.roundedRect(margin, currentY, 2.8, boxH, 1, 1, 'F');
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.8);
         doc.setTextColor(...NAVY);
-        doc.text(item.titulo, margin + 5.5, currentY + 5.5);
+        doc.text(itemTitleLines, margin + 6, currentY + 5.8);
 
+        const detStartY = currentY + 5.8 + (itemTitleLines.length * 4.4) + 0.8;
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.1);
+        doc.setFontSize(8.2);
         doc.setTextColor(...SLATE_DARK);
-        doc.text(detLines, margin + 5.5, currentY + 10.2);
+        doc.text(detLines, margin + 6, detStartY);
 
-        currentY += boxH + 3.2;
+        currentY += boxH + 3.5;
     });
 
     currentY += 2;
@@ -744,34 +811,42 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
     );
 
     dossier.comoLoHemosHecho.forEach((step, idx) => {
-        const expLines = doc.splitTextToSize(step.explicacion, contentWidth - 14);
-        const boxH = 8.5 + expLines.length * 4.1;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.7);
+        const stepTitleLines = doc.splitTextToSize(step.paso, contentWidth - 16);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.1);
+        const expLines = doc.splitTextToSize(step.explicacion, contentWidth - 16);
+
+        const boxH = 8 + (stepTitleLines.length * 4.3) + (expLines.length * 4.2) + 2.5;
         ensureSpace(boxH + 4);
 
         doc.setFillColor(248, 250, 252);
         doc.setDrawColor(203, 213, 225);
-        doc.setLineWidth(0.28);
+        doc.setLineWidth(0.3);
         doc.roundedRect(margin, currentY, contentWidth, boxH, 2, 2, 'FD');
 
         // Círculo numerado
         doc.setFillColor(...NAVY);
-        doc.circle(margin + 5.5, currentY + 5.5, 3.2, 'F');
+        doc.circle(margin + 6, currentY + 6, 3.2, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(255, 255, 255);
-        doc.text(String(idx + 1), margin + 5.5, currentY + 6.4, { align: 'center' });
+        doc.text(String(idx + 1), margin + 6, currentY + 6.9, { align: 'center' });
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.7);
         doc.setTextColor(...NAVY);
-        doc.text(step.paso, margin + 11, currentY + 5.8);
+        doc.text(stepTitleLines, margin + 11.5, currentY + 6.0);
 
+        const expStartY = currentY + 6.0 + (stepTitleLines.length * 4.3) + 0.8;
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.0);
+        doc.setFontSize(8.1);
         doc.setTextColor(...SLATE_DARK);
-        doc.text(expLines, margin + 11, currentY + 10.3);
+        doc.text(expLines, margin + 11.5, expStartY);
 
-        currentY += boxH + 3.2;
+        currentY += boxH + 3.5;
     });
 
     currentY += 3;
@@ -786,12 +861,25 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
     );
 
     dossier.ejemplosDetallados.forEach((ej) => {
-        const ctxLines = doc.splitTextToSize(`Contexto Clínico / Gestión: ${ej.contexto}`, contentWidth - 10);
-        const datLines = doc.splitTextToSize(`Lectura Detallada del Dato Real: ${ej.analisisDatos}`, contentWidth - 10);
-        const decLines = doc.splitTextToSize(`Acción y Toma de Decisión: ${ej.decisionGestion}`, contentWidth - 10);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        const ejTitleLines = doc.splitTextToSize(ej.titulo, contentWidth - 10);
 
-        const totalLines = ctxLines.length + datLines.length + decLines.length;
-        const boxH = 14 + totalLines * 4.0;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.0);
+        const ctxLines = doc.splitTextToSize(`Contexto Clínico / Gestión: ${ej.contexto}`, contentWidth - 12);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.1);
+        const datLines = doc.splitTextToSize(`Lectura Detallada del Dato Real: ${ej.analisisDatos}`, contentWidth - 12);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.0);
+        const decLines = doc.splitTextToSize(`Acción y Toma de Decisión: ${ej.decisionGestion}`, contentWidth - 12);
+
+        const headerBarH = Math.max(8.5, ejTitleLines.length * 4.3 + 4);
+        const bodyH = (ctxLines.length * 4.2) + (datLines.length * 4.2) + (decLines.length * 4.2) + 10;
+        const boxH = headerBarH + bodyH;
         ensureSpace(boxH + 5);
 
         doc.setFillColor(255, 255, 255);
@@ -801,36 +889,36 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
 
         // Barra superior del ejemplo
         doc.setFillColor(...ICE_BG);
-        doc.roundedRect(margin + 0.3, currentY + 0.3, contentWidth - 0.6, 7.5, 1.8, 1.8, 'F');
+        doc.roundedRect(margin + 0.3, currentY + 0.3, contentWidth - 0.6, headerBarH, 1.8, 1.8, 'F');
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.6);
+        doc.setFontSize(8.5);
         doc.setTextColor(...NAVY);
-        doc.text(ej.titulo, margin + 4, currentY + 5.3);
+        doc.text(ejTitleLines, margin + 4.5, currentY + 5.5);
 
-        let innerY = currentY + 11.5;
+        let innerY = currentY + headerBarH + 4.5;
 
         // 1. Contexto
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.9);
+        doc.setFontSize(8.0);
         doc.setTextColor(...BLUE);
-        doc.text(ctxLines, margin + 4, innerY);
-        innerY += ctxLines.length * 4.0 + 1.5;
+        doc.text(ctxLines, margin + 4.5, innerY);
+        innerY += ctxLines.length * 4.2 + 1.8;
 
         // 2. Datos Reales
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.0);
+        doc.setFontSize(8.1);
         doc.setTextColor(...SLATE_DARK);
-        doc.text(datLines, margin + 4, innerY);
-        innerY += datLines.length * 4.0 + 1.5;
+        doc.text(datLines, margin + 4.5, innerY);
+        innerY += datLines.length * 4.2 + 1.8;
 
         // 3. Decisión
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.9);
+        doc.setFontSize(8.0);
         doc.setTextColor(...EMERALD);
-        doc.text(decLines, margin + 4, innerY);
+        doc.text(decLines, margin + 4.5, innerY);
 
-        currentY += boxH + 4;
+        currentY += boxH + 4.5;
     });
 
     // =========================================================================
@@ -842,7 +930,7 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
         'Inventario completo de requerimientos finalizados, tablas origen en SALUS y lógica de cálculo'
     );
 
-    const tableRows = (customIndicators && customIndicators.length > 0)
+    const rawRows = (customIndicators && customIndicators.length > 0)
         ? customIndicators.map((ind, idx) => [
             `${idx + 1}. ${ind.titulo || 'Indicador'}`,
             ind.origen_informacion || 'SALUS SQL Server',
@@ -851,16 +939,18 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
         ])
         : dossier.indicadoresTabla;
 
+    const tableRows = rawRows.map(row => row.map(cell => sanitizePdfText(cell)));
+
     runAutoTable(doc, {
         startY: currentY,
-        margin: { left: margin, right: margin, bottom: 22 },
+        margin: { top: 25, left: margin, right: margin, bottom: 24 },
         head: [['Indicador / Métrica', 'Origen de Datos (SALUS)', 'Definición Operativa y Regla de Cálculo', 'Estado']],
         body: tableRows,
         theme: 'grid',
         styles: {
             font: 'helvetica',
-            fontSize: 7.4,
-            cellPadding: 2.5,
+            fontSize: 7.6,
+            cellPadding: 2.8,
             textColor: SLATE_DARK,
             lineColor: [219, 234, 254],
             lineWidth: 0.25,
@@ -870,7 +960,7 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
             fillColor: NAVY,
             textColor: [255, 255, 255],
             fontStyle: 'bold',
-            fontSize: 7.8,
+            fontSize: 8.0,
             halign: 'left'
         },
         alternateRowStyles: {
@@ -892,7 +982,7 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
     currentY = (doc.lastAutoTable?.finalY || currentY) + 8;
 
     // Bloque de Cierre Institucional y Firma Digital
-    ensureSpace(34);
+    ensureSpace(32);
     doc.setFillColor(...ICE_BG);
     doc.setDrawColor(...BORDER_BLUE);
     doc.setLineWidth(0.35);
@@ -919,7 +1009,7 @@ export function buildGobernanzaServicePdfDoc(serviceKeyOrProject, customIndicato
     doc.text('Innovación y Transformación Digital', margin + 28, currentY + 15);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7.6);
     doc.setTextColor(...SLATE_MED);
     doc.text(
         'Documento Técnico Oficial de Gobernanza de Datos Clínicos y Operativos. Todos los indicadores aquí documentados se encuentran',

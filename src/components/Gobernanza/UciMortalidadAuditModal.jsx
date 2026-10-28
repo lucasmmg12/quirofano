@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import UciKinesiologiaPanel from './UciKinesiologiaPanel';
+import { installSafePdfText } from '../../utils/gobernanzaServiceProjectPdf';
 
 const normalizePatientName = (name) => {
     if (!name) return '';
@@ -767,6 +768,7 @@ export default function UciMortalidadAuditModal({
     // Exportar caso individual a PDF Clínico Oficial
     const handleExportSinglePatientPDF = async (record) => {
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        installSafePdfText(doc);
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const margin = 14;
@@ -999,6 +1001,7 @@ export default function UciMortalidadAuditModal({
         }
 
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        installSafePdfText(doc);
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const margin = 14;

@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { exportGuardiaConversionCirugiasPdf } from '../../utils/guardiaConversionCirugiasPdf';
 import { exportGuardiaConversionCirugiasExcel } from '../../utils/guardiaConversionCirugiasExcel';
+import { installSafePdfText } from '../../utils/gobernanzaServiceProjectPdf';
 
 /**
  * GuardiaOutliersModal
@@ -804,6 +805,26 @@ export default function GuardiaOutliersModal({
         const { default: autoTable } = await import('jspdf-autotable');
 
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        installSafePdfText(doc);
+        const pageW = doc.internal.pageSize.getWidth();
+        const margin = 14;
+
+        // Membrete Institucional Sanatorio Argentino
+        doc.setFillColor(13, 59, 102);
+        doc.rect(0, 0, pageW, 20, 'F');
+        doc.setFillColor(59, 130, 246);
+        doc.rect(0, 20, pageW, 1.5, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(255, 255, 255);
+        doc.text('SANATORIO ARGENTINO', margin, 9);
+        doc.setFontSize(8.5);
+        doc.setTextColor(147, 197, 253);
+        doc.text('Innovacion y Transformacion Digital  |  Gobernanza de Datos de Guardia Clinica', margin, 15);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(226, 232, 240);
+        doc.text(`Periodo: ${periodoNombre} (${periodo})  |  Emision: ${new Date().toLocaleDateString('es-AR')}`, pageW - margin, 12.5, { align: 'right' });
 
         if (isEpicrisis) {
             // Título de Epicrisis

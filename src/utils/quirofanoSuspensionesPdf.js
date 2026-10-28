@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { installSafePdfText } from './gobernanzaServiceProjectPdf';
 
 const COLORS = {
     primary: [30, 95, 166],        // #1E5FA6 Azul Institucional Sanatorio Argentino
@@ -30,6 +31,7 @@ export function exportSuspensionesPdf({
     tasaSuspension = '0.00'
 }) {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    installSafePdfText(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;

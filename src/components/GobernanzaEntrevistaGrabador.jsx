@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { get, set, del } from 'idb-keyval';
 import { supabase } from '../lib/supabase';
+import { installSafePdfText } from '../utils/gobernanzaServiceProjectPdf';
 
 const MultipartAudioPlayer = ({ urls }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -682,6 +683,7 @@ export default function GobernanzaEntrevistaGrabador({ currentUser, proyectoId, 
     const handleExportPDF = async () => {
         if (!selectedPlantilla) return;
         const doc = new jsPDF();
+        installSafePdfText(doc);
         const pageW = doc.internal.pageSize.getWidth();
         const margin = 14;
 

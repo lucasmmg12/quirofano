@@ -12,6 +12,7 @@
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { installSafePdfText } from './gobernanzaServiceProjectPdf';
 
 /**
  * Carga el logo oficial y lo recorta de forma circular con un canvas (anillo blanco)
@@ -152,6 +153,7 @@ export async function exportGuardiaConversionCirugiasPdf({
     activeFilter = 'all'
 }) {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    installSafePdfText(doc);
     const pageW = doc.internal.pageSize.getWidth();
     const margin = 14;
     const contentW = pageW - margin * 2;

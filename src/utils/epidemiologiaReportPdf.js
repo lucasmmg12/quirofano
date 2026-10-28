@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { installSafePdfText } from './gobernanzaServiceProjectPdf';
 
 const COLORS = {
     navyHeader: [13, 59, 102],     // #0D3B66 — Azul Marino Institucional
@@ -73,6 +74,7 @@ export async function exportEpidemiologiaReportPdf({
         unit: 'mm',
         format: 'a4'
     });
+    installSafePdfText(doc);
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();

@@ -12,6 +12,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getSanatorioLogoBase64 } from '../../utils/sanatorioLogoBase64';
+import { installSafePdfText } from '../../utils/gobernanzaServiceProjectPdf';
 
 export default function TelarExportModal({ activeIndicators = [], globalMetrics = {}, rawRows = [], onClose }) {
     const [selectedTab, setSelectedTab] = useState('presentation');
@@ -576,6 +577,7 @@ export default function TelarExportModal({ activeIndicators = [], globalMetrics 
     // Exportador Nativo a PDF Institucional con jsPDF y autoTable
     const handleDownloadPdf = () => {
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        installSafePdfText(doc);
         const primaryColor = [13, 59, 102]; // #0D3B66 Azul Institucional
 
         // Membrete
