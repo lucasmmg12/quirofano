@@ -480,6 +480,9 @@ export default function GuardiaOutliersModal({
                 if (activeFilter === 'demoras_60') {
                     return r.minutos_espera != null && r.minutos_espera > 60 && r.minutos_espera <= 90;
                 }
+                if (activeFilter === 'demora_30_60') {
+                    return r.minutos_espera != null && r.minutos_espera > 30 && r.minutos_espera <= 60;
+                }
                 if (activeFilter === 'perm_3h') {
                     return r.minutos_permanencia != null && r.minutos_permanencia > 180;
                 }
@@ -1785,87 +1788,189 @@ export default function GuardiaOutliersModal({
                 ) : (
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(195px, 1fr))',
                         gap: '12px',
                         padding: '16px 24px',
                         background: '#F1F5F9',
                         borderBottom: '1px solid #E2E8F0'
                     }}>
                         {/* Total Pacientes */}
-                        <div style={{ background: '#FFFFFF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #CBD5E1' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Total Pacientes Período
+                        <div
+                            onClick={() => setActiveFilter('all')}
+                            style={{
+                                background: '#FFFFFF',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: activeFilter === 'all' ? '2px solid #0F172A' : '1px solid #CBD5E1',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Total Pacientes Período
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
+                                    {(stats.total || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#334155', marginTop: '2px' }}>
+                                    Promedio espera: <strong>{stats.avgEspera} min</strong>
+                                </div>
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
-                                {(stats.total || 0).toLocaleString()}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                Promedio espera: <strong>{stats.avgEspera} min</strong>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #E2E8F0', lineHeight: '1.35' }}>
+                                Universo total de consultas de guardia atendidas en el período (desde recepción hasta llamado médico).
                             </div>
                         </div>
 
                         {/* En Meta <= 30m */}
-                        <div style={{ background: '#F0FDF4', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BBF7D0' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
-                                En Meta (&le; 30 min)
+                        <div
+                            onClick={() => setActiveFilter('meta_30')}
+                            style={{
+                                background: '#F0FDF4',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: activeFilter === 'meta_30' ? '2px solid #166534' : '1px solid #BBF7D0',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    En Meta (&le; 30 min)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D', marginTop: '4px' }}>
+                                    {(stats.meta30 || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#166534', marginTop: '2px' }}>
+                                    <strong>{stats.meta30Pct}%</strong> de oportunidad
+                                </div>
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803D', marginTop: '4px' }}>
-                                {(stats.meta30 || 0).toLocaleString()}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#166534' }}>
-                                <strong>{stats.meta30Pct}%</strong> de oportunidad
+                            <div style={{ fontSize: '0.68rem', color: '#14532D', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #86EFAC', lineHeight: '1.35' }}>
+                                Pacientes atendidos por el médico en 30 min o menos desde su llegada (cumplen meta de calidad).
                             </div>
                         </div>
 
                         {/* Demora Leve 30-60m */}
-                        <div style={{ background: '#EFF6FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #BFDBFE' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Demora Leve (31 - 60 min)
+                        <div
+                            onClick={() => setActiveFilter('demora_30_60')}
+                            style={{
+                                background: '#EFF6FF',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: activeFilter === 'demora_30_60' ? '2px solid #1E40AF' : '1px solid #BFDBFE',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Demora Leve (31 - 60 min)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1D4ED8', marginTop: '4px' }}>
+                                    {(stats.demora30a60 || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#1E40AF', marginTop: '2px' }}>
+                                    Zona de alerta preventiva
+                                </div>
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1D4ED8', marginTop: '4px' }}>
-                                {(stats.demora30a60 || 0).toLocaleString()}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#1E40AF' }}>
-                                Zona de alerta preventiva
+                            <div style={{ fontSize: '0.68rem', color: '#1E3A8A', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #93C5FD', lineHeight: '1.35' }}>
+                                Pacientes que aguardaron entre media hora y 1 hora en sala de espera antes de entrar al consultorio.
                             </div>
                         </div>
 
                         {/* Outliers 60-90m */}
-                        <div style={{ background: '#FFFBEB', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FDE68A' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Outliers (61 - 90 min)
+                        <div
+                            onClick={() => setActiveFilter('demoras_60')}
+                            style={{
+                                background: '#FFFBEB',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: activeFilter === 'demoras_60' ? '2px solid #92400E' : '1px solid #FDE68A',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Outliers (61 - 90 min)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
+                                    {(stats.demora60a90 || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#92400E', marginTop: '2px' }}>
+                                    Demora operativa moderada
+                                </div>
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#B45309', marginTop: '4px' }}>
-                                {(stats.demora60a90 || 0).toLocaleString()}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#92400E' }}>
-                                Demora operativa moderada
+                            <div style={{ fontSize: '0.68rem', color: '#78350F', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #FCD34D', lineHeight: '1.35' }}>
+                                Pacientes que esperaron entre 1 hora y 1 hora y media para ser atendidos por alta demanda simultánea.
                             </div>
                         </div>
 
                         {/* Outliers Críticos > 90m */}
-                        <div style={{ background: '#FEF2F2', borderRadius: '10px', padding: '12px 14px', border: '1px solid #FECACA' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#991B1B', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Outliers Críticos (&gt; 90 min)
+                        <div
+                            onClick={() => setActiveFilter('criticos_90')}
+                            style={{
+                                background: '#FEF2F2',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: activeFilter === 'criticos_90' ? '2px solid #991B1B' : '1px solid #FECACA',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#991B1B', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Outliers Críticos (&gt; 90 min)
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#DC2626', marginTop: '4px' }}>
+                                    {(stats.critico90 || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#991B1B', marginTop: '2px' }}>
+                                    <strong>{stats.critico90Pct}%</strong> del total del período
+                                </div>
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#DC2626', marginTop: '4px' }}>
-                                {(stats.critico90 || 0).toLocaleString()}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#991B1B' }}>
-                                Máx espera: <strong>{stats.maxEspera} min</strong>
+                            <div style={{ fontSize: '0.68rem', color: '#7F1D1D', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #FCA5A5', lineHeight: '1.35' }}>
+                                Casos extremos que superaron 1 hora y media de espera al médico o registros administrativos sin cierre oportuno.
                             </div>
                         </div>
 
                         {/* Permanencia Prolongada > 3h */}
-                        <div style={{ background: '#FAF5FF', borderRadius: '10px', padding: '12px 14px', border: '1px solid #E9D5FF' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#6B21A8', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Permanencia &gt; 3 hs
+                        <div
+                            onClick={() => setActiveFilter('perm_3h')}
+                            style={{
+                                background: '#FAF5FF',
+                                borderRadius: '10px',
+                                padding: '12px 14px',
+                                border: activeFilter === 'perm_3h' ? '2px solid #6B21A8' : '1px solid #E9D5FF',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between'
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: '0.7rem', color: '#6B21A8', fontWeight: 700, textTransform: 'uppercase' }}>
+                                    Permanencia &gt; 3 hs
+                                </div>
+                                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7E22CE', marginTop: '4px' }}>
+                                    {(stats.permMas3h || 0).toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#6B21A8', marginTop: '2px' }}>
+                                    Estadía prolongada en guardia
+                                </div>
                             </div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7E22CE', marginTop: '4px' }}>
-                                {(stats.permMas3h || 0).toLocaleString()}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#6B21A8' }}>
-                                Estadía prolongada en guardia
+                            <div style={{ fontSize: '0.68rem', color: '#581C87', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #D8B4FE', lineHeight: '1.35' }}>
+                                Pacientes con más de 3 horas dentro de la guardia (en observación, hidratación, laboratorio o espera de cama).
                             </div>
                         </div>
                     </div>
