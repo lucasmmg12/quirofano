@@ -859,45 +859,6 @@ export default function GuardiaClinicaDashboard({
                             </div>
                         </div>
                     </div>
-
-                    {/* Botones de sincronización rápida con la barra superior */}
-                    {availablePeriodsList && availablePeriodsList.length > 0 && (
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: '#F8FAFC',
-                            border: '1px solid #E2E8F0',
-                            borderRadius: '10px',
-                            padding: '3px 4px'
-                        }}>
-                            {availablePeriodsList.map(p => {
-                                const isCurrent = (p.id === selectedPeriodo) || 
-                                    (!selectedPeriodo?.includes('ANUAL') && fechaDesde?.slice(0, 7) === p.id);
-                                return (
-                                    <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={() => handleSelectPeriodo(p.id)}
-                                        style={{
-                                            border: 'none',
-                                            background: isCurrent ? '#2563EB' : 'transparent',
-                                            color: isCurrent ? '#FFFFFF' : '#475569',
-                                            padding: '5px 10px',
-                                            borderRadius: '7px',
-                                            fontSize: '0.74rem',
-                                            fontWeight: isCurrent ? 800 : 600,
-                                            cursor: 'pointer',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                        title={`Filtrar Guardia por ${p.label}`}
-                                    >
-                                        {p.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
                 </div>
             </div>
 
