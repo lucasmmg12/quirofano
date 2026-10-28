@@ -939,7 +939,7 @@ export default function GuardiaClinicaDashboard({
             
             {/* ─── CONTENIDO CONDICIONAL POR PESTAÑAS TÉCNICAS ─── */}
             {activeDashboardTab === 'internado' && (
-                <GuardiaInternadoPanel addToast={addToast} />
+                <GuardiaInternadoPanel addToast={addToast} selectedPeriodoProp={selectedPeriodo} />
             )}
 
             
@@ -1135,27 +1135,27 @@ export default function GuardiaClinicaDashboard({
                             {/* 5. Pases a Internación (Piso Clínico) */}
                             <KpiCard
                                 icon={<Bed size={18} color="#4338CA" />}
-                                title="5. Pases a Internación (Piso)"
-                                value={`${enrichedMetrics.cantInternacionPiso} pac.`}
-                                subtitle={`${enrichedMetrics.pctInternacionPiso}% de la demanda derivada a sala`}
-                                meta="100% Trazable"
+                                title="5. Pases a Internación (Prot. 557)"
+                                value={`${currentAdmisiones?.destino_internado_count || enrichedMetrics.cantInternacionPiso} pac.`}
+                                subtitle={`${currentAdmisiones?.destino_internado_pct || enrichedMetrics.pctInternacionPiso}% de admisiones clínicas a Piso`}
+                                meta="100% Protocolo 557"
                                 metaStatus="ok"
-                                detalle="Pacientes que consultaron en Guardia y fueron ingresados a internación en piso clínico o general dentro de las 24 horas."
-                                origen="TABLEAU_Admisiones (Procedencia Urgencias, Especialidad CLINICO)"
-                                onClick={() => setSelectedOutlierModal('destinos_postguardia')}
+                                detalle="Pacientes ingresados con formulario SALUS (INT) ADMISION MEDICA CLINICA (Protocolo 557) derivados a Piso Clínico. Clic para auditar fichas completas."
+                                origen="VLISE_Visitas (Prot. 557) + TABLEAU_Admisiones"
+                                onClick={() => setActiveDashboardTab('internado')}
                             />
 
                             {/* 6. Derivaciones a UCI (Cuidados Críticos) */}
                             <KpiCard
                                 icon={<ShieldAlert size={18} color="#DC2626" />}
-                                title="6. Derivaciones a UCI / Críticos"
-                                value={`${enrichedMetrics.cantUCI} pac.`}
-                                subtitle={`${enrichedMetrics.pctUCI}% de la demanda requiere Terapia Intensiva`}
-                                meta="Monitoreo Continuo"
-                                metaStatus={enrichedMetrics.cantUCI > 0 ? 'warning' : 'ok'}
-                                detalle="Pacientes ingresados por Guardia derivados de urgencia a camas de Terapia Intensiva o Intermedia."
-                                origen="TABLEAU_Admisiones (Servicio = UCI / Terapia)"
-                                onClick={() => setSelectedOutlierModal('destinos_postguardia')}
+                                title="6. Derivaciones a UCI (Prot. 557)"
+                                value={`${currentAdmisiones?.destino_uci_count || enrichedMetrics.cantUCI} pac.`}
+                                subtitle={`${currentAdmisiones?.destino_uci_pct || enrichedMetrics.pctUCI}% de admisiones clínicas en Terapia`}
+                                meta="Monitoreo Crítico"
+                                metaStatus={(currentAdmisiones?.destino_uci_count || enrichedMetrics.cantUCI) > 0 ? 'warning' : 'ok'}
+                                detalle="Pacientes con Admisión Clínica Médica (Protocolo 557) derivados a camas de Terapia Intensiva (UCI). Clic para ver listado e historias."
+                                origen="VLISE_Visitas (Prot. 557 Area=UCI) + TABLEAU_Admisiones"
+                                onClick={() => setActiveDashboardTab('internado')}
                             />
 
                             {/* 7. Cirugías Efectivas de Guardia */}
@@ -2002,16 +2002,34 @@ export default function GuardiaClinicaDashboard({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0D3B66', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>🏥</span> Admisiones Médicas Clínicas: Destinos Asistenciales & Reinternaciones
+                                    <span>🏥</span> Admisiones Médicas Clínicas (Protocolo SALUS 557): Destinos Asistenciales & Reinternaciones
                                 </h4>
                                 <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                    Trazabilidad de derivación hacia Quirófano, Internado Piso o UCI · Período {formatPeriodoLabel(selectedPeriodo)}
+                                    Basado en <strong>(INT) ADMISION MEDICA CLINICA</strong> (Grupos 3208, 3209 y 3210 · Dra. Paola García y Equipo Clínico) · Período {formatPeriodoLabel(selectedPeriodo)}
                                 </span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 800, background: '#EFF6FF', color: '#1D4ED8', padding: '4px 10px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
-                                    Total: {currentAdmisiones?.total_admisiones_clinicas || 0} admisiones
+                                    Total Protocolo 557: {currentAdmisiones?.total_admisiones_clinicas || 0} admisiones
                                 </span>
+                                <button
+                                    onClick={() => setActiveDashboardTab('internado')}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #1E40AF',
+                                        background: '#1E40AF',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    📋 Ver Pacientes e Historias (Prot. 557)
+                                </button>
                             </div>
                         </div>
 
@@ -2022,9 +2040,9 @@ export default function GuardiaClinicaDashboard({
                             gap: '12px'
                         }}>
                             {/* Pase a Quirófano */}
-                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EC4899' }}>
+                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EC4899', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#BE185D', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span>✂️</span> Pase a Quirófano
+                                    <span>✂️</span> Pase Quirúrgico / Procedimiento
                                 </div>
                                 <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
                                     {currentAdmisiones?.destino_quirofano_count || 0}
@@ -2032,11 +2050,11 @@ export default function GuardiaClinicaDashboard({
                                         ({currentAdmisiones?.destino_quirofano_pct || 0}%)
                                     </span>
                                 </div>
-                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Derivación quirúrgica urgente</span>
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Admisiones 557 con intervención en Qx</span>
                             </div>
 
                             {/* Internado General (Piso) */}
-                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #2563EB' }}>
+                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #2563EB', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span>🛌</span> Internado (Piso Clínico)
                                 </div>
@@ -2046,11 +2064,11 @@ export default function GuardiaClinicaDashboard({
                                         ({currentAdmisiones?.destino_internado_pct || 0}%)
                                     </span>
                                 </div>
-                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Internación en salas generales</span>
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Campo Area = Internado / Piso (Prot. 557)</span>
                             </div>
 
                             {/* UCI / Cuidados Críticos */}
-                            <div style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EF4444' }}>
+                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EF4444', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span>🫀</span> UCI / Cuidados Críticos
                                 </div>
@@ -2060,13 +2078,13 @@ export default function GuardiaClinicaDashboard({
                                         ({currentAdmisiones?.destino_uci_pct || 0}%)
                                     </span>
                                 </div>
-                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Camas de alta complejidad</span>
+                                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Campo Area = UCI / Servicio UCI (Prot. 557)</span>
                             </div>
 
                             {/* Reinternación <= 72 hs */}
-                            <div style={{ background: '#FEF3C7', borderRadius: '10px', border: '1px solid #FDE68A', padding: '14px', borderLeft: '4px solid #D97706' }}>
+                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#FEF3C7', borderRadius: '10px', border: '1px solid #FDE68A', padding: '14px', borderLeft: '4px solid #D97706', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span>🔁</span> Reinternación &le; 72 hs
+                                    <span>🔁</span> Reconsulta / Reingreso &le; 72 hs
                                 </div>
                                 <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#92400E', marginTop: '4px' }}>
                                     {currentAdmisiones?.reinternaciones_72h_count || 0}
@@ -2074,7 +2092,7 @@ export default function GuardiaClinicaDashboard({
                                         ({currentAdmisiones?.reinternaciones_72h_pct || 0}%)
                                     </span>
                                 </div>
-                                <span style={{ fontSize: '0.68rem', color: '#78350F' }}>Meta de seguridad: &lt; 5%</span>
+                                <span style={{ fontSize: '0.68rem', color: '#78350F' }}>Preguntas 13772 / 13773 Prot. 557 · Meta &lt; 5%</span>
                             </div>
                         </div>
                     </div>

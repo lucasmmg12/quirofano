@@ -4,10 +4,11 @@
  * 
  * Extrae y calcula desde SALUS (SQL Server):
  * 1. Tiempos Puerta-Médico por Franjas Horarias (08 a 13, 13 a 21, 21 a 08) con Min, Max, Avg.
- * 2. Trazabilidad de Admisiones Médicas Clínicas (Quirófano, Internado, UCI y Reinternación 72h).
- * 3. Seguimiento Clínico en Internado (Evoluciones del plantel de 7 doctoras, casuística Clínico/Postqx/Trauma).
+ * 2. Trazabilidad de Admisiones Médicas Clínicas basada en Protocolo 557 ('(INT) ADMISION MEDICA CLINICA')
+ *    cruzado con TABLEAU_Admisiones (Quirófano, Internado/Shock Room, UCI y Reinternación/Reconsulta 72h).
+ * 3. Seguimiento Clínico en Internado (Actuaciones en Protocolo 557 + Evoluciones del plantel médico).
  * 
- * Almacena en Supabase en las tablas creadas por la migración 069.
+ * Almacena en Supabase en las tablas de Gobernanza.
  */
 
 import sql from 'mssql';
@@ -44,7 +45,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SU
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function syncPeriodo(pool, periodo, desde, hasta) {
-    console.log(`\n🩺 [GUARDIA & INTERNADO] Sincronizando ${periodo} (${desde} al ${hasta})...`);
+    console.log(`\n🩺 [GUARDIA & INTERNADO - PROTOCOLO 557] Sincronizando ${periodo} (${desde} al ${hasta})...`);
 
     // ── 1. FRANJAS HORARIAS PUERTA-MÉDICO ──
     const qFranjas = `
@@ -106,43 +107,57 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
             }, { onConflict: 'periodo,franja' });
     }
 
-    // ── 2. ADMISIONES MÉDICAS CLÍNICAS (TOTALES, DESTINOS Y REINTERNACIÓN 72H) ──
+    // ── 2. ADMISIONES MÉDICAS CLÍNICAS (PROTOCOLO 557 - '(INT) ADMISION MEDICA CLINICA') ──
     const qAdmisiones = `
-        WITH AdmisionesClinicas AS (
+        WITH AdmisionesClinicas557 AS (
             SELECT 
+                v.idVisita,
+                v.NHC,
+                v.Paciente,
+                v.IdHospitalizacion,
                 adm.idAdmision,
-                adm.NHC,
-                adm.Paciente,
                 adm.[Fecha ingreso] AS FechaIngreso,
                 adm.[Fecha alta] AS FechaAlta,
                 adm.Servicio,
                 adm.Especialidad,
                 adm.Procedencia,
+                p557.area_form,
+                p557.destino_form,
+                p557.reingreso_72h,
+                p557.reconsulta_72h,
                 CASE 
-                    WHEN adm.Servicio LIKE '%QUIROF%' OR adm.Especialidad LIKE '%CIRUGIA%' THEN 'quirofano'
-                    WHEN adm.Servicio = 'UCI' OR adm.Especialidad LIKE '%TERAPIA%' THEN 'uci'
-                    WHEN adm.Servicio = 'INTERNADO' OR adm.Especialidad = 'CLINICO ' THEN 'internado'
+                    WHEN adm.Servicio LIKE '%QUIROF%' OR adm.Servicio LIKE '%CIRUGIA%' OR adm.Especialidad LIKE '%CIRUGIA%' OR adm.Especialidad LIKE '%TRAUMA%' OR adm.Especialidad LIKE '%UROLOG%' THEN 'quirofano'
+                    WHEN p557.area_form = 'UCI' OR adm.Servicio = 'UCI' OR adm.Servicio LIKE '%TERAPIA%' OR adm.Especialidad LIKE '%TERAPIA%' THEN 'uci'
+                    WHEN p557.area_form IN ('Internado', 'Shock Room') OR adm.Servicio IN ('INTERNACION CLINICA', 'INTERNADO', 'SHOCK ROOM', 'CLINICA MEDICA') OR adm.Especialidad = 'CLINICO ' THEN 'internado'
                     ELSE 'otros'
                 END AS destino_tipo,
                 CASE 
-                    WHEN EXISTS (
+                    WHEN p557.reingreso_72h = 'Si' OR p557.reconsulta_72h = 'Si' OR EXISTS (
                         SELECT 1 FROM TABLEAU_Admisiones prev
-                        WHERE prev.NHC = adm.NHC 
+                        WHERE prev.NHC = v.NHC 
                           AND prev.idAdmision <> adm.idAdmision
                           AND prev.[Fecha alta] IS NOT NULL
                           AND adm.[Fecha ingreso] >= prev.[Fecha alta]
                           AND adm.[Fecha ingreso] <= DATEADD(HOUR, 72, prev.[Fecha alta])
                     ) OR adm.Procedencia = 'Reingreso' THEN 1 ELSE 0
                 END AS es_reinternacion_72h
-            FROM TABLEAU_Admisiones adm
-            WHERE adm.[Fecha ingreso] >= '${desde} 00:00:00'
-              AND adm.[Fecha ingreso] <= '${hasta} 23:59:59'
-              AND (
-                  adm.Procedencia = 'Derivado desde Urgencias'
-                  OR adm.Especialidad = 'CLINICO '
-                  OR adm.Proceso LIKE '%ADMISION%MEDICA%CLINICA%'
-                  OR adm.Proceso LIKE '%INTERNACION CLINICA%'
-              )
+            FROM VLISE_Visitas v
+            LEFT JOIN TABLEAU_Admisiones adm ON v.IdHospitalizacion = adm.idAdmision
+            LEFT JOIN (
+                SELECT 
+                    ir.idVisita,
+                    MAX(CASE WHEN ir.idPreguntaPr = 13772 THEN resp.Descripcion END) AS reconsulta_72h,
+                    MAX(CASE WHEN ir.idPreguntaPr = 13773 THEN resp.Descripcion END) AS reingreso_72h,
+                    MAX(CASE WHEN ir.idPreguntaPr = 13775 THEN resp.Descripcion END) AS destino_form,
+                    MAX(CASE WHEN ir.idPreguntaPr = 13776 THEN resp.Descripcion END) AS area_form
+                FROM [PR InstRespVisitaPaciente] ir
+                LEFT JOIN [PR Respuestas] resp ON ir.idPredRP = resp.id
+                WHERE ir.idPreguntaPr IN (13772, 13773, 13775, 13776)
+                GROUP BY ir.idVisita
+            ) p557 ON v.idVisita = p557.idVisita
+            WHERE v.[Tipo Visita] = '(INT) ADMISION MEDICA CLINICA'
+              AND v.[Fecha Visita] >= '${desde} 00:00:00'
+              AND v.[Fecha Visita] <= '${hasta} 23:59:59'
         )
         SELECT 
             COUNT(*) AS total_admisiones,
@@ -150,8 +165,8 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
             COUNT(CASE WHEN destino_tipo = 'internado' THEN 1 END) AS internado_count,
             COUNT(CASE WHEN destino_tipo = 'uci' THEN 1 END) AS uci_count,
             COUNT(CASE WHEN destino_tipo = 'otros' THEN 1 END) AS otros_count,
-            SUM(es_reinternacion_72h) AS reinternaciones_72h_count
-        FROM AdmisionesClinicas;
+            ISNULL(SUM(es_reinternacion_72h), 0) AS reinternaciones_72h_count
+        FROM AdmisionesClinicas557;
     `;
     const resAdm = await pool.request().query(qAdmisiones);
     const admRow = resAdm.recordset[0] || {};
@@ -178,19 +193,28 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
         updated_at: new Date().toISOString()
     };
 
-    console.log(`   🏥 Admisiones Clínicas: ${totalAdm} totales (QX: ${qxCount}, Internado: ${intCount}, UCI: ${uciCount}, Reint 72h: ${reintCount})`);
+    console.log(`   🏥 Admisiones Clínicas (Protocolo 557): ${totalAdm} totales (QX: ${qxCount}, Internado/SR: ${intCount}, UCI: ${uciCount}, Reint/Recons 72h: ${reintCount})`);
     await supabase
         .from('guardia_admisiones_clinicas_resumen')
         .upsert(admPayload, { onConflict: 'periodo' });
 
-    // ── 3. SEGUIMIENTO CLÍNICO EN INTERNADO (PLANTEL MÉDICO Y TIPOS) ──
+    // ── 3. SEGUIMIENTO CLÍNICO EN INTERNADO (PROTOCOLO 557 + EVOLUCIONES DEL PLANTEL) ──
     const qSeguimiento = `
         WITH CensoInternados AS (
             SELECT DISTINCT a.NHC
             FROM TABLEAU_Admisiones a
             WHERE a.[Fecha ingreso] <= '${hasta} 23:59:59'
               AND (a.[Fecha alta] IS NULL OR a.[Fecha alta] >= '${desde} 00:00:00')
-              AND (a.Servicio = 'INTERNADO' OR a.Especialidad = 'CLINICO ' OR a.[Serie Admisión] = 'INTERNADO')
+              AND (
+                  a.Servicio IN ('INTERNADO', 'INTERNACION CLINICA', 'SHOCK ROOM', 'UCI', 'TERAPIA INTERMEDIA')
+                  OR a.Especialidad = 'CLINICO ' 
+                  OR a.[Serie Admisión] = 'INTERNADO'
+                  OR EXISTS (
+                      SELECT 1 FROM VLISE_Visitas v557 
+                      WHERE v557.IdHospitalizacion = a.idAdmision 
+                        AND v557.[Tipo Visita] = '(INT) ADMISION MEDICA CLINICA'
+                  )
+              )
         ),
         VisitasPlantel AS (
             SELECT 
@@ -199,22 +223,28 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
                 v.[Tipo Visita] AS tipo_visita,
                 CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS fecha_visita,
                 CASE 
-                    WHEN v.[Tipo Visita] LIKE '%TRAUMA%' OR v.[Visita_Especialidad] LIKE '%TRAUMA%' THEN 'traumatologico'
-                    WHEN v.[Tipo Visita] LIKE '%QUIRURG%' OR v.[Tipo Visita] LIKE '%POST%' THEN 'postquirurgico'
+                    WHEN v.[Tipo Visita] LIKE '%TRAUMA%' OR v.[Visita_Especialidad] LIKE '%TRAUMA%' OR adm.Especialidad LIKE '%TRAUMA%' THEN 'traumatologico'
+                    WHEN v.[Tipo Visita] LIKE '%QUIRURG%' OR v.[Tipo Visita] LIKE '%POST%' OR adm.Servicio LIKE '%QUIROF%' OR adm.Especialidad LIKE '%CIRUGIA%' THEN 'postquirurgico'
                     ELSE 'clinico'
                 END AS rama_seguimiento
             FROM VLISE_Visitas v
+            LEFT JOIN TABLEAU_Admisiones adm ON v.IdHospitalizacion = adm.idAdmision
             WHERE v.[Fecha Visita] >= '${desde} 00:00:00'
               AND v.[Fecha Visita] <= '${hasta} 23:59:59'
-              AND v.Asistencia = 'Presente'
               AND (
-                  v.Responsable LIKE '%GARCIA%PAOLA%' 
-                  OR v.Responsable LIKE '%BENAVIDEZ%DAIANA%' 
-                  OR v.Responsable LIKE '%TORRES%AILEN%' 
-                  OR v.Responsable LIKE '%VERNI%GIULIANA%' 
-                  OR v.Responsable LIKE '%PADILLA%CYNTHIA%' 
-                  OR v.Responsable LIKE '%JOFRE%ARACELI%' 
-                  OR v.Responsable LIKE '%MALDONADO%ANTONELLA%'
+                  v.[Tipo Visita] = '(INT) ADMISION MEDICA CLINICA'
+                  OR (
+                      v.Asistencia = 'Presente'
+                      AND (
+                          v.Responsable LIKE '%GARCIA%PAOLA%' 
+                          OR v.Responsable LIKE '%BENAVIDEZ%DAIANA%' 
+                          OR v.Responsable LIKE '%TORRES%AILEN%' 
+                          OR v.Responsable LIKE '%VERNI%G%LIANA%' 
+                          OR v.Responsable LIKE '%PADILLA%CYNTHIA%' 
+                          OR v.Responsable LIKE '%JOFRE%ARACELI%' 
+                          OR v.Responsable LIKE '%MALDONADO%ANTONELLA%'
+                      )
+                  )
               )
         )
         SELECT 
@@ -226,7 +256,7 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
             (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%GARCIA%PAOLA%') AS ev_garcia_paola,
             (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%BENAVIDEZ%DAIANA%') AS ev_benavidez_daiana,
             (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%TORRES%AILEN%') AS ev_torres_ailen,
-            (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%VERNI%GIULIANA%') AS ev_verni_giuliana,
+            (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%VERNI%G%LIANA%') AS ev_verni_giuliana,
             (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%PADILLA%CYNTHIA%') AS ev_padilla_cynthia,
             (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%JOFRE%ARACELI%') AS ev_jofre_araceli,
             (SELECT COUNT(*) FROM VisitasPlantel WHERE doctor LIKE '%MALDONADO%ANTONELLA%') AS ev_maldonado_antonella;
@@ -258,7 +288,7 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
         updated_at: new Date().toISOString()
     };
 
-    console.log(`   🛌 Seguimiento Internado: ${conSeg} pacientes únicos seguidos de ${totalCenso} censo (Cobertura: ${segPayload.cobertura_seguimiento_pct}%).`);
+    console.log(`   🛌 Seguimiento Internado (Prot. 557 + Evoluciones): ${conSeg} pacientes únicos seguidos de ${totalCenso} censo (Cobertura: ${segPayload.cobertura_seguimiento_pct}%).`);
     await supabase
         .from('internado_seguimiento_clinico_resumen')
         .upsert(segPayload, { onConflict: 'periodo' });
@@ -267,7 +297,7 @@ export async function syncPeriodo(pool, periodo, desde, hasta) {
 }
 
 async function main() {
-    console.log('🚀 Iniciando Sincronización Integral SALUS -> Supabase (Fase 1 & 2)...');
+    console.log('🚀 Iniciando Sincronización Integral SALUS (Protocolo 557) -> Supabase...');
     const pool = await sql.connect(SQL_CONFIG);
 
     const periodos = [
@@ -275,6 +305,12 @@ async function main() {
         { p: '2026-09', d: '2026-09-01', h: '2026-09-30' },
         { p: '2026-08', d: '2026-08-01', h: '2026-08-31' },
         { p: '2026-07', d: '2026-07-01', h: '2026-07-31' },
+        { p: '2026-06', d: '2026-06-01', h: '2026-06-30' },
+        { p: '2026-05', d: '2026-05-01', h: '2026-05-31' },
+        { p: '2026-04', d: '2026-04-01', h: '2026-04-30' },
+        { p: '2026-03', d: '2026-03-01', h: '2026-03-31' },
+        { p: '2026-02', d: '2026-02-01', h: '2026-02-28' },
+        { p: '2026-01', d: '2026-01-01', h: '2026-01-31' },
     ];
 
     for (const item of periodos) {
@@ -282,7 +318,7 @@ async function main() {
     }
 
     await pool.close();
-    console.log('\n🏁 Sincronización Fase 1 y Fase 2 completada exitosamente!');
+    console.log('\n🏁 Sincronización de Franjas y Admisiones Clínicas (Protocolo 557) completada exitosamente!');
 }
 
 main().catch(console.error);
