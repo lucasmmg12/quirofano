@@ -1779,9 +1779,6 @@ export default function GuardiaClinicaDashboard({
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
                                     {formatPeriodoLabel(currentData.periodo)}: Espera {currentData.espera_medico_min_promedio}m · Perm {currentData.permanencia_guardia_min_promedio}m
                                 </span>
-                                <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '6px' }}>
-                                    Meta Oportunidad: &lt; 30 min
-                                </span>
                                 <button
                                     type="button"
                                     onClick={() => setSelectedOutlierModal('tiempos_espera')}
