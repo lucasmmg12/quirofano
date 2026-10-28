@@ -789,7 +789,7 @@ export default function SqlDocumentationModal({ isOpen, onClose, initialTab = 'U
                     alignItems: 'center', justifyContent: 'space-between'
                 }}>
                     <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                        Documentación Normada Sanatorio Argentino · Calidad-QOAG & Grow Labs
+                        Documentación Normada Sanatorio Argentino · Innovación y Transformación Digital
                     </span>
                     <button
                         onClick={onClose}

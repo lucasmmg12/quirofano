@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { 
     Folder, Plus, LayoutDashboard, Activity, Mic, Target, 
-    FileText, ArrowLeft, Loader2, Save, ChevronRight, ListTodo, Calendar, CalendarDays
+    FileText, ArrowLeft, Loader2, Save, ChevronRight, ListTodo, Calendar, CalendarDays,
+    Download, CheckCircle2, BookOpen, Layers, Sparkles
 } from 'lucide-react';
 
 import GobernanzaEntrevistaGrabador from './GobernanzaEntrevistaGrabador';
@@ -11,6 +12,11 @@ import GobernanzaIndicadores from './GobernanzaIndicadores';
 import GobernanzaDocumentos from './GobernanzaDocumentos';
 import GobernanzaTareas from './GobernanzaTareas';
 import GobernanzaGantt from './GobernanzaGantt';
+import {
+    GOBERNANZA_PROJECTS_DOSSIER_DATA,
+    resolveServiceKeyFromProject,
+    downloadGobernanzaServicePdf
+} from '../utils/gobernanzaServiceProjectPdf';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'proyecto'
@@ -27,8 +33,9 @@ export default function GobernanzaPanel({ currentUser }) {
     const [creating, setCreating] = useState(false);
 
     // Pestaña activa dentro del proyecto
-    const [activeTab, setActiveTab] = useState('muro'); // 'muro' | 'entrevistas' | 'indicadores' | 'documentos'
+    const [activeTab, setActiveTab] = useState('memoria'); // 'memoria' | 'indicadores' | 'documentos' | 'muro' | 'entrevistas' | 'tareas'
     const [isRecording, setIsRecording] = useState(false); // Para mostrar el grabador
+    const [downloadingPdfId, setDownloadingPdfId] = useState(null);
 
     useEffect(() => {
         fetchProyectos();
@@ -39,7 +46,7 @@ export default function GobernanzaPanel({ currentUser }) {
         try {
             const { data, error } = await supabase
                 .from('gobernanza_proyectos')
-                .select('*, gobernanza_indicadores(id, estado), gobernanza_entrevistas(count)')
+                .select('*, gobernanza_indicadores(id, titulo, informacion_buscada, origen_informacion, estado), gobernanza_documentos(id, nombre, url), gobernanza_entrevistas(count)')
                 .order('created_at', { ascending: false });
             if (error) throw error;
             
@@ -103,8 +110,20 @@ export default function GobernanzaPanel({ currentUser }) {
     const openProject = (p) => {
         setSelectedProyecto(p);
         setViewMode('proyecto');
-        setActiveTab('muro');
+        setActiveTab('memoria');
         setIsRecording(false);
+    };
+
+    const handleDownloadProjectPdf = async (e, proyectoObj) => {
+        if (e) e.stopPropagation();
+        try {
+            setDownloadingPdfId(proyectoObj.id);
+            await downloadGobernanzaServicePdf(proyectoObj, proyectoObj.gobernanza_indicadores || []);
+        } catch (err) {
+            console.error('Error al generar PDF del proyecto:', err);
+        } finally {
+            setDownloadingPdfId(null);
+        }
     };
 
     const closeProject = () => {
@@ -256,8 +275,8 @@ export default function GobernanzaPanel({ currentUser }) {
                                 )}
                                 
                                 {/* Micro-métricas estilo Dashboard */}
-                                <div style={{ paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', gap: '16px' }}>
+                                <div style={{ paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>
                                             <FileText size={16} color="#94a3b8" />
                                             <span>{p.req_count || 0} Reqs</span>
@@ -268,9 +287,31 @@ export default function GobernanzaPanel({ currentUser }) {
                                         </div>
                                     </div>
                                     
-                                    {/* Botón visual de "Ver más" */}
-                                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
-                                        <ChevronRight size={16} />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleDownloadProjectPdf(e, p)}
+                                            title="Descargar Documento PDF Oficial con estética de Sanatorio Argentino"
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '6px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #bfdbfe',
+                                                background: '#eff6ff',
+                                                color: '#1d4ed8',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <Download size={13} />
+                                            {downloadingPdfId === p.id ? 'Generando...' : 'PDF Oficial'}
+                                        </button>
+                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
+                                            <ChevronRight size={16} />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -285,68 +326,101 @@ export default function GobernanzaPanel({ currentUser }) {
         return <GobernanzaGantt proyectos={proyectos} onBack={() => setViewMode('lista')} />;
     }
 
+    const activeServiceKey = resolveServiceKeyFromProject(selectedProyecto);
+    const activeDossier = GOBERNANZA_PROJECTS_DOSSIER_DATA[activeServiceKey] || GOBERNANZA_PROJECTS_DOSSIER_DATA.QUIROFANO;
+
     // VISTA PROYECTO
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f8fafc', fontFamily: "'Inter', sans-serif" }}>
             {/* Header Proyecto */}
-            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                    <button onClick={closeProject} style={{ background: '#f1f5f9', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center' }}>
+            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px', zIndex: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1, minWidth: 0 }}>
+                    <button onClick={closeProject} style={{ background: '#f1f5f9', border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                         <ArrowLeft size={20} />
                     </button>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#0f172a', fontWeight: 800 }}>{selectedProyecto.nombre}</h2>
-                        <span style={{ fontSize: '0.9rem', color: '#64748b' }}>{selectedProyecto.descripcion}</span>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <h2 style={{ margin: 0, fontSize: '1.45rem', color: '#0f172a', fontWeight: 800 }}>{selectedProyecto.nombre}</h2>
+                            <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: '#dcfce7', color: '#166534', fontWeight: 700 }}>
+                                {activeDossier.codigo} · 100% Completado
+                            </span>
+                        </div>
+                        <span style={{ fontSize: '0.86rem', color: '#64748b', display: 'block', marginTop: '4px', lineHeight: 1.4 }}>{selectedProyecto.descripcion}</span>
                     </div>
                 </div>
 
-                {/* Inline Date Editing */}
-                <div style={{ display: 'flex', gap: '16px', background: '#f8fafc', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inicio</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Calendar size={14} color="#94a3b8" />
-                            <input 
-                                type="date" 
-                                value={selectedProyecto.fecha_desde || ''} 
-                                onChange={e => handleProjectDateChange('fecha_desde', e.target.value)}
-                                style={{ border: 'none', background: 'transparent', outline: 'none', color: '#334155', fontSize: '0.9rem', fontWeight: 600, padding: 0 }}
-                            />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                    <button
+                        type="button"
+                        onClick={(e) => handleDownloadProjectPdf(e, selectedProyecto)}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '11px 18px',
+                            borderRadius: '10px',
+                            border: 'none',
+                            background: 'linear-gradient(135deg, #0D3B66 0%, #2563EB 100%)',
+                            color: 'white',
+                            fontWeight: 700,
+                            fontSize: '0.86rem',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                        }}
+                    >
+                        <Download size={16} />
+                        {downloadingPdfId === selectedProyecto.id ? 'Generando PDF...' : 'Descargar Documento PDF Oficial'}
+                    </button>
+
+                    {/* Inline Date Editing */}
+                    <div style={{ display: 'flex', gap: '16px', background: '#f8fafc', padding: '10px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inicio</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Calendar size={14} color="#94a3b8" />
+                                <input 
+                                    type="date" 
+                                    value={selectedProyecto.fecha_desde || ''} 
+                                    onChange={e => handleProjectDateChange('fecha_desde', e.target.value)}
+                                    style={{ border: 'none', background: 'transparent', outline: 'none', color: '#334155', fontSize: '0.85rem', fontWeight: 600, padding: 0 }}
+                                />
+                            </div>
                         </div>
-                    </div>
-                    <div style={{ width: '1px', background: '#cbd5e1' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Fin</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Calendar size={14} color="#94a3b8" />
-                            <input 
-                                type="date" 
-                                value={selectedProyecto.fecha_hasta || ''} 
-                                onChange={e => handleProjectDateChange('fecha_hasta', e.target.value)}
-                                style={{ border: 'none', background: 'transparent', outline: 'none', color: '#334155', fontSize: '0.9rem', fontWeight: 600, padding: 0 }}
-                            />
+                        <div style={{ width: '1px', background: '#cbd5e1' }} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Fin</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Calendar size={14} color="#94a3b8" />
+                                <input 
+                                    type="date" 
+                                    value={selectedProyecto.fecha_hasta || ''} 
+                                    onChange={e => handleProjectDateChange('fecha_hasta', e.target.value)}
+                                    style={{ border: 'none', background: 'transparent', outline: 'none', color: '#334155', fontSize: '0.85rem', fontWeight: 600, padding: 0 }}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* Sub Nav (Tabs) */}
-            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0 32px', display: 'flex', gap: '32px' }}>
+            <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0 32px', display: 'flex', gap: '28px', overflowX: 'auto' }}>
                 {[
+                    { id: 'memoria', label: '¿Qué hicimos y Cómo lo hicimos? (Dossier)', icon: BookOpen },
+                    { id: 'indicadores', label: 'Indicadores, SQL y Tablero', icon: Target },
+                    { id: 'documentos', label: 'Documentos PDF', icon: FileText },
                     { id: 'muro', label: 'Muro de Actividad', icon: Activity },
                     { id: 'tareas', label: 'Tareas', icon: ListTodo },
-                    { id: 'entrevistas', label: 'Auditorías de Voz', icon: Mic },
-                    { id: 'indicadores', label: 'Indicadores y SQL', icon: Target },
-                    { id: 'documentos', label: 'Documentos', icon: FileText }
+                    { id: 'entrevistas', label: 'Auditorías de Voz', icon: Mic }
                 ].map(tab => (
                     <button 
                         key={tab.id}
                         onClick={() => { setActiveTab(tab.id); setIsRecording(false); }}
                         style={{ 
-                            background: 'transparent', border: 'none', padding: '16px 0', fontSize: '1rem', fontWeight: 600, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '8px',
-                            color: activeTab === tab.id ? '#3b82f6' : '#64748b',
-                            borderBottom: activeTab === tab.id ? '3px solid #3b82f6' : '3px solid transparent',
+                            background: 'transparent', border: 'none', padding: '16px 0', fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap',
+                            color: activeTab === tab.id ? '#2563eb' : '#64748b',
+                            borderBottom: activeTab === tab.id ? '3px solid #2563eb' : '3px solid transparent',
                             transition: 'all 0.2s'
                         }}
                     >
@@ -357,6 +431,300 @@ export default function GobernanzaPanel({ currentUser }) {
 
             {/* Contenido Principal */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+                {activeTab === 'memoria' && (
+                    <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        {/* Banner Institucional Sanatorio Argentino */}
+                        <div style={{
+                            background: 'linear-gradient(135deg, #0D3B66 0%, #1E40AF 65%, #2563EB 100%)',
+                            borderRadius: '16px',
+                            padding: '28px 32px',
+                            color: 'white',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '24px',
+                            flexWrap: 'wrap',
+                            boxShadow: '0 10px 25px -5px rgba(13, 59, 102, 0.25)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: '1 1 520px' }}>
+                                <div style={{
+                                    background: 'white',
+                                    borderRadius: '14px',
+                                    padding: '12px 16px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    minWidth: '165px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)'
+                                }}>
+                                    <img
+                                        src="/logosanatorio.png"
+                                        alt="Sanatorio Argentino"
+                                        style={{ width: '54px', height: '54px', objectFit: 'contain', marginBottom: '6px' }}
+                                    />
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0D3B66', letterSpacing: '0.03em', textAlign: 'center' }}>
+                                        SANATORIO ARGENTINO
+                                    </span>
+                                    <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#2563EB', textAlign: 'center', marginTop: '2px' }}>
+                                        Innovación y Transformación Digital
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.14)', padding: '4px 12px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '8px' }}>
+                                        <span>PROYECTO OFICIAL DE GOBERNANZA · {activeDossier.codigo}</span>
+                                    </div>
+                                    <h3 style={{ margin: '0 0 6px', fontSize: '1.55rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                                        {activeDossier.titulo}
+                                    </h3>
+                                    <p style={{ margin: 0, fontSize: '0.92rem', color: '#DBEAFE', lineHeight: 1.5, maxWidth: '760px' }}>
+                                        {activeDossier.subtitulo}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end' }}>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadProjectPdf(e, selectedProyecto)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '12px 20px',
+                                        borderRadius: '10px',
+                                        border: '1px solid rgba(255,255,255,0.35)',
+                                        background: 'white',
+                                        color: '#0D3B66',
+                                        fontWeight: 800,
+                                        fontSize: '0.88rem',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                                    }}
+                                >
+                                    <Download size={17} color="#2563EB" />
+                                    {downloadingPdfId === selectedProyecto.id ? 'Generando PDF...' : 'Descargar Dossier PDF (Sanatorio Argentino)'}
+                                </button>
+                                <span style={{ fontSize: '0.75rem', color: '#BFDBFE' }}>
+                                    Incluye logo institucional, metodología, indicadores SQL y ejemplos reales 2026
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* 4 KPIs Resumen del Proyecto */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                            {activeDossier.metricasResumen.map((m, idx) => (
+                                <div key={idx} style={{
+                                    background: 'white',
+                                    borderRadius: '12px',
+                                    padding: '18px 20px',
+                                    border: '1px solid #DBEAFE',
+                                    borderTop: '4px solid #2563EB',
+                                    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.03)'
+                                }}>
+                                    <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                                        {m.etiqueta}
+                                    </div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0D3B66', marginBottom: '4px' }}>
+                                        {m.valor}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                                        {m.detalle}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Grid de 2 Columnas: ¿Qué hemos hecho? y ¿Cómo lo hemos hecho? */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))', gap: '24px' }}>
+                            {/* Columna 1: ¿Qué hemos hecho? */}
+                            <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #F1F5F9' }}>
+                                    <div style={{ background: '#EFF6FF', color: '#2563EB', padding: '8px', borderRadius: '8px' }}>
+                                        <CheckCircle2 size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0D3B66' }}>
+                                            1. ¿Qué hemos hecho en el servicio?
+                                        </h4>
+                                        <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                                            Soluciones, tableros y herramientas de auditoría implementadas
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                    {activeDossier.queHemosHecho.map((item, idx) => (
+                                        <div key={idx} style={{
+                                            background: '#F8FAFC',
+                                            borderRadius: '10px',
+                                            padding: '14px 16px',
+                                            borderLeft: '4px solid #2563EB',
+                                            border: '1px solid #E2E8F0',
+                                            borderLeftWidth: '4px',
+                                            borderLeftColor: '#2563EB'
+                                        }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0F172A', marginBottom: '6px' }}>
+                                                {item.titulo}
+                                            </div>
+                                            <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.55 }}>
+                                                {item.detalle}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Columna 2: ¿Cómo lo hemos hecho? */}
+                            <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #F1F5F9' }}>
+                                    <div style={{ background: '#F0F9FF', color: '#0284C7', padding: '8px', borderRadius: '8px' }}>
+                                        <Layers size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0D3B66' }}>
+                                            2. ¿Cómo lo hemos hecho? (Ingeniería y Datos)
+                                        </h4>
+                                        <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                                            Arquitectura SALUS SQL Server, reglas de depuración y motor Telar
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                    {activeDossier.comoLoHemosHecho.map((step, idx) => (
+                                        <div key={idx} style={{
+                                            background: '#F8FAFC',
+                                            borderRadius: '10px',
+                                            padding: '14px 16px',
+                                            border: '1px solid #E2E8F0',
+                                            borderLeft: '4px solid #0D3B66'
+                                        }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0D3B66', marginBottom: '6px' }}>
+                                                {step.paso}
+                                            </div>
+                                            <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.55 }}>
+                                                {step.explicacion}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Sección 3: Ejemplos Reales Auditados (2026) */}
+                        <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid #F1F5F9', flexWrap: 'wrap', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ background: '#ECFDF5', color: '#059669', padding: '8px', borderRadius: '8px' }}>
+                                        <Sparkles size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0D3B66' }}>
+                                            3. Ejemplos Reales Auditados paso a paso (Casos Prácticos 2026)
+                                        </h4>
+                                        <span style={{ fontSize: '0.82rem', color: '#64748B' }}>
+                                            Casos concretos con datos reales de Sanatorio Argentino explicando lectura del indicador y toma de decisiones
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('indicadores')}
+                                        style={{
+                                            padding: '8px 14px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #BFDBFE',
+                                            background: '#EFF6FF',
+                                            color: '#1D4ED8',
+                                            fontWeight: 700,
+                                            fontSize: '0.82rem',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Ver Indicadores SQL y Tablero Vivo →
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('documentos')}
+                                        style={{
+                                            padding: '8px 14px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #E2E8F0',
+                                            background: '#F8FAFC',
+                                            color: '#334155',
+                                            fontWeight: 700,
+                                            fontSize: '0.82rem',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Ver en Repositorio de Documentos →
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {activeDossier.ejemplosDetallados.map((ej, idx) => (
+                                    <div key={idx} style={{
+                                        borderRadius: '12px',
+                                        border: '1px solid #DBEAFE',
+                                        overflow: 'hidden',
+                                        background: '#FFFFFF'
+                                    }}>
+                                        <div style={{
+                                            background: '#F0F7FF',
+                                            padding: '12px 18px',
+                                            borderBottom: '1px solid #DBEAFE',
+                                            fontWeight: 800,
+                                            fontSize: '0.96rem',
+                                            color: '#0D3B66'
+                                        }}>
+                                            {ej.titulo}
+                                        </div>
+                                        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div style={{ fontSize: '0.86rem', color: '#1E40AF', lineHeight: 1.5 }}>
+                                                <strong>Contexto Clínico / Gestión: </strong>
+                                                <span style={{ color: '#334155', fontWeight: 500 }}>{ej.contexto}</span>
+                                            </div>
+                                            <div style={{ fontSize: '0.86rem', color: '#0F172A', lineHeight: 1.55, background: '#F8FAFC', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                                <strong style={{ color: '#0D3B66' }}>Lectura Detallada del Dato Real: </strong>
+                                                {ej.analisisDatos}
+                                            </div>
+                                            <div style={{ fontSize: '0.86rem', color: '#065F46', lineHeight: 1.5, background: '#ECFDF5', padding: '10px 14px', borderRadius: '8px', border: '1px solid #A7F3D0' }}>
+                                                <strong>Acción y Toma de Decisión: </strong>
+                                                {ej.decisionGestion}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Pie Institucional */}
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '12px',
+                            border: '1px solid #E2E8F0',
+                            padding: '16px 24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <img src="/logosanatorio.png" alt="Sanatorio Argentino" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+                                <div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0D3B66' }}>Sanatorio Argentino</div>
+                                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#2563EB' }}>Innovación y Transformación Digital</div>
+                                </div>
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                                Documentación Técnica y Ejemplos Auditados · {activeDossier.codigo}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === 'muro' && (
                     <GobernanzaMuro proyectoId={selectedProyecto.id} />
                 )}

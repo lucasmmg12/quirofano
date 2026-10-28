@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase';
 import { Plus, Target, ChevronDown, ChevronUp, Save, Loader2, CheckCircle2, Circle, BarChart3, LayoutDashboard } from 'lucide-react';
 import GuardiaClinicaDashboard from './Gobernanza/GuardiaClinicaDashboard';
 import QuirofanoDashboard from './Gobernanza/QuirofanoDashboard';
+import DiasOcupacionDashboard from './Gobernanza/DiasOcupacionDashboard';
+import EpidemiologiaDashboard from './Gobernanza/EpidemiologiaDashboard';
+import DiagnosticoImagenesDashboard from './Gobernanza/DiagnosticoImagenesDashboard';
 
 function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
     const textareaRef = useRef(null);
@@ -40,16 +43,35 @@ function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 8
 }
 
 export default function GobernanzaIndicadores({ proyectoId, currentUser, proyecto }) {
+    const lowerName = (proyecto?.nombre || '').toLowerCase();
     const isGuardia = Boolean(
-        proyecto?.nombre?.toLowerCase().includes('guardia') ||
+        lowerName.includes('guardia') ||
         proyectoId === '15533f6c-df44-42ae-a6f7-e3376d3b58fc'
     );
     const isQuirofano = Boolean(
-        proyecto?.nombre?.toLowerCase().includes('quirofano') ||
-        proyecto?.nombre?.toLowerCase().includes('quirófano') ||
+        lowerName.includes('quirofano') ||
+        lowerName.includes('quirófano') ||
         proyectoId === 'cf0caff1-e6b6-4142-ac3d-24e3eaff9273'
     );
-    const [viewMode, setViewMode] = useState((isGuardia || isQuirofano) ? 'graficos' : 'especificaciones');
+    const isUci = Boolean(
+        lowerName.includes('uci') ||
+        lowerName.includes('crítico') ||
+        lowerName.includes('critico') ||
+        proyectoId === '9e707b55-8dca-4db3-8db4-4c282c232c1c'
+    );
+    const isEpidemiologia = Boolean(
+        lowerName.includes('romano') ||
+        lowerName.includes('epidemiolog') ||
+        proyectoId === 'd317186f-977c-4a36-b578-ef3d9e746609'
+    );
+    const isDxi = Boolean(
+        lowerName.includes('imagen') ||
+        lowerName.includes('imágenes') ||
+        lowerName.includes('dxi') ||
+        proyectoId === '645ab8b2-18f1-4620-8271-f41e31677b5c'
+    );
+    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi;
+    const [viewMode, setViewMode] = useState('especificaciones');
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
     
@@ -205,7 +227,7 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    {(isGuardia || isQuirofano) && (
+                    {hasInteractiveDashboard && (
                         <div style={{
                             display: 'flex',
                             background: '#f1f5f9',
@@ -214,28 +236,6 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                             border: '1px solid #e2e8f0',
                             gap: '3px'
                         }}>
-                            <button
-                                type="button"
-                                onClick={() => setViewMode('graficos')}
-                                style={{
-                                    padding: '7px 14px',
-                                    borderRadius: '8px',
-                                    border: 'none',
-                                    background: viewMode === 'graficos' ? '#ffffff' : 'transparent',
-                                    color: viewMode === 'graficos' ? '#1e40af' : '#64748b',
-                                    fontWeight: viewMode === 'graficos' ? 800 : 600,
-                                    fontSize: '0.82rem',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    boxShadow: viewMode === 'graficos' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <BarChart3 size={16} color={viewMode === 'graficos' ? '#2563eb' : '#64748b'} />
-                                Tablero & Gráficos
-                            </button>
                             <button
                                 type="button"
                                 onClick={() => setViewMode('especificaciones')}
@@ -258,6 +258,28 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                                 <Target size={16} color={viewMode === 'especificaciones' ? '#2563eb' : '#64748b'} />
                                 Especificaciones SQL ({indicadores.length})
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('graficos')}
+                                style={{
+                                    padding: '7px 14px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: viewMode === 'graficos' ? '#ffffff' : 'transparent',
+                                    color: viewMode === 'graficos' ? '#1e40af' : '#64748b',
+                                    fontWeight: viewMode === 'graficos' ? 800 : 600,
+                                    fontSize: '0.82rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    boxShadow: viewMode === 'graficos' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <BarChart3 size={16} color={viewMode === 'graficos' ? '#2563eb' : '#64748b'} />
+                                Tablero & Gráficos
+                            </button>
                         </div>
                     )}
 
@@ -269,18 +291,29 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                 </div>
             </div>
 
-            {/* Vista 1: Tablero de Control con Gráficos Interactivos de Guardia */}
+            {/* Vista 1: Tableros de Control Interactivos para los 5 Servicios Activos */}
             {isGuardia && viewMode === 'graficos' && (
                 <GuardiaClinicaDashboard />
             )}
 
-            {/* Vista 1.b: Tablero de Control con Gráficos Interactivos de Quirófano */}
             {isQuirofano && viewMode === 'graficos' && (
                 <QuirofanoDashboard />
             )}
 
+            {isUci && viewMode === 'graficos' && (
+                <DiasOcupacionDashboard />
+            )}
+
+            {isEpidemiologia && viewMode === 'graficos' && (
+                <EpidemiologiaDashboard />
+            )}
+
+            {isDxi && viewMode === 'graficos' && (
+                <DiagnosticoImagenesDashboard />
+            )}
+
             {/* Vista 2: Catálogo de Especificaciones Técnicas y SQL */}
-            {((!isGuardia && !isQuirofano) || viewMode === 'especificaciones') && (
+            {(!hasInteractiveDashboard || viewMode === 'especificaciones') && (
                 <>
                     {showNew && (
                         <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #3b82f6', marginBottom: '24px', display: 'flex', gap: '12px' }}>

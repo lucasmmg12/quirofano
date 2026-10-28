@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-// Paleta clínica Sanatorio Argentino (QOAG / Grow Labs)
+// Paleta clínica Sanatorio Argentino (Innovación y Transformación Digital)
 const COLORS = {
     quirurgico: '#2563EB',      // Azul Quirófano Sanatorio
     quirurgicoHover: '#1D4ED8',
