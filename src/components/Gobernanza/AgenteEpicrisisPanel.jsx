@@ -352,46 +352,6 @@ export default function AgenteEpicrisisPanel({ addToast, initialNhc = null }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* ─── BANNER INSTITUCIONAL Y CAPA DE SEGURIDAD ─── */}
-            <div style={{
-                background: 'linear-gradient(135deg, #0D3B66 0%, #1E40AF 100%)',
-                borderRadius: '12px',
-                padding: '18px 22px',
-                color: '#FFFFFF',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '14px',
-                boxShadow: '0 4px 14px rgba(30, 64, 175, 0.18)'
-            }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <span style={{ background: 'rgba(255,255,255,0.18)', padding: '5px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Sparkles size={14} /> PROYECTO CLÍNICA MÉDICA & UCI · DRA. PAOLA GARCÍA
-                        </span>
-                        <span style={{ background: '#DCFCE7', color: '#166534', padding: '4px 10px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <ShieldCheck size={13} /> AISLAMIENTO ESTRICTO POR NHC (CERO MEZCLA DE PACIENTES)
-                        </span>
-                    </div>
-                    <h3 style={{ margin: '8px 0 4px 0', fontSize: '1.2rem', fontWeight: 900 }}>
-                        🧠 Agente IA Generador de Epicrisis & Copiloto de Historia Clínica
-                    </h3>
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#DBEAFE', maxWidth: '880px' }}>
-                        Integra automáticamente el circuito de admisiones (<strong>Shock Room → Quirófano → UCI → Piso</strong>), el formulario <strong>(INT) ADMISION MEDICA CLINICA (Prot. 557)</strong>, la conciliación de medicación habitual y el resumen infectológico con días de antibióticos.
-                    </p>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                    <div style={{ background: 'rgba(15, 23, 42, 0.35)', padding: '8px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.2)', fontSize: '0.74rem' }}>
-                        <div>🔒 <strong>Acceso Restringido:</strong> Staff Clínica Médica & Terapia</div>
-                        <div style={{ color: '#93C5FD', fontSize: '0.68rem', marginTop: '2px' }}>
-                            Red Interna Sanatorio Argentino · {dossiers.length} Historias Auditadas
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             {/* ─── LAYOUT DE 2 COLUMNAS: SELECTOR DE PACIENTES + ÁREA DE TRABAJO IA ─── */}
             <div style={{ display: 'grid', gridTemplateColumns: '330px 1fr', gap: '16px', alignItems: 'start' }}>
                 
