@@ -569,34 +569,6 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                         </button>
                     </div>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {lastUpdated && (
-                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                            Actualizado: {new Date(lastUpdated).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs
-                        </span>
-                    )}
-
-                    <button
-                        type="button"
-                        onClick={() => exportCSV(subTab)}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '7px 12px',
-                            background: '#F8FAFC',
-                            border: '1px solid #CBD5E1',
-                            borderRadius: '8px',
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            color: '#334155',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <Download size={14} /> Exportar CSV
-                    </button>
-                </div>
             </div>
 
             {/* ─── TAB NUEVA PRINCIPAL: ADMISIÓN CLÍNICA MÉDICA (PROTOCOLO SALUS 557) ─── */}
