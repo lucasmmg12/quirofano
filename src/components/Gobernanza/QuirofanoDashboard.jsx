@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import * as XLSX from 'xlsx';
 import { exportSuspensionesPdf } from '../../utils/quirofanoSuspensionesPdf';
 import { exportQuirofanoExcelStyled } from '../../utils/quirofanoExcelExporter';
+import { SALUS_QUIROFANO_ASISTENCIA_MENSUAL } from '../../data/salusQuirofanoAsistenciaData';
 import { 
     Activity, Clock, CheckCircle2, AlertTriangle, 
     Calendar, RefreshCw, TrendingUp, Users,
@@ -987,6 +988,8 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
 
     const total = rows.length;
     let suspendidas = 0;
+    let suspendidas24h = 0;
+    let suspendidasDia = 0;
     let realizadas = 0;
     let urgencias = 0;
 
@@ -994,6 +997,7 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
     const obrasSocialesMap = {};
     const especialidadesMap = {};
     const explicitMotivosCounts = {};
+    const explicitCodeCounts = {};
     let hasExplicitMotivo = false;
     const procRealMap = {};
     const procSuspMap = {};
@@ -1004,10 +1008,39 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
         const isSusp = s.ausente === '1' || s.status === 'rojo' || Boolean(s.motivo && s.motivo.trim());
         if (isSusp) {
             suspendidas++;
-            if (s.motivo && s.motivo.trim()) {
+            const rawMotivo = (s.motivo || '').trim();
+            if (rawMotivo.toUpperCase().includes('CX SUSPENDIDA 24H')) {
+                suspendidas24h++;
+            } else {
+                suspendidasDia++;
+            }
+            if (rawMotivo) {
                 hasExplicitMotivo = true;
-                const mLower = s.motivo.trim().toLowerCase();
-                explicitMotivosCounts[mLower] = (explicitMotivosCounts[mLower] || 0) + 1;
+                const cleanMot = rawMotivo.replace(/^\[.*?\]\s*/, '').trim();
+                const codeMatch = cleanMot.match(/^0?(\d{1,2})\b/);
+                if (codeMatch) {
+                    const numCode = parseInt(codeMatch[1], 10);
+                    if (numCode >= 1 && numCode <= 13) {
+                        explicitCodeCounts[numCode] = (explicitCodeCounts[numCode] || 0) + 1;
+                    } else {
+                        explicitCodeCounts[7] = (explicitCodeCounts[7] || 0) + 1;
+                    }
+                } else if (cleanMot) {
+                    const mLower = cleanMot.toLowerCase();
+                    if (mLower.includes('reprogram')) explicitCodeCounts[1] = (explicitCodeCounts[1] || 0) + 1;
+                    else if (mLower.includes('obra social') || mLower.includes('autoriz') || mLower.includes('os ')) explicitCodeCounts[2] = (explicitCodeCounts[2] || 0) + 1;
+                    else if (mLower.includes('ya fue realiz') || mLower.includes('ya se realiz')) explicitCodeCounts[3] = (explicitCodeCounts[3] || 0) + 1;
+                    else if (mLower.includes('fiebre') || mLower.includes('electro') || mLower.includes('enferm') || mLower.includes('bronco') || mLower.includes('hta') || mLower.includes('presion')) explicitCodeCounts[4] = (explicitCodeCounts[4] || 0) + 1;
+                    else if (mLower.includes('ayuno')) explicitCodeCounts[6] = (explicitCodeCounts[6] || 0) + 1;
+                    else if (mLower.includes('prequirurg') || mLower.includes('estudio') || mLower.includes('analitica') || mLower.includes('lab')) explicitCodeCounts[9] = (explicitCodeCounts[9] || 0) + 1;
+                    else if (mLower.includes('instrument') || mLower.includes('protesis') || mLower.includes('material')) explicitCodeCounts[10] = (explicitCodeCounts[10] || 0) + 1;
+                    else if (mLower.includes('cirujano') || mLower.includes('dr ') || mLower.includes('dra ') || mLower.includes('medico')) explicitCodeCounts[8] = (explicitCodeCounts[8] || 0) + 1;
+                    else explicitCodeCounts[7] = (explicitCodeCounts[7] || 0) + 1;
+                    explicitMotivosCounts[mLower] = (explicitMotivosCounts[mLower] || 0) + 1;
+                } else {
+                    // Tiene tag [SUSPENDIDA] o [CX SUSPENDIDA 24H] sin texto adicional
+                    explicitCodeCounts[7] = (explicitCodeCounts[7] || 0) + 1;
+                }
             }
         } else {
             realizadas++;
@@ -1135,14 +1168,20 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
     if (suspendidas === 0) {
         motivosSuspension = MOTIVOS_SUSPENSION_OFICIAL.map(m => ({ ...m, cantidad: 0, pct: 0 }));
     } else if (hasExplicitMotivo) {
-        motivosSuspension = MOTIVOS_SUSPENSION_OFICIAL.map(m => {
-            let cnt = 0;
-            const mDesc = m.motivo.toLowerCase();
-            Object.entries(explicitMotivosCounts).forEach(([raw, val]) => {
-                if (mDesc.includes(raw) || raw.includes(mDesc.replace(/^\d+\.\s*/, ''))) {
-                    cnt += val;
+        const totalExplicitCodes = Object.values(explicitCodeCounts).reduce((a, b) => a + b, 0);
+        const remainder = Math.max(0, suspendidas - totalExplicitCodes);
+        let allocatedRem = 0;
+        motivosSuspension = MOTIVOS_SUSPENSION_OFICIAL.map((m, idx) => {
+            let cnt = explicitCodeCounts[m.codigo] || 0;
+            if (remainder > 0) {
+                if (idx === MOTIVOS_SUSPENSION_OFICIAL.length - 1) {
+                    cnt += Math.max(0, remainder - allocatedRem);
+                } else {
+                    const share = Math.round(remainder * (m.pct / 100));
+                    allocatedRem += share;
+                    cnt += share;
                 }
-            });
+            }
             return {
                 ...m,
                 cantidad: cnt,
@@ -1210,6 +1249,8 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
             total,
             realizadas,
             suspendidas,
+            suspendidas24h,
+            suspendidasDia,
             suspendidasNetas,
             tasaSusp,
             tasaSuspBruta,
@@ -1323,6 +1364,116 @@ export default function QuirofanoDashboard({
     const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
     const [bloquesAmbitoFiltro, setBloquesAmbitoFiltro] = useState('TODOS'); // 'TODOS' | 'CENTRAL' | 'HDD'
     const [selectedBloqueDetail, setSelectedBloqueDetail] = useState(null); // { bloque, semana }
+    const [asistenciaAnioFiltro, setAsistenciaAnioFiltro] = useState('2026'); // '2026' | '2025' | 'TODOS'
+    const [asistenciaVistaModo, setAsistenciaVistaModo] = useState('todos'); // 'todos' | 'suspensiones'
+    const [salusAsistenciaRows, setSalusAsistenciaRows] = useState(SALUS_QUIROFANO_ASISTENCIA_MENSUAL);
+
+    // Cargar caché actualizado de Asistencia Mensual SALUS si existe en app_config
+    useEffect(() => {
+        let active = true;
+        supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', 'quirofano_asistencia_mensual_salus')
+            .maybeSingle()
+            .then(({ data }) => {
+                if (active && data?.value?.rows && Array.isArray(data.value.rows) && data.value.rows.length > 0) {
+                    setSalusAsistenciaRows(data.value.rows);
+                }
+            })
+            .catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    // Serie mensual auditada según Estado de Asistencia en SALUS (Presente, SUSPENDIDA, CX SUSPENDIDA 24H, URGENCIA, NO PROGRAMADA, Ausencia, Sin Registrar)
+    const { asistenciaMensualSeries, asistenciaMensualTotals } = useMemo(() => {
+        const MESES_NOMBRES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const byMonth = {};
+
+        for (const r of salusAsistenciaRows) {
+            if (!r.mes) continue;
+            if (asistenciaAnioFiltro !== 'TODOS' && !r.mes.startsWith(asistenciaAnioFiltro)) continue;
+
+            const g = (r.grupo || '').toUpperCase();
+            if (ambitoFilter === 'CENTRALES' && (g.includes('HDD') || g.includes('HOSPITAL DE DIA') || g.includes('HEMODINAMIA'))) continue;
+            if (ambitoFilter === 'HDD' && !(g.includes('HDD') || g.includes('HOSPITAL DE DIA'))) continue;
+
+            if (!byMonth[r.mes]) {
+                const [yy, mm] = r.mes.split('-');
+                const mLabel = `${MESES_NOMBRES[parseInt(mm, 10) - 1] || mm} ${yy.slice(2)}`;
+                byMonth[r.mes] = {
+                    mes: r.mes,
+                    mesLabel: mLabel,
+                    Presente: 0,
+                    URGENCIA: 0,
+                    'NO PROGRAMADA': 0,
+                    'CX SUSPENDIDA 24H': 0,
+                    SUSPENDIDA: 0,
+                    Ausencia: 0,
+                    'Sin Registrar': 0,
+                    total: 0
+                };
+            }
+
+            const item = byMonth[r.mes];
+            const cant = Number(r.cant) || 0;
+            const asist = (r.asistencia || '').trim();
+
+            if (asist === 'Presente' || asist === 'INTERNADO') item.Presente += cant;
+            else if (asist === 'URGENCIA') item.URGENCIA += cant;
+            else if (asist === 'NO PROGRAMADA') item['NO PROGRAMADA'] += cant;
+            else if (asist === 'CX SUSPENDIDA 24H') item['CX SUSPENDIDA 24H'] += cant;
+            else if (asist === 'SUSPENDIDA') item.SUSPENDIDA += cant;
+            else if (asist.toLowerCase().includes('ausencia')) item.Ausencia += cant;
+            else item['Sin Registrar'] += cant;
+
+            item.total += cant;
+        }
+
+        const series = Object.values(byMonth)
+            .sort((a, b) => a.mes.localeCompare(b.mes))
+            .map(m => {
+                const totalSusp = m.SUSPENDIDA + m['CX SUSPENDIDA 24H'];
+                const totalRealizadasMes = m.Presente + m.URGENCIA + m['NO PROGRAMADA'];
+                return {
+                    ...m,
+                    totalRealizadasMes,
+                    totalSusp,
+                    tasaSuspDia: m.total > 0 ? Number(((m.SUSPENDIDA / m.total) * 100).toFixed(1)) : 0,
+                    tasaSusp24h: m.total > 0 ? Number(((m['CX SUSPENDIDA 24H'] / m.total) * 100).toFixed(1)) : 0,
+                    tasaSuspTotal: m.total > 0 ? Number(((totalSusp / m.total) * 100).toFixed(1)) : 0
+                };
+            });
+
+        const totals = series.reduce((acc, m) => {
+            acc.Presente += m.Presente;
+            acc.URGENCIA += m.URGENCIA;
+            acc['NO PROGRAMADA'] += m['NO PROGRAMADA'];
+            acc['CX SUSPENDIDA 24H'] += m['CX SUSPENDIDA 24H'];
+            acc.SUSPENDIDA += m.SUSPENDIDA;
+            acc.Ausencia += m.Ausencia;
+            acc['Sin Registrar'] += m['Sin Registrar'];
+            acc.total += m.total;
+            return acc;
+        }, {
+            Presente: 0,
+            URGENCIA: 0,
+            'NO PROGRAMADA': 0,
+            'CX SUSPENDIDA 24H': 0,
+            SUSPENDIDA: 0,
+            Ausencia: 0,
+            'Sin Registrar': 0,
+            total: 0
+        });
+
+        totals.totalRealizadas = totals.Presente + totals.URGENCIA + totals['NO PROGRAMADA'];
+        totals.totalSusp = totals.SUSPENDIDA + totals['CX SUSPENDIDA 24H'];
+        totals.tasaSuspDia = totals.total > 0 ? Number(((totals.SUSPENDIDA / totals.total) * 100).toFixed(1)) : 0;
+        totals.tasaSusp24h = totals.total > 0 ? Number(((totals['CX SUSPENDIDA 24H'] / totals.total) * 100).toFixed(1)) : 0;
+        totals.tasaSuspTotal = totals.total > 0 ? Number(((totals.totalSusp / totals.total) * 100).toFixed(1)) : 0;
+
+        return { asistenciaMensualSeries: series, asistenciaMensualTotals: totals };
+    }, [salusAsistenciaRows, asistenciaAnioFiltro, ambitoFilter]);
 
     // Sincronizar filtro de bloques con el ámbito global
     useEffect(() => {
@@ -3179,6 +3330,204 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
+                    {/* ─── GRÁFICO Y TABLA DE EVOLUCIÓN MENSUAL SEGÚN ASISTENCIA SALUS (Presente, Suspendida, CX Suspendida 24H, Urgencia, No Programada) ─── */}
+                    <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                                        Evolución Mensual de Cirugías según Estado de Asistencia SALUS ({ambitoFilter === 'CENTRALES' ? 'Quirófano Central' : ambitoFilter === 'HDD' ? 'Hospital de Día' : 'Consolidado Sanatorio'})
+                                    </h3>
+                                    <span style={{ fontSize: '0.68rem', background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: '999px', fontWeight: 800 }}>
+                                        Trazabilidad VLISE_Visitas
+                                    </span>
+                                </div>
+                                <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                                    Totales mes a mes desglosados por clasificación oficial en SALUS: <strong>Presente</strong>, <strong>Urgencia</strong>, <strong>No Programada</strong>, <strong>CX Suspendida 24H (≥24hs)</strong>, <strong>Suspendida (&lt;24hs / en el día)</strong>, <strong>Ausencia</strong> y <strong>Sin Registrar</strong>.
+                                </p>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                {/* Selector de Vista: Todos vs Foco Suspensiones */}
+                                <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                    {[
+                                        { id: 'todos', label: '📊 Todos los Estados' },
+                                        { id: 'suspensiones', label: '🚫 Foco: Suspendida vs 24H' }
+                                    ].map(m => (
+                                        <button
+                                            key={m.id}
+                                            type="button"
+                                            onClick={() => setAsistenciaVistaModo(m.id)}
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                fontSize: '0.73rem',
+                                                fontWeight: asistenciaVistaModo === m.id ? 800 : 600,
+                                                background: asistenciaVistaModo === m.id ? '#FFFFFF' : 'transparent',
+                                                color: asistenciaVistaModo === m.id ? '#0F172A' : '#64748B',
+                                                boxShadow: asistenciaVistaModo === m.id ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Selector de Año */}
+                                <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                    {[
+                                        { id: '2026', label: '2026' },
+                                        { id: '2025', label: '2025' },
+                                        { id: 'TODOS', label: '2025–2026' }
+                                    ].map(yr => (
+                                        <button
+                                            key={yr.id}
+                                            type="button"
+                                            onClick={() => setAsistenciaAnioFiltro(yr.id)}
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '6px',
+                                                border: 'none',
+                                                fontSize: '0.73rem',
+                                                fontWeight: asistenciaAnioFiltro === yr.id ? 800 : 600,
+                                                background: asistenciaAnioFiltro === yr.id ? '#0284C7' : 'transparent',
+                                                color: asistenciaAnioFiltro === yr.id ? '#FFFFFF' : '#64748B',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            {yr.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tarjetas Resumen del Período Seleccionado por Estado de Asistencia */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                            {[
+                                { key: 'Presente', label: 'Presente (Programada)', val: asistenciaMensualTotals.Presente, color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
+                                { key: 'URGENCIA', label: 'Urgencia', val: asistenciaMensualTotals.URGENCIA, color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+                                { key: 'NO PROGRAMADA', label: 'No Programada', val: asistenciaMensualTotals['NO PROGRAMADA'], color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' },
+                                { key: 'CX SUSPENDIDA 24H', label: 'CX Suspendida 24H (≥24h)', val: asistenciaMensualTotals['CX SUSPENDIDA 24H'], color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+                                { key: 'SUSPENDIDA', label: 'Suspendida (<24h / Día)', val: asistenciaMensualTotals.SUSPENDIDA, color: '#E11D48', bg: '#FFF1F2', border: '#FECDD3' },
+                                { key: 'Ausencia', label: 'Ausencia (Just./Injust.)', val: asistenciaMensualTotals.Ausencia, color: '#475569', bg: '#F8FAFC', border: '#CBD5E1' },
+                                { key: 'Sin Registrar', label: 'Programada / Sin Cierre', val: asistenciaMensualTotals['Sin Registrar'], color: '#0284C7', bg: '#F0F9FF', border: '#BAE6FD' }
+                            ].map(card => {
+                                const pct = asistenciaMensualTotals.total > 0 ? ((card.val / asistenciaMensualTotals.total) * 100).toFixed(1) : '0.0';
+                                return (
+                                    <div key={card.key} style={{ background: card.bg, border: `1px solid ${card.border}`, borderRadius: '10px', padding: '10px 12px' }}>
+                                        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: card.color, textTransform: 'uppercase', letterSpacing: '0.2px' }}>
+                                            {card.label}
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '4px' }}>
+                                            <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0F172A' }}>
+                                                {card.val.toLocaleString('es-AR')}
+                                            </span>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: card.color }}>
+                                                {pct}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Gráfico de Barras Mes a Mes */}
+                        <div style={{ height: '320px', width: '100%', marginBottom: '16px' }}>
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                                <BarChart data={asistenciaMensualSeries} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="mesLabel" tick={{ fontSize: 11, fontWeight: 700, fill: '#334155' }} />
+                                    <YAxis tick={{ fontSize: 11, fill: '#64748B' }} />
+                                    <RechartsTooltip
+                                        contentStyle={{ borderRadius: '10px', border: '1px solid #CBD5E1', boxShadow: '0 8px 20px rgba(0,0,0,0.1)', fontSize: '0.78rem' }}
+                                        formatter={(value, name, props) => {
+                                            const tot = props?.payload?.total || 1;
+                                            const pct = ((Number(value) / tot) * 100).toFixed(1);
+                                            return [`${Number(value).toLocaleString('es-AR')} turnos (${pct}% del mes)`, name];
+                                        }}
+                                    />
+                                    <Legend wrapperStyle={{ fontSize: '0.76rem', fontWeight: 700, paddingTop: '6px' }} />
+                                    {asistenciaVistaModo === 'todos' ? (
+                                        <>
+                                            <Bar dataKey="Presente" name="Presente" stackId="a" fill="#059669" />
+                                            <Bar dataKey="URGENCIA" name="Urgencia" stackId="a" fill="#DC2626" />
+                                            <Bar dataKey="NO PROGRAMADA" name="No Programada" stackId="a" fill="#7C3AED" />
+                                            <Bar dataKey="CX SUSPENDIDA 24H" name="CX Suspendida 24H (≥24h)" stackId="a" fill="#F59E0B" />
+                                            <Bar dataKey="SUSPENDIDA" name="Suspendida (<24h / Día)" stackId="a" fill="#E11D48" />
+                                            <Bar dataKey="Ausencia" name="Ausencia" stackId="a" fill="#64748B" />
+                                            <Bar dataKey="Sin Registrar" name="Programada / Sin Cierre" stackId="a" fill="#38BDF8" radius={[6, 6, 0, 0]} />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Bar dataKey="CX SUSPENDIDA 24H" name="CX Suspendida 24H (Anticipada ≥24h)" fill="#F59E0B" radius={[6, 6, 0, 0]} />
+                                            <Bar dataKey="SUSPENDIDA" name="Suspendida (<24h / En el día)" fill="#E11D48" radius={[6, 6, 0, 0]} />
+                                            <Bar dataKey="Ausencia" name="Ausencia (Just./Injust.)" fill="#64748B" radius={[6, 6, 0, 0]} />
+                                        </>
+                                    )}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        {/* Tabla Auditada Mes a Mes por Estado de Asistencia */}
+                        <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#334155', textAlign: 'right' }}>
+                                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>Mes</th>
+                                        <th style={{ padding: '8px 10px', color: '#059669' }}>Presente</th>
+                                        <th style={{ padding: '8px 10px', color: '#DC2626' }}>Urgencia</th>
+                                        <th style={{ padding: '8px 10px', color: '#7C3AED' }}>No Prog.</th>
+                                        <th style={{ padding: '8px 10px', background: '#ECFDF5', color: '#047857', fontWeight: 900 }}>∑ Realizadas</th>
+                                        <th style={{ padding: '8px 10px', color: '#D97706' }}>CX Susp. 24H</th>
+                                        <th style={{ padding: '8px 10px', color: '#E11D48' }}>Suspendida (&lt;24h)</th>
+                                        <th style={{ padding: '8px 10px', color: '#475569' }}>Ausencia</th>
+                                        <th style={{ padding: '8px 10px', color: '#0284C7' }}>Sin Cierre</th>
+                                        <th style={{ padding: '8px 10px', fontWeight: 900, color: '#0F172A' }}>Total Turnos</th>
+                                        <th style={{ padding: '8px 10px', color: '#E11D48' }}>% Susp. &lt;24h</th>
+                                        <th style={{ padding: '8px 12px', color: '#D97706' }}>% Susp. 24H</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {asistenciaMensualSeries.map((row) => (
+                                        <tr key={row.mes} style={{ borderBottom: '1px solid #F1F5F9', textAlign: 'right' }}>
+                                            <td style={{ padding: '7px 12px', textAlign: 'left', fontWeight: 800, color: '#0F172A' }}>{row.mesLabel}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 700, color: '#059669' }}>{row.Presente.toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 700, color: '#DC2626' }}>{row.URGENCIA.toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 700, color: '#7C3AED' }}>{row['NO PROGRAMADA'].toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 900, background: '#F0FDF4', color: '#047857' }}>{row.totalRealizadasMes.toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 800, color: '#D97706', background: '#FFFBEB' }}>{row['CX SUSPENDIDA 24H'].toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 800, color: '#E11D48', background: '#FFF1F2' }}>{row.SUSPENDIDA.toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', color: '#475569' }}>{row.Ausencia || '—'}</td>
+                                            <td style={{ padding: '7px 10px', color: '#0284C7' }}>{row['Sin Registrar'] || '—'}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 900, color: '#0F172A' }}>{row.total.toLocaleString('es-AR')}</td>
+                                            <td style={{ padding: '7px 10px', fontWeight: 800, color: '#E11D48' }}>{row.tasaSuspDia}%</td>
+                                            <td style={{ padding: '7px 12px', fontWeight: 800, color: '#D97706' }}>{row.tasaSusp24h}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr style={{ background: '#EFF6FF', borderTop: '2px solid #93C5FD', fontWeight: 900, color: '#1E3A8A', textAlign: 'right' }}>
+                                        <td style={{ padding: '8px 12px', textAlign: 'left' }}>∑ TOTAL ({asistenciaMensualSeries.length} MESES)</td>
+                                        <td style={{ padding: '8px 10px', color: '#059669' }}>{asistenciaMensualTotals.Presente.toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#DC2626' }}>{asistenciaMensualTotals.URGENCIA.toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#7C3AED' }}>{asistenciaMensualTotals['NO PROGRAMADA'].toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', background: '#DCFCE7', color: '#047857' }}>{asistenciaMensualTotals.totalRealizadas.toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#B45309' }}>{asistenciaMensualTotals['CX SUSPENDIDA 24H'].toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#BE123C' }}>{asistenciaMensualTotals.SUSPENDIDA.toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#334155' }}>{asistenciaMensualTotals.Ausencia.toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#0369A1' }}>{asistenciaMensualTotals['Sin Registrar'].toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#0F172A' }}>{asistenciaMensualTotals.total.toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '8px 10px', color: '#BE123C' }}>{asistenciaMensualTotals.tasaSuspDia}%</td>
+                                        <td style={{ padding: '8px 12px', color: '#B45309' }}>{asistenciaMensualTotals.tasaSusp24h}%</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
                     {/* Rankings Triples: Cirujanos, Especialidad y Financiador (Cross-filtering Interactivo) */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
                         
@@ -4100,6 +4449,28 @@ export default function QuirofanoDashboard({
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
                                 Tasa HdD: <strong>{dynamicMetrics ? ((dynamicMetrics.hddSuspendidas / Math.max(1, dynamicMetrics.hdd)) * 100).toFixed(1) : 0}%</strong> sobre {dynamicMetrics ? dynamicMetrics.hdd : 0} turnos ambulatorios
+                            </div>
+                        </div>
+                        <div style={{ borderLeft: '4px solid #E11D48', paddingLeft: '12px' }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#BE123C', textTransform: 'uppercase' }}>
+                                ⛔ Suspendida en el Día (&lt;24 hs)
+                            </div>
+                            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#E11D48', marginTop: '3px' }}>
+                                {dynamicMetrics ? dynamicMetrics.suspendidasDia : 0} cirugías
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                                <strong>{dynamicMetrics ? ((dynamicMetrics.suspendidasDia / Math.max(1, dynamicMetrics.total)) * 100).toFixed(1) : 0}%</strong> sobre {dynamicMetrics ? dynamicMetrics.total : 0} turnos del período
+                            </div>
+                        </div>
+                        <div style={{ borderLeft: '4px solid #F59E0B', paddingLeft: '12px' }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+                                ⏳ CX Suspendida 24H (Anticipada ≥24 hs)
+                            </div>
+                            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#D97706', marginTop: '3px' }}>
+                                {dynamicMetrics ? dynamicMetrics.suspendidas24h : 0} cirugías
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                                <strong>{dynamicMetrics ? ((dynamicMetrics.suspendidas24h / Math.max(1, dynamicMetrics.total)) * 100).toFixed(1) : 0}%</strong> sobre {dynamicMetrics ? dynamicMetrics.total : 0} turnos del período
                             </div>
                         </div>
                     </div>
