@@ -817,47 +817,7 @@ PREGUNTA DEL USUARIO: "${q}"`;
                             <X size={15} />
                         </button>
                     </form>
-                ) : (
-                    /* Píldora ultra-discreta para invocar el puntero por voz o Alt+B / Ctrl+Espacio */
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setIsBarOpen(true);
-                            setTimeout(() => inputRef.current?.focus(), 60);
-                        }}
-                        title="Invocar Puntero Guía de Beto (Alt + B o Ctrl + Espacio)"
-                        style={{
-                            height: '38px',
-                            padding: '0 13px',
-                            borderRadius: '999px',
-                            background: 'rgba(15, 23, 42, 0.88)',
-                            backdropFilter: 'blur(8px)',
-                            color: '#E2E8F0',
-                            border: '1px solid rgba(148, 163, 184, 0.28)',
-                            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.18)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '7px',
-                            fontSize: '0.76rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                        }}
-                    >
-                        <MousePointer size={13} color="#60A5FA" />
-                        <span>Guía en pantalla</span>
-                        <kbd style={{
-                            fontSize: '0.64rem',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: 'rgba(255,255,255,0.12)',
-                            color: '#93C5FD',
-                            fontFamily: 'monospace',
-                        }}>
-                            Alt+B
-                        </kbd>
-                    </button>
-                )}
+                ) : null}
             </div>
 
             <style>{`
