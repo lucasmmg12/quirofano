@@ -399,12 +399,12 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                             </div>
                         </div>
 
-                        {/* 2. Total Deuda Cobrada */}
+                        {/* 2. Total Deuda Cobrada Exigible (>=30d post-alta) */}
                         <div style={{ ...cardStyle, borderColor: '#bbf7d0' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                 <div>
                                     <span style={labelStyle}>
-                                        {isFilteredPeriod ? 'Deuda Cobrada en Período' : 'Deuda Cobrada Efectiva'}
+                                        {isFilteredPeriod ? 'Deuda Cobrada (≥30d Post-Alta)' : 'Deuda Cobrada Exigible (≥30d)'}
                                     </span>
                                     <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#16a34a', margin: '4px 0 2px' }}>
                                         {formatMoney(data.totalDeudaCobrada)}
@@ -416,7 +416,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: '#15803d', marginTop: '6px' }}>
                                 <ArrowUpRight size={14} />
-                                <span>{isFilteredPeriod ? 'Recaudado durante el período seleccionado' : 'Ingreso total recuperado al Sanatorio'}</span>
+                                <span>{isFilteredPeriod ? 'Recupero computable para incentivo (≥30 días tras alta)' : 'Ingreso recuperado luego de 30 días del alta'}</span>
                             </div>
                             {/* Desglose explicativo de composición del cobro y exigibilidad (30d post-alta) */}
                             <div style={{
@@ -429,29 +429,6 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                 fontSize: '0.70rem',
                                 color: '#166534'
                             }}>
-                                <div style={{
-                                    background: '#f0fdf4',
-                                    border: '1px solid #bbf7d0',
-                                    borderRadius: '6px',
-                                    padding: '5px 7px',
-                                    marginBottom: '3px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '2px'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ color: '#166534', fontWeight: 700 }}>⚖️ Deuda Exigible (&ge;30d post-alta):</span>
-                                        <strong style={{ color: '#15803d', fontFamily: 'monospace', fontSize: '0.74rem' }}>
-                                            {formatMoney(data.montoCobradoExigible ?? data.totalDeudaCobrada ?? 0)}
-                                        </strong>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ color: '#475569' }}>⏳ En período de gracia (&lt;30d):</span>
-                                        <strong style={{ color: '#334155', fontFamily: 'monospace', fontSize: '0.73rem' }}>
-                                            {formatMoney(data.montoCobradoEnGracia || 0)}
-                                        </strong>
-                                    </div>
-                                </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ color: '#15803d' }}>• Cancelaciones 100% ({data.countDeudasCanceladas || 0}):</span>
                                     <strong style={{ color: '#166534', fontFamily: 'monospace', fontSize: '0.74rem' }}>
@@ -462,6 +439,24 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                     <span style={{ color: '#15803d' }}>• Cuotas y pagos en curso:</span>
                                     <strong style={{ color: '#166534', fontFamily: 'monospace', fontSize: '0.74rem' }}>
                                         {formatMoney(data.montoCobrosCuotasYSeg || 0)}
+                                    </strong>
+                                </div>
+                                <div style={{
+                                    background: '#f8fafc',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '6px',
+                                    padding: '4px 7px',
+                                    marginTop: '3px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    fontSize: '0.67rem'
+                                }}>
+                                    <span style={{ color: '#64748b' }} title="Pagos realizados en caja durante la internación o antes de cumplirse 30 días desde el alta clínica">
+                                        🚫 Excluido (&lt;30d post-alta / internación):
+                                    </span>
+                                    <strong style={{ color: '#475569', fontFamily: 'monospace' }}>
+                                        {formatMoney(data.montoCobradoEnGracia || 0)}
                                     </strong>
                                 </div>
                                 {isFilteredPeriod && data.totalHistoricoCobrado > 0 && (

@@ -1280,6 +1280,8 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     };
 
     // Nivel 1: Cobros reales registrados en caja SALUS (deudas_cobros)
+    // REGLA DE ORO DEL INCENTIVO: Solo se suman como Deuda Cobrada aquellos pagos realizados >= 30 días post-alta (esExigible === true).
+    // Los pagos realizados durante la internación o antes de los 30 días del alta se contabilizan aparte en montoCobradoEnGracia (excluidos del incentivo).
     const nhcsConCobros = new Set();
     const pacsCanceladosEnPeriodoSet = new Set();
     cobros.forEach(c => {
@@ -1290,21 +1292,27 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         if (c.nhc && monto > 0) nhcsConCobros.add(c.nhc);
 
         if (monto > 0 && ym) {
-            cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
-
+            const { esExigible } = evaluarExigibilidadCobro(pac?.id, cDate);
             const inRange = (effDesde && effHasta)
                 ? (cDate >= effDesde && cDate <= effHasta)
                 : true;
 
-            if (inRange) {
-                totalDeudaCobrada += monto;
-                if (pac?.categoria === 'deuda_cancelada') {
-                    montoDeudasCanceladas += monto;
-                    pacsCanceladosEnPeriodoSet.add(pac.id);
-                } else {
-                    montoCobrosCuotasYSeg += monto;
+            if (esExigible) {
+                cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                if (inRange) {
+                    totalDeudaCobrada += monto;
+                    montoCobradoExigible += monto;
+                    if (pac?.id) pacsCobradosExigiblesSet.add(pac.id);
+                    if (pac?.categoria === 'deuda_cancelada') {
+                        montoDeudasCanceladas += monto;
+                        pacsCanceladosEnPeriodoSet.add(pac.id);
+                    } else {
+                        montoCobrosCuotasYSeg += monto;
+                    }
                 }
-                registrarCobroEnPeriodo(pac?.id, monto, cDate);
+            } else if (inRange) {
+                montoCobradoEnGracia += monto;
+                if (pac?.id) pacsCobradosEnGraciaSet.add(pac.id);
             }
         }
     });
@@ -1322,21 +1330,27 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             const monto = Number(s.monto) || 0;
 
             if (monto > 0 && ym) {
-                cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
-
+                const { esExigible } = evaluarExigibilidadCobro(s.paciente_id, sDate);
                 const inRange = (effDesde && effHasta)
                     ? (sDate >= effDesde && sDate <= effHasta)
                     : true;
 
-                if (inRange) {
-                    totalDeudaCobrada += monto;
-                    if (pac?.categoria === 'deuda_cancelada') {
-                        montoDeudasCanceladas += monto;
-                        pacsCanceladosEnPeriodoSet.add(pac.id);
-                    } else {
-                        montoCobrosCuotasYSeg += monto;
+                if (esExigible) {
+                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                    if (inRange) {
+                        totalDeudaCobrada += monto;
+                        montoCobradoExigible += monto;
+                        if (s.paciente_id) pacsCobradosExigiblesSet.add(s.paciente_id);
+                        if (pac?.categoria === 'deuda_cancelada') {
+                            montoDeudasCanceladas += monto;
+                            pacsCanceladosEnPeriodoSet.add(pac.id);
+                        } else {
+                            montoCobrosCuotasYSeg += monto;
+                        }
                     }
-                    registrarCobroEnPeriodo(s.paciente_id, monto, sDate);
+                } else if (inRange) {
+                    montoCobradoEnGracia += monto;
+                    if (s.paciente_id) pacsCobradosEnGraciaSet.add(s.paciente_id);
                 }
             }
         }
@@ -1355,12 +1369,19 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
                 : true;
 
             if (!yaContabilizado && monto > 0 && ym) {
-                cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
-                if (inRange) {
-                    totalDeudaCobrada += monto;
-                    montoDeudasCanceladas += monto;
-                    pacsCanceladosEnPeriodoSet.add(p.id);
-                    registrarCobroEnPeriodo(p.id, monto, cancDate);
+                const { esExigible } = evaluarExigibilidadCobro(p.id, cancDate);
+                if (esExigible) {
+                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                    if (inRange) {
+                        totalDeudaCobrada += monto;
+                        montoCobradoExigible += monto;
+                        pacsCobradosExigiblesSet.add(p.id);
+                        montoDeudasCanceladas += monto;
+                        pacsCanceladosEnPeriodoSet.add(p.id);
+                    }
+                } else if (inRange) {
+                    montoCobradoEnGracia += monto;
+                    pacsCobradosEnGraciaSet.add(p.id);
                 }
             }
         }
@@ -1740,9 +1761,13 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         cobrosSalus = cobrosData || [];
     }
 
-    // 5. Identificar pagos con jerarquía de 3 niveles sin duplicación (100% paridad con Dashboard)
+    // 5. Identificar pagos con jerarquía de 3 niveles sin duplicación
+    // REGLA DE ORO DEL INCENTIVO: Solo se incluyen y suman los pagos efectuados >= 30 días post-alta (esExigible === true).
+    // Los pagos efectuados durante la internación o antes de los 30 días del alta se contabilizan aparte en totalExcluidoMenos30d.
     const movimientosCaja = [];
     const cobrosPorPaciente = {}; // pacId -> { totalPeriodo, cobradoExigiblePeriodo, cobradoEnGraciaPeriodo, totalHistorico, ultimoCobroFechaISO, ultimoComprobante, ultimoOperador }
+    let totalExcluidoMenos30d = 0;
+    let countRecibosExcluidosMenos30d = 0;
 
     const ensurePacCobroEntry = (pacId, fechaISO, comprobante, operador) => {
         if (!cobrosPorPaciente[pacId]) {
@@ -1780,31 +1805,33 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
 
         if (inRange) {
             const evalExig = evaluarExigibilidadCobro(pacId, cDate);
-            cobrosPorPaciente[pacId].totalPeriodo += monto;
             if (evalExig.esExigible) {
+                cobrosPorPaciente[pacId].totalPeriodo += monto;
                 cobrosPorPaciente[pacId].cobradoExigiblePeriodo += monto;
+                cobrosPorPaciente[pacId].ultimoCobroFechaISO = cDate;
+                if (c.descripcion) cobrosPorPaciente[pacId].ultimoComprobante = c.descripcion;
+
+                const moraInfo = pacFechasMoraMap[pacId] || {};
+                movimientosCaja.push({
+                    rawFecha: cDateTime,
+                    fecha: formatFechaHoraDDMMYYYY(cDateTime),
+                    paciente: pac.nombre,
+                    nhc: pac.nhc,
+                    fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                    fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                    condicionCobro: evalExig.label,
+                    monto,
+                    concepto: 'Cobranza Caja SALUS (≥30d post-alta)',
+                    medio: c.forma_pago || 'Caja / Transferencia',
+                    comprobante: c.descripcion || '-',
+                    usuario: 'Caja SALUS',
+                    detalle: c.descripcion || ''
+                });
             } else {
                 cobrosPorPaciente[pacId].cobradoEnGraciaPeriodo += monto;
+                totalExcluidoMenos30d += monto;
+                countRecibosExcluidosMenos30d++;
             }
-            cobrosPorPaciente[pacId].ultimoCobroFechaISO = cDate;
-            if (c.descripcion) cobrosPorPaciente[pacId].ultimoComprobante = c.descripcion;
-
-            const moraInfo = pacFechasMoraMap[pacId] || {};
-            movimientosCaja.push({
-                rawFecha: cDateTime,
-                fecha: formatFechaHoraDDMMYYYY(cDateTime),
-                paciente: pac.nombre,
-                nhc: pac.nhc,
-                fechaAlta: moraInfo.fechaAltaDisplay || '-',
-                fechaExigible: moraInfo.fechaExigibleDisplay || '-',
-                condicionCobro: evalExig.label,
-                monto,
-                concepto: 'Cobranza Caja SALUS',
-                medio: c.forma_pago || 'Caja / Transferencia',
-                comprobante: c.descripcion || '-',
-                usuario: 'Caja SALUS',
-                detalle: c.descripcion || ''
-            });
         }
     });
 
@@ -1831,32 +1858,34 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
 
             if (inRange) {
                 const evalExig = evaluarExigibilidadCobro(s.paciente_id, sDate);
-                cobrosPorPaciente[s.paciente_id].totalPeriodo += monto;
                 if (evalExig.esExigible) {
+                    cobrosPorPaciente[s.paciente_id].totalPeriodo += monto;
                     cobrosPorPaciente[s.paciente_id].cobradoExigiblePeriodo += monto;
+                    cobrosPorPaciente[s.paciente_id].ultimoCobroFechaISO = sDate;
+                    if (s.usuario) cobrosPorPaciente[s.paciente_id].ultimoOperador = s.usuario;
+                    if (s.descripcion) cobrosPorPaciente[s.paciente_id].ultimoComprobante = s.descripcion;
+
+                    const moraInfo = pacFechasMoraMap[s.paciente_id] || {};
+                    movimientosCaja.push({
+                        rawFecha: sDateTime,
+                        fecha: formatFechaHoraDDMMYYYY(sDateTime),
+                        paciente: pacNombre,
+                        nhc: pacNhc,
+                        fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                        fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                        condicionCobro: evalExig.label,
+                        monto,
+                        concepto: 'Cuota / Pago a cuenta (≥30d post-alta)',
+                        medio: s.descripcion?.includes('[') ? s.descripcion.split('[')[1]?.split(']')[0] : 'Transferencia / Efectivo',
+                        comprobante: s.descripcion?.includes('Ref:') ? s.descripcion.split('Ref:')[1]?.split('—')[0]?.trim() : (s.descripcion || '-'),
+                        usuario: s.usuario || 'Sistema',
+                        detalle: s.descripcion || ''
+                    });
                 } else {
                     cobrosPorPaciente[s.paciente_id].cobradoEnGraciaPeriodo += monto;
+                    totalExcluidoMenos30d += monto;
+                    countRecibosExcluidosMenos30d++;
                 }
-                cobrosPorPaciente[s.paciente_id].ultimoCobroFechaISO = sDate;
-                if (s.usuario) cobrosPorPaciente[s.paciente_id].ultimoOperador = s.usuario;
-                if (s.descripcion) cobrosPorPaciente[s.paciente_id].ultimoComprobante = s.descripcion;
-
-                const moraInfo = pacFechasMoraMap[s.paciente_id] || {};
-                movimientosCaja.push({
-                    rawFecha: sDateTime,
-                    fecha: formatFechaHoraDDMMYYYY(sDateTime),
-                    paciente: pacNombre,
-                    nhc: pacNhc,
-                    fechaAlta: moraInfo.fechaAltaDisplay || '-',
-                    fechaExigible: moraInfo.fechaExigibleDisplay || '-',
-                    condicionCobro: evalExig.label,
-                    monto,
-                    concepto: 'Cuota / Pago a cuenta',
-                    medio: s.descripcion?.includes('[') ? s.descripcion.split('[')[1]?.split(']')[0] : 'Transferencia / Efectivo',
-                    comprobante: s.descripcion?.includes('Ref:') ? s.descripcion.split('Ref:')[1]?.split('—')[0]?.trim() : (s.descripcion || '-'),
-                    usuario: s.usuario || 'Sistema',
-                    detalle: s.descripcion || ''
-                });
             }
         }
     });
@@ -1880,31 +1909,33 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
 
                 if (inRange) {
                     const evalExig = evaluarExigibilidadCobro(p.id, cancDate);
-                    cobrosPorPaciente[p.id].totalPeriodo += montoCanc;
                     if (evalExig.esExigible) {
+                        cobrosPorPaciente[p.id].totalPeriodo += montoCanc;
                         cobrosPorPaciente[p.id].cobradoExigiblePeriodo += montoCanc;
+                        cobrosPorPaciente[p.id].ultimoCobroFechaISO = cancDate;
+                        if (p.deuda_cancelada_por) cobrosPorPaciente[p.id].ultimoOperador = p.deuda_cancelada_por;
+
+                        const moraInfo = pacFechasMoraMap[p.id] || {};
+                        movimientosCaja.push({
+                            rawFecha: cancDateTime,
+                            fecha: formatFechaHoraDDMMYYYY(cancDateTime),
+                            paciente: p.nombre,
+                            nhc: p.nhc || 'S/D',
+                            fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                            fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                            condicionCobro: evalExig.label,
+                            monto: montoCanc,
+                            concepto: 'Cancelación Total (100%)',
+                            medio: 'Liquidación / Pago Total',
+                            comprobante: 'Cancelación Definitiva',
+                            usuario: p.deuda_cancelada_por || 'Administración',
+                            detalle: `Cancelación al 100% de la cuenta por $${montoCanc}`
+                        });
                     } else {
                         cobrosPorPaciente[p.id].cobradoEnGraciaPeriodo += montoCanc;
+                        totalExcluidoMenos30d += montoCanc;
+                        countRecibosExcluidosMenos30d++;
                     }
-                    cobrosPorPaciente[p.id].ultimoCobroFechaISO = cancDate;
-                    if (p.deuda_cancelada_por) cobrosPorPaciente[p.id].ultimoOperador = p.deuda_cancelada_por;
-
-                    const moraInfo = pacFechasMoraMap[p.id] || {};
-                    movimientosCaja.push({
-                        rawFecha: cancDateTime,
-                        fecha: formatFechaHoraDDMMYYYY(cancDateTime),
-                        paciente: p.nombre,
-                        nhc: p.nhc || 'S/D',
-                        fechaAlta: moraInfo.fechaAltaDisplay || '-',
-                        fechaExigible: moraInfo.fechaExigibleDisplay || '-',
-                        condicionCobro: evalExig.label,
-                        monto: montoCanc,
-                        concepto: 'Cancelación Total (100%)',
-                        medio: 'Liquidación / Pago Total',
-                        comprobante: 'Cancelación Definitiva',
-                        usuario: p.deuda_cancelada_por || 'Administración',
-                        detalle: `Cancelación al 100% de la cuenta por $${montoCanc}`
-                    });
                 }
             }
         }
@@ -1997,8 +2028,8 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
 
     // Resumen sincronizado 1:1 entre Hoja 1, Hoja 2 y Dashboard
     const totalCobradoPeriodo = pacientesCobradosList.reduce((s, p) => s + p.cobradoPeriodo, 0);
-    const totalCobradoExigible = pacientesCobradosList.reduce((s, p) => s + (p.cobradoExigiblePeriodo || 0), 0);
-    const totalCobradoEnGracia = pacientesCobradosList.reduce((s, p) => s + (p.cobradoEnGraciaPeriodo || 0), 0);
+    const totalCobradoExigible = totalCobradoPeriodo;
+    const totalCobradoEnGracia = totalExcluidoMenos30d;
     const montoCanceladas = pacientesCobradosList
         .filter(p => p.categoria === 'deuda_cancelada')
         .reduce((s, p) => s + p.cobradoPeriodo, 0);

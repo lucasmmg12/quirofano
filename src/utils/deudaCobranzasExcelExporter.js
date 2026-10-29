@@ -178,9 +178,9 @@ export async function generarExcelCobranzas({
 
     createKpiCard(
         wsDashboard, 7, 2,
-        'Recaudación en Período',
+        'Recaudación Exigible (≥30d Post-Alta)',
         fmtMoneda(resumen.totalCobradoPeriodo),
-        'Ingresos efectivos percibidos en caja / transferencias',
+        'Recupero real computable para incentivo (pagos ≥ 30 días del alta)',
         'green'
     );
 
@@ -249,12 +249,13 @@ export async function generarExcelCobranzas({
         return row;
     };
 
-    addSummaryLine('Pacientes con movimientos de cobro en el período seleccionado:', `${pacientesCobrados.length} pacientes`);
-    addSummaryLine('Monto cobrado sobre Deuda Exigible (≥ 30 días post-alta):', resumen.totalCobradoExigible ?? resumen.totalCobradoPeriodo ?? 0, true, 'Recupero real de mora exigible');
-    addSummaryLine('Monto cobrado en Período de Gracia (< 30 días post-alta):', resumen.totalCobradoEnGracia || 0, true, 'Gestión administrativa dentro de los 30d');
-    addSummaryLine('Pacientes que cancelaron el 100% de su pasivo institucional:', `${resumen.cantCanceladas || 0} pacientes`, false, 'Libre deuda otorgado');
-    addSummaryLine('Monto total recuperado en cancelaciones totales 100%:', resumen.montoCanceladas || 0, true);
-    addSummaryLine('Monto cobrado por cuotas de planes y entregas parciales:', resumen.montoCuotas || 0, true);
+    addSummaryLine('Criterio Reglamentario del Incentivo:', 'Pagos ≥ 30 días post-alta', false, 'Solo se computan cobros efectuados luego de 30 días corridos del alta');
+    addSummaryLine('Pacientes con recupero de deuda exigible (≥ 30d) en el período:', `${pacientesCobrados.length} pacientes`, false, 'Nómina auditada en Hoja 2');
+    addSummaryLine('Monto total recuperado computable para Incentivo (≥ 30 días post-alta):', resumen.totalCobradoPeriodo || 0, true, 'Suma exacta de la Columna F en Hoja 2');
+    addSummaryLine('Pagos de caja EXCLUIDOS (< 30 días post-alta o durante internación):', resumen.totalCobradoEnGracia || 0, true, 'Excluidos: pagos en internación o dentro de los 30d del alta');
+    addSummaryLine('Pacientes que cancelaron el 100% de su deuda exigible:', `${resumen.cantCanceladas || 0} pacientes`, false, 'Libre deuda otorgado');
+    addSummaryLine('Monto recuperado en cancelaciones totales 100% (≥ 30d):', resumen.montoCanceladas || 0, true);
+    addSummaryLine('Monto cobrado por cuotas de planes y entregas parciales (≥ 30d):', resumen.montoCuotas || 0, true);
     addSummaryLine('Deuda viva remanente de los pacientes cobrados en período:', resumen.saldoDeudaPendiente || 0, true, 'Saldo pendiente de cobro');
     addSummaryLine('Total histórico cobrado registrado en la historia del Sanatorio:', resumen.totalHistoricoCobrado || 0, true);
 
@@ -292,9 +293,7 @@ export async function generarExcelCobranzas({
         { header: 'DNI / NHC', key: 'nhc', width: 14 },
         { header: 'Teléfono', key: 'telefono', width: 15 },
         { header: 'Obra Social / Financiador', key: 'obraSocial', width: 22 },
-        { header: 'Cobrado en Período ($)', key: 'cobradoPeriodo', width: 20 },
-        { header: 'Cobrado Exigible ≥30d ($)', key: 'cobradoExigiblePeriodo', width: 20 },
-        { header: 'Cobrado en Gracia <30d ($)', key: 'cobradoEnGraciaPeriodo', width: 20 },
+        { header: 'Cobrado en Período ≥30d ($)', key: 'cobradoPeriodo', width: 22 },
         { header: 'Total Cobrado Histórico ($)', key: 'cobradoHistorico', width: 20 },
         { header: 'Modalidad de Cobro', key: 'tipoCobro', width: 24 },
         { header: 'Estado Cartera', key: 'categoria', width: 18 },
@@ -308,14 +307,14 @@ export async function generarExcelCobranzas({
         { header: 'Fecha Desde Cuando es Exigible +30d (DD/MM/AAAA)', key: 'fechaExigible', width: 20 },
         { header: 'Fecha Último Cobro (DD/MM/AAAA)', key: 'fechaCobro', width: 17 },
         { header: 'Inicio Gestión (DD/MM/AAAA)', key: 'fechaInicioGestion', width: 17 },
-        { header: 'Condición del Cobro', key: 'condicionCobro', width: 22 },
+        { header: 'Condición del Cobro (Días post-alta)', key: 'condicionCobro', width: 24 },
         { header: 'Comprobante / Observaciones', key: 'observaciones', width: 36 }
     ];
 
     applyHeader(
         wsPacientes,
-        'Nómina de Pacientes Cobrados, Cancelaciones y Planes de Facilidades',
-        'Auditoría nominal con fechas de alta, exigibilidad (+30d), saldos y gestores (Formato DD/MM/AAAA)',
+        'Nómina de Pacientes Cobrados (Deuda Exigible ≥ 30 días post-alta)',
+        'Excluye pagos efectuados durante la internación o antes de cumplirse los 30 días corridos desde el alta',
         periodoLabel,
         colsHojaPacientes.length
     );
@@ -348,8 +347,6 @@ export async function generarExcelCobranzas({
             item.telefono || 'Sin registrar',
             item.obraSocial || 'Particular / S.D.',
             item.cobradoPeriodo || 0,
-            item.cobradoExigiblePeriodo ?? item.cobradoPeriodo ?? 0,
-            item.cobradoEnGraciaPeriodo || 0,
             item.cobradoHistorico || 0,
             item.tipoCobro || 'Pago en curso',
             item.categoriaLabel || item.categoria || 'En Gestión',
@@ -384,11 +381,11 @@ export async function generarExcelCobranzas({
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.zebraBg } };
             }
 
-            // Moneda y formato numérico (cols 6, 7, 8, 9, 12, 13, 16)
-            if ([6, 7, 8, 9, 12, 13, 16].includes(colNumber)) {
+            // Moneda y formato numérico (cols 6, 7, 10, 11, 14)
+            if ([6, 7, 10, 11, 14].includes(colNumber)) {
                 cell.numFmt = '$ #,##0.00;($ #,##0.00);"-"';
                 cell.alignment = { vertical: 'middle', horizontal: 'right' };
-            } else if ([1, 3, 4, 14, 18, 19, 20, 21, 22].includes(colNumber)) {
+            } else if ([1, 3, 4, 12, 16, 17, 18, 19, 20].includes(colNumber)) {
                 cell.alignment = { vertical: 'middle', horizontal: 'center' };
             } else {
                 cell.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -399,32 +396,27 @@ export async function generarExcelCobranzas({
                 cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: PALETTE.greenText } };
             }
 
-            // Resaltado de Cancelación 100% (Columna 10)
-            if (colNumber === 10 && (item.tipoCobro || '').includes('Cancelación')) {
+            // Resaltado de Cancelación 100% (Columna 8)
+            if (colNumber === 8 && (item.tipoCobro || '').includes('Cancelación')) {
                 cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
             }
 
-            // Paciente con Deuda 0 (Saldada) (Columna 13)
-            if (colNumber === 13 && (item.deudaVigente === 0)) {
+            // Paciente con Deuda 0 (Saldada) (Columna 11)
+            if (colNumber === 11 && (item.deudaVigente === 0)) {
                 cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
             }
 
-            // Resaltado de Plan Vigente (Columna 14)
-            if (colNumber === 14 && item.tienePlan) {
+            // Resaltado de Plan Vigente (Columna 12)
+            if (colNumber === 12 && item.tienePlan) {
                 cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.purpleText } };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.purpleLight } };
             }
 
-            // Resaltado de Condición del Cobro (Columna 22)
-            if (colNumber === 22) {
-                if (item.esExigible === false) {
-                    cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.amberGold } };
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.amberLight } };
-                } else {
-                    cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.greenText } };
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
-                }
+            // Resaltado de Condición del Cobro (Columna 20)
+            if (colNumber === 20) {
+                cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.greenText } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
             }
         });
     });
@@ -434,17 +426,15 @@ export async function generarExcelCobranzas({
     const lastDataRow = Math.max(7, totalRowIndex - 1);
     const totalRowPac = wsPacientes.addRow([
         'TOTALES',
-        `${pacientesCobrados.length} PACIENTES AUDITADOS`,
+        `${pacientesCobrados.length} PACIENTES EXIGIBLES (≥30D POST-ALTA)`,
         '', '', '',
         { formula: `SUM(F7:F${lastDataRow})` },
         { formula: `SUM(G7:G${lastDataRow})` },
-        { formula: `SUM(H7:H${lastDataRow})` },
-        { formula: `SUM(I7:I${lastDataRow})` },
         '', '',
-        { formula: `SUM(L7:L${lastDataRow})` },
-        { formula: `SUM(M7:M${lastDataRow})` },
+        { formula: `SUM(J7:J${lastDataRow})` },
+        { formula: `SUM(K7:K${lastDataRow})` },
         '', '',
-        { formula: `SUM(P7:P${lastDataRow})` },
+        { formula: `SUM(N7:N${lastDataRow})` },
         '', '', '', '', '', '', ''
     ]);
     totalRowPac.height = 26;
@@ -455,7 +445,7 @@ export async function generarExcelCobranzas({
             top: { style: 'medium', color: { argb: PALETTE.borderDark } },
             bottom: { style: 'double', color: { argb: PALETTE.borderDark } }
         };
-        if ([6, 7, 8, 9, 12, 13, 16].includes(colNumber)) {
+        if ([6, 7, 10, 11, 14].includes(colNumber)) {
             cell.numFmt = '$ #,##0.00;($ #,##0.00);"-"';
             cell.alignment = { vertical: 'middle', horizontal: 'right' };
         } else {
