@@ -1028,25 +1028,20 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
             especialidadesMap[espReal] = (especialidadesMap[espReal] || 0) + 1;
         }
 
-        // Médico Cirujano (excluyendo guardias genéricas y agendas de salas del ranking nominal)
-        if (s.medico) {
-            const m = s.medico.trim();
-            const esGenerico = isMedicoGenerico(m);
-            if (!esGenerico) {
-                if (!medicosMap[m]) {
-                    medicosMap[m] = {
-                        nombre: m,
-                        especialidad: espReal,
-                        programadas: 0,
-                        realizadas: 0,
-                        suspendidas: 0
-                    };
-                }
-                medicosMap[m].programadas++;
-                if (isSusp) medicosMap[m].suspendidas++;
-                else medicosMap[m].realizadas++;
-            }
+        // Médico Cirujano (incluyendo guardias médicas para que el totalizador concilie al 100% con Total Cirugías Realizadas)
+        const rawMedico = (s.medico && s.medico.trim()) ? s.medico.trim() : 'GUARDIA / SIN ESPECIFICAR';
+        if (!medicosMap[rawMedico]) {
+            medicosMap[rawMedico] = {
+                nombre: rawMedico,
+                especialidad: espReal,
+                programadas: 0,
+                realizadas: 0,
+                suspendidas: 0
+            };
         }
+        medicosMap[rawMedico].programadas++;
+        if (isSusp) medicosMap[rawMedico].suspendidas++;
+        else medicosMap[rawMedico].realizadas++;
 
         if (!isSusp) {
             const os = (s.obra_social && s.obra_social.trim()) ? s.obra_social.trim() : 'PARTICULAR / SIN ESPECIFICAR';
@@ -3253,7 +3248,9 @@ export default function QuirofanoDashboard({
                             {/* Totalizador fijo de Cirujanos */}
                             {(() => {
                                 const totalCxCirujanos = filteredCirujanos.reduce((acc, c) => acc + (c.realizadas || 0), 0);
-                                const totalPctCirujanos = Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)));
+                                const totalPctCirujanos = !searchCirujano.trim()
+                                    ? 100
+                                    : Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)));
                                 return (
                                     <div style={{
                                         display: 'flex',
@@ -3298,7 +3295,7 @@ export default function QuirofanoDashboard({
                                                 {filteredCirujanos.reduce((acc, c) => acc + (c.realizadas || 0), 0).toLocaleString('es-AR')}
                                             </th>
                                             <th style={{ padding: '7px 8px', textAlign: 'right', color: '#1E40AF', fontSize: '0.76rem' }}>
-                                                {Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)))}%
+                                                {!searchCirujano.trim() ? '100%' : `${Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)))}%`}
                                             </th>
                                             <th style={{ padding: '7px 8px', textAlign: 'right', color: '#64748B', fontSize: '0.72rem' }}>—</th>
                                         </tr>
@@ -3370,7 +3367,7 @@ export default function QuirofanoDashboard({
                                                 {filteredCirujanos.reduce((acc, c) => acc + (c.realizadas || 0), 0).toLocaleString('es-AR')}
                                             </td>
                                             <td style={{ padding: '8px', textAlign: 'right', color: '#1E40AF' }}>
-                                                {Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)))}%
+                                                {!searchCirujano.trim() ? '100%' : `${Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)))}%`}
                                             </td>
                                             <td style={{ padding: '8px', textAlign: 'right', color: '#64748B' }}>—</td>
                                         </tr>
