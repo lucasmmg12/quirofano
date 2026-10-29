@@ -1298,42 +1298,9 @@ export default function DiagnosticoImagenesDashboard({
                             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0F172A' }}>
                                 Diagnóstico por Imágenes (DxI)
                             </h2>
-                            <span style={{
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                background: '#EFF6FF',
-                                color: COLOR_PRIMARY,
-                                padding: '2px 8px',
-                                borderRadius: '999px',
-                                border: '1px solid #BFDBFE'
-                            }}>
-                                2022 en adelante
-                            </span>
-                            <span style={{
-                                fontSize: '0.72rem',
-                                fontWeight: 600,
-                                background: '#F8FAFC',
-                                color: '#64748B',
-                                padding: '2px 8px',
-                                borderRadius: '999px',
-                                border: '1px solid #E2E8F0'
-                            }}>
-                                Sin contrastes en TC
-                            </span>
                         </div>
                         <div style={{ fontSize: '0.85rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span>Período Telar: <strong style={{ color: '#1E293B' }}>{effectiveDesde}</strong> al <strong style={{ color: '#1E293B' }}>{effectiveHasta}</strong></span>
-                            <span>•</span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: dataSource === 'salus_live' ? '#10B981' : '#F59E0B' }}></span>
-                                {dataSource === 'salus_live' ? 'SALUS Live (Directo)' : 'Caché Supabase'}
-                            </span>
-                            {lastUpdated && (
-                                <>
-                                    <span>•</span>
-                                    <span>Act: {new Date(lastUpdated).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                </>
-                            )}
                         </div>
                     </div>
                 </div>
