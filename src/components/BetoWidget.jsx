@@ -760,44 +760,10 @@ export default function BetoWidget({
         return () => window.removeEventListener('open-beto', handleCustomOpen);
     }, [messages.length, initWelcomeMessage, handleSend]);
 
-    // Sistema de nudges proactivos
+    // Sistema de nudges automáticos desactivado para que Beto sea 100% discreto y no invasivo
     useEffect(() => {
-        if (isOpen || showGreeting) { setProactiveNudge(null); return; }
-
-        const scheduleNudge = () => {
-            const lastNudge = parseInt(localStorage.getItem('beto_last_nudge') || '0', 10);
-            if (Date.now() - lastNudge < 180000) return;
-
-            const hour = new Date().getHours();
-            let pool = [...(PROACTIVE_NUDGES[currentModule] || [])];
-            if (hour >= 6 && hour < 12) pool.push(...TIME_NUDGES.morning);
-            else if (hour >= 12 && hour < 18) pool.push(...TIME_NUDGES.afternoon);
-            else pool.push(...TIME_NUDGES.evening);
-            pool.push(...PROACTIVE_NUDGES.default);
-
-            const lastText = localStorage.getItem('beto_last_nudge_text') || '';
-            pool = pool.filter(n => n !== lastText);
-            if (pool.length === 0) pool = PROACTIVE_NUDGES.default;
-
-            const chosen = pool[Math.floor(Math.random() * pool.length)];
-            setProactiveNudge(chosen);
-            setHasNewMessage(true);
-            localStorage.setItem('beto_last_nudge', Date.now().toString());
-            localStorage.setItem('beto_last_nudge_text', chosen);
-
-            setTimeout(() => {
-                setProactiveNudge(null);
-                setHasNewMessage(false);
-            }, 8000);
-        };
-
-        const initialDelay = setTimeout(scheduleNudge, 45000);
-        nudgeTimerRef.current = setInterval(scheduleNudge, 300000);
-
-        return () => {
-            clearTimeout(initialDelay);
-            if (nudgeTimerRef.current) clearInterval(nudgeTimerRef.current);
-        };
+        setProactiveNudge(null);
+        setHasNewMessage(false);
     }, [isOpen, showGreeting, currentModule]);
 
     const dismissNudge = useCallback((e) => {
@@ -857,102 +823,45 @@ export default function BetoWidget({
         if (hideFab) return null;
         return (
             <div style={{
-                position: 'fixed', bottom: '22px', right: '22px', zIndex: 9998,
-                display: 'flex', alignItems: 'center', gap: '12px'
+                position: 'fixed', bottom: '18px', right: '18px', zIndex: 9990,
+                display: 'flex', alignItems: 'center'
             }}>
-                {proactiveNudge && (
-                    <div
-                        onClick={() => { dismissNudge(); handleOpen(); }}
-                        style={{
-                            background: 'linear-gradient(135deg, #061A30 0%, #0D3B66 100%)',
-                            border: '1px solid rgba(56, 189, 248, 0.45)',
-                            borderRadius: '16px 16px 4px 16px',
-                            padding: '11px 15px',
-                            maxWidth: '260px',
-                            boxShadow: '0 12px 30px rgba(7, 30, 54, 0.45)',
-                            cursor: 'pointer',
-                            position: 'relative',
-                            color: '#F8FAFC',
-                        }}
-                    >
-                        <button
-                            onClick={dismissNudge}
-                            style={{
-                                position: 'absolute', top: '-6px', right: '-6px',
-                                width: '18px', height: '18px', borderRadius: '50%',
-                                background: '#EF4444', border: '2px solid #fff',
-                                color: '#fff', fontSize: '10px', fontWeight: 700,
-                                cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                justifyContent: 'center', lineHeight: 1, padding: 0,
-                            }}
-                        >
-                            ×
-                        </button>
-                        <div style={{ fontSize: '0.78rem', color: '#F0F9FF', lineHeight: 1.4, fontWeight: 600 }}>
-                            {proactiveNudge}
-                        </div>
-                        <div style={{ fontSize: '0.66rem', color: '#38BDF8', marginTop: '5px', fontWeight: 700 }}>
-                            Consultar a Beto IA →
-                        </div>
-                    </div>
-                )}
-
-                {/* Launcher Flotante Futurista en Azul Oscuro Sanatorio Argentino */}
+                {/* Botón Flotante Compacto y Discreto en Azul Oscuro Sanatorio Argentino */}
                 <button
                     id="beto-fab"
                     onClick={handleOpen}
                     style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '6px 16px 6px 6px',
-                        borderRadius: '999px',
-                        border: '1.5px solid rgba(56, 189, 248, 0.55)',
+                        width: '48px',
+                        height: '48px',
+                        padding: 0,
+                        borderRadius: '50%',
+                        border: '2px solid rgba(56, 189, 248, 0.65)',
                         cursor: 'pointer',
                         background: 'linear-gradient(135deg, #041324 0%, #0A2540 50%, #0D3B66 100%)',
-                        boxShadow: '0 10px 28px rgba(7, 30, 54, 0.48), 0 0 16px rgba(56, 189, 248, 0.22)',
-                        transition: 'all 0.25s ease',
+                        boxShadow: '0 6px 18px rgba(7, 30, 54, 0.38)',
+                        transition: 'all 0.2s ease',
                         color: '#FFFFFF',
-                        position: 'relative'
+                        position: 'relative',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
                     }}
                     onMouseOver={e => {
-                        e.currentTarget.style.transform = 'translateY(-2px) scale(1.03)';
-                        e.currentTarget.style.boxShadow = '0 14px 34px rgba(7, 30, 54, 0.6), 0 0 22px rgba(56, 189, 248, 0.4)';
+                        e.currentTarget.style.transform = 'scale(1.06)';
+                        e.currentTarget.style.boxShadow = '0 8px 24px rgba(7, 30, 54, 0.5), 0 0 14px rgba(56, 189, 248, 0.35)';
                     }}
                     onMouseOut={e => {
-                        e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                        e.currentTarget.style.boxShadow = '0 10px 28px rgba(7, 30, 54, 0.48), 0 0 16px rgba(56, 189, 248, 0.22)';
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 6px 18px rgba(7, 30, 54, 0.38)';
                     }}
-                    title="Abrir Beto IA — Asistente Clínico y de Gobernanza (Audios, Imágenes, Word, Excel, PDF)"
+                    title="Abrir Beto IA — Asistente Clínico y de Gobernanza"
                 >
-                    <div style={{
-                        width: '46px',
-                        height: '46px',
-                        borderRadius: '50%',
-                        border: '2px solid #38BDF8',
-                        overflow: 'hidden',
-                        position: 'relative',
-                        flexShrink: 0,
-                        background: '#0D3B66'
-                    }}>
-                        <img
-                            src={BETO_AVATAR}
-                            alt="Beto IA"
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', paddingRight: '2px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.84rem', fontWeight: 800, letterSpacing: '0.2px', color: '#FFFFFF' }}>
-                            <span>BETO IA</span>
-                            <span style={{
-                                width: '7px', height: '7px', borderRadius: '50%',
-                                background: '#38BDF8', boxShadow: '0 0 8px #38BDF8'
-                            }} />
-                        </div>
-                        <span style={{ fontSize: '0.65rem', color: '#BAE6FD', fontWeight: 600 }}>
-                            Gobernanza · Voz & Docs
-                        </span>
-                    </div>
+                    <img
+                        src={BETO_AVATAR}
+                        alt="Beto IA"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
                 </button>
             </div>
         );

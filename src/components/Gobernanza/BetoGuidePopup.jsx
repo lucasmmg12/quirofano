@@ -3,38 +3,11 @@ import { Sparkles, X, FileSpreadsheet, FileText, ArrowRight, ChevronRight, BarCh
 
 const TARGET_VIEWS = ['inicio', 'metricas', 'gobernanza', 'gobernanza_indicadores'];
 
-export default function BetoGuidePopup({ activeView = 'inicio' }) {
-    const [visible, setVisible] = useState(false);
-    const [dontShowToday, setDontShowToday] = useState(false);
-    const lastTriggeredViewRef = useRef(null);
-
-    useEffect(() => {
-        // Solo abrir si estamos en el dashboard o gobernanza de datos
-        if (!TARGET_VIEWS.includes(activeView)) {
-            setVisible(false);
-            return;
-        }
-
-        // Si el usuario marcó no mostrar hoy, verificar timestamp
-        const hideUntil = localStorage.getItem('beto_popup_hide_until');
-        if (hideUntil && new Date().getTime() < parseInt(hideUntil, 10)) {
-            return;
-        }
-
-        // Si ya se abrió para esta misma vista en la sesión actual de navegación rápida, evitar parpadeo repetitivo inmediato
-        if (lastTriggeredViewRef.current === activeView && visible) {
-            return;
-        }
-
-        lastTriggeredViewRef.current = activeView;
-
-        // Abrir tras un brevísimo delay clínico (400ms) al entrar
-        const timer = setTimeout(() => {
-            setVisible(true);
-        }, 400);
-
-        return () => clearTimeout(timer);
-    }, [activeView]);
+export default function BetoGuidePopup() {
+    // Desactivado por directriz de UX: Beto no debe abrir pop-ups automáticos ni invadir la navegación.
+    // Solo se abre cuando el usuario hace clic explícitamente en el botón de Beto.
+    return null;
+}
 
     const handleClose = () => {
         setVisible(false);
