@@ -292,23 +292,23 @@ export async function generarExcelCobranzas({
         { header: 'DNI / NHC', key: 'nhc', width: 14 },
         { header: 'Teléfono', key: 'telefono', width: 15 },
         { header: 'Obra Social / Financiador', key: 'obraSocial', width: 22 },
-        { header: 'Fecha Alta / Origen (DD/MM/AAAA)', key: 'fechaAlta', width: 16 },
-        { header: 'Fecha Exigible +30d (DD/MM/AAAA)', key: 'fechaExigible', width: 16 },
-        { header: 'Fecha Último Cobro (DD/MM/AAAA)', key: 'fechaCobro', width: 16 },
-        { header: 'Condición del Cobro', key: 'condicionCobro', width: 22 },
         { header: 'Cobrado en Período ($)', key: 'cobradoPeriodo', width: 20 },
         { header: 'Cobrado Exigible ≥30d ($)', key: 'cobradoExigiblePeriodo', width: 20 },
         { header: 'Cobrado en Gracia <30d ($)', key: 'cobradoEnGraciaPeriodo', width: 20 },
         { header: 'Total Cobrado Histórico ($)', key: 'cobradoHistorico', width: 20 },
-        { header: 'Deuda Original ($)', key: 'deudaOriginal', width: 18 },
-        { header: 'Deuda Vigente Pendiente ($)', key: 'deudaVigente', width: 20 },
         { header: 'Modalidad de Cobro', key: 'tipoCobro', width: 24 },
         { header: 'Estado Cartera', key: 'categoria', width: 18 },
+        { header: 'Deuda Original ($)', key: 'deudaOriginal', width: 18 },
+        { header: 'Deuda Vigente Pendiente ($)', key: 'deudaVigente', width: 20 },
         { header: 'Plan Vigente', key: 'tienePlan', width: 13 },
         { header: 'Detalle del Plan de Cuotas', key: 'detallePlan', width: 34 },
         { header: 'Saldo Remanente Plan ($)', key: 'saldoPlan', width: 20 },
-        { header: 'Inicio Gestión (DD/MM/AAAA)', key: 'fechaInicioGestion', width: 16 },
         { header: 'Gestionado / Cobrado por', key: 'gestionadoPor', width: 22 },
+        { header: 'Fecha Alta / Origen (DD/MM/AAAA)', key: 'fechaAlta', width: 17 },
+        { header: 'Fecha Desde Cuando es Exigible +30d (DD/MM/AAAA)', key: 'fechaExigible', width: 20 },
+        { header: 'Fecha Último Cobro (DD/MM/AAAA)', key: 'fechaCobro', width: 17 },
+        { header: 'Inicio Gestión (DD/MM/AAAA)', key: 'fechaInicioGestion', width: 17 },
+        { header: 'Condición del Cobro', key: 'condicionCobro', width: 22 },
         { header: 'Comprobante / Observaciones', key: 'observaciones', width: 36 }
     ];
 
@@ -347,23 +347,23 @@ export async function generarExcelCobranzas({
             item.nhc || 'S/D',
             item.telefono || 'Sin registrar',
             item.obraSocial || 'Particular / S.D.',
-            item.fechaAlta || '-',
-            item.fechaExigible || '-',
-            item.fechaCobro || '-',
-            item.condicionCobro || 'Exigible (≥30d post-alta)',
             item.cobradoPeriodo || 0,
             item.cobradoExigiblePeriodo ?? item.cobradoPeriodo ?? 0,
             item.cobradoEnGraciaPeriodo || 0,
             item.cobradoHistorico || 0,
-            item.deudaOriginal || 0,
-            item.deudaVigente || 0,
             item.tipoCobro || 'Pago en curso',
             item.categoriaLabel || item.categoria || 'En Gestión',
+            item.deudaOriginal || 0,
+            item.deudaVigente || 0,
             item.tienePlan ? 'SÍ' : 'NO',
             item.detallePlan || 'Sin plan activo',
             item.saldoPlan || 0,
-            item.fechaInicioGestion || '-',
             item.gestionadoPor || 'Sistema / Sin asignar',
+            item.fechaAlta || '-',
+            item.fechaExigible || '-',
+            item.fechaCobro || '-',
+            item.fechaInicioGestion || '-',
+            item.condicionCobro || 'Exigible (≥30d post-alta)',
             item.observaciones || '-'
         ]);
 
@@ -384,18 +384,40 @@ export async function generarExcelCobranzas({
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.zebraBg } };
             }
 
-            // Moneda y formato numérico (cols 10, 11, 12, 13, 14, 15, 20)
-            if ([10, 11, 12, 13, 14, 15, 20].includes(colNumber)) {
+            // Moneda y formato numérico (cols 6, 7, 8, 9, 12, 13, 16)
+            if ([6, 7, 8, 9, 12, 13, 16].includes(colNumber)) {
                 cell.numFmt = '$ #,##0.00;($ #,##0.00);"-"';
                 cell.alignment = { vertical: 'middle', horizontal: 'right' };
-            } else if ([1, 3, 4, 6, 7, 8, 9, 18, 21].includes(colNumber)) {
+            } else if ([1, 3, 4, 14, 18, 19, 20, 21, 22].includes(colNumber)) {
                 cell.alignment = { vertical: 'middle', horizontal: 'center' };
             } else {
                 cell.alignment = { vertical: 'middle', horizontal: 'left' };
             }
 
-            // Resaltado de Condición del Cobro (Columna 9)
-            if (colNumber === 9) {
+            // Resaltado de Cobrado en Período (Columna 6)
+            if (colNumber === 6 && (item.cobradoPeriodo || 0) > 0) {
+                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: PALETTE.greenText } };
+            }
+
+            // Resaltado de Cancelación 100% (Columna 10)
+            if (colNumber === 10 && (item.tipoCobro || '').includes('Cancelación')) {
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
+            }
+
+            // Paciente con Deuda 0 (Saldada) (Columna 13)
+            if (colNumber === 13 && (item.deudaVigente === 0)) {
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
+            }
+
+            // Resaltado de Plan Vigente (Columna 14)
+            if (colNumber === 14 && item.tienePlan) {
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.purpleText } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.purpleLight } };
+            }
+
+            // Resaltado de Condición del Cobro (Columna 22)
+            if (colNumber === 22) {
                 if (item.esExigible === false) {
                     cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.amberGold } };
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.amberLight } };
@@ -403,28 +425,6 @@ export async function generarExcelCobranzas({
                     cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.greenText } };
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
                 }
-            }
-
-            // Resaltado de Cobrado en Período (Columna 10)
-            if (colNumber === 10 && (item.cobradoPeriodo || 0) > 0) {
-                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: PALETTE.greenText } };
-            }
-
-            // Resaltado de Cancelación 100% (Columna 16)
-            if (colNumber === 16 && (item.tipoCobro || '').includes('Cancelación')) {
-                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
-            }
-
-            // Resaltado de Plan Vigente (Columna 18)
-            if (colNumber === 18 && item.tienePlan) {
-                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.purpleText } };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.purpleLight } };
-            }
-
-            // Paciente con Deuda 0 (Saldada) (Columna 15)
-            if (colNumber === 15 && (item.deudaVigente === 0)) {
-                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
             }
         });
     });
@@ -435,16 +435,17 @@ export async function generarExcelCobranzas({
     const totalRowPac = wsPacientes.addRow([
         'TOTALES',
         `${pacientesCobrados.length} PACIENTES AUDITADOS`,
-        '', '', '', '', '', '', '',
-        { formula: `SUM(J7:J${lastDataRow})` },
-        { formula: `SUM(K7:K${lastDataRow})` },
+        '', '', '',
+        { formula: `SUM(F7:F${lastDataRow})` },
+        { formula: `SUM(G7:G${lastDataRow})` },
+        { formula: `SUM(H7:H${lastDataRow})` },
+        { formula: `SUM(I7:I${lastDataRow})` },
+        '', '',
         { formula: `SUM(L7:L${lastDataRow})` },
         { formula: `SUM(M7:M${lastDataRow})` },
-        { formula: `SUM(N7:N${lastDataRow})` },
-        { formula: `SUM(O7:O${lastDataRow})` },
-        '', '', '', '',
-        { formula: `SUM(T7:T${lastDataRow})` },
-        '', '', ''
+        '', '',
+        { formula: `SUM(P7:P${lastDataRow})` },
+        '', '', '', '', '', '', ''
     ]);
     totalRowPac.height = 26;
     totalRowPac.eachCell((cell, colNumber) => {
@@ -454,7 +455,7 @@ export async function generarExcelCobranzas({
             top: { style: 'medium', color: { argb: PALETTE.borderDark } },
             bottom: { style: 'double', color: { argb: PALETTE.borderDark } }
         };
-        if ([10, 11, 12, 13, 14, 15, 20].includes(colNumber)) {
+        if ([6, 7, 8, 9, 12, 13, 16].includes(colNumber)) {
             cell.numFmt = '$ #,##0.00;($ #,##0.00);"-"';
             cell.alignment = { vertical: 'middle', horizontal: 'right' };
         } else {

@@ -1135,10 +1135,10 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             const alta = admKey ? altasMap.get(admKey) : null;
             if (alta?.fecha_alta) {
                 const candidate = normalizeToISO(alta.fecha_alta);
-                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
             } else if (f.fecha_hospitalizacion) {
                 const candidate = normalizeToISO(f.fecha_hospitalizacion);
-                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
             }
         }
 
@@ -1680,10 +1680,10 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
             const alta = admKey ? altasMap.get(admKey) : null;
             if (alta?.fecha_alta) {
                 const candidate = normalizeToISO(alta.fecha_alta);
-                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
             } else if (f.fecha_hospitalizacion) {
                 const candidate = normalizeToISO(f.fecha_hospitalizacion);
-                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
             }
         }
         if (!fAltaISO && p.fecha_ultima_factura) {
