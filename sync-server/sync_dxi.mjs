@@ -111,33 +111,33 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
               AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
               AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%';
 
-            -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia e Informe
-            SELECT Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
+            -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia e Informe (con PeriodoMes para filtrado en caché)
+            SELECT PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
                    SUM(EstaInformado) AS Informados,
                    SUM(CASE WHEN EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
+            GROUP BY PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
 
-            -- Set 1: Prestadores que la Realizan (con EstadoAsistencia para priorizar efectivos)
-            SELECT Modalidad, Agenda, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 1: Prestadores que la Realizan (con EstadoAsistencia y PeriodoMes)
+            SELECT PeriodoMes, Modalidad, Agenda, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, Responsable, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Agenda, Responsable, EstadoAsistencia;
 
-            -- Set 2: Prestadores que la Solicitan (con EstadoAsistencia)
-            SELECT Modalidad, Agenda, Solicitante AS PrestadorSolicita, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 2: Prestadores que la Solicitan (con EstadoAsistencia y PeriodoMes)
+            SELECT PeriodoMes, Modalidad, Agenda, Solicitante AS PrestadorSolicita, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, Solicitante, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Agenda, Solicitante, EstadoAsistencia;
 
-            -- Set 3: Prestadores que la Informan (solo estudios firmados/informados)
-            SELECT Modalidad, Agenda, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
+            -- Set 3: Prestadores que la Informan (solo estudios firmados/informados, con PeriodoMes)
+            SELECT PeriodoMes, Modalidad, Agenda, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
             FROM #TempDxI
             WHERE EstaInformado = 1
-            GROUP BY Modalidad, Agenda, Responsable;
+            GROUP BY PeriodoMes, Modalidad, Agenda, Responsable;
 
-            -- Set 4: Obras Sociales (con EstadoAsistencia)
-            SELECT Modalidad, Agenda, ObraSocial, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 4: Obras Sociales (con EstadoAsistencia y PeriodoMes)
+            SELECT PeriodoMes, Modalidad, Agenda, ObraSocial, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, ObraSocial, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Agenda, ObraSocial, EstadoAsistencia;
 
             -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia)
             SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, COUNT(*) AS Cantidad
@@ -145,10 +145,10 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia
             ORDER BY FechaDia ASC;
 
-            -- Set 6: Desglose Agregado por Estado de Asistencia
-            SELECT Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad
+            -- Set 6: Desglose Agregado por Estado de Asistencia (con PeriodoMes)
+            SELECT PeriodoMes, Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal
+            GROUP BY PeriodoMes, Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal
             ORDER BY Cantidad DESC;
 
             DROP TABLE #TempDxI;

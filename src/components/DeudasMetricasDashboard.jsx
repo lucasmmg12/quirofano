@@ -418,7 +418,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                 <ArrowUpRight size={14} />
                                 <span>{isFilteredPeriod ? 'Recaudado durante el período seleccionado' : 'Ingreso total recuperado al Sanatorio'}</span>
                             </div>
-                            {/* Desglose explicativo de composición del cobro */}
+                            {/* Desglose explicativo de composición del cobro y exigibilidad (30d post-alta) */}
                             <div style={{
                                 marginTop: '8px',
                                 paddingTop: '8px',
@@ -429,6 +429,29 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                 fontSize: '0.70rem',
                                 color: '#166534'
                             }}>
+                                <div style={{
+                                    background: '#f0fdf4',
+                                    border: '1px solid #bbf7d0',
+                                    borderRadius: '6px',
+                                    padding: '5px 7px',
+                                    marginBottom: '3px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '2px'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: '#166534', fontWeight: 700 }}>⚖️ Deuda Exigible (&ge;30d post-alta):</span>
+                                        <strong style={{ color: '#15803d', fontFamily: 'monospace', fontSize: '0.74rem' }}>
+                                            {formatMoney(data.montoCobradoExigible ?? data.totalDeudaCobrada ?? 0)}
+                                        </strong>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: '#475569' }}>⏳ En período de gracia (&lt;30d):</span>
+                                        <strong style={{ color: '#334155', fontFamily: 'monospace', fontSize: '0.73rem' }}>
+                                            {formatMoney(data.montoCobradoEnGracia || 0)}
+                                        </strong>
+                                    </div>
+                                </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ color: '#15803d' }}>• Cancelaciones 100% ({data.countDeudasCanceladas || 0}):</span>
                                     <strong style={{ color: '#166534', fontFamily: 'monospace', fontSize: '0.74rem' }}>

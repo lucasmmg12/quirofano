@@ -83,16 +83,22 @@ async function getSalusPool() {
 export async function syncTurnosContactCenter(targetDate = null) {
     const today = targetDate || new Date().toISOString().substring(0, 10);
     const dateFormatted = today.replace(/-/g, '');
+    const [yyyy, mm, dd] = today.split('-');
+    const dmyStr = `${dd}/${mm}/${yyyy}`;
 
     const nextD = new Date(today + 'T12:00:00Z');
     nextD.setUTCDate(nextD.getUTCDate() + 1);
     const nextDayFormatted = nextD.toISOString().substring(0, 10).replace(/-/g, '');
 
+    const lookbackD = new Date(today + 'T12:00:00Z');
+    lookbackD.setUTCDate(lookbackD.getUTCDate() - 60);
+    const lookbackFormatted = lookbackD.toISOString().substring(0, 10).replace(/-/g, '');
+
     const agentNamesSql = Object.keys(SALUS_AGENTS_MAP).map(a => `'${a}'`).join(',');
 
     const p = await getSalusPool();
 
-    // 1. TURNOS CREADOS HOY POR LAS OPERADORAS
+    // 1. TURNOS CREADOS / ASIGNADOS HOY POR LAS OPERADORAS (incluyendo traza en UsuarioCita)
     const queryTurnos = `
         SELECT 
             [idVisita],
@@ -108,6 +114,7 @@ export async function syncTurnosContactCenter(targetDate = null) {
             [Tipo Visita] AS TipoVisita,
             [Cliente] AS ObraSocial,
             [Usuario Creacion Nombre] AS Agente,
+            [UsuarioCita],
             [Fecha Hora Creacion] AS CreadoEl,
             CONVERT(VARCHAR(8), [Fecha Hora Creacion], 108) AS HoraCreacionExacta,
             CONVERT(VARCHAR(19), [Fecha Hora Creacion], 120) AS CreadoEl_str,
@@ -116,10 +123,18 @@ export async function syncTurnosContactCenter(targetDate = null) {
             [Motivo_Ausencia],
             [Usuario_Ausencia]
         FROM [SALUS].[dbo].[VLISE_Visitas]
-        WHERE [Fecha Hora Creacion] >= '${dateFormatted}'
-          AND [Fecha Hora Creacion] <  '${nextDayFormatted}'
-          AND [Usuario Creacion Nombre] IN (${agentNamesSql})
-          AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
+        WHERE ([Fecha Hora Creacion] >= '${lookbackFormatted}' OR [Fecha Visita] >= '${dateFormatted}')
+          AND (
+              ([Fecha Hora Creacion] >= '${dateFormatted}' AND [Fecha Hora Creacion] < '${nextDayFormatted}' AND [Usuario Creacion Nombre] IN (${agentNamesSql}))
+              OR ([UsuarioCita] LIKE '%(${dmyStr} %' AND (
+                  [UsuarioCita] LIKE '%OLIVIER ESQUIVEL%' OR
+                  [UsuarioCita] LIKE '%JACQUES SORIA%' OR
+                  [UsuarioCita] LIKE '%AGUILERA%DANIELA%' OR
+                  [UsuarioCita] LIKE '%LEAL,%ERICA%' OR
+                  [UsuarioCita] LIKE '%ACOSTA ESQUIVEL%'
+              ))
+          )
+          AND ([Paciente] IS NULL OR [Paciente] <> 'TURNOS ONLINE, PACIENTE')
         ORDER BY [Fecha Hora Creacion] DESC
     `;
 
@@ -159,19 +174,44 @@ export async function syncTurnosContactCenter(targetDate = null) {
     ]);
 
     const agentesMap = {
-        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [] },
-        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [] },
-        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [] },
-        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [] },
-        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [] }
+        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [], seenVisitas: new Set() },
+        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [], seenVisitas: new Set() },
+        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [], seenVisitas: new Set() },
+        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [], seenVisitas: new Set() },
+        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0, cancelados: 0, turnosDetalle: [], canceladosDetalle: [], seenVisitas: new Set() }
     };
 
-    // Procesar turnos creados
+    const CITA_AGENT_PATTERNS = [
+        { id: 'solivier', regex: new RegExp(`OLIVIER ESQUIVEL[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'vjacques', regex: new RegExp(`JACQUES SORIA[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'daguilera', regex: new RegExp(`AGUILERA[^()]*DANIELA[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'eleal', regex: new RegExp(`LEAL,\\s*ERICA[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'macosta', regex: new RegExp(`ACOSTA ESQUIVEL[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') }
+    ];
+
+    // Procesar turnos creados / asignados
     for (const row of (resTurnos.recordset || [])) {
+        const matchedAgents = new Map();
         const meta = SALUS_AGENTS_MAP[row.Agente];
-        if (meta && agentesMap[meta.id]) {
-            agentesMap[meta.id].turnos += 1;
-            agentesMap[meta.id].turnosDetalle.push({
+        const creadoDateStr = row.CreadoEl_str ? row.CreadoEl_str.substring(0, 10) : (row.CreadoEl ? new Date(row.CreadoEl).toISOString().substring(0, 10) : '');
+        if (meta && agentesMap[meta.id] && creadoDateStr === today) {
+            matchedAgents.set(meta.id, row.HoraCreacionExacta || '');
+        }
+        if (row.UsuarioCita) {
+            for (const pat of CITA_AGENT_PATTERNS) {
+                const m = row.UsuarioCita.match(pat.regex);
+                if (m && !matchedAgents.has(pat.id)) {
+                    matchedAgents.set(pat.id, m[1] || '');
+                }
+            }
+        }
+
+        for (const [agId, horaAccion] of matchedAgents.entries()) {
+            const agObj = agentesMap[agId];
+            if (!agObj || agObj.seenVisitas.has(row.idVisita)) continue;
+            agObj.seenVisitas.add(row.idVisita);
+            agObj.turnos += 1;
+            agObj.turnosDetalle.push({
                 idVisita: row.idVisita,
                 idPaciente: row.IdPaciente,
                 paciente: row.Paciente,
@@ -185,8 +225,8 @@ export async function syncTurnosContactCenter(targetDate = null) {
                 tipoVisita: row.TipoVisita || '',
                 obraSocial: row.ObraSocial || '',
                 asistencia: row.Asistencia || null,
-                horaCreacion: row.HoraCreacionExacta || (row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''),
-                creadoEl: row.CreadoEl_str ? `${row.CreadoEl_str.replace(' ', 'T')}-03:00` : (row.CreadoEl ? row.CreadoEl.toISOString() : '')
+                horaCreacion: horaAccion || row.HoraCreacionExacta || (row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''),
+                creadoEl: horaAccion ? `${today}T${horaAccion}-03:00` : (row.CreadoEl_str ? `${row.CreadoEl_str.replace(' ', 'T')}-03:00` : (row.CreadoEl ? row.CreadoEl.toISOString() : ''))
             });
         }
     }
@@ -214,12 +254,14 @@ export async function syncTurnosContactCenter(targetDate = null) {
         }
     }
 
+    const cleanAgentes = Object.values(agentesMap).map(({ seenVisitas, ...rest }) => rest);
+
     const payload = {
         fecha: today,
         synced_at: new Date().toISOString(),
-        total: Object.values(agentesMap).reduce((acc, a) => acc + a.turnos, 0),
-        totalCancelados: Object.values(agentesMap).reduce((acc, a) => acc + a.cancelados, 0),
-        agentes: Object.values(agentesMap)
+        total: cleanAgentes.reduce((acc, a) => acc + a.turnos, 0),
+        totalCancelados: cleanAgentes.reduce((acc, a) => acc + a.cancelados, 0),
+        agentes: cleanAgentes
     };
 
     // Subir a Supabase en app_config: clave histórica cc_turnos_contact_center_${today} y si es hoy actualizar cc_turnos_contact_center_hoy

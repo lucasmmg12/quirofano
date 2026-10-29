@@ -984,7 +984,7 @@ export function getRangoFechasPreset(preset = 'todos', fechaDesde = null, fechaH
             fechaDesde: fechaDesde || `${curYear}-01-01`,
             fechaHasta: fechaHasta || `${curYear}-12-31`,
             label: fechaDesde && fechaHasta
-                ? `Personalizado (${fechaDesde} al ${fechaHasta})`
+                ? `Personalizado (${formatFechaDDMMYYYY(fechaDesde)} al ${formatFechaDDMMYYYY(fechaHasta)})`
                 : 'Período Personalizado'
         };
     }
@@ -995,6 +995,71 @@ export function getRangoFechasPreset(preset = 'todos', fechaDesde = null, fechaH
         fechaHasta: null,
         label: 'Todo el Histórico'
     };
+}
+
+/**
+ * Formatea una fecha YYYY-MM-DD o ISO a DD/MM/YYYY (estándar institucional Sanatorio Argentino)
+ */
+export function formatFechaDDMMYYYY(raw) {
+    if (!raw || raw === '-') return '-';
+    const s = String(raw).trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    const datePart = s.substring(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        const [y, m, d] = datePart.split('-');
+        return `${d}/${m}/${y}`;
+    }
+    return s;
+}
+
+/**
+ * Formatea una fecha-hora ISO o YYYY-MM-DD HH:mm a DD/MM/YYYY HH:mm
+ */
+export function formatFechaHoraDDMMYYYY(raw) {
+    if (!raw || raw === '-') return '-';
+    const s = String(raw).trim().replace('T', ' ');
+    const datePart = s.substring(0, 10);
+    const timePart = s.length >= 16 ? s.substring(11, 16) : '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        const [y, m, d] = datePart.split('-');
+        return timePart ? `${d}/${m}/${y} ${timePart}` : `${d}/${m}/${y}`;
+    }
+    return s;
+}
+
+/**
+ * Normaliza cualquier fecha (DD/MM/YYYY o ISO) a YYYY-MM-DD para comparaciones matemáticas
+ */
+function normalizeToISO(raw) {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const dmyMatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    return null;
+}
+
+/**
+ * Suma N días corridos a una fecha YYYY-MM-DD y devuelve YYYY-MM-DD
+ */
+function addDaysISO(isoDate, days = 30) {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+    const d = new Date(isoDate + 'T12:00:00');
+    if (isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + days);
+    return d.toISOString().substring(0, 10);
+}
+
+/**
+ * Calcula los días corridos entre dos fechas YYYY-MM-DD (fechaFin - fechaInicio)
+ */
+function diffDaysISO(fechaInicioISO, fechaFinISO) {
+    if (!fechaInicioISO || !fechaFinISO) return null;
+    const d1 = new Date(fechaInicioISO + 'T12:00:00');
+    const d2 = new Date(fechaFinISO + 'T12:00:00');
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return null;
+    return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
 }
 
 export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
@@ -1020,18 +1085,83 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         .select('*')
         .eq('pagada', true);
 
-    const [pacientesRes, segRes, cuotasRes] = await Promise.all([
+    // 4. Obtener todas las facturas para cruzar fecha de alta y exigibilidad
+    let queryFacturas = supabase
+        .from('deudas_facturas')
+        .select('paciente_id, n_admision, fecha_hospitalizacion, pendiente, cobrado, total');
+
+    const [pacientesRes, segRes, cuotasRes, facturasRes] = await Promise.all([
         queryPacientes,
         querySeguimiento,
-        queryCuotas
+        queryCuotas,
+        queryFacturas
     ]);
 
     const pacientes = pacientesRes.data || [];
     const seguimientos = segRes.data || [];
     const cuotas = cuotasRes.data || [];
+    const todasFacturas = facturasRes.data || [];
 
-    // 4. Obtener cobros de caja SALUS (deudas_cobros) para los pacientes de la cartera
+    // 5. Obtener altas administrativas para determinar Fecha de Alta exacta y Regla de 30 días
+    const distinctAdmsAll = [...new Set(todasFacturas.map(f => f.n_admision).filter(Boolean))];
+    let allAltas = [];
+    if (distinctAdmsAll.length > 0) {
+        for (let i = 0; i < distinctAdmsAll.length; i += 100) {
+            const chunk = distinctAdmsAll.slice(i, i + 100);
+            const { data: chunkAltas } = await supabase
+                .from('altas_administrativas')
+                .select('numero_admision, fecha_alta, fecha_ingreso')
+                .in('numero_admision', chunk);
+            if (chunkAltas) allAltas.push(...chunkAltas);
+        }
+    }
+    const altasMap = new Map();
+    allAltas.forEach(a => altasMap.set(String(a.numero_admision).trim(), a));
+
+    // Mapa de Fecha de Alta y Fecha de Exigibilidad (+30d) por Paciente
+    const pacFechasMoraMap = {};
+    const facturasPorPac = {};
+    todasFacturas.forEach(f => {
+        if (!facturasPorPac[f.paciente_id]) facturasPorPac[f.paciente_id] = [];
+        facturasPorPac[f.paciente_id].push(f);
+    });
+
+    pacientes.forEach(p => {
+        const pFacturas = facturasPorPac[p.id] || [];
+        let fAltaISO = null;
+
+        for (const f of pFacturas) {
+            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
+            const alta = admKey ? altasMap.get(admKey) : null;
+            if (alta?.fecha_alta) {
+                const candidate = normalizeToISO(alta.fecha_alta);
+                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+            } else if (f.fecha_hospitalizacion) {
+                const candidate = normalizeToISO(f.fecha_hospitalizacion);
+                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+            }
+        }
+
+        if (!fAltaISO && p.fecha_ultima_factura) {
+            fAltaISO = normalizeToISO(p.fecha_ultima_factura);
+        }
+
+        const fExigibleISO = fAltaISO ? addDaysISO(fAltaISO, 30) : null;
+        pacFechasMoraMap[p.id] = {
+            fechaAltaISO: fAltaISO,
+            fechaExigibleISO: fExigibleISO,
+            fechaAltaDisplay: formatFechaDDMMYYYY(fAltaISO),
+            fechaExigibleDisplay: formatFechaDDMMYYYY(fExigibleISO)
+        };
+    });
+
+    // 6. Obtener cobros de caja SALUS (deudas_cobros) para los pacientes de la cartera
     const nhcs = [...new Set(pacientes.map(p => p.nhc).filter(Boolean))];
+    const nhcToPac = {};
+    pacientes.forEach(p => { if (p.nhc) nhcToPac[p.nhc] = p; });
+    const pacientesMap = {};
+    pacientes.forEach(p => { pacientesMap[p.id] = p; });
+
     let cobros = [];
     if (nhcs.length > 0) {
         const { data: cobrosData } = await supabase
@@ -1113,65 +1243,129 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     const countGestionados = pacientesGestionadosList.length;
     const porcentajeGestionado = totalPacientes > 0 ? Math.round((countGestionados / totalPacientes) * 100) : 0;
 
-    // ─── Calcular cobros por mes (Caja Real SALUS + Cancelaciones) ───
+    // ─── Calcular cobros por mes y discriminación Exigible (>=30d) vs. En Gracia (<30d) ───
     const cobradoPorMes = {};
     let totalDeudaCobrada = 0;
     let montoDeudasCanceladas = 0;
     let countDeudasCanceladas = 0;
     let montoCobrosCuotasYSeg = 0;
 
-    // A) Sumar los cobros reales registrados en caja SALUS (deudas_cobros)
+    let montoCobradoExigible = 0;
+    let montoCobradoEnGracia = 0;
+    const pacsCobradosExigiblesSet = new Set();
+    const pacsCobradosEnGraciaSet = new Set();
+
+    // Helper para clasificar si un cobro ocurrió >= 30 días post-alta (Deuda Exigible) o < 30 días (Período de Gracia)
+    const evaluarExigibilidadCobro = (pacId, fechaCobroISO) => {
+        const infoMora = pacFechasMoraMap[pacId];
+        if (!infoMora || !infoMora.fechaAltaISO || !fechaCobroISO) {
+            return { esExigible: true, diasPostAlta: null };
+        }
+        const dias = diffDaysISO(infoMora.fechaAltaISO, fechaCobroISO);
+        if (dias !== null && dias < 30) {
+            return { esExigible: false, diasPostAlta: Math.max(0, dias) };
+        }
+        return { esExigible: true, diasPostAlta: dias };
+    };
+
+    const registrarCobroEnPeriodo = (pacId, monto, fechaCobroISO) => {
+        const { esExigible } = evaluarExigibilidadCobro(pacId, fechaCobroISO);
+        if (esExigible) {
+            montoCobradoExigible += monto;
+            if (pacId) pacsCobradosExigiblesSet.add(pacId);
+        } else {
+            montoCobradoEnGracia += monto;
+            if (pacId) pacsCobradosEnGraciaSet.add(pacId);
+        }
+    };
+
+    // Nivel 1: Cobros reales registrados en caja SALUS (deudas_cobros)
+    const nhcsConCobros = new Set();
+    const pacsCanceladosEnPeriodoSet = new Set();
     cobros.forEach(c => {
         const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
         const ym = cDate ? cDate.substring(0, 7) : '';
         const monto = Number(c.importe) || 0;
+        const pac = nhcToPac[c.nhc];
+        if (c.nhc && monto > 0) nhcsConCobros.add(c.nhc);
 
         if (monto > 0 && ym) {
             cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
 
-            if (effDesde && effHasta) {
-                if (cDate >= effDesde && cDate <= effHasta) {
-                    totalDeudaCobrada += monto;
+            const inRange = (effDesde && effHasta)
+                ? (cDate >= effDesde && cDate <= effHasta)
+                : true;
+
+            if (inRange) {
+                totalDeudaCobrada += monto;
+                if (pac?.categoria === 'deuda_cancelada') {
+                    montoDeudasCanceladas += monto;
+                    pacsCanceladosEnPeriodoSet.add(pac.id);
+                } else {
                     montoCobrosCuotasYSeg += monto;
                 }
-            } else {
-                totalDeudaCobrada += monto;
-                montoCobrosCuotasYSeg += monto;
+                registrarCobroEnPeriodo(pac?.id, monto, cDate);
             }
         }
     });
 
-    // B) Pacientes cancelados (si no tienen cobros en deudas_cobros)
-    const nhcsConCobros = new Set(cobros.map(c => c.nhc));
+    // Nivel 2: Pagos manuales en seguimiento (solo para pacientes sin recibos duplicados en SALUS)
+    const pacIdsConPagoSeg = new Set();
+    seguimientos.forEach(s => {
+        if (s.tipo === 'pago' && Number(s.monto) > 0) {
+            const pac = pacientesMap[s.paciente_id];
+            if (pac?.nhc && nhcsConCobros.has(pac.nhc)) return;
+            pacIdsConPagoSeg.add(s.paciente_id);
+
+            const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
+            const ym = sDate ? sDate.substring(0, 7) : '';
+            const monto = Number(s.monto) || 0;
+
+            if (monto > 0 && ym) {
+                cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+
+                const inRange = (effDesde && effHasta)
+                    ? (sDate >= effDesde && sDate <= effHasta)
+                    : true;
+
+                if (inRange) {
+                    totalDeudaCobrada += monto;
+                    if (pac?.categoria === 'deuda_cancelada') {
+                        montoDeudasCanceladas += monto;
+                        pacsCanceladosEnPeriodoSet.add(pac.id);
+                    } else {
+                        montoCobrosCuotasYSeg += monto;
+                    }
+                    registrarCobroEnPeriodo(s.paciente_id, monto, sDate);
+                }
+            }
+        }
+    });
+
+    // Nivel 3: Pacientes con deuda_cancelada (si no tienen cobros ya sumados en Nivel 1 o Nivel 2)
     pacientes.forEach(p => {
         if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
             const cancDate = p.deuda_cancelada_at.substring(0, 10);
             const ym = cancDate.substring(0, 7);
             const monto = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+            const yaContabilizado = (p.nhc && nhcsConCobros.has(p.nhc)) || pacIdsConPagoSeg.has(p.id);
 
-            // Si el paciente no tenía movimientos en deudas_cobros, computamos su monto cancelado
-            if (!nhcsConCobros.has(p.nhc) && monto > 0 && ym) {
+            const inRange = (effDesde && effHasta)
+                ? (cancDate >= effDesde && cancDate <= effHasta)
+                : true;
+
+            if (!yaContabilizado && monto > 0 && ym) {
                 cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
-                if (effDesde && effHasta) {
-                    if (cancDate >= effDesde && cancDate <= effHasta) {
-                        totalDeudaCobrada += monto;
-                        montoDeudasCanceladas += monto;
-                        countDeudasCanceladas++;
-                    }
-                } else {
+                if (inRange) {
                     totalDeudaCobrada += monto;
                     montoDeudasCanceladas += monto;
-                    countDeudasCanceladas++;
+                    pacsCanceladosEnPeriodoSet.add(p.id);
+                    registrarCobroEnPeriodo(p.id, monto, cancDate);
                 }
-            } else if (effDesde && effHasta && cancDate >= effDesde && cancDate <= effHasta) {
-                montoDeudasCanceladas += monto;
-                countDeudasCanceladas++;
-            } else if (!effDesde && !effHasta) {
-                montoDeudasCanceladas += monto;
-                countDeudasCanceladas++;
             }
         }
     });
+    countDeudasCanceladas = pacsCanceladosEnPeriodoSet.size;
 
     // Totales históricos acumulados
     const totalHistoricoCanceladasMonto = pacientes
@@ -1181,7 +1375,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     const totalHistoricoCobrado = Object.values(cobradoPorMes).reduce((a, b) => a + b, 0);
 
     // Cuadre contable estricto: Descomposición exacta del total cobrado
-    // (evita doble contabilización de cancelaciones ya cobradas en caja)
     if (montoDeudasCanceladas > totalDeudaCobrada) {
         montoDeudasCanceladas = totalDeudaCobrada;
     }
@@ -1218,7 +1411,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
 
     Object.entries(pacientesPorMesGestion).forEach(([ym, pacSet]) => {
         const pacList = pacientes.filter(p => pacSet.has(p.id));
-        // Capital gestionado: si se canceló al 100%, rescatamos el capital de total_cobros
         const sum = pacList.reduce((s, p) => {
             const cap = Number(p.deuda_total) > 0 ? Number(p.deuda_total) : Number(p.total_cobros || 0);
             return s + cap;
@@ -1243,41 +1435,22 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     let countPacientesEnGracia = 0;
 
     try {
-        const { data: rawFacturasActivas = [] } = await supabase
-            .from('deudas_facturas')
-            .select('paciente_id, n_admision, pendiente')
-            .gt('pendiente', 0);
+        const facturasActivas = todasFacturas.filter(f => Number(f.pendiente) > 0 && pacientesActivosIds.has(f.paciente_id));
 
-        // Solo facturas de pacientes activos (excluyendo cancelados y descuentos)
-        const facturasActivas = rawFacturasActivas.filter(f => pacientesActivosIds.has(f.paciente_id));
-
-        const distinctAdms = [...new Set(facturasActivas.map(f => f.n_admision).filter(Boolean))];
-        let allAltas = [];
-        if (distinctAdms.length > 0) {
-            for (let i = 0; i < distinctAdms.length; i += 100) {
-                const chunk = distinctAdms.slice(i, i + 100);
-                const { data: chunkAltas } = await supabase
-                    .from('altas_administrativas')
-                    .select('numero_admision, fecha_alta, fecha_ingreso')
-                    .in('numero_admision', chunk);
-                if (chunkAltas) allAltas.push(...chunkAltas);
-            }
-        }
-        const altasMap = new Map();
-        allAltas.forEach(a => altasMap.set(a.numero_admision, a));
-
-        const today = new Date();
+        const todayISO = new Date().toISOString().substring(0, 10);
         const pacExigibilidad = {};
         facturasActivas.forEach(f => {
             if (!pacExigibilidad[f.paciente_id]) {
                 pacExigibilidad[f.paciente_id] = { exigible: 0, enGracia: 0 };
             }
-            const alta = altasMap.get(f.n_admision);
+            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
+            const alta = admKey ? altasMap.get(admKey) : null;
             const monto = Number(f.pendiente) || 0;
-            if (alta && alta.fecha_alta) {
-                const fAlta = new Date(alta.fecha_alta + 'T12:00:00');
-                const diffDays = Math.floor((today - fAlta) / (1000 * 60 * 60 * 24));
-                if (diffDays >= 30) {
+            const fAltaISO = normalizeToISO(alta?.fecha_alta || f.fecha_hospitalizacion);
+
+            if (fAltaISO) {
+                const diffDays = diffDaysISO(fAltaISO, todayISO);
+                if (diffDays !== null && diffDays >= 30) {
                     pacExigibilidad[f.paciente_id].exigible += monto;
                 } else {
                     pacExigibilidad[f.paciente_id].enGracia += monto;
@@ -1296,7 +1469,7 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             if (pe.enGracia > 0 && pe.exigible === 0) countPacientesEnGracia++;
         });
 
-        // Escalar proporcionalmente para cuadrar 100% con totalDeudaActiva ($69.040.732)
+        // Escalar proporcionalmente para cuadrar 100% con totalDeudaActiva
         const rawSum = rawExigibleSum + rawGraciaSum;
         if (rawSum > 0 && totalDeudaActiva > 0) {
             const factor = totalDeudaActiva / rawSum;
@@ -1333,7 +1506,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
 
     const sortedMonths = Array.from(allMonthsSet).sort().filter(m => m >= '2026-05' && m <= '2026-12');
 
-    // Determinamos qué meses están dentro del período filtrado para resaltarlos o enfocarlos
     const targetYmStart = effDesde ? effDesde.substring(0, 7) : null;
     const targetYmEnd = effHasta ? effHasta.substring(0, 7) : null;
 
@@ -1360,7 +1532,6 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         ? pastOrCurrentMonths[pastOrCurrentMonths.length - 1] 
         : sortedMonths[sortedMonths.length - 1];
 
-    // El stock de deuda viva al cierre de Octubre '26 debe ser exactamente totalDeudaActiva ($69.040.732)
     stockPorMes[anchorMonth] = Math.round(totalDeudaActiva);
 
     const anchorIdx = sortedMonths.indexOf(anchorMonth);
@@ -1409,6 +1580,8 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             categoria: p.categoria,
             obraSocial: p.obra_social || 'Particular / S.D.',
             telefono: p.telefono,
+            fechaAlta: pacFechasMoraMap[p.id]?.fechaAltaDisplay || '-',
+            fechaExigible: pacFechasMoraMap[p.id]?.fechaExigibleDisplay || '-',
             gestionadoEnPeriodo: patientHasGestionInRange.has(p.id) || (effDesde && effHasta ? false : true),
         }));
 
@@ -1428,6 +1601,10 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         montoDeudasCanceladas,
         countDeudasCanceladas,
         montoCobrosCuotasYSeg,
+        montoCobradoExigible,
+        montoCobradoEnGracia,
+        countCobradoExigible: pacsCobradosExigiblesSet.size,
+        countCobradoEnGracia: pacsCobradosEnGraciaSet.size,
         totalDeudaActiva,
         deudoresActivos,
         tasaRecuperacionGestionada,
@@ -1446,7 +1623,7 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
 
 /**
  * Genera y descarga el Excel oficial de Auditoría de Cobranzas del Sanatorio Argentino
- * Incluye pacientes cobrados, planes vigentes, deuda restante, gestores y movimientos de caja
+ * Incluye pacientes cobrados, planes vigentes, deuda restante, fechas de alta/exigibilidad (DD/MM/AAAA) y movimientos de caja
  */
 export async function descargarInformeCobranzasExcel(filtros = {}) {
     const { preset = 'este_mes', fechaDesde = null, fechaHasta = null, metricasData = null } = filtros;
@@ -1456,24 +1633,90 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
     // Obtener métricas consolidadas (garantiza paridad 100% con la pantalla)
     const metricas = metricasData || await fetchMetricasAvanzadasDeudas(filtros);
 
-    // 1. Obtener todos los pacientes
-    const { data: pacientes = [] } = await supabase
-        .from('deudas_pacientes')
-        .select('*');
+    // 1. Obtener pacientes, seguimientos, planes y facturas en paralelo
+    const [pacientesRes, seguimientosRes, planesRes, facturasRes] = await Promise.all([
+        supabase.from('deudas_pacientes').select('*'),
+        supabase.from('deudas_seguimiento').select('*').order('created_at', { ascending: true }),
+        supabase.from('deudas_planes_pago').select('*, cuotas:deudas_cuotas(*)'),
+        supabase.from('deudas_facturas').select('paciente_id, n_admision, fecha_hospitalizacion, pendiente, cobrado, total')
+    ]);
+
+    const pacientes = pacientesRes.data || [];
+    const seguimientos = seguimientosRes.data || [];
+    const planes = planesRes.data || [];
+    const todasFacturas = facturasRes.data || [];
 
     const pacientesMap = {};
     pacientes.forEach(p => { pacientesMap[p.id] = p; });
 
-    // 2. Obtener todos los seguimientos
-    const { data: seguimientos = [] } = await supabase
-        .from('deudas_seguimiento')
-        .select('*')
-        .order('created_at', { ascending: true });
+    // Cruzar con altas administrativas para obtener Fecha de Alta y Fecha Exigible (+30d)
+    const distinctAdms = [...new Set(todasFacturas.map(f => f.n_admision).filter(Boolean))];
+    let allAltas = [];
+    if (distinctAdms.length > 0) {
+        for (let i = 0; i < distinctAdms.length; i += 100) {
+            const chunk = distinctAdms.slice(i, i + 100);
+            const { data: chunkAltas } = await supabase
+                .from('altas_administrativas')
+                .select('numero_admision, fecha_alta, fecha_ingreso')
+                .in('numero_admision', chunk);
+            if (chunkAltas) allAltas.push(...chunkAltas);
+        }
+    }
+    const altasMap = new Map();
+    allAltas.forEach(a => altasMap.set(String(a.numero_admision).trim(), a));
 
-    // 3. Obtener todos los planes de pago y sus cuotas
-    const { data: planes = [] } = await supabase
-        .from('deudas_planes_pago')
-        .select('*, cuotas:deudas_cuotas(*)');
+    const facturasPorPac = {};
+    todasFacturas.forEach(f => {
+        if (!facturasPorPac[f.paciente_id]) facturasPorPac[f.paciente_id] = [];
+        facturasPorPac[f.paciente_id].push(f);
+    });
+
+    const pacFechasMoraMap = {};
+    pacientes.forEach(p => {
+        const pFacturas = facturasPorPac[p.id] || [];
+        let fAltaISO = null;
+        for (const f of pFacturas) {
+            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
+            const alta = admKey ? altasMap.get(admKey) : null;
+            if (alta?.fecha_alta) {
+                const candidate = normalizeToISO(alta.fecha_alta);
+                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+            } else if (f.fecha_hospitalizacion) {
+                const candidate = normalizeToISO(f.fecha_hospitalizacion);
+                if (candidate && (!fAltaISO || candidate > fAltaISO)) fAltaISO = candidate;
+            }
+        }
+        if (!fAltaISO && p.fecha_ultima_factura) {
+            fAltaISO = normalizeToISO(p.fecha_ultima_factura);
+        }
+        const fExigibleISO = fAltaISO ? addDaysISO(fAltaISO, 30) : null;
+        pacFechasMoraMap[p.id] = {
+            fechaAltaISO: fAltaISO,
+            fechaExigibleISO: fExigibleISO,
+            fechaAltaDisplay: formatFechaDDMMYYYY(fAltaISO),
+            fechaExigibleDisplay: formatFechaDDMMYYYY(fExigibleISO)
+        };
+    });
+
+    const evaluarExigibilidadCobro = (pacId, fechaCobroISO) => {
+        const infoMora = pacFechasMoraMap[pacId];
+        if (!infoMora || !infoMora.fechaAltaISO || !fechaCobroISO) {
+            return { esExigible: true, diasPostAlta: null, label: 'Exigible (≥30d post-alta)' };
+        }
+        const dias = diffDaysISO(infoMora.fechaAltaISO, fechaCobroISO);
+        if (dias !== null && dias < 30) {
+            return {
+                esExigible: false,
+                diasPostAlta: Math.max(0, dias),
+                label: `En Gracia (${Math.max(0, dias)}d post-alta)`
+            };
+        }
+        return {
+            esExigible: true,
+            diasPostAlta: dias,
+            label: `Exigible (${dias}d post-alta)`
+        };
+    };
 
     const planesPorPaciente = {};
     planes.forEach(pl => {
@@ -1497,30 +1740,38 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         cobrosSalus = cobrosData || [];
     }
 
-    // 5. Identificar pagos y armar cobros por paciente
+    // 5. Identificar pagos con jerarquía de 3 niveles sin duplicación (100% paridad con Dashboard)
     const movimientosCaja = [];
-    const cobrosPorPaciente = {}; // pacId -> { totalPeriodo, totalHistorico, ultimoCobroFecha, ultimoComprobante, ultimoOperador }
+    const cobrosPorPaciente = {}; // pacId -> { totalPeriodo, cobradoExigiblePeriodo, cobradoEnGraciaPeriodo, totalHistorico, ultimoCobroFechaISO, ultimoComprobante, ultimoOperador }
 
-    // A) Procesar cobros de caja SALUS
+    const ensurePacCobroEntry = (pacId, fechaISO, comprobante, operador) => {
+        if (!cobrosPorPaciente[pacId]) {
+            cobrosPorPaciente[pacId] = {
+                totalPeriodo: 0,
+                cobradoExigiblePeriodo: 0,
+                cobradoEnGraciaPeriodo: 0,
+                totalHistorico: 0,
+                ultimoCobroFechaISO: fechaISO || '',
+                ultimoComprobante: comprobante || '',
+                ultimoOperador: operador || 'Sistema',
+            };
+        }
+    };
+
+    // Nivel 1: Cobros de caja SALUS
+    const nhcsConCobrosSalus = new Set();
     cobrosSalus.forEach(c => {
         const pac = nhcToPacMap[c.nhc];
         if (!pac) return;
         const pacId = pac.id;
         const monto = Number(c.importe) || 0;
         if (monto <= 0) return;
+        if (c.nhc) nhcsConCobrosSalus.add(c.nhc);
 
         const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
         const cDateTime = c.fecha ? c.fecha.replace('T', ' ').substring(0, 16) : '';
 
-        if (!cobrosPorPaciente[pacId]) {
-            cobrosPorPaciente[pacId] = {
-                totalPeriodo: 0,
-                totalHistorico: 0,
-                ultimoCobroFecha: cDate,
-                ultimoComprobante: c.descripcion || '',
-                ultimoOperador: 'Caja SALUS',
-            };
-        }
+        ensurePacCobroEntry(pacId, cDate, c.descripcion || '', 'Caja SALUS');
         cobrosPorPaciente[pacId].totalHistorico += monto;
 
         const inRange = effDesde && effHasta 
@@ -1528,14 +1779,25 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
             : true;
 
         if (inRange) {
+            const evalExig = evaluarExigibilidadCobro(pacId, cDate);
             cobrosPorPaciente[pacId].totalPeriodo += monto;
-            cobrosPorPaciente[pacId].ultimoCobroFecha = cDate;
+            if (evalExig.esExigible) {
+                cobrosPorPaciente[pacId].cobradoExigiblePeriodo += monto;
+            } else {
+                cobrosPorPaciente[pacId].cobradoEnGraciaPeriodo += monto;
+            }
+            cobrosPorPaciente[pacId].ultimoCobroFechaISO = cDate;
             if (c.descripcion) cobrosPorPaciente[pacId].ultimoComprobante = c.descripcion;
 
+            const moraInfo = pacFechasMoraMap[pacId] || {};
             movimientosCaja.push({
-                fecha: cDateTime,
+                rawFecha: cDateTime,
+                fecha: formatFechaHoraDDMMYYYY(cDateTime),
                 paciente: pac.nombre,
                 nhc: pac.nhc,
+                fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                condicionCobro: evalExig.label,
                 monto,
                 concepto: 'Cobranza Caja SALUS',
                 medio: c.forma_pago || 'Caja / Transferencia',
@@ -1546,27 +1808,21 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         }
     });
 
-    const nhcsConCobrosSalus = new Set(cobrosSalus.map(c => c.nhc));
-
+    // Nivel 2: Seguimientos de pago (solo si el paciente no tuvo recibo ya contabilizado en SALUS)
+    const pacIdsConPagoSeg = new Set();
     seguimientos.forEach(s => {
-        if (s.tipo === 'pago' && s.monto > 0) {
+        if (s.tipo === 'pago' && Number(s.monto) > 0) {
             const pac = pacientesMap[s.paciente_id];
             if (pac && pac.nhc && nhcsConCobrosSalus.has(pac.nhc)) return;
+            pacIdsConPagoSeg.add(s.paciente_id);
+
             const pacNombre = pac ? pac.nombre : 'Paciente Desconocido';
             const pacNhc = pac ? (pac.nhc || 'S/D') : 'S/D';
             const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
             const sDateTime = s.created_at ? s.created_at.replace('T', ' ').substring(0, 16) : '';
             const monto = Number(s.monto);
 
-            if (!cobrosPorPaciente[s.paciente_id]) {
-                cobrosPorPaciente[s.paciente_id] = {
-                    totalPeriodo: 0,
-                    totalHistorico: 0,
-                    ultimoCobroFecha: sDate,
-                    ultimoComprobante: s.descripcion || '',
-                    ultimoOperador: s.usuario || '',
-                };
-            }
+            ensurePacCobroEntry(s.paciente_id, sDate, s.descripcion || '', s.usuario || '');
             cobrosPorPaciente[s.paciente_id].totalHistorico += monto;
 
             const inRange = effDesde && effHasta 
@@ -1574,15 +1830,26 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
                 : true;
 
             if (inRange) {
+                const evalExig = evaluarExigibilidadCobro(s.paciente_id, sDate);
                 cobrosPorPaciente[s.paciente_id].totalPeriodo += monto;
-                cobrosPorPaciente[s.paciente_id].ultimoCobroFecha = sDate;
+                if (evalExig.esExigible) {
+                    cobrosPorPaciente[s.paciente_id].cobradoExigiblePeriodo += monto;
+                } else {
+                    cobrosPorPaciente[s.paciente_id].cobradoEnGraciaPeriodo += monto;
+                }
+                cobrosPorPaciente[s.paciente_id].ultimoCobroFechaISO = sDate;
                 if (s.usuario) cobrosPorPaciente[s.paciente_id].ultimoOperador = s.usuario;
                 if (s.descripcion) cobrosPorPaciente[s.paciente_id].ultimoComprobante = s.descripcion;
 
+                const moraInfo = pacFechasMoraMap[s.paciente_id] || {};
                 movimientosCaja.push({
-                    fecha: sDateTime,
+                    rawFecha: sDateTime,
+                    fecha: formatFechaHoraDDMMYYYY(sDateTime),
                     paciente: pacNombre,
                     nhc: pacNhc,
+                    fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                    fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                    condicionCobro: evalExig.label,
                     monto,
                     concepto: 'Cuota / Pago a cuenta',
                     medio: s.descripcion?.includes('[') ? s.descripcion.split('[')[1]?.split(']')[0] : 'Transferencia / Efectivo',
@@ -1594,28 +1861,17 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         }
     });
 
-    // Sumar pacientes con deuda_cancelada que no tengan pago duplicado en seguimiento
-    const pacIdsConPagoSeg = new Set(
-        seguimientos.filter(s => s.tipo === 'pago' && s.monto > 0).map(s => s.paciente_id)
-    );
-
+    // Nivel 3: Pacientes con deuda_cancelada que NO tengan cobros duplicados ni en SALUS ni en Seguimiento
     pacientes.forEach(p => {
         if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
             const cancDate = p.deuda_cancelada_at.substring(0, 10);
             const cancDateTime = p.deuda_cancelada_at.replace('T', ' ').substring(0, 16);
             const montoCanc = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+            const yaContabilizado = (p.nhc && nhcsConCobrosSalus.has(p.nhc)) || pacIdsConPagoSeg.has(p.id);
 
-            if (!cobrosPorPaciente[p.id]) {
-                cobrosPorPaciente[p.id] = {
-                    totalPeriodo: 0,
-                    totalHistorico: 0,
-                    ultimoCobroFecha: cancDate,
-                    ultimoComprobante: 'Cancelación 100% Deuda',
-                    ultimoOperador: p.deuda_cancelada_por || 'Administración',
-                };
-            }
+            ensurePacCobroEntry(p.id, cancDate, 'Cancelación 100% Deuda', p.deuda_cancelada_por || 'Administración');
 
-            if (!pacIdsConPagoSeg.has(p.id)) {
+            if (!yaContabilizado && montoCanc > 0) {
                 cobrosPorPaciente[p.id].totalHistorico += montoCanc;
 
                 const inRange = effDesde && effHasta
@@ -1623,14 +1879,25 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
                     : true;
 
                 if (inRange) {
+                    const evalExig = evaluarExigibilidadCobro(p.id, cancDate);
                     cobrosPorPaciente[p.id].totalPeriodo += montoCanc;
-                    cobrosPorPaciente[p.id].ultimoCobroFecha = cancDate;
+                    if (evalExig.esExigible) {
+                        cobrosPorPaciente[p.id].cobradoExigiblePeriodo += montoCanc;
+                    } else {
+                        cobrosPorPaciente[p.id].cobradoEnGraciaPeriodo += montoCanc;
+                    }
+                    cobrosPorPaciente[p.id].ultimoCobroFechaISO = cancDate;
                     if (p.deuda_cancelada_por) cobrosPorPaciente[p.id].ultimoOperador = p.deuda_cancelada_por;
 
+                    const moraInfo = pacFechasMoraMap[p.id] || {};
                     movimientosCaja.push({
-                        fecha: cancDateTime,
+                        rawFecha: cancDateTime,
+                        fecha: formatFechaHoraDDMMYYYY(cancDateTime),
                         paciente: p.nombre,
                         nhc: p.nhc || 'S/D',
+                        fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                        fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                        condicionCobro: evalExig.label,
                         monto: montoCanc,
                         concepto: 'Cancelación Total (100%)',
                         medio: 'Liquidación / Pago Total',
@@ -1685,8 +1952,15 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
             tipoCobro = 'Cuotas de Plan Vigente';
         }
 
-        // Deuda vigente
-        const deudaVigente = p.categoria === 'deuda_cancelada' ? 0 : Number(p.deuda_total);
+        // Cuadre contable exacto por paciente:
+        // Deuda Original = Total Cobrado Histórico + Deuda Vigente Pendiente
+        const deudaVigente = p.categoria === 'deuda_cancelada' ? 0 : Math.max(0, Number(p.deuda_total) || 0);
+        const cobradoHistorico = Math.max(cobroInfo.totalPeriodo, cobroInfo.totalHistorico || 0);
+        const deudaOriginal = cobradoHistorico + deudaVigente;
+
+        const moraInfo = pacFechasMoraMap[p.id] || {};
+        const evalUltimoCobro = evaluarExigibilidadCobro(p.id, cobroInfo.ultimoCobroFechaISO);
+        const inicioGestISO = patientFirstGestion[p.id] || (p.ultimo_contacto_at ? p.ultimo_contacto_at.substring(0, 10) : null);
 
         pacientesCobradosList.push({
             id: p.id,
@@ -1694,34 +1968,42 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
             nhc: p.nhc,
             telefono: p.telefono,
             obraSocial: p.obra_social,
+            fechaAlta: moraInfo.fechaAltaDisplay || '-',
+            fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+            condicionCobro: evalUltimoCobro.label,
+            esExigible: evalUltimoCobro.esExigible,
             cobradoPeriodo: cobroInfo.totalPeriodo,
-            cobradoHistorico: cobroInfo.totalHistorico,
+            cobradoExigiblePeriodo: cobroInfo.cobradoExigiblePeriodo,
+            cobradoEnGraciaPeriodo: cobroInfo.cobradoEnGraciaPeriodo,
+            cobradoHistorico,
             tipoCobro,
             categoria: p.categoria,
             categoriaLabel: CATEGORIAS_DEUDOR[p.categoria]?.label || p.categoria,
-            deudaOriginal: Number(p.deuda_total) + cobroInfo.totalHistorico,
+            deudaOriginal,
             deudaVigente,
             tienePlan,
             detallePlan,
-            saldoPlan,
+            saldoPlan: p.categoria === 'deuda_cancelada' ? 0 : saldoPlan,
             gestionadoPor: cobroInfo.ultimoOperador || p.deuda_cancelada_por || 'Sistema',
-            fechaCobro: cobroInfo.ultimoCobroFecha,
-            fechaInicioGestion: patientFirstGestion[p.id] || (p.ultimo_contacto_at ? p.ultimo_contacto_at.substring(0, 10) : '-'),
+            fechaCobro: formatFechaDDMMYYYY(cobroInfo.ultimoCobroFechaISO),
+            fechaInicioGestion: formatFechaDDMMYYYY(inicioGestISO),
             observaciones: cobroInfo.ultimoComprobante
         });
     });
 
     // Ordenar de mayor a menor monto cobrado en el período
     pacientesCobradosList.sort((a, b) => b.cobradoPeriodo - a.cobradoPeriodo);
-    movimientosCaja.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    movimientosCaja.sort((a, b) => (b.rawFecha || '').localeCompare(a.rawFecha || ''));
 
-    // Resumen
+    // Resumen sincronizado 1:1 entre Hoja 1, Hoja 2 y Dashboard
     const totalCobradoPeriodo = pacientesCobradosList.reduce((s, p) => s + p.cobradoPeriodo, 0);
+    const totalCobradoExigible = pacientesCobradosList.reduce((s, p) => s + (p.cobradoExigiblePeriodo || 0), 0);
+    const totalCobradoEnGracia = pacientesCobradosList.reduce((s, p) => s + (p.cobradoEnGraciaPeriodo || 0), 0);
     const montoCanceladas = pacientesCobradosList
         .filter(p => p.categoria === 'deuda_cancelada')
         .reduce((s, p) => s + p.cobradoPeriodo, 0);
     const cantCanceladas = pacientesCobradosList.filter(p => p.categoria === 'deuda_cancelada').length;
-    const montoCuotas = totalCobradoPeriodo - montoCanceladas;
+    const montoCuotas = Math.max(0, totalCobradoPeriodo - montoCanceladas);
     const cantConPlan = pacientesCobradosList.filter(p => p.tienePlan).length;
     const saldoDeudaPendiente = pacientesCobradosList.reduce((s, p) => s + p.deudaVigente, 0);
 
@@ -1733,10 +2015,12 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
     const totalHistoricoCanceladasCount = pacientes.filter(p => p.categoria === 'deuda_cancelada').length;
 
     const resumen = {
-        totalCobradoPeriodo: metricas?.totalDeudaCobrada ?? totalCobradoPeriodo,
-        montoCanceladas: metricas?.montoDeudasCanceladas ?? montoCanceladas,
-        cantCanceladas: metricas?.countDeudasCanceladas ?? cantCanceladas,
-        montoCuotas: metricas?.montoCobrosCuotasYSeg ?? montoCuotas,
+        totalCobradoPeriodo,
+        totalCobradoExigible,
+        totalCobradoEnGracia,
+        montoCanceladas,
+        cantCanceladas,
+        montoCuotas,
         cantConPlan,
         saldoDeudaPendiente,
         totalHistoricoCobrado: metricas?.totalHistoricoCobrado ?? totalHistoricoCobrado,

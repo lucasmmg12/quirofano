@@ -120,25 +120,55 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         ? `AND [Fecha Visita] <= '${todayStr}'`
         : `AND [Fecha Visita] < '${endDate}'`;
 
-    // 1. TURNOS CREADOS (Bolsa 2 Grupal)
+    // Fecha de lookback (3 meses atrás) para aprovechar índices cuando el turno se asignó sobre un hueco creado previamente
+    const lookbackDateObj = new Date(year, month - 4, 1);
+    const lookbackDate = `${lookbackDateObj.getFullYear()}${String(lookbackDateObj.getMonth() + 1).padStart(2, '0')}01`;
+    const citaMonthPattern = `%/${startMonthStr}/${year} %`;
+
+    // 1. TURNOS CREADOS / ASIGNADOS EN EL PERÍODO (Bolsa 2 Grupal + Individual)
+    // Contempla tanto [Usuario Creacion Nombre] como la traza nominal con fecha/hora en [UsuarioCita] (ej. 'APELLIDO, NOMBRE(DD/MM/YYYY HH:MM:SS)')
     const turnosQuery = `
         SELECT 
-            [Usuario Creacion Nombre] AS Agente,
-            COUNT(DISTINCT [idVisita]) AS TurnosCreados
+            COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'OLIVIER ESQUIVEL, SOFIA FERNANDA')
+                                  OR [UsuarioCita] LIKE '%OLIVIER ESQUIVEL, SOFIA%(${citaMonthPattern}' THEN [idVisita] END) AS solivier,
+            COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'JACQUES SORIA, VIRGINIA')
+                                  OR [UsuarioCita] LIKE '%JACQUES SORIA, VIRGINIA%(${citaMonthPattern}' THEN [idVisita] END) AS vjacques,
+            COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] LIKE 'AGUILERA%DANIELA%')
+                                  OR [UsuarioCita] LIKE '%AGUILERA%DANIELA%(${citaMonthPattern}' THEN [idVisita] END) AS daguilera,
+            COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] LIKE 'LEAL,%ERICA%')
+                                  OR [UsuarioCita] LIKE '%LEAL,%ERICA%(${citaMonthPattern}' THEN [idVisita] END) AS eleal,
+            COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'ACOSTA ESQUIVEL, MARIA ANTONELLA')
+                                  OR [UsuarioCita] LIKE '%ACOSTA ESQUIVEL, MARIA ANTONELLA%(${citaMonthPattern}' THEN [idVisita] END) AS macosta
         FROM [SALUS].[dbo].[VLISE_Visitas]
-        WHERE [Fecha Hora Creacion] >= '${startDate}'
-          AND [Fecha Hora Creacion] <  '${endDate}'
-          AND [Usuario Creacion Nombre] IN (${agentNamesSql})
-          AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
-        GROUP BY [Usuario Creacion Nombre]
+        WHERE ([Fecha Hora Creacion] >= '${lookbackDate}' OR [Fecha Visita] >= '${startDate}')
+          AND ([Fecha Hora Creacion] IS NULL OR [Fecha Hora Creacion] < '${endDate}')
+          AND ([Paciente] IS NULL OR [Paciente] <> 'TURNOS ONLINE, PACIENTE')
     `;
 
     // 2. ASISTENCIA EFECTIVA (Bolsa 3 Individual)
     // Se priorizan siempre las que efectivamente se han hecho: presente, sobreturno, urgencia, internado
     // Y se cuentan únicamente las ausencias explícitas (las citas futuras o sin registrar no penalizan como ausencias)
     const asistenciaQuery = `
+        WITH CitasAgente AS (
+            SELECT 
+                [idVisita],
+                [Asistencia],
+                CASE 
+                    WHEN [Usuario Creacion Nombre] IN (${agentNamesSql}) THEN [Usuario Creacion Nombre]
+                    WHEN [UsuarioCita] LIKE '%OLIVIER ESQUIVEL, SOFIA%' THEN 'OLIVIER ESQUIVEL, SOFIA FERNANDA'
+                    WHEN [UsuarioCita] LIKE '%JACQUES SORIA, VIRGINIA%' THEN 'JACQUES SORIA, VIRGINIA'
+                    WHEN [UsuarioCita] LIKE '%AGUILERA%DANIELA%' THEN 'AGUILERA CARDOZO, DANIELA ROMINA'
+                    WHEN [UsuarioCita] LIKE '%LEAL,%ERICA%' THEN 'LEAL, ERICA'
+                    WHEN [UsuarioCita] LIKE '%ACOSTA ESQUIVEL, MARIA ANTONELLA%' THEN 'ACOSTA ESQUIVEL, MARIA ANTONELLA'
+                    ELSE NULL
+                END AS AgenteResuelto
+            FROM [SALUS].[dbo].[VLISE_Visitas]
+            WHERE [Fecha Visita] >= '${startDate}'
+              ${fechaVisitaEndFilter}
+              AND ([Paciente] IS NULL OR [Paciente] <> 'TURNOS ONLINE, PACIENTE')
+        )
         SELECT 
-            [Usuario Creacion Nombre] AS Agente,
+            AgenteResuelto AS Agente,
             COUNT(DISTINCT [idVisita]) AS TotalCitas,
             SUM(CASE WHEN LOWER([Asistencia]) LIKE '%asist%' 
                        OR LOWER([Asistencia]) LIKE '%realiz%' 
@@ -153,12 +183,9 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             SUM(CASE WHEN LOWER([Asistencia]) LIKE '%justificada%' AND LOWER([Asistencia]) NOT LIKE '%injustificada%' THEN 1 ELSE 0 END) AS Justificadas,
             SUM(CASE WHEN LOWER([Asistencia]) LIKE '%anulad%' OR LOWER([Asistencia]) LIKE '%cancel%' OR LOWER([Asistencia]) LIKE '%susp%' THEN 1 ELSE 0 END) AS Anuladas,
             SUM(CASE WHEN [Asistencia] IS NULL THEN 1 ELSE 0 END) AS SinRegistrar
-        FROM [SALUS].[dbo].[VLISE_Visitas]
-        WHERE [Fecha Visita] >= '${startDate}'
-          ${fechaVisitaEndFilter}
-          AND [Usuario Creacion Nombre] IN (${agentNamesSql})
-          AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
-        GROUP BY [Usuario Creacion Nombre]
+        FROM CitasAgente
+        WHERE AgenteResuelto IS NOT NULL
+        GROUP BY AgenteResuelto
     `;
 
     const [turnosRes, asistenciaRes] = await Promise.all([
@@ -175,12 +202,10 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', rol: 'Baja en Septiembre', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 }
     };
 
-    // Agregar turnos creados
-    for (const row of (turnosRes.recordset || [])) {
-        const meta = SALUS_AGENTS_MAP[row.Agente];
-        if (meta && agentesMap[meta.id]) {
-            agentesMap[meta.id].turnos += row.TurnosCreados;
-        }
+    // Agregar turnos creados / asignados desde fila agregada
+    const turnosRow = (turnosRes.recordset && turnosRes.recordset[0]) || {};
+    for (const agId of Object.keys(agentesMap)) {
+        agentesMap[agId].turnos = Number(turnosRow[agId] || 0);
     }
 
     // Agregar asistencia
@@ -304,10 +329,16 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
 export async function getTurnosDiariosContactCenter(pool, { fecha = null } = {}) {
     const today = fecha || new Date().toISOString().substring(0, 10); // YYYY-MM-DD
     const dateFormatted = today.replace(/-/g, '');
+    const [yyyy, mm, dd] = today.split('-');
+    const dmyStr = `${dd}/${mm}/${yyyy}`;
 
     const d = new Date(today + 'T12:00:00Z');
     d.setUTCDate(d.getUTCDate() + 1);
     const nextDayFormatted = d.toISOString().substring(0, 10).replace(/-/g, '');
+
+    const lookbackD = new Date(today + 'T12:00:00Z');
+    lookbackD.setUTCDate(lookbackD.getUTCDate() - 60);
+    const lookbackFormatted = lookbackD.toISOString().substring(0, 10).replace(/-/g, '');
 
     const agentNamesSql = Object.keys(SALUS_AGENTS_MAP).map(a => `'${a}'`).join(',');
     const query = `
@@ -325,29 +356,63 @@ export async function getTurnosDiariosContactCenter(pool, { fecha = null } = {})
             [Tipo Visita] AS TipoVisita,
             [Cliente] AS ObraSocial,
             [Usuario Creacion Nombre] AS Agente,
+            [UsuarioCita],
             [Fecha Hora Creacion] AS CreadoEl
         FROM [SALUS].[dbo].[VLISE_Visitas]
-        WHERE [Fecha Hora Creacion] >= '${dateFormatted}'
-          AND [Fecha Hora Creacion] <  '${nextDayFormatted}'
-          AND [Usuario Creacion Nombre] IN (${agentNamesSql})
-          AND [Paciente] <> 'TURNOS ONLINE, PACIENTE'
+        WHERE ([Fecha Hora Creacion] >= '${lookbackFormatted}' OR [Fecha Visita] >= '${dateFormatted}')
+          AND (
+              ([Fecha Hora Creacion] >= '${dateFormatted}' AND [Fecha Hora Creacion] < '${nextDayFormatted}' AND [Usuario Creacion Nombre] IN (${agentNamesSql}))
+              OR ([UsuarioCita] LIKE '%(${dmyStr} %' AND (
+                  [UsuarioCita] LIKE '%OLIVIER ESQUIVEL%' OR
+                  [UsuarioCita] LIKE '%JACQUES SORIA%' OR
+                  [UsuarioCita] LIKE '%AGUILERA%DANIELA%' OR
+                  [UsuarioCita] LIKE '%LEAL,%ERICA%' OR
+                  [UsuarioCita] LIKE '%ACOSTA ESQUIVEL%'
+              ))
+          )
+          AND ([Paciente] IS NULL OR [Paciente] <> 'TURNOS ONLINE, PACIENTE')
         ORDER BY [Fecha Hora Creacion] DESC
     `;
 
     const res = await pool.request().query(query);
     const agentesMap = {
-        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0, turnosDetalle: [] },
-        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0, turnosDetalle: [] },
-        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0, turnosDetalle: [] },
-        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0, turnosDetalle: [] },
-        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0, turnosDetalle: [] }
+        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', turnos: 0, turnosDetalle: [], seenVisitas: new Set() },
+        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', turnos: 0, turnosDetalle: [], seenVisitas: new Set() },
+        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', turnos: 0, turnosDetalle: [], seenVisitas: new Set() },
+        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', turnos: 0, turnosDetalle: [], seenVisitas: new Set() },
+        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', turnos: 0, turnosDetalle: [], seenVisitas: new Set() }
     };
 
+    const CITA_AGENT_PATTERNS = [
+        { id: 'solivier', regex: new RegExp(`OLIVIER ESQUIVEL[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'vjacques', regex: new RegExp(`JACQUES SORIA[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'daguilera', regex: new RegExp(`AGUILERA[^()]*DANIELA[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'eleal', regex: new RegExp(`LEAL,\\s*ERICA[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') },
+        { id: 'macosta', regex: new RegExp(`ACOSTA ESQUIVEL[^()]*\\(${dmyStr}\\s+(\\d{2}:\\d{2}:\\d{2})\\)`, 'i') }
+    ];
+
     for (const row of (res.recordset || [])) {
+        const matchedAgents = new Map();
         const meta = SALUS_AGENTS_MAP[row.Agente];
-        if (meta && agentesMap[meta.id]) {
-            agentesMap[meta.id].turnos += 1;
-            agentesMap[meta.id].turnosDetalle.push({
+        const creadoStr = row.CreadoEl ? new Date(row.CreadoEl).toISOString().substring(0, 10) : '';
+        if (meta && agentesMap[meta.id] && creadoStr === today) {
+            matchedAgents.set(meta.id, row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
+        }
+        if (row.UsuarioCita) {
+            for (const pat of CITA_AGENT_PATTERNS) {
+                const m = row.UsuarioCita.match(pat.regex);
+                if (m && !matchedAgents.has(pat.id)) {
+                    matchedAgents.set(pat.id, m[1] || '');
+                }
+            }
+        }
+
+        for (const [agId, horaAccion] of matchedAgents.entries()) {
+            const agObj = agentesMap[agId];
+            if (!agObj || agObj.seenVisitas.has(row.idVisita)) continue;
+            agObj.seenVisitas.add(row.idVisita);
+            agObj.turnos += 1;
+            agObj.turnosDetalle.push({
                 idVisita: row.idVisita,
                 idPaciente: row.IdPaciente,
                 paciente: row.Paciente,
@@ -360,17 +425,19 @@ export async function getTurnosDiariosContactCenter(pool, { fecha = null } = {})
                 horaVisita: row.HoraVisita || '',
                 tipoVisita: row.TipoVisita || '',
                 obraSocial: row.ObraSocial || '',
-                horaCreacion: row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+                horaCreacion: horaAccion || (row.CreadoEl ? new Date(row.CreadoEl).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''),
                 creadoEl: row.CreadoEl ? row.CreadoEl.toISOString() : ''
             });
         }
     }
 
+    const cleanAgentes = Object.values(agentesMap).map(({ seenVisitas, ...rest }) => rest);
+
     return {
         fecha: today,
         synced_at: new Date().toISOString(),
-        total: Object.values(agentesMap).reduce((acc, a) => acc + a.turnos, 0),
-        agentes: Object.values(agentesMap)
+        total: cleanAgentes.reduce((acc, a) => acc + a.turnos, 0),
+        agentes: cleanAgentes
     };
 }
 

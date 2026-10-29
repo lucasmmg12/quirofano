@@ -1021,8 +1021,12 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
         }
 
         // Clasificación de especialidad médica real según procedimiento
+        // CRITERIO DE PRODUCCIÓN: Solo contabilizar cirugías efectivamente realizadas (!isSusp),
+        // descontando suspendidas, reprogramadas (Causal #1) y "ya fue realizada" (Causal #3).
         const espReal = getEspecialidadMedica(s.descripcion, s.modulo);
-        especialidadesMap[espReal] = (especialidadesMap[espReal] || 0) + 1;
+        if (!isSusp) {
+            especialidadesMap[espReal] = (especialidadesMap[espReal] || 0) + 1;
+        }
 
         // Médico Cirujano (excluyendo guardias genéricas y agendas de salas del ranking nominal)
         if (s.medico) {
@@ -1044,14 +1048,16 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
             }
         }
 
-        if (s.obra_social) {
-            const os = s.obra_social.trim();
+        if (!isSusp) {
+            const os = (s.obra_social && s.obra_social.trim()) ? s.obra_social.trim() : 'PARTICULAR / SIN ESPECIFICAR';
             obrasSocialesMap[os] = (obrasSocialesMap[os] || 0) + 1;
         }
 
         const rawProc = s.descripcion ? s.descripcion.trim().toUpperCase() : (s.modulo ? s.modulo.trim().toUpperCase() : 'CIRUGIA GENERAL');
         const proc = rawProc.startsWith('(CX)') ? rawProc : `(CX) ${rawProc}`;
-        procTotalMap[proc] = (procTotalMap[proc] || 0) + 1;
+        if (!isSusp) {
+            procTotalMap[proc] = (procTotalMap[proc] || 0) + 1;
+        }
 
         if (isSusp) {
             procSuspMap[proc] = (procSuspMap[proc] || 0) + 1;
@@ -1072,7 +1078,7 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
     const cirujanos = Object.values(medicosMap)
         .map(c => ({
             ...c,
-            pctTotal: total > 0 ? Number(((c.realizadas / total) * 100).toFixed(2)) : 0,
+            pctTotal: realizadas > 0 ? Number(((c.realizadas / realizadas) * 100).toFixed(2)) : 0,
             pctSuspension: c.programadas > 0 ? Number(((c.suspendidas / c.programadas) * 100).toFixed(1)) : 0
         }))
         .sort((a, b) => b.realizadas - a.realizadas);
@@ -1082,23 +1088,21 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
         .map(([nombre, cant], idx) => ({
             nombre,
             cant,
-            pct: total > 0 ? Number(((cant / total) * 100).toFixed(1)) : 0,
+            pct: realizadas > 0 ? Number(((cant / realizadas) * 100).toFixed(1)) : 0,
             color: osColors[idx % osColors.length]
         }))
-        .sort((a, b) => b.cant - a.cant)
-        .slice(0, 12);
+        .sort((a, b) => b.cant - a.cant);
 
     const especialidades = Object.entries(especialidadesMap)
         .map(([nombre, cant], idx) => ({
             nombre,
             cant,
-            pct: total > 0 ? Number(((cant / total) * 100).toFixed(1)) : 0,
+            pct: realizadas > 0 ? Number(((cant / realizadas) * 100).toFixed(1)) : 0,
             color: osColors[idx % osColors.length]
         }))
-        .sort((a, b) => b.cant - a.cant)
-        .slice(0, 12);
+        .sort((a, b) => b.cant - a.cant);
 
-    // Cirugías más realizadas (tipos de procedimiento)
+    // Cirugías más realizadas (tipos de procedimiento efectivamente realizados)
     const procedimientosMasRealizados = Object.entries(procTotalMap)
         .map(([procFullName, cant], idx) => {
             const cleanName = procFullName.replace(/^\(CX\)\s*/i, '').trim();
@@ -1108,7 +1112,7 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
                 procedimientoRaw: procFullName,
                 especialidad: esp,
                 cant,
-                pct: total > 0 ? Number(((cant / total) * 100).toFixed(1)) : 0,
+                pct: realizadas > 0 ? Number(((cant / realizadas) * 100).toFixed(1)) : 0,
                 color: osColors[idx % osColors.length]
             };
         })
@@ -3242,9 +3246,40 @@ export default function QuirofanoDashboard({
                                     }}
                                 />
                             </div>
-                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '8px' }}>
                                 💡 Haz clic en una fila para bloquear y supeditar los gráficos a ese cirujano.
                             </div>
+
+                            {/* Totalizador fijo de Cirujanos */}
+                            {(() => {
+                                const totalCxCirujanos = filteredCirujanos.reduce((acc, c) => acc + (c.realizadas || 0), 0);
+                                const totalPctCirujanos = Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)));
+                                return (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        background: 'linear-gradient(90deg, #EFF6FF 0%, #F8FAFC 100%)',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: '8px',
+                                        padding: '7px 12px',
+                                        marginBottom: '10px',
+                                        fontSize: '0.75rem'
+                                    }}>
+                                        <span style={{ fontWeight: 800, color: '#1E3A8A' }}>
+                                            ∑ Total Cirugías Realizadas ({filteredCirujanos.length} cirujanos)
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                {totalCxCirujanos.toLocaleString('es-AR')} Cx
+                                            </span>
+                                            <span style={{ background: '#DBEAFE', color: '#1E40AF', padding: '2px 7px', borderRadius: '999px', fontWeight: 800, fontSize: '0.68rem' }}>
+                                                {totalPctCirujanos}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
@@ -3316,10 +3351,22 @@ export default function QuirofanoDashboard({
                                             );
                                         })}
                                     </tbody>
+                                    <tfoot>
+                                        <tr style={{ background: '#EFF6FF', borderTop: '2px solid #93C5FD', fontWeight: 800, color: '#1E3A8A' }}>
+                                            <td style={{ padding: '8px' }}>TOTAL CIRUJANOS ({filteredCirujanos.length})</td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#1E40AF', fontWeight: 900 }}>
+                                                {filteredCirujanos.reduce((acc, c) => acc + (c.realizadas || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#1E40AF' }}>
+                                                {Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)))}%
+                                            </td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#64748B' }}>—</td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                                 {filteredCirujanos.length > 35 && (
                                     <div style={{ textAlign: 'center', padding: '8px', fontSize: '0.72rem', color: '#64748B', background: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
-                                        Mostrando los primeros 35 de {filteredCirujanos.length} cirujanos activos (use el buscador para filtrar)
+                                        Mostrando los primeros 35 de {filteredCirujanos.length} cirujanos activos (el totalizador incluye los {filteredCirujanos.length})
                                     </div>
                                 )}
                             </div>
@@ -3371,9 +3418,39 @@ export default function QuirofanoDashboard({
                                 </button>
                             </div>
 
-                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '8px' }}>
                                 💡 Haz clic en una fila para bloquear y supeditar los gráficos a esa especialidad médica.
                             </div>
+
+                            {/* Totalizador fijo de Especialidades Médicas */}
+                            {(() => {
+                                const totalCxEsp = activeEspecialidadesData.reduce((acc, e) => acc + (e.cant || 0), 0);
+                                return (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        background: 'linear-gradient(90deg, #EFF6FF 0%, #F8FAFC 100%)',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: '8px',
+                                        padding: '7px 12px',
+                                        marginBottom: '10px',
+                                        fontSize: '0.75rem'
+                                    }}>
+                                        <span style={{ fontWeight: 800, color: '#1E3A8A' }}>
+                                            ∑ Total Cirugías Realizadas ({activeEspecialidadesData.length} especialidades)
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#1E40AF' }}>
+                                                {totalCxEsp.toLocaleString('es-AR')} Cx
+                                            </span>
+                                            <span style={{ background: '#DBEAFE', color: '#1E40AF', padding: '2px 7px', borderRadius: '999px', fontWeight: 800, fontSize: '0.68rem' }}>
+                                                100%
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
@@ -3431,6 +3508,15 @@ export default function QuirofanoDashboard({
                                             );
                                         })}
                                     </tbody>
+                                    <tfoot>
+                                        <tr style={{ background: '#EFF6FF', borderTop: '2px solid #93C5FD', fontWeight: 800, color: '#1E3A8A' }}>
+                                            <td style={{ padding: '8px' }}>TOTAL ESPECIALIDADES ({activeEspecialidadesData.length})</td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#1E40AF', fontWeight: 900 }}>
+                                                {activeEspecialidadesData.reduce((acc, e) => acc + (e.cant || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#2563EB', fontWeight: 800 }}>100%</td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
@@ -3480,9 +3566,40 @@ export default function QuirofanoDashboard({
                                     <HelpCircle size={12} /> Explicación
                                 </button>
                             </div>
-                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '10px' }}>
+                            <div style={{ fontSize: '0.70rem', color: '#64748B', marginBottom: '8px' }}>
                                 💡 Haz clic en una fila para bloquear y supeditar los gráficos a esa obra social.
                             </div>
+
+                            {/* Totalizador fijo de Obras Sociales */}
+                            {(() => {
+                                const totalCxOS = activeObrasSocialesData.reduce((acc, o) => acc + (o.cant || 0), 0);
+                                return (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        background: 'linear-gradient(90deg, #ECFDF5 0%, #F8FAFC 100%)',
+                                        border: '1px solid #A7F3D0',
+                                        borderRadius: '8px',
+                                        padding: '7px 12px',
+                                        marginBottom: '10px',
+                                        fontSize: '0.75rem'
+                                    }}>
+                                        <span style={{ fontWeight: 800, color: '#065F46' }}>
+                                            ∑ Total Cirugías Realizadas ({activeObrasSocialesData.length} financiadores)
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#059669' }}>
+                                                {totalCxOS.toLocaleString('es-AR')} Cx
+                                            </span>
+                                            <span style={{ background: '#D1FAE5', color: '#065F46', padding: '2px 7px', borderRadius: '999px', fontWeight: 800, fontSize: '0.68rem' }}>
+                                                100%
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                     <thead>
@@ -3539,6 +3656,15 @@ export default function QuirofanoDashboard({
                                             );
                                         })}
                                     </tbody>
+                                    <tfoot>
+                                        <tr style={{ background: '#ECFDF5', borderTop: '2px solid #6EE7B7', fontWeight: 800, color: '#065F46' }}>
+                                            <td style={{ padding: '8px' }}>TOTAL OBRAS SOCIALES ({activeObrasSocialesData.length})</td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#059669', fontWeight: 900 }}>
+                                                {activeObrasSocialesData.reduce((acc, o) => acc + (o.cant || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px', textAlign: 'right', color: '#059669', fontWeight: 800 }}>100%</td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
