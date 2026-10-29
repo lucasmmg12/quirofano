@@ -33,8 +33,28 @@ export default function TurnoKiosco() {
     const [boxesDisponibles, setBoxesDisponibles] = useState(null); // null = loading, [] = none
     const [pacienteInfo, setPacienteInfo] = useState(null);
     const [buscandoPaciente, setBuscandoPaciente] = useState(false);
+    const [showConfirmCard, setShowConfirmCard] = useState(false);
+    const [manualEditMode, setManualEditMode] = useState(false);
 
     const saludoActual = useMemo(() => getSaludoPorHora(), []);
+
+    const formatDniConPuntos = useCallback((rawDni) => {
+        const clean = String(rawDni || '').replace(/\D/g, '');
+        if (!clean) return '';
+        return clean.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }, []);
+
+    const speakGuidance = useCallback((text) => {
+        try {
+            if ('speechSynthesis' in window && text) {
+                window.speechSynthesis.cancel();
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = 'es-AR';
+                u.rate = 0.96;
+                window.speechSynthesis.speak(u);
+            }
+        } catch (_) {}
+    }, []);
 
     const checkBoxes = useCallback(() => {
         getBoxesDisponibles()
@@ -103,17 +123,6 @@ export default function TurnoKiosco() {
                 const info = await fetchPatientByDniLive(cleanDni);
                 if (active) {
                     setPacienteInfo(info);
-                    if (info?.displayName) {
-                        try {
-                            if ('speechSynthesis' in window) {
-                                window.speechSynthesis.cancel();
-                                const u = new SpeechSynthesisUtterance(`${saludoActual} ${info.displayName}`);
-                                u.lang = 'es-AR';
-                                u.rate = 0.95;
-                                window.speechSynthesis.speak(u);
-                            }
-                        } catch (_) {}
-                    }
                 }
             } catch (err) {
                 console.warn('[TurnoKiosco] Error buscando paciente:', err);
@@ -126,7 +135,51 @@ export default function TurnoKiosco() {
             active = false;
             clearTimeout(timer);
         };
-    }, [dni, saludoActual]);
+    }, [dni]);
+
+    // Transición Híbrida a Tarjeta Gigante de Confirmación:
+    // - 8 dígitos: transición automática apenas termina la búsqueda en SALUS (esté registrado o no).
+    // - 7 dígitos (adultos mayores): espera 2.4 seg por si la persona iba a tipear un 8vo dígito; si no tipea más, muestra la tarjeta gigante.
+    useEffect(() => {
+        const cleanDni = dni.replace(/\D/g, '').trim();
+        if (cleanDni.length < 7 || manualEditMode) {
+            setShowConfirmCard(false);
+            return;
+        }
+        if (buscandoPaciente) return;
+
+        if (cleanDni.length === 8) {
+            setShowConfirmCard(true);
+            return;
+        }
+
+        if (cleanDni.length === 7) {
+            // Si es un paciente de 7 dígitos ya encontrado en SALUS o no registrado, esperamos una breve pausa natural
+            // para no interrumpir a quien está escribiendo un DNI de 8 dígitos
+            const waitMs = pacienteInfo?.displayName ? 1800 : 2400;
+            const t = setTimeout(() => {
+                setShowConfirmCard(true);
+            }, waitMs);
+            return () => clearTimeout(t);
+        }
+    }, [dni, buscandoPaciente, manualEditMode, pacienteInfo]);
+
+    // Guía por voz clara + recordatorio a los 6 segundos si el paciente no toca el botón verde
+    useEffect(() => {
+        if (step !== STEPS.DNI || !showConfirmCard || loading) return;
+
+        if (pacienteInfo?.displayName) {
+            speakGuidance(`${saludoActual} ${pacienteInfo.displayName}. Por favor, tocá el botón verde en pantalla para obtener tu turno.`);
+        } else {
+            speakGuidance(`${saludoActual}. Por favor, tocá el botón verde en pantalla para obtener tu número de turno.`);
+        }
+
+        const reminderTimer = setTimeout(() => {
+            speakGuidance('Falta un solo paso: tocá el botón verde en el centro de la pantalla para ver tu número de turno.');
+        }, 6500);
+
+        return () => clearTimeout(reminderTimer);
+    }, [step, showConfirmCard, loading, pacienteInfo, saludoActual, speakGuidance]);
 
     // Crear turno con asignación balanceada de box
     const handleCreateTurno = useCallback(async (e) => {
@@ -135,6 +188,10 @@ export default function TurnoKiosco() {
             setError('Por favor, ingresá un DNI válido.');
             return;
         }
+
+        try {
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        } catch (_) {}
 
         setLoading(true);
         setError(null);
@@ -191,12 +248,17 @@ export default function TurnoKiosco() {
 
     // Reset completo
     const handleReset = useCallback(() => {
+        try {
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        } catch (_) {}
         setStep(STEPS.DNI);
         setDni('');
         setTurno(null);
         setError(null);
         setPacienteInfo(null);
         setBuscandoPaciente(false);
+        setShowConfirmCard(false);
+        setManualEditMode(false);
     }, []);
 
     // Auto-reset después de 8 segundos en la pantalla de ticket
@@ -323,8 +385,8 @@ export default function TurnoKiosco() {
                                             <div style={styles.betoGreetingHeader}>
                                                 ¡{saludoActual}, <span style={{ color: '#1565C0', textDecoration: 'underline' }}>{pacienteInfo.displayName}</span>! 👋
                                             </div>
-                                            <div style={styles.betoGreetingBody}>
-                                                Confirmá tu DNI abajo y presioná el botón para obtener tu turno.
+                                            <div style={{ ...styles.betoGreetingBody, color: '#047857', fontWeight: 800 }}>
+                                                👇 Tocá el botón verde en pantalla para obtener tu número de turno.
                                             </div>
                                             {pacienteInfo.mutua && (
                                                 <div style={styles.betoInfoPill}>
@@ -335,19 +397,19 @@ export default function TurnoKiosco() {
                                     ) : buscandoPaciente ? (
                                         <div>
                                             <div style={styles.betoGreetingHeader}>
-                                                ¡Hola! Verificando tus datos en SALUS...
+                                                ¡Hola! Verificando tus datos...
                                             </div>
                                             <div style={styles.betoGreetingBody}>
-                                                Aguardá un instante mientras te identificamos...
+                                                Aguardá un instante mientras procesamos tu documento...
                                             </div>
                                         </div>
                                     ) : dni.length >= 7 ? (
                                         <div>
                                             <div style={styles.betoGreetingHeader}>
-                                                ¡{saludoActual}! Te damos la bienvenida 👋
+                                                ¡{saludoActual}! Ya ingresaste tu DNI 👋
                                             </div>
-                                            <div style={styles.betoGreetingBody}>
-                                                Si tu DNI es correcto, presioná el botón para obtener tu turno.
+                                            <div style={{ ...styles.betoGreetingBody, color: '#047857', fontWeight: 800 }}>
+                                                👇 Tocá el botón verde en pantalla para obtener tu número de turno.
                                             </div>
                                         </div>
                                     ) : (
@@ -363,115 +425,330 @@ export default function TurnoKiosco() {
                                 </div>
                             </div>
 
-                            {/* Tarjeta Unificada DNI + Teclado Táctil Accesible */}
+                            {/* Tarjeta Unificada DNI + Teclado Táctil / Vista Gigante de Confirmación */}
                             <div style={styles.dniSection}>
-                                <div style={{ textAlign: 'center' }}>
-                                    <label style={styles.dniLabel}>
-                                        Número de Documento (DNI)
-                                    </label>
-                                    <div style={{ color: '#64748B', fontSize: '0.85rem', fontWeight: '600' }}>
-                                        Tocá los números para ingresar tu documento
-                                    </div>
-                                </div>
-                                
-                                <div style={{ position: 'relative', width: '100%' }}>
-                                    <input
-                                        type="text"
-                                        value={dni}
-                                        readOnly
-                                        placeholder="Ej: 28456789"
-                                        style={{
-                                            ...styles.dniInput,
-                                            borderColor: pacienteInfo ? '#10B981' : (dni.length >= 6 ? '#1565C0' : '#CBD5E1'),
-                                            boxShadow: pacienteInfo ? '0 0 0 3px rgba(16, 185, 129, 0.2)' : 'none'
-                                        }}
-                                    />
-                                    {buscandoPaciente && (
-                                        <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
-                                            <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Patient found confirmation pill */}
-                                {pacienteInfo && (
-                                    <div style={styles.patientConfirmedCard}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={styles.greenCheckIcon}>✓</div>
-                                            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                Paciente: {pacienteInfo.displayName}
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {/* Teclado numérico táctil accesible */}
-                                <div style={styles.keypad}>
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                                        <button 
-                                            key={num} type="button" 
-                                            onClick={() => setDni(d => (d + num).slice(0, 8))}
-                                            style={styles.keypadBtn}
-                                        >
-                                            {num}
-                                        </button>
-                                    ))}
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setDni('')}
-                                        style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#DC2626', borderColor: '#FECACA', fontSize: '2.8rem' }}
-                                    >
-                                        C
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setDni(d => (d + '0').slice(0, 8))}
-                                        style={styles.keypadBtn}
-                                    >
-                                        0
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setDni(d => d.slice(0, -1))}
-                                        style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#334155', borderColor: '#CBD5E1', fontSize: '2.8rem' }}
-                                    >
-                                        ⌫
-                                    </button>
-                                </div>
-
-                                {error && (
-                                    <div style={styles.errorBanner}>
-                                        {error}
-                                    </div>
-                                )}
-
-                                {/* Botón de confirmación integrado directamente debajo del teclado */}
-                                <button
-                                    type="submit"
-                                    disabled={loading || !dni || dni.length < 6}
-                                    style={{
-                                        width: '100%',
-                                        height: '72px',
-                                        minHeight: '72px',
-                                        borderRadius: '20px',
-                                        background: (loading || !dni || dni.length < 6) ? '#94A3B8' : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
-                                        color: '#fff',
-                                        fontSize: '1.65rem',
-                                        fontWeight: 900,
-                                        border: 'none',
-                                        cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
-                                        transition: 'all 0.2s',
-                                        boxShadow: (loading || !dni || dni.length < 6) ? 'none' : '0 6px 24px rgba(21, 101, 192, 0.35)',
+                                {showConfirmCard ? (
+                                    /* ═══ VISTA CENTRAL GIGANTE DE CONFIRMACIÓN (7 u 8 dígitos, registrado o nuevo) ═══ */
+                                    <div style={{
                                         display: 'flex',
+                                        flexDirection: 'column',
                                         alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '12px',
-                                        marginTop: '4px',
-                                        flexShrink: 0,
-                                    }}
-                                >
-                                    {loading ? 'Generando Turno...' : pacienteInfo ? `Obtener Turno · ${pacienteInfo.displayName} →` : 'Obtener Número →'}
-                                </button>
+                                        justifyContent: 'space-between',
+                                        textAlign: 'center',
+                                        padding: '12px 8px 6px',
+                                        flex: 1,
+                                        gap: '14px',
+                                        animation: 'fadeInUp 0.28s ease-out',
+                                    }}>
+                                        {/* Tarjeta de Identificación del Paciente */}
+                                        <div style={{
+                                            width: '100%',
+                                            background: pacienteInfo ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' : 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
+                                            border: pacienteInfo ? '2.5px solid #10B981' : '2.5px solid #3B82F6',
+                                            borderRadius: '20px',
+                                            padding: '16px 18px',
+                                            boxShadow: '0 6px 20px rgba(15, 23, 42, 0.06)',
+                                        }}>
+                                            <div style={{
+                                                fontSize: '0.88rem',
+                                                fontWeight: 800,
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '1px',
+                                                color: pacienteInfo ? '#047857' : '#1D4ED8',
+                                                marginBottom: '6px',
+                                            }}>
+                                                {pacienteInfo ? 'Paciente Identificado' : 'Documento Ingresado'}
+                                            </div>
+
+                                            <div style={{
+                                                fontSize: pacienteInfo ? '1.65rem' : '1.5rem',
+                                                fontWeight: 900,
+                                                color: '#0F172A',
+                                                lineHeight: 1.2,
+                                                marginBottom: '10px',
+                                            }}>
+                                                {pacienteInfo ? `¡Hola, ${pacienteInfo.displayName}!` : '¡Bienvenido/a a Sanatorio Argentino!'}
+                                            </div>
+
+                                            <div style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '10px',
+                                                background: '#FFFFFF',
+                                                padding: '8px 20px',
+                                                borderRadius: '999px',
+                                                border: '2px solid #CBD5E1',
+                                                fontSize: '1.45rem',
+                                                fontWeight: 900,
+                                                color: '#0D3B66',
+                                                letterSpacing: '1.5px',
+                                            }}>
+                                                DNI: {formatDniConPuntos(dni)}
+                                            </div>
+
+                                            {pacienteInfo?.mutua && (
+                                                <div style={{
+                                                    marginTop: '8px',
+                                                    fontSize: '0.95rem',
+                                                    fontWeight: 700,
+                                                    color: '#065F46',
+                                                }}>
+                                                    Cobertura: {pacienteInfo.mutua}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Banner de Instrucción Inequívoca con Flechas Animadas */}
+                                        <div style={{
+                                            width: '100%',
+                                            background: '#FEF3C7',
+                                            border: '2.5px solid #F59E0B',
+                                            borderRadius: '18px',
+                                            padding: '14px 16px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                        }}>
+                                            <div style={{
+                                                fontSize: '1.1rem',
+                                                fontWeight: 900,
+                                                color: '#92400E',
+                                                letterSpacing: '0.5px',
+                                            }}>
+                                                ⚠️ FALTA 1 SOLO PASO PARA TERMINAR
+                                            </div>
+                                            <div style={{
+                                                fontSize: '1.22rem',
+                                                fontWeight: 800,
+                                                color: '#78350F',
+                                            }}>
+                                                Tocá el botón verde de abajo para sacar tu turno
+                                            </div>
+                                            <div style={{
+                                                fontSize: '1.9rem',
+                                                lineHeight: 1,
+                                                marginTop: '4px',
+                                                animation: 'bounceDown 1s infinite',
+                                            }}>
+                                                👇👇👇
+                                            </div>
+                                        </div>
+
+                                        {error && (
+                                            <div style={styles.errorBanner}>
+                                                {error}
+                                            </div>
+                                        )}
+
+                                        {/* BOTÓN GIGANTE ESMERALDA PULSANTE */}
+                                        <button
+                                            type="submit"
+                                            disabled={loading}
+                                            style={{
+                                                width: '100%',
+                                                height: '124px',
+                                                minHeight: '124px',
+                                                borderRadius: '24px',
+                                                background: loading
+                                                    ? '#94A3B8'
+                                                    : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                                color: '#FFFFFF',
+                                                fontSize: '1.95rem',
+                                                fontWeight: 900,
+                                                border: '4px solid #A7F3D0',
+                                                cursor: loading ? 'not-allowed' : 'pointer',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '4px',
+                                                boxShadow: '0 12px 32px rgba(16, 185, 129, 0.45)',
+                                                animation: loading ? 'none' : 'pulseGreenBtn 1.5s infinite',
+                                                padding: '12px 20px',
+                                                lineHeight: 1.15,
+                                            }}
+                                        >
+                                            <span>
+                                                {loading ? 'Generando tu Turno...' : '👆 TOCÁ AQUÍ PARA'}
+                                            </span>
+                                            {!loading && (
+                                                <span style={{ fontSize: '2.15rem', letterSpacing: '0.5px' }}>
+                                                    OBTENER TU TURNO →
+                                                </span>
+                                            )}
+                                        </button>
+
+                                        {/* Botón Secundario para Editar o Agregar un dígito (ej. de 7 a 8 dígitos) */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setManualEditMode(true);
+                                                setShowConfirmCard(false);
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '14px 16px',
+                                                borderRadius: '16px',
+                                                background: '#F1F5F9',
+                                                color: '#334155',
+                                                border: '2px solid #CBD5E1',
+                                                fontSize: '1.15rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '8px',
+                                            }}
+                                        >
+                                            ✏️ Corregir o editar mi DNI
+                                        </button>
+                                    </div>
+                                ) : (
+                                    /* ═══ TECLADO NUMÉRICO TÁCTIL (Mientras ingresa el DNI o edita) ═══ */
+                                    <>
+                                        <div style={{ textAlign: 'center' }}>
+                                            <label style={styles.dniLabel}>
+                                                Número de Documento (DNI)
+                                            </label>
+                                            <div style={{ color: '#64748B', fontSize: '0.85rem', fontWeight: '600' }}>
+                                                Tocá los números para ingresar tu documento (7 u 8 dígitos)
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ position: 'relative', width: '100%' }}>
+                                            <input
+                                                type="text"
+                                                value={dni}
+                                                readOnly
+                                                placeholder="Ej: 28456789"
+                                                style={{
+                                                    ...styles.dniInput,
+                                                    borderColor: (pacienteInfo || dni.length >= 7) ? '#10B981' : (dni.length >= 6 ? '#1565C0' : '#CBD5E1'),
+                                                    boxShadow: (pacienteInfo || dni.length >= 7) ? '0 0 0 3px rgba(16, 185, 129, 0.25)' : 'none'
+                                                }}
+                                            />
+                                            {buscandoPaciente && (
+                                                <div style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)' }}>
+                                                    <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', color: '#1565C0' }} />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Aviso activo cuando ya tiene 7+ dígitos o paciente encontrado */}
+                                        {(pacienteInfo || dni.length >= 7) && (
+                                            <div style={{
+                                                ...styles.patientConfirmedCard,
+                                                background: '#FEF3C7',
+                                                borderColor: '#F59E0B',
+                                                justifyContent: 'center',
+                                                padding: '6px 12px',
+                                            }}>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#92400E', textAlign: 'center' }}>
+                                                    {pacienteInfo
+                                                        ? `👋 ¡Hola ${pacienteInfo.displayName}! 👇 Tocá el botón verde para sacar tu turno`
+                                                        : '👇 Si terminaste tu DNI, tocá el botón verde de abajo'}
+                                                </span>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Teclado numérico táctil accesible */}
+                                        <div style={styles.keypad}>
+                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                                                <button 
+                                                    key={num} type="button" 
+                                                    onClick={() => {
+                                                        setManualEditMode(false);
+                                                        setDni(d => (d + num).slice(0, 8));
+                                                    }}
+                                                    style={styles.keypadBtn}
+                                                >
+                                                    {num}
+                                                </button>
+                                            ))}
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    setManualEditMode(false);
+                                                    setShowConfirmCard(false);
+                                                    setDni('');
+                                                }}
+                                                style={{ ...styles.keypadBtn, background: '#FEE2E2', color: '#DC2626', borderColor: '#FECACA', fontSize: '2.8rem' }}
+                                            >
+                                                C
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    setManualEditMode(false);
+                                                    setDni(d => (d + '0').slice(0, 8));
+                                                }}
+                                                style={styles.keypadBtn}
+                                            >
+                                                0
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    setManualEditMode(false);
+                                                    setShowConfirmCard(false);
+                                                    setDni(d => d.slice(0, -1));
+                                                }}
+                                                style={{ ...styles.keypadBtn, background: '#E2E8F0', color: '#334155', borderColor: '#CBD5E1', fontSize: '2.8rem' }}
+                                            >
+                                                ⌫
+                                            </button>
+                                        </div>
+
+                                        {error && (
+                                            <div style={styles.errorBanner}>
+                                                {error}
+                                            </div>
+                                        )}
+
+                                        {/* Botón de confirmación integrado directamente debajo del teclado */}
+                                        <button
+                                            type="submit"
+                                            disabled={loading || !dni || dni.length < 6}
+                                            style={{
+                                                width: '100%',
+                                                height: '76px',
+                                                minHeight: '76px',
+                                                borderRadius: '20px',
+                                                background: (loading || !dni || dni.length < 6)
+                                                    ? '#94A3B8'
+                                                    : dni.length >= 7
+                                                        ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
+                                                        : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
+                                                color: '#fff',
+                                                fontSize: dni.length >= 7 ? '1.5rem' : '1.65rem',
+                                                fontWeight: 900,
+                                                border: dni.length >= 7 ? '3px solid #A7F3D0' : 'none',
+                                                cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
+                                                transition: 'all 0.2s',
+                                                boxShadow: (loading || !dni || dni.length < 6)
+                                                    ? 'none'
+                                                    : dni.length >= 7
+                                                        ? '0 8px 28px rgba(16, 185, 129, 0.45)'
+                                                        : '0 6px 24px rgba(21, 101, 192, 0.35)',
+                                                animation: (!loading && dni.length >= 7) ? 'pulseGreenBtn 1.5s infinite' : 'none',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '10px',
+                                                marginTop: '4px',
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            {loading
+                                                ? 'Generando Turno...'
+                                                : dni.length >= 7
+                                                    ? '👆 TOCÁ AQUÍ PARA OBTENER TU TURNO →'
+                                                    : 'Obtener Número →'}
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </form>
 
@@ -586,6 +863,20 @@ export default function TurnoKiosco() {
                 @keyframes shrinkBar {
                     from { width: 100%; }
                     to { width: 0%; }
+                }
+                @keyframes pulseGreenBtn {
+                    0%, 100% {
+                        transform: scale(1);
+                        box-shadow: 0 10px 28px rgba(16, 185, 129, 0.45), 0 0 0 0 rgba(16, 185, 129, 0.55);
+                    }
+                    50% {
+                        transform: scale(1.02);
+                        box-shadow: 0 14px 36px rgba(16, 185, 129, 0.65), 0 0 0 12px rgba(16, 185, 129, 0);
+                    }
+                }
+                @keyframes bounceDown {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(6px); }
                 }
                 @media print {
                     .no-print { display: none !important; }
