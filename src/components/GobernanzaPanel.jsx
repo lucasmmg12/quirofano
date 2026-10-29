@@ -432,10 +432,10 @@ export default function GobernanzaPanel({ currentUser }) {
                     {/* KPIs Ejecutivos */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
                         {[
-                            { label: 'AVANCE FÍSICO TÉCNICO', val: '88,5% (Mes 5 de 6)', sub: 'Fases 1 a 6 al 100% · Fase 7 al 90%', color: '#059669' },
-                            { label: 'INVERSIÓN TOTAL EJECUTADA', val: '$ 19.228.571', sub: '89,7% sobre $ 21.428.571 aprobados', color: '#0D3B66' },
-                            { label: 'SUBSIDIO ANR EJECUTADO (70%)', val: '$ 13.500.000', sub: '90,0% sobre $ 15.000.000 (Resta Mes 6)', color: '#2563EB' },
-                            { label: 'APORTE CONTRAPARTE SA (30%)', val: '$ 5.728.571', sub: '89,1% sobre $ 6.428.571 comprometidos', color: '#D97706' }
+                            { label: 'ARQUITECTURA E INFRAESTRUCTURA', val: '100% MONTADA', sub: 'Servidores, ETL SALUS, BD, Grabador IA y Tableros listos', color: '#059669' },
+                            { label: 'AVANCE FÍSICO GLOBAL', val: '62,5% (En Curso)', sub: 'En etapa de Entrevistas Semánticas por Servicio', color: '#0D3B66' },
+                            { label: 'SUBSIDIO ANR EJECUTADO (70%)', val: '$ 9.750.000', sub: '65,0% sobre $ 15.000.000 (Resta $ 5.250.000)', color: '#2563EB' },
+                            { label: 'INVERSIÓN TOTAL ACUMULADA', val: '$ 13.778.571', sub: '64,3% sobre $ 21.428.571 aprobados', color: '#D97706' }
                         ].map((k, idx) => (
                             <div key={idx} style={{ background: 'white', borderRadius: '14px', padding: '18px 20px', border: '1px solid #e2e8f0', borderTop: `4px solid ${k.color}` }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>{k.label}</div>
@@ -451,7 +451,7 @@ export default function GobernanzaPanel({ currentUser }) {
                             1. Rendición Contable y Financiera Consolidada (Anexo I — Punto 5)
                         </h3>
                         <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.88rem' }}>
-                            Ejecución acumulada al Mes 5 (Octubre 2026) respetando los topes de Bienes de Capital (30%), Consultoría (10%) y Recursos Humanos (60%).
+                            El 100% de la arquitectura, servidores/NAS, pipelines ETL sobre SALUS, base PostgreSQL, Grabador IA y Tableros de los 5 servicios ya está montado. Actualmente nos encontramos en la etapa de realización de las entrevistas con los referentes de cada sector.
                         </p>
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>

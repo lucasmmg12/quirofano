@@ -30,6 +30,15 @@ async function main() {
     fs.writeFileSync(outPath, buffer);
     console.log(`   [OK] PDF guardado en ${outPath} (${buffer.length} bytes)`);
 
+    // Guardar copia directa en el Escritorio para acceso inmediato del usuario
+    try {
+        const desktopPath = path.resolve('C:/Users/Sanatorio Argentino/Desktop', fileName);
+        fs.writeFileSync(desktopPath, buffer);
+        console.log(`   [OK] Copia directa guardada en Escritorio: ${desktopPath}`);
+    } catch (e) {
+        console.warn('   Aviso copiando a Escritorio:', e.message);
+    }
+
     // 3. Registrar en gobernanza_documentos para todos los proyectos activos
     const { data: proyectos } = await supabase.from('gobernanza_proyectos').select('id, nombre');
     const docUrl = `/docs/${fileName}`;
@@ -65,3 +74,4 @@ main().catch(err => {
     console.error(err);
     process.exit(1);
 });
+
