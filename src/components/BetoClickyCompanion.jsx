@@ -238,8 +238,21 @@ export default function BetoClickyCompanion({
                 }
             }
         };
+        const handleOpenEvent = (e) => {
+            setIsBarOpen(true);
+            if (e.detail?.autoVoice) {
+                setTimeout(() => toggleVoiceListening(), 80);
+            } else {
+                setTimeout(() => inputRef.current?.focus(), 60);
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown, true);
-        return () => window.removeEventListener('keydown', handleKeyDown, true);
+        window.addEventListener('beto-clicky-open', handleOpenEvent);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown, true);
+            window.removeEventListener('beto-clicky-open', handleOpenEvent);
+        };
     }, [isBarOpen, pointerState, stopSpeech]);
 
     // Cerrar puntero al cambiar de módulo

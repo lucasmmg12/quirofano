@@ -400,14 +400,8 @@ export default function BetoWidget({
         setMessages([{
             role: 'assistant',
             content:
-                `¡Hola **${userName}**! 👋 Soy **Beto**, el Núcleo de Inteligencia Clínica y Gobernanza de Datos del **Sanatorio Argentino**.\n\n` +
-                `Estoy **sincronizado 1:1 en tiempo real** con todos los módulos del sistema y los **5 Servicios Activos de Gobernanza** (UCI 16 Camas, Guardia Clínica e Internado, Quirófano Central y Hospital de Día, Diagnóstico por Imágenes DxI y Vigilancia Epidemiológica SNVS/C2 + los 29 Sectores).\n\n` +
-                `Además, podés enviarme:\n` +
-                `- 🎙️ **Audios o notas de voz** (con el micrófono o subiendo archivos de audio)\n` +
-                `- 🖼️ **Imágenes y capturas de pantalla** (análisis visual clínico/administrativo)\n` +
-                `- 📝 **Documentos Word (.docx)**, 📊 **Planillas Excel (.xlsx/.csv)** y 📄 **Archivos PDF (.pdf)**\n` +
-                `- 📥 **Exportar cualquier respuesta** directamente a **PDF Oficial** o **Excel (.xlsx)**\n\n` +
-                `¿Qué datos, indicador o documento analizamos ahora?`
+                `¡Hola **${userName}**! Soy **Beto**, tu asistente clínico y guía visual en pantalla.\n\n` +
+                `Podés consultarme sobre cualquier número, tabla o botón que estés viendo ahora mismo.`
         }]);
     }, [effectiveUser]);
 
@@ -1562,36 +1556,65 @@ export default function BetoWidget({
                     <div ref={chatEndRef} />
                 </div>
 
-                {/* SUGERENCIAS CONTEXTUALES */}
+                {/* GUÍA RÁPIDA DE TECLAS Y CÓMO PREGUNTAR (Sin burbujas invasivas) */}
                 {messages.length <= 1 && attachedFiles.length === 0 && !isRecordingVoice && (
                     <div style={{
-                        padding: '0 16px 8px',
-                        display: 'flex', flexWrap: 'wrap', gap: '6px',
+                        margin: '0 16px 12px',
+                        padding: '14px 16px',
+                        borderRadius: '14px',
+                        background: '#F8FAFC',
+                        border: '1px solid #E2E8F0',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
                     }}>
-                        {(SMART_SUGGESTIONS[currentModule] || SMART_SUGGESTIONS.default).map((q, i) => (
-                            <button
-                                key={i}
-                                onClick={() => handleSend(q)}
-                                style={{
-                                    padding: '6px 11px', borderRadius: '999px',
-                                    border: '1px solid #BFDBFE',
-                                    background: '#EFF6FF', color: '#0D3B66',
-                                    fontSize: '0.73rem', fontWeight: 700,
-                                    cursor: 'pointer', transition: 'all 0.15s',
-                                    whiteSpace: 'nowrap',
-                                }}
-                                onMouseOver={e => {
-                                    e.currentTarget.style.background = '#DBEAFE';
-                                    e.currentTarget.style.borderColor = '#38BDF8';
-                                }}
-                                onMouseOut={e => {
-                                    e.currentTarget.style.background = '#EFF6FF';
-                                    e.currentTarget.style.borderColor = '#BFDBFE';
-                                }}
-                            >
-                                {q}
-                            </button>
-                        ))}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0D3B66', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                ⌨️ Activación Rápida (Puntero en Pantalla)
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <kbd style={{ padding: '3px 7px', borderRadius: '6px', background: '#0D3B66', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace' }}>
+                                    Alt + B
+                                </kbd>
+                                <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>o</span>
+                                <kbd style={{ padding: '3px 7px', borderRadius: '6px', background: '#E2E8F0', color: '#1E293B', fontSize: '0.72rem', fontWeight: 800, fontFamily: 'monospace' }}>
+                                    Ctrl + Espacio
+                                </kbd>
+                            </div>
+                        </div>
+
+                        <div style={{ fontSize: '0.78rem', color: '#334155', lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div>• <strong>Para que mi cursor te señale dónde tocar:</strong> <em>"¿Dónde descargo el Excel?"</em> o <em>"Mostrame el filtro de mes"</em>.</div>
+                            <div>• <strong>Para entender un dato:</strong> <em>"¿Qué significa este porcentaje?"</em> o <em>"Explicame los totales"</em>.</div>
+                            <div>• <strong>Por voz:</strong> Tocá el micrófono <strong>🎤</strong> abajo para hablarme directamente.</div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                handleClose();
+                                setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent('beto-clicky-open'));
+                                }, 120);
+                            }}
+                            style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                            }}
+                        >
+                            Usar Puntero Guía en Pantalla ahora (Alt + B)
+                        </button>
                     </div>
                 )}
 
