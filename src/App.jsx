@@ -46,7 +46,6 @@ import PublicLabView from './components/PublicLabView.jsx';
 import LabPortal from './components/LabPortal.jsx';
 import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
 import BetoWidget from './components/BetoWidget.jsx';
-import BetoClickyCompanion from './components/BetoClickyCompanion.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
 import ManualProcedimientos from './components/ManualProcedimientos.jsx';
@@ -1357,12 +1356,6 @@ function App({ currentUser, onLogout }) {
                 hideFab={false}
                 externalOpen={betoWidgetOpen}
                 onExternalClose={() => setBetoWidgetOpen(false)}
-            />
-            <BetoClickyCompanion
-                currentUser={currentUser}
-                currentModule={activeView}
-                onNavigate={(mod) => setActiveView(mod)}
-                onOpenFullChat={() => setBetoWidgetOpen(true)}
             />
 
             {/* Modales y Asistentes complementarios (desactivados para usuario restringido UCI) */}
