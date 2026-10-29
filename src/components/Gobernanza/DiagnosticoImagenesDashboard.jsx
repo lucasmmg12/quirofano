@@ -42,7 +42,6 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
-import { registerBetoContext } from '../../services/betoService';
 
 // Colores Institucionales Sanatorio Argentino (Calidad-QOAG)
 const COLOR_PRIMARY = '#2563EB'; // Azul institucional
@@ -979,57 +978,71 @@ export default function DiagnosticoImagenesDashboard({
 
     // Sincronizar contexto vivo con BETO IA (paridad 1:1 con lo que se ve en pantalla)
     useEffect(() => {
-        if (!scopedData) return;
-        registerBetoContext('gobernanza_dxi', {
-            modulo: 'Diagnóstico por Imágenes (DxI)',
-            periodo: `${effectiveDesde} a ${effectiveHasta}`,
-            modalidadActiva: selectedModalidad,
-            ambitoActivo: filterAmbito,
-            asistenciaActiva: filterAsistencia,
-            agendaActiva: selectedAgenda,
+        if (typeof window === 'undefined' || !scopedData) return;
+        const dxiPayload = {
+            modulo: 'Gobernanza Indicadores - Diagnóstico por Imágenes (DxI)',
+            sectorId: 'DXI',
+            sector: 'Diagnóstico por Imágenes (Ecografía, Radiología, Mamografía, Tomografía y Densitometría)',
+            periodo: `${effectiveDesde} al ${effectiveHasta}`,
+            fechaDesde: effectiveDesde,
+            fechaHasta: effectiveHasta,
+            filtrosActivos: {
+                modalidad: selectedModalidad,
+                agenda: selectedAgenda,
+                ambito: filterAmbito,
+                asistencia: filterAsistencia
+            },
             kpis: {
-                realizadosEfectivos: totals.realizados,
+                estudiosEfectivamenteRealizados: totals.realizados,
                 totalTurnosCitados: totals.total,
-                pctEfectividad: `${totals.pctRealizados}%`,
-                presenteAmbulatorio: totals.presente,
-                internadoHospitalizacion: totals.internado,
+                tasaEfectividadPct: `${totals.pctRealizados}%`,
+                internados: totals.internado,
                 urgencias: totals.urgencia,
                 sobreturnos: totals.sobreturno,
-                ausentismoNoShow: totals.ausente,
-                pctAusentismo: `${totals.pctAusente}%`,
-                informadosFirmados: totals.informados,
-                pendientesInforme: totals.pendientes,
+                ausentesNoShow: totals.ausente,
+                tasaAusentismoPct: `${totals.pctAusente}%`,
+                sinRegistrarPendientesCierre: totals.sinRegistrar,
+                estudiosInformados: totals.informados,
                 pctInformados: `${totals.pctInformados}%`,
-                agendasActivas: totals.cantAgendas
+                pendientesInforme: totals.pendientes
             },
-            produccionEfectivaPorModalidad: modalidadCounts,
+            produccionEfectivaPorModalidad: modalidadTotals,
             topAgendas: agendasSummaryList.slice(0, 12).map(a => ({
                 agenda: a.agenda,
                 modalidad: a.modalidad,
-                realizadosEfectivos: a.realizados,
-                turnosTotales: a.total,
-                informados: a.informados
+                realizados: a.realizados,
+                totalTurnos: a.total,
+                ausentes: a.ausente,
+                sinRegistrar: a.sinRegistrar,
+                informados: a.informados,
+                pendientesInforme: a.pendientes
             })),
             topRealizadores: realizadoresRanking.slice(0, 10),
-            topSolicitantes: solicitantesRanking.slice(0, 10),
             topInformantes: informantesRanking.slice(0, 10),
-            topObrasSociales: obrasSocialesRanking.slice(0, 10)
-        });
+            topSolicitantes: solicitantesRanking.slice(0, 10),
+            topObrasSociales: obrasSocialesRanking.slice(0, 10),
+            centrosOperativos: centrosRanking
+        };
+        window.__dxi_active_context = dxiPayload;
+        if (window.__telar_active_sector === 'DXI') {
+            window.__indicadores_active_context = dxiPayload;
+        }
     }, [
         scopedData,
         effectiveDesde,
         effectiveHasta,
         selectedModalidad,
+        selectedAgenda,
         filterAmbito,
         filterAsistencia,
-        selectedAgenda,
         totals,
-        modalidadCounts,
+        modalidadTotals,
         agendasSummaryList,
         realizadoresRanking,
-        solicitantesRanking,
         informantesRanking,
-        obrasSocialesRanking
+        solicitantesRanking,
+        obrasSocialesRanking,
+        centrosRanking
     ]);
 
     // ─── EXPORTACIÓN A EXCEL MULTI-HOJA (.XLSX) ───
