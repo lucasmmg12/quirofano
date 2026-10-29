@@ -21,6 +21,9 @@ import {
     RENDICION_GOBIERNO_DATA,
     generateGobernanzaRendicionGobiernoPdf
 } from '../utils/gobernanzaRendicionGobiernoPdf';
+import {
+    generateGobernanzaPropuestaTrabajoPdf
+} from '../utils/gobernanzaPropuestaTrabajoPdf';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'proyecto'
@@ -183,6 +186,24 @@ export default function GobernanzaPanel({ currentUser }) {
                             }}
                         >
                             <FileText size={19} /> Informe Técnico y Contable (Gobierno SJ)
+                        </button>
+                        <button
+                            onClick={() => generateGobernanzaPropuestaTrabajoPdf()}
+                            style={{
+                                background: 'white',
+                                color: '#0D3B66',
+                                border: '1px solid #bfdbfe',
+                                borderRadius: '12px',
+                                padding: '12px 18px',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                cursor: 'pointer',
+                                boxShadow: '0 4px 6px rgba(37, 99, 235, 0.06)'
+                            }}
+                        >
+                            <Download size={18} color="#2563eb" /> Propuesta de Trabajo (29 Sectores)
                         </button>
                         <button onClick={() => setViewMode('gantt')} style={{ background: 'white', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 20px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
                             <CalendarDays size={20} color="#3b82f6" /> Calendario Global
