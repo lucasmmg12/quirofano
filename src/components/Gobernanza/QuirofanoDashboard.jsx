@@ -3163,7 +3163,7 @@ export default function QuirofanoDashboard({
                         </div>
 
                         <div style={{ height: '300px', width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <BarChart data={activeSalasData} layout="vertical" margin={{ top: 5, right: 30, left: 70, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
                                     <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 12 }} />
@@ -3717,7 +3717,7 @@ export default function QuirofanoDashboard({
                         </div>
 
                         <div style={{ height: '300px', width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <BarChart data={activeEdadesData} margin={{ top: 15, right: 20, left: 10, bottom: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="rango" tick={{ fontSize: 12, fontWeight: 700 }} />
@@ -3890,7 +3890,7 @@ export default function QuirofanoDashboard({
                         </div>
 
                         <div style={{ height: '320px', width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <ComposedChart data={activeTendenciaAsistencia} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
@@ -4430,7 +4430,7 @@ export default function QuirofanoDashboard({
 
                         {/* Contenedor del gráfico con dimensiones ampliadas para visualización clínica sin solapamiento */}
                         <div style={{ height: `${Math.max(480, displayMotivosSuspension.length * 44)}px`, width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <BarChart 
                                     data={displayMotivosSuspension} 
                                     layout="vertical" 
@@ -5650,7 +5650,7 @@ export default function QuirofanoDashboard({
                         </div>
 
                         <div style={{ height: '320px', width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <LineChart data={INTERANUAL_DATA} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
@@ -5672,7 +5672,7 @@ export default function QuirofanoDashboard({
                             Desglose 2026: Quirófano Central (Qx 1-4 + Sala de Partos) vs. Hospital de Día (HdD) — {activePeriodLabel}
                         </h3>
                         <div style={{ height: '240px', width: '100%' }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <BarChart data={INTERANUAL_DATA} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="mes" tick={{ fontSize: 12 }} />

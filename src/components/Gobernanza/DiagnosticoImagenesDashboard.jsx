@@ -42,6 +42,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
+import { registerBetoContext } from '../../services/betoService';
 
 // Colores Institucionales Sanatorio Argentino (Calidad-QOAG)
 const COLOR_PRIMARY = '#2563EB'; // Azul institucional
@@ -501,6 +502,7 @@ export default function DiagnosticoImagenesDashboard({
         });
         return counts;
     }, [scopedData, ESTADOS_EFECTIVOS]);
+    const modalidadTotals = modalidadCounts;
 
     // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
     const filteredAgendasRows = useMemo(() => {
@@ -974,6 +976,61 @@ export default function DiagnosticoImagenesDashboard({
         const peak = progressionChartData.reduce((max, p) => p.total > (max?.total || 0) ? p : max, null);
         return { total, avg, peak };
     }, [progressionChartData]);
+
+    // Sincronizar contexto vivo con BETO IA (paridad 1:1 con lo que se ve en pantalla)
+    useEffect(() => {
+        if (!scopedData) return;
+        registerBetoContext('gobernanza_dxi', {
+            modulo: 'Diagnóstico por Imágenes (DxI)',
+            periodo: `${effectiveDesde} a ${effectiveHasta}`,
+            modalidadActiva: selectedModalidad,
+            ambitoActivo: filterAmbito,
+            asistenciaActiva: filterAsistencia,
+            agendaActiva: selectedAgenda,
+            kpis: {
+                realizadosEfectivos: totals.realizados,
+                totalTurnosCitados: totals.total,
+                pctEfectividad: `${totals.pctRealizados}%`,
+                presenteAmbulatorio: totals.presente,
+                internadoHospitalizacion: totals.internado,
+                urgencias: totals.urgencia,
+                sobreturnos: totals.sobreturno,
+                ausentismoNoShow: totals.ausente,
+                pctAusentismo: `${totals.pctAusente}%`,
+                informadosFirmados: totals.informados,
+                pendientesInforme: totals.pendientes,
+                pctInformados: `${totals.pctInformados}%`,
+                agendasActivas: totals.cantAgendas
+            },
+            produccionEfectivaPorModalidad: modalidadCounts,
+            topAgendas: agendasSummaryList.slice(0, 12).map(a => ({
+                agenda: a.agenda,
+                modalidad: a.modalidad,
+                realizadosEfectivos: a.realizados,
+                turnosTotales: a.total,
+                informados: a.informados
+            })),
+            topRealizadores: realizadoresRanking.slice(0, 10),
+            topSolicitantes: solicitantesRanking.slice(0, 10),
+            topInformantes: informantesRanking.slice(0, 10),
+            topObrasSociales: obrasSocialesRanking.slice(0, 10)
+        });
+    }, [
+        scopedData,
+        effectiveDesde,
+        effectiveHasta,
+        selectedModalidad,
+        filterAmbito,
+        filterAsistencia,
+        selectedAgenda,
+        totals,
+        modalidadCounts,
+        agendasSummaryList,
+        realizadoresRanking,
+        solicitantesRanking,
+        informantesRanking,
+        obrasSocialesRanking
+    ]);
 
     // ─── EXPORTACIÓN A EXCEL MULTI-HOJA (.XLSX) ───
     const handleExportExcel = () => {
@@ -2177,7 +2234,7 @@ export default function DiagnosticoImagenesDashboard({
                                     <span style={{ fontSize: '0.75rem' }}>Verifique el rango de fechas seleccionado en la barra superior</span>
                                 </div>
                             ) : (
-                                <ResponsiveContainer width="100%" height={290} minWidth={0} minHeight={240}>
+                                <ResponsiveContainer width="100%" height={290} minWidth={1} minHeight={240}>
                                     <LineChart data={progressionChartData} margin={{ top: 12, right: 18, left: -10, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                         <XAxis 

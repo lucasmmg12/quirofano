@@ -629,7 +629,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                             </div>
 
                             <div style={{ width: '100%', height: 280 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                     <BarChart data={data.barrasMesAMes} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                         <XAxis dataKey="mes" stroke="#94a3b8" fontSize={11} tickLine={false} />
@@ -694,7 +694,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                             </div>
 
                             <div style={{ width: '100%', height: 280 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                     <AreaChart data={data.evolucionDeudaTotal} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
                                         <defs>
                                             <linearGradient id="deudaTotalGrad" x1="0" y1="0" x2="0" y2="1">
@@ -752,7 +752,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(320px, 1.2fr)', gap: '20px', alignItems: 'center' }}>
                             {/* Gráfico de barras horizontal */}
                             <div style={{ width: '100%', height: 340 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                     <BarChart
                                         layout="vertical"
                                         data={data.topDeudores}
