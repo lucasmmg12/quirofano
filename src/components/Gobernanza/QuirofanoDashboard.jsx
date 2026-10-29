@@ -3283,12 +3283,24 @@ export default function QuirofanoDashboard({
 
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                    <thead>
+                                    <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                                         <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#475569', textAlign: 'left' }}>
                                             <th style={{ padding: '8px' }}>Cirujano</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>Cx</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>% Total</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>% Susp.</th>
+                                        </tr>
+                                        <tr style={{ background: '#DBEAFE', borderBottom: '2px solid #93C5FD', color: '#1E3A8A', fontWeight: 900 }}>
+                                            <th style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.73rem' }}>
+                                                ∑ TOTAL ({filteredCirujanos.length} CIRUJANOS)
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#1E40AF', fontSize: '0.82rem' }}>
+                                                {filteredCirujanos.reduce((acc, c) => acc + (c.realizadas || 0), 0).toLocaleString('es-AR')}
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#1E40AF', fontSize: '0.76rem' }}>
+                                                {Math.min(100, Number(filteredCirujanos.reduce((acc, c) => acc + (c.pctTotal || 0), 0).toFixed(1)))}%
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#64748B', fontSize: '0.72rem' }}>—</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -3454,11 +3466,22 @@ export default function QuirofanoDashboard({
 
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                    <thead>
+                                    <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                                         <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#475569', textAlign: 'left' }}>
                                             <th style={{ padding: '8px' }}>Especialidad Médica</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>Cant Cx</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>% Total</th>
+                                        </tr>
+                                        <tr style={{ background: '#DBEAFE', borderBottom: '2px solid #93C5FD', color: '#1E3A8A', fontWeight: 900 }}>
+                                            <th style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.73rem' }}>
+                                                ∑ TOTAL ({activeEspecialidadesData.length} ESPECIALIDADES)
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#1E40AF', fontSize: '0.82rem' }}>
+                                                {activeEspecialidadesData.reduce((acc, e) => acc + (e.cant || 0), 0).toLocaleString('es-AR')}
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#1E40AF', fontSize: '0.76rem' }}>
+                                                100%
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -3602,11 +3625,22 @@ export default function QuirofanoDashboard({
 
                             <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                                    <thead>
+                                    <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                                         <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #CBD5E1', color: '#475569', textAlign: 'left' }}>
                                             <th style={{ padding: '8px' }}>Obra Social</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>Cant Cx</th>
                                             <th style={{ padding: '8px', textAlign: 'right' }}>% Total</th>
+                                        </tr>
+                                        <tr style={{ background: '#D1FAE5', borderBottom: '2px solid #6EE7B7', color: '#065F46', fontWeight: 900 }}>
+                                            <th style={{ padding: '7px 8px', textAlign: 'left', fontSize: '0.73rem' }}>
+                                                ∑ TOTAL ({activeObrasSocialesData.length} FINANCIADORES)
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#047857', fontSize: '0.82rem' }}>
+                                                {activeObrasSocialesData.reduce((acc, o) => acc + (o.cant || 0), 0).toLocaleString('es-AR')}
+                                            </th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right', color: '#047857', fontSize: '0.76rem' }}>
+                                                100%
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
