@@ -211,11 +211,14 @@ export default function BetoClickyCompanion({
         };
     }, [pointerState?.targetId]);
 
-    // Atajo global Alt + Espacio para invocar a Beto Clicky al instante, y Esc para cerrar
+    // Atajo global Alt + B (o Ctrl + Espacio) para invocar a Beto Clicky sin disparar el menú de ventana de Windows (Alt+Space)
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.altKey && e.code === 'Space') {
+            const isAltB = e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyB' || e.key?.toLowerCase() === 'b');
+            const isCtrlSpace = e.ctrlKey && !e.altKey && e.code === 'Space';
+            if (isAltB || isCtrlSpace) {
                 e.preventDefault();
+                e.stopPropagation();
                 setIsBarOpen(prev => {
                     const next = !prev;
                     if (next) {
@@ -235,8 +238,8 @@ export default function BetoClickyCompanion({
                 }
             }
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
     }, [isBarOpen, pointerState, stopSpeech]);
 
     // Cerrar puntero al cambiar de módulo
@@ -815,14 +818,14 @@ PREGUNTA DEL USUARIO: "${q}"`;
                         </button>
                     </form>
                 ) : (
-                    /* Píldora ultra-discreta para invocar el puntero por voz o Alt+Espacio */
+                    /* Píldora ultra-discreta para invocar el puntero por voz o Alt+B / Ctrl+Espacio */
                     <button
                         type="button"
                         onClick={() => {
                             setIsBarOpen(true);
                             setTimeout(() => inputRef.current?.focus(), 60);
                         }}
-                        title="Invocar Puntero Guía de Beto (Alt + Espacio)"
+                        title="Invocar Puntero Guía de Beto (Alt + B o Ctrl + Espacio)"
                         style={{
                             height: '38px',
                             padding: '0 13px',
@@ -851,7 +854,7 @@ PREGUNTA DEL USUARIO: "${q}"`;
                             color: '#93C5FD',
                             fontFamily: 'monospace',
                         }}>
-                            Alt+Esp
+                            Alt+B
                         </kbd>
                     </button>
                 )}
@@ -878,3 +881,4 @@ PREGUNTA DEL USUARIO: "${q}"`;
         </div>
     );
 }
+
