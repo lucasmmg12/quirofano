@@ -164,18 +164,18 @@ export default function TurnoKiosco() {
         }
     }, [dni, buscandoPaciente, manualEditMode, pacienteInfo]);
 
-    // Guía por voz clara + recordatorio a los 6 segundos si el paciente no toca el botón verde
+    // Guía por voz clara + recordatorio a los 6 segundos si el paciente no toca el botón
     useEffect(() => {
         if (step !== STEPS.DNI || !showConfirmCard || loading) return;
 
         if (pacienteInfo?.displayName) {
-            speakGuidance(`${saludoActual} ${pacienteInfo.displayName}. Por favor, tocá el botón verde en pantalla para obtener tu turno.`);
+            speakGuidance(`${saludoActual} ${pacienteInfo.displayName}. Por favor, presioná el botón Obtener Turno para finalizar.`);
         } else {
-            speakGuidance(`${saludoActual}. Por favor, tocá el botón verde en pantalla para obtener tu número de turno.`);
+            speakGuidance(`${saludoActual}. Por favor, presioná el botón Obtener Turno en pantalla para finalizar.`);
         }
 
         const reminderTimer = setTimeout(() => {
-            speakGuidance('Falta un solo paso: tocá el botón verde en el centro de la pantalla para ver tu número de turno.');
+            speakGuidance('Para finalizar, presioná el botón azul Obtener Turno en el centro de la pantalla.');
         }, 6500);
 
         return () => clearTimeout(reminderTimer);
@@ -383,10 +383,10 @@ export default function TurnoKiosco() {
                                     {pacienteInfo ? (
                                         <div style={{ animation: 'fadeInUp 0.25s ease-out' }}>
                                             <div style={styles.betoGreetingHeader}>
-                                                ¡{saludoActual}, <span style={{ color: '#1565C0', textDecoration: 'underline' }}>{pacienteInfo.displayName}</span>! 👋
+                                                ¡{saludoActual}, <span style={{ color: '#1565C0' }}>{pacienteInfo.displayName}</span>!
                                             </div>
-                                            <div style={{ ...styles.betoGreetingBody, color: '#047857', fontWeight: 800 }}>
-                                                👇 Tocá el botón verde en pantalla para obtener tu número de turno.
+                                            <div style={styles.betoGreetingBody}>
+                                                Verificá tu documento y presioná <strong>Obtener Turno</strong> para finalizar.
                                             </div>
                                             {pacienteInfo.mutua && (
                                                 <div style={styles.betoInfoPill}>
@@ -397,25 +397,25 @@ export default function TurnoKiosco() {
                                     ) : buscandoPaciente ? (
                                         <div>
                                             <div style={styles.betoGreetingHeader}>
-                                                ¡Hola! Verificando tus datos...
+                                                Verificando documento...
                                             </div>
                                             <div style={styles.betoGreetingBody}>
-                                                Aguardá un instante mientras procesamos tu documento...
+                                                Aguardá un instante mientras procesamos tus datos.
                                             </div>
                                         </div>
                                     ) : dni.length >= 7 ? (
                                         <div>
                                             <div style={styles.betoGreetingHeader}>
-                                                ¡{saludoActual}! Ya ingresaste tu DNI 👋
+                                                ¡{saludoActual}! Documento completo
                                             </div>
-                                            <div style={{ ...styles.betoGreetingBody, color: '#047857', fontWeight: 800 }}>
-                                                👇 Tocá el botón verde en pantalla para obtener tu número de turno.
+                                            <div style={styles.betoGreetingBody}>
+                                                Presioná <strong>Obtener Turno</strong> para emitir tu número de atención.
                                             </div>
                                         </div>
                                     ) : (
                                         <div>
                                             <div style={styles.betoGreetingHeader}>
-                                                ¡Hola! Te damos la bienvenida 👋
+                                                ¡{saludoActual}! Te damos la bienvenida
                                             </div>
                                             <div style={styles.betoGreetingBody}>
                                                 Ingresá tu DNI en el teclado táctil para sacar tu turno de atención.
@@ -425,114 +425,121 @@ export default function TurnoKiosco() {
                                 </div>
                             </div>
 
-                            {/* Tarjeta Unificada DNI + Teclado Táctil / Vista Gigante de Confirmación */}
+                            {/* Tarjeta Unificada DNI + Teclado Táctil / Vista Clínica de Confirmación */}
                             <div style={styles.dniSection}>
                                 {showConfirmCard ? (
-                                    /* ═══ VISTA CENTRAL GIGANTE DE CONFIRMACIÓN (7 u 8 dígitos, registrado o nuevo) ═══ */
+                                    /* ═══ VISTA CLÍNICA DE CONFIRMACIÓN (Estética Limpia e Institucional) ═══ */
                                     <div style={{
                                         display: 'flex',
                                         flexDirection: 'column',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         textAlign: 'center',
-                                        padding: '12px 8px 6px',
+                                        padding: '20px 16px 12px',
                                         flex: 1,
-                                        gap: '14px',
-                                        animation: 'fadeInUp 0.28s ease-out',
+                                        gap: '18px',
+                                        animation: 'fadeInUp 0.25s ease-out',
                                     }}>
-                                        {/* Tarjeta de Identificación del Paciente */}
+                                        {/* Indicador de Paso Superior */}
+                                        <div style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '6px 16px',
+                                            borderRadius: '999px',
+                                            background: '#EFF6FF',
+                                            border: '1px solid #BFDBFE',
+                                            color: '#1565C0',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 800,
+                                            letterSpacing: '1px',
+                                            textTransform: 'uppercase',
+                                        }}>
+                                            <span style={{
+                                                width: '8px',
+                                                height: '8px',
+                                                borderRadius: '50%',
+                                                background: '#1565C0',
+                                                display: 'inline-block',
+                                            }} />
+                                            Último paso · Confirmar turno
+                                        </div>
+
+                                        {/* Bloque Central Limpio: Identidad y Documento */}
                                         <div style={{
                                             width: '100%',
-                                            background: pacienteInfo ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)' : 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
-                                            border: pacienteInfo ? '2.5px solid #10B981' : '2.5px solid #3B82F6',
-                                            borderRadius: '20px',
-                                            padding: '16px 18px',
-                                            boxShadow: '0 6px 20px rgba(15, 23, 42, 0.06)',
+                                            background: '#F8FAFC',
+                                            border: '1.5px solid #E2E8F0',
+                                            borderRadius: '16px',
+                                            padding: '22px 20px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: '10px',
                                         }}>
                                             <div style={{
-                                                fontSize: '0.88rem',
-                                                fontWeight: 800,
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '1px',
-                                                color: pacienteInfo ? '#047857' : '#1D4ED8',
-                                                marginBottom: '6px',
+                                                width: '52px',
+                                                height: '52px',
+                                                borderRadius: '14px',
+                                                background: pacienteInfo ? '#ECFDF5' : '#EFF6FF',
+                                                border: pacienteInfo ? '1.5px solid #A7F3D0' : '1.5px solid #BFDBFE',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: pacienteInfo ? '#059669' : '#1565C0',
+                                                marginBottom: '2px',
                                             }}>
-                                                {pacienteInfo ? 'Paciente Identificado' : 'Documento Ingresado'}
+                                                {pacienteInfo ? <Check size={28} strokeWidth={2.75} /> : <User size={26} strokeWidth={2.25} />}
                                             </div>
 
                                             <div style={{
-                                                fontSize: pacienteInfo ? '1.65rem' : '1.5rem',
-                                                fontWeight: 900,
+                                                fontSize: '1.45rem',
+                                                fontWeight: 800,
                                                 color: '#0F172A',
-                                                lineHeight: 1.2,
-                                                marginBottom: '10px',
+                                                lineHeight: 1.25,
                                             }}>
-                                                {pacienteInfo ? `¡Hola, ${pacienteInfo.displayName}!` : '¡Bienvenido/a a Sanatorio Argentino!'}
+                                                {pacienteInfo ? pacienteInfo.displayName : 'Documento listo para ingresar'}
                                             </div>
 
                                             <div style={{
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
-                                                gap: '10px',
+                                                gap: '8px',
                                                 background: '#FFFFFF',
-                                                padding: '8px 20px',
-                                                borderRadius: '999px',
-                                                border: '2px solid #CBD5E1',
-                                                fontSize: '1.45rem',
-                                                fontWeight: 900,
+                                                padding: '8px 22px',
+                                                borderRadius: '12px',
+                                                border: '1.5px solid #CBD5E1',
+                                                fontSize: '1.55rem',
+                                                fontWeight: 800,
                                                 color: '#0D3B66',
                                                 letterSpacing: '1.5px',
+                                                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
                                             }}>
-                                                DNI: {formatDniConPuntos(dni)}
+                                                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#64748B', letterSpacing: '0.5px' }}>DNI</span>
+                                                {formatDniConPuntos(dni)}
                                             </div>
 
                                             {pacienteInfo?.mutua && (
                                                 <div style={{
-                                                    marginTop: '8px',
-                                                    fontSize: '0.95rem',
-                                                    fontWeight: 700,
-                                                    color: '#065F46',
+                                                    fontSize: '0.88rem',
+                                                    fontWeight: 600,
+                                                    color: '#475569',
+                                                    marginTop: '2px',
                                                 }}>
-                                                    Cobertura: {pacienteInfo.mutua}
+                                                    Cobertura: <strong style={{ color: '#0F172A' }}>{pacienteInfo.mutua}</strong>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Banner de Instrucción Inequívoca con Flechas Animadas */}
+                                        {/* Instrucción Clínica Serena */}
                                         <div style={{
-                                            width: '100%',
-                                            background: '#FEF3C7',
-                                            border: '2.5px solid #F59E0B',
-                                            borderRadius: '18px',
-                                            padding: '14px 16px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            gap: '4px',
+                                            fontSize: '1.08rem',
+                                            fontWeight: 600,
+                                            color: '#475569',
+                                            maxWidth: '420px',
+                                            lineHeight: 1.4,
                                         }}>
-                                            <div style={{
-                                                fontSize: '1.1rem',
-                                                fontWeight: 900,
-                                                color: '#92400E',
-                                                letterSpacing: '0.5px',
-                                            }}>
-                                                ⚠️ FALTA 1 SOLO PASO PARA TERMINAR
-                                            </div>
-                                            <div style={{
-                                                fontSize: '1.22rem',
-                                                fontWeight: 800,
-                                                color: '#78350F',
-                                            }}>
-                                                Tocá el botón verde de abajo para sacar tu turno
-                                            </div>
-                                            <div style={{
-                                                fontSize: '1.9rem',
-                                                lineHeight: 1,
-                                                marginTop: '4px',
-                                                animation: 'bounceDown 1s infinite',
-                                            }}>
-                                                👇👇👇
-                                            </div>
+                                            Presioná el botón a continuación para generar tu número de turno en recepción:
                                         </div>
 
                                         {error && (
@@ -541,45 +548,65 @@ export default function TurnoKiosco() {
                                             </div>
                                         )}
 
-                                        {/* BOTÓN GIGANTE ESMERALDA PULSANTE */}
+                                        {/* Botón Principal Institucional de Alta Visibilidad */}
                                         <button
                                             type="submit"
                                             disabled={loading}
                                             style={{
                                                 width: '100%',
-                                                height: '124px',
-                                                minHeight: '124px',
-                                                borderRadius: '24px',
+                                                height: '98px',
+                                                minHeight: '98px',
+                                                borderRadius: '18px',
                                                 background: loading
                                                     ? '#94A3B8'
-                                                    : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                                    : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
                                                 color: '#FFFFFF',
-                                                fontSize: '1.95rem',
-                                                fontWeight: 900,
-                                                border: '4px solid #A7F3D0',
+                                                border: 'none',
                                                 cursor: loading ? 'not-allowed' : 'pointer',
                                                 display: 'flex',
-                                                flexDirection: 'column',
                                                 alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: '4px',
-                                                boxShadow: '0 12px 32px rgba(16, 185, 129, 0.45)',
-                                                animation: loading ? 'none' : 'pulseGreenBtn 1.5s infinite',
-                                                padding: '12px 20px',
-                                                lineHeight: 1.15,
+                                                justifyContent: 'space-between',
+                                                padding: '0 24px 0 28px',
+                                                boxShadow: '0 10px 28px rgba(21, 101, 192, 0.35)',
+                                                animation: loading ? 'none' : 'pulseInstitutionalBtn 2s infinite',
+                                                transition: 'all 0.2s ease',
                                             }}
                                         >
-                                            <span>
-                                                {loading ? 'Generando tu Turno...' : '👆 TOCÁ AQUÍ PARA'}
-                                            </span>
-                                            {!loading && (
-                                                <span style={{ fontSize: '2.15rem', letterSpacing: '0.5px' }}>
-                                                    OBTENER TU TURNO →
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', gap: '3px' }}>
+                                                <span style={{
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 700,
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '1.4px',
+                                                    color: '#93C5FD',
+                                                }}>
+                                                    {loading ? 'Procesando solicitud' : 'Tocá aquí para finalizar'}
                                                 </span>
-                                            )}
+                                                <span style={{
+                                                    fontSize: '1.75rem',
+                                                    fontWeight: 800,
+                                                    letterSpacing: '-0.3px',
+                                                    color: '#FFFFFF',
+                                                }}>
+                                                    {loading ? 'Generando Turno...' : 'Obtener Turno'}
+                                                </span>
+                                            </div>
+
+                                            <div style={{
+                                                width: '54px',
+                                                height: '54px',
+                                                borderRadius: '14px',
+                                                background: 'rgba(255, 255, 255, 0.16)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0,
+                                            }}>
+                                                <ChevronRight size={32} color="#FFFFFF" strokeWidth={2.75} style={{ animation: 'nudgeRight 1.4s ease-in-out infinite' }} />
+                                            </div>
                                         </button>
 
-                                        {/* Botón Secundario para Editar o Agregar un dígito (ej. de 7 a 8 dígitos) */}
+                                        {/* Botón Secundario Sobrio para Modificar DNI */}
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -588,13 +615,13 @@ export default function TurnoKiosco() {
                                             }}
                                             style={{
                                                 width: '100%',
-                                                padding: '14px 16px',
-                                                borderRadius: '16px',
-                                                background: '#F1F5F9',
-                                                color: '#334155',
-                                                border: '2px solid #CBD5E1',
-                                                fontSize: '1.15rem',
-                                                fontWeight: 800,
+                                                padding: '12px 16px',
+                                                borderRadius: '12px',
+                                                background: '#FFFFFF',
+                                                color: '#475569',
+                                                border: '1.5px solid #CBD5E1',
+                                                fontSize: '1rem',
+                                                fontWeight: 700,
                                                 cursor: 'pointer',
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -602,7 +629,7 @@ export default function TurnoKiosco() {
                                                 gap: '8px',
                                             }}
                                         >
-                                            ✏️ Corregir o editar mi DNI
+                                            <ArrowLeft size={18} /> Corregir número de documento
                                         </button>
                                     </div>
                                 ) : (
@@ -613,7 +640,7 @@ export default function TurnoKiosco() {
                                                 Número de Documento (DNI)
                                             </label>
                                             <div style={{ color: '#64748B', fontSize: '0.85rem', fontWeight: '600' }}>
-                                                Tocá los números para ingresar tu documento (7 u 8 dígitos)
+                                                Tocá los números para ingresar tu documento
                                             </div>
                                         </div>
                                         
@@ -625,8 +652,8 @@ export default function TurnoKiosco() {
                                                 placeholder="Ej: 28456789"
                                                 style={{
                                                     ...styles.dniInput,
-                                                    borderColor: (pacienteInfo || dni.length >= 7) ? '#10B981' : (dni.length >= 6 ? '#1565C0' : '#CBD5E1'),
-                                                    boxShadow: (pacienteInfo || dni.length >= 7) ? '0 0 0 3px rgba(16, 185, 129, 0.25)' : 'none'
+                                                    borderColor: pacienteInfo ? '#10B981' : (dni.length >= 6 ? '#1565C0' : '#CBD5E1'),
+                                                    boxShadow: pacienteInfo ? '0 0 0 3px rgba(16, 185, 129, 0.2)' : 'none'
                                                 }}
                                             />
                                             {buscandoPaciente && (
@@ -636,20 +663,20 @@ export default function TurnoKiosco() {
                                             )}
                                         </div>
 
-                                        {/* Aviso activo cuando ya tiene 7+ dígitos o paciente encontrado */}
-                                        {(pacienteInfo || dni.length >= 7) && (
-                                            <div style={{
-                                                ...styles.patientConfirmedCard,
-                                                background: '#FEF3C7',
-                                                borderColor: '#F59E0B',
-                                                justifyContent: 'center',
-                                                padding: '6px 12px',
-                                            }}>
-                                                <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#92400E', textAlign: 'center' }}>
-                                                    {pacienteInfo
-                                                        ? `👋 ¡Hola ${pacienteInfo.displayName}! 👇 Tocá el botón verde para sacar tu turno`
-                                                        : '👇 Si terminaste tu DNI, tocá el botón verde de abajo'}
-                                                </span>
+                                        {/* Confirmación limpia de paciente encontrado */}
+                                        {pacienteInfo && (
+                                            <div style={styles.patientConfirmedCard}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                        <div style={styles.greenCheckIcon}>✓</div>
+                                                        <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#065F46', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {pacienteInfo.displayName}
+                                                        </span>
+                                                    </div>
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#047857', flexShrink: 0 }}>
+                                                        Presioná Obtener Turno ↓
+                                                    </span>
+                                                </div>
                                             </div>
                                         )}
                                         
@@ -713,26 +740,22 @@ export default function TurnoKiosco() {
                                             disabled={loading || !dni || dni.length < 6}
                                             style={{
                                                 width: '100%',
-                                                height: '76px',
-                                                minHeight: '76px',
-                                                borderRadius: '20px',
+                                                height: '74px',
+                                                minHeight: '74px',
+                                                borderRadius: '18px',
                                                 background: (loading || !dni || dni.length < 6)
                                                     ? '#94A3B8'
-                                                    : dni.length >= 7
-                                                        ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                                                        : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
+                                                    : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
                                                 color: '#fff',
-                                                fontSize: dni.length >= 7 ? '1.5rem' : '1.65rem',
-                                                fontWeight: 900,
-                                                border: dni.length >= 7 ? '3px solid #A7F3D0' : 'none',
+                                                fontSize: '1.55rem',
+                                                fontWeight: 800,
+                                                border: 'none',
                                                 cursor: (loading || !dni || dni.length < 6) ? 'not-allowed' : 'pointer',
                                                 transition: 'all 0.2s',
                                                 boxShadow: (loading || !dni || dni.length < 6)
                                                     ? 'none'
-                                                    : dni.length >= 7
-                                                        ? '0 8px 28px rgba(16, 185, 129, 0.45)'
-                                                        : '0 6px 24px rgba(21, 101, 192, 0.35)',
-                                                animation: (!loading && dni.length >= 7) ? 'pulseGreenBtn 1.5s infinite' : 'none',
+                                                    : '0 6px 24px rgba(21, 101, 192, 0.35)',
+                                                animation: (!loading && dni.length >= 7) ? 'pulseInstitutionalBtn 2s infinite' : 'none',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
@@ -743,9 +766,9 @@ export default function TurnoKiosco() {
                                         >
                                             {loading
                                                 ? 'Generando Turno...'
-                                                : dni.length >= 7
-                                                    ? '👆 TOCÁ AQUÍ PARA OBTENER TU TURNO →'
-                                                    : 'Obtener Número →'}
+                                                : pacienteInfo
+                                                    ? `Obtener Turno · ${pacienteInfo.displayName} →`
+                                                    : 'Obtener Turno →'}
                                         </button>
                                     </>
                                 )}
@@ -864,19 +887,19 @@ export default function TurnoKiosco() {
                     from { width: 100%; }
                     to { width: 0%; }
                 }
-                @keyframes pulseGreenBtn {
+                @keyframes pulseInstitutionalBtn {
                     0%, 100% {
                         transform: scale(1);
-                        box-shadow: 0 10px 28px rgba(16, 185, 129, 0.45), 0 0 0 0 rgba(16, 185, 129, 0.55);
+                        box-shadow: 0 10px 28px rgba(21, 101, 192, 0.35), 0 0 0 0 rgba(21, 101, 192, 0.45);
                     }
                     50% {
-                        transform: scale(1.02);
-                        box-shadow: 0 14px 36px rgba(16, 185, 129, 0.65), 0 0 0 12px rgba(16, 185, 129, 0);
+                        transform: scale(1.015);
+                        box-shadow: 0 14px 34px rgba(21, 101, 192, 0.5), 0 0 0 10px rgba(21, 101, 192, 0);
                     }
                 }
-                @keyframes bounceDown {
-                    0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(6px); }
+                @keyframes nudgeRight {
+                    0%, 100% { transform: translateX(0); }
+                    50% { transform: translateX(5px); }
                 }
                 @media print {
                     .no-print { display: none !important; }
