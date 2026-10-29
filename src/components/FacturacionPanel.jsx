@@ -51,7 +51,7 @@ const ANALISTAS_FAC = [
     'OROPEL, SANDRA VIVIANA',
     'ESCAÑUELA, ROSANA CARINA',
     'JORGE',
-    'MORENO, FLOR',
+    'MORENO Z., MARIA FLORENCIA',
     'PARTICULAR',
 ];
 
@@ -79,7 +79,8 @@ function daysBetween(from, to) {
 function shortName(fullName) {
     if (!fullName) return '—';
     const parts = fullName.split(',');
-    return parts[0]?.trim() || fullName;
+    const surname = parts[0]?.trim() || fullName;
+    return surname === 'MORENO Z.' ? 'MORENO' : surname;
 }
 
 export default function FacturacionPanel({ addToast, currentUser }) {
@@ -298,6 +299,12 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             // Normalizar: mapear usuario_facturo de SALUS al responsable y estado
             const normalized = data.map(a => {
                 let updates = {};
+                if (a.responsable_fac && a.responsable_fac.trim().toUpperCase() === 'MORENO, FLOR') {
+                    updates.responsable_fac = 'MORENO Z., MARIA FLORENCIA';
+                }
+                if (a.usuario_facturo && a.usuario_facturo.trim().toUpperCase() === 'MORENO, FLOR') {
+                    updates.usuario_facturo = 'MORENO Z., MARIA FLORENCIA';
+                }
                 // Si SALUS tiene usuario_facturo y no hay responsable_fac manual, usarlo
                 if (a.usuario_facturo && !a.responsable_fac) {
                     updates.responsable_fac = a.usuario_facturo;
