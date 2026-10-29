@@ -17,6 +17,10 @@ import {
     resolveServiceKeyFromProject,
     downloadGobernanzaServicePdf
 } from '../utils/gobernanzaServiceProjectPdf';
+import {
+    RENDICION_GOBIERNO_DATA,
+    generateGobernanzaRendicionGobiernoPdf
+} from '../utils/gobernanzaRendicionGobiernoPdf';
 
 export default function GobernanzaPanel({ currentUser }) {
     const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'proyecto'
@@ -161,7 +165,25 @@ export default function GobernanzaPanel({ currentUser }) {
                             <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '1.1rem' }}>Gestión centralizada de requerimientos, entrevistas e indicadores.</p>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => setViewMode('rendicion_gobierno')}
+                            style={{
+                                background: 'linear-gradient(135deg, #0D3B66 0%, #1d4ed8 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '12px',
+                                padding: '12px 20px',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                cursor: 'pointer',
+                                boxShadow: '0 6px 14px rgba(13, 59, 102, 0.25)'
+                            }}
+                        >
+                            <FileText size={19} /> Informe Técnico y Contable (Gobierno SJ)
+                        </button>
                         <button onClick={() => setViewMode('gantt')} style={{ background: 'white', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 20px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
                             <CalendarDays size={20} color="#3b82f6" /> Calendario Global
                         </button>
@@ -324,6 +346,207 @@ export default function GobernanzaPanel({ currentUser }) {
 
     if (viewMode === 'gantt') {
         return <GobernanzaGantt proyectos={proyectos} onBack={() => setViewMode('lista')} />;
+    }
+
+    if (viewMode === 'rendicion_gobierno') {
+        const rg = RENDICION_GOBIERNO_DATA;
+        return (
+            <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '32px 40px', fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {/* Header Institucional */}
+                    <div style={{
+                        background: 'linear-gradient(135deg, #0D3B66 0%, #1e3a8a 100%)',
+                        borderRadius: '18px',
+                        padding: '28px 32px',
+                        color: 'white',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '20px',
+                        boxShadow: '0 12px 28px rgba(13, 59, 102, 0.22)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flex: 1, minWidth: '300px' }}>
+                            <button
+                                onClick={() => setViewMode('lista')}
+                                style={{
+                                    background: 'rgba(255,255,255,0.14)',
+                                    border: '1px solid rgba(255,255,255,0.25)',
+                                    color: 'white',
+                                    borderRadius: '12px',
+                                    padding: '10px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <ArrowLeft size={20} />
+                            </button>
+                            <img
+                                src="/logosanatorio.png"
+                                alt="Sanatorio Argentino"
+                                style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'white', padding: '4px', objectFit: 'contain' }}
+                            />
+                            <div>
+                                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#93c5fd', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+                                    {rg.programa} · {rg.subtituloPrograma}
+                                </div>
+                                <h1 style={{ margin: '4px 0', fontSize: '1.45rem', fontWeight: 800 }}>
+                                    Informe Técnico y Contable de Avance y Rendición de Cuentas
+                                </h1>
+                                <div style={{ fontSize: '0.84rem', color: '#cbd5e1' }}>
+                                    <strong>Sanatorio Argentino</strong> · Innovación y Transformación Digital · Representante Legal: {rg.representanteLegal}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={async () => {
+                                setDownloadingPdfId('rendicion');
+                                try {
+                                    await generateGobernanzaRendicionGobiernoPdf();
+                                } finally {
+                                    setDownloadingPdfId(null);
+                                }
+                            }}
+                            style={{
+                                background: '#ffffff',
+                                color: '#0D3B66',
+                                border: 'none',
+                                borderRadius: '12px',
+                                padding: '13px 22px',
+                                fontWeight: 800,
+                                fontSize: '0.9rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                cursor: 'pointer',
+                                boxShadow: '0 6px 16px rgba(0,0,0,0.18)'
+                            }}
+                        >
+                            <Download size={18} />
+                            {downloadingPdfId === 'rendicion' ? 'Generando PDF...' : 'Descargar Informe PDF Oficial (4 Págs.)'}
+                        </button>
+                    </div>
+
+                    {/* KPIs Ejecutivos */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                        {[
+                            { label: 'AVANCE FÍSICO TÉCNICO', val: '88,5% (Mes 5 de 6)', sub: 'Fases 1 a 6 al 100% · Fase 7 al 90%', color: '#059669' },
+                            { label: 'INVERSIÓN TOTAL EJECUTADA', val: '$ 19.228.571', sub: '89,7% sobre $ 21.428.571 aprobados', color: '#0D3B66' },
+                            { label: 'SUBSIDIO ANR EJECUTADO (70%)', val: '$ 13.500.000', sub: '90,0% sobre $ 15.000.000 (Resta Mes 6)', color: '#2563EB' },
+                            { label: 'APORTE CONTRAPARTE SA (30%)', val: '$ 5.728.571', sub: '89,1% sobre $ 6.428.571 comprometidos', color: '#D97706' }
+                        ].map((k, idx) => (
+                            <div key={idx} style={{ background: 'white', borderRadius: '14px', padding: '18px 20px', border: '1px solid #e2e8f0', borderTop: `4px solid ${k.color}` }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>{k.label}</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: '6px 0 4px' }}>{k.val}</div>
+                                <div style={{ fontSize: '0.8rem', color: '#475569' }}>{k.sub}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* 1. Estado Contable Consolidado y Rubros ANR */}
+                    <div style={{ background: 'white', borderRadius: '16px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                        <h3 style={{ margin: '0 0 6px', color: '#0D3B66', fontSize: '1.15rem', fontWeight: 800 }}>
+                            1. Rendición Contable y Financiera Consolidada (Anexo I — Punto 5)
+                        </h3>
+                        <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.88rem' }}>
+                            Ejecución acumulada al Mes 5 (Octubre 2026) respetando los topes de Bienes de Capital (30%), Consultoría (10%) y Recursos Humanos (60%).
+                        </p>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#0D3B66', color: 'white', textAlign: 'left' }}>
+                                        <th style={{ padding: '10px 12px' }}>Rubro Elegible / Concepto</th>
+                                        <th style={{ padding: '10px 12px' }}>Límite Reglamentario</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Presupuesto Aprobado</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Ejecutado al Mes 5</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Saldo Mes 6</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>% Avance</th>
+                                        <th style={{ padding: '10px 12px' }}>Respaldo Técnico-Contable</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rg.rubrosAnr.map((r, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', background: i === rg.rubrosAnr.length - 1 ? '#eff6ff' : 'white', fontWeight: i === rg.rubrosAnr.length - 1 ? 800 : 400 }}>
+                                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0D3B66' }}>{r.rubro}</td>
+                                            <td style={{ padding: '10px 12px' }}>{r.limite}</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{r.asignado}</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>{r.ejecutado}</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.saldo}</td>
+                                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 800 }}>{r.avance}</td>
+                                            <td style={{ padding: '10px 12px', color: '#334155', fontSize: '0.8rem' }}>{r.detalleContable}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* 2. Flujo Contable Mensual (Mes 1 a Mes 6) */}
+                    <div style={{ background: 'white', borderRadius: '16px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                        <h3 style={{ margin: '0 0 6px', color: '#0D3B66', fontSize: '1.15rem', fontWeight: 800 }}>
+                            2. Cronograma Contable Mensual Devengado por Rubro (Junio a Noviembre 2026)
+                        </h3>
+                        <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#1e293b', color: 'white', textAlign: 'left' }}>
+                                        <th style={{ padding: '10px 12px' }}>Período / Mes</th>
+                                        <th style={{ padding: '10px 12px' }}>Fases</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Bienes Cap. (ANR)</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Consultoría (ANR)</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>RR.HH. (ANR)</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Subtotal ANR</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Contraparte SA</th>
+                                        <th style={{ padding: '10px 12px' }}>Entregable / Hito Certificado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rg.cronogramaContableMensual.map((row, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', background: i === rg.cronogramaContableMensual.length - 1 ? '#f0fdf4' : 'white', fontWeight: i === rg.cronogramaContableMensual.length - 1 ? 800 : 400 }}>
+                                            <td style={{ padding: '9px 12px', fontWeight: 700, color: '#0D3B66' }}>{row[0]}</td>
+                                            <td style={{ padding: '9px 12px' }}>{row[1]}</td>
+                                            <td style={{ padding: '9px 12px', textAlign: 'right' }}>{row[2]}</td>
+                                            <td style={{ padding: '9px 12px', textAlign: 'right' }}>{row[3]}</td>
+                                            <td style={{ padding: '9px 12px', textAlign: 'right' }}>{row[4]}</td>
+                                            <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#1d4ed8' }}>{row[5]}</td>
+                                            <td style={{ padding: '9px 12px', textAlign: 'right' }}>{row[6]}</td>
+                                            <td style={{ padding: '9px 12px', fontSize: '0.8rem', color: '#334155' }}>{row[7]}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* 3. Avance Técnico de las 8 Fases y Entregables */}
+                    <div style={{ background: 'white', borderRadius: '16px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                        <h3 style={{ margin: '0 0 6px', color: '#0D3B66', fontSize: '1.15rem', fontWeight: 800 }}>
+                            3. Demostración de Avance Técnico por Fase y Entregables (Fases 1 a 8)
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px', marginTop: '14px' }}>
+                            {rg.fasesAvanceTecnico.map((f, i) => (
+                                <div key={i} style={{ padding: '16px 18px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: '4px solid #0D3B66' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                                        <div>
+                                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase' }}>{f.fase} · {f.responsable}</span>
+                                            <h4 style={{ margin: '2px 0 0', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>{f.nombre}</h4>
+                                        </div>
+                                        <span style={{ padding: '4px 12px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 800, background: f.estado.includes('100%') ? '#dcfce7' : '#fef3c7', color: f.estado.includes('100%') ? '#166534' : '#92400e' }}>
+                                            {f.estado}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '0.84rem', color: '#334155', lineHeight: 1.5 }}>
+                                        <strong>Evidencia verificable en Sanatorio Argentino:</strong> {f.evidenciaReal}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     const activeServiceKey = resolveServiceKeyFromProject(selectedProyecto);
