@@ -750,6 +750,67 @@ export default function GuardiaClinicaDashboard({
         };
     }, [cirugiasConversionAll, triagePacientesAll, selectedPeriodo, currentData]);
 
+    // Sincronizar contexto en vivo de Guardia Clínica con Beto IA para coincidencia 100% exacta
+    useEffect(() => {
+        if (typeof window === 'undefined' || !currentData) return;
+        const extMes = extremosFranjasCache?.[selectedPeriodo] || null;
+        const guardiaPayload = {
+            modulo: 'Gobernanza Indicadores - Guardia Clínica y Seguimiento en Internado',
+            sectorId: 'GUARDIA',
+            sector: 'Guardia Clínica e Internado',
+            periodo: activePeriodLabel,
+            periodoKey: selectedPeriodo,
+            fechaDesde,
+            fechaHasta,
+            kpis: {
+                totalConsultasGuardia: currentData.total_consultas || 0,
+                consultasConTriage: currentData.consultas_con_triage || 0,
+                coberturaTriagePct: `${currentData.cobertura_triage_pct || 0}%`,
+                esperaMedicoPromedioMin: `${currentData.espera_medico_min_promedio || 0} min`,
+                permanenciaPromedioMin: `${currentData.permanencia_guardia_min_promedio || 0} min`,
+                pasesCirugiaTotal: currentData.cantidad_pases_cirugia || 0,
+                conversionCirugiaPct: `${currentData.conversion_cirugia_pct || 0}%`,
+                cirugiasUrgenciaRealDepuradas: enrichedMetrics?.urgenciasRealesCount || 0,
+                cirugiasProgramadasExcluidas: enrichedMetrics?.programadasExcluidasCount || 0,
+                reconsulta72hPct: `${currentData.reconsulta_72h_pct || 0}%`,
+                reinternacion72hPct: `${currentData.reinternacion_72h_pct || 0}%`,
+                totalAltasClinicas: currentData.total_altas_clinicas || 0,
+                altasConEpicrisis: currentData.altas_con_epicrisis || 0,
+                adherenciaEpicrisisPct: `${currentData.adherencia_epicrisis_pct || 0}%`
+            },
+            curvaOportunidadOutliers: extMes
+                ? {
+                    enMetaHasta30m: extMes.en_meta_30m || 0,
+                    demoraLeve31a60m: extMes.demora_31_60m || 0,
+                    outliersModerados61a90m: extMes.outliers_61_90m || 0,
+                    outliersCriticosMas90m: extMes.outliers_mas_90m || 0,
+                    permanenciaProlongadaMas3h: extMes.permanencia_mas_3h || 0
+                }
+                : null,
+            triageSeveridad: triageChartData,
+            destinosPostGuardia: destinosChartData,
+            topDiagnosticos: (currentData.diagnosticos_frecuentes || []).slice(0, 10),
+            admisionesClinicasResumen: currentAdmisiones,
+            serieEvolucionMensual: evolutionChartData
+        };
+        window.__guardia_active_context = guardiaPayload;
+        if (window.__telar_active_sector === 'GUARDIA') {
+            window.__indicadores_active_context = guardiaPayload;
+        }
+    }, [
+        currentData,
+        selectedPeriodo,
+        activePeriodLabel,
+        fechaDesde,
+        fechaHasta,
+        extremosFranjasCache,
+        enrichedMetrics,
+        triageChartData,
+        destinosChartData,
+        currentAdmisiones,
+        evolutionChartData
+    ]);
+
     // Copiar query al portapapeles
     const handleCopySql = (sql) => {
         navigator.clipboard.writeText(sql);

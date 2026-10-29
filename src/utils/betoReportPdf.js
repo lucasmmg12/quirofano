@@ -11,6 +11,7 @@
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { installSafePdfText } from './gobernanzaServiceProjectPdf';
 
 // ─── Color palette (Estándar Institucional Asociaciones — Sanatorio Argentino) ───
 const COLORS = {
@@ -477,7 +478,7 @@ export function parseMovementBulletLine(line) {
 export async function generateBetoReportPdf(markdown, reportTitle, excelData) {
     const numCols = (excelData?.columns?.length) || 0;
     const isLandscape = numCols >= 6;
-    const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    const doc = installSafePdfText(new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' }));
     const fontName = await loadMontserratFonts(doc);
     const logoBase64 = await loadCircularLogoBase64();
 

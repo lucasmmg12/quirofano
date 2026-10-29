@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { 
     Activity, Calendar, Users, BarChart3, ShieldAlert,
@@ -155,6 +155,40 @@ export default function EpidemiologiaDashboard({
             return true;
         });
     }, [casosPeriodo, filtroPatologia, filtroGrupoEtario, searchTerm]);
+
+    // Sincronizar contexto en vivo de Vigilancia Epidemiológica (Planilla C2 SNVS 2.0) con Beto IA
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const epiPayload = {
+            modulo: 'Gobernanza Indicadores - Vigilancia Epidemiológica (Planilla C2 SNVS 2.0) y Neurocirugía',
+            sectorId: 'EPIDEMIOLOGIA',
+            sector: 'Vigilancia Epidemiológica (Dr. Romano) y Neurocirugía',
+            periodo: periodoLabel,
+            fechaDesde: fechaDesde || '2026-10-01',
+            fechaHasta: fechaHasta || '2026-10-31',
+            filtrosActivos: {
+                patologia: filtroPatologia,
+                grupoEtario: filtroGrupoEtario,
+                busqueda: searchTerm
+            },
+            kpis: {
+                totalNotificacionesPeriodo: kpis.totalMes,
+                bronquiolitisMenores2Anios: kpis.bronquiolitisMes,
+                infeccionesRespiratoriasTotales: kpis.respiratoriasMes,
+                influenzaEti: kpis.etiMes,
+                neumonias: kpis.neumoniaMes,
+                diarreasGastroenteritis: kpis.diarreasMes,
+                varicela: kpis.varicelaMes,
+                enfermedadesTransmisionSexualETS: kpis.etsMes
+            },
+            serieEpidemiologica12Meses: SERIE_EPIDEMIOLOGICA_MENSUAL,
+            casosNominalesMuestra: casosFiltrados.slice(0, 20)
+        };
+        window.__epidemiologia_active_context = epiPayload;
+        if (window.__telar_active_sector === 'EPIDEMIOLOGIA') {
+            window.__indicadores_active_context = epiPayload;
+        }
+    }, [periodoLabel, fechaDesde, fechaHasta, filtroPatologia, filtroGrupoEtario, searchTerm, kpis, casosFiltrados]);
 
 
     // Exportación a Excel de la Planilla C2 Oficial Completa

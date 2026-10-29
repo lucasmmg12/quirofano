@@ -1353,7 +1353,7 @@ function App({ currentUser, onLogout }) {
                 currentUser={currentUser}
                 currentModule={activeView}
                 onNavigate={(mod) => setActiveView(mod)}
-                hideFab={true}
+                hideFab={false}
                 externalOpen={betoWidgetOpen}
                 onExternalClose={() => setBetoWidgetOpen(false)}
             />

@@ -1581,33 +1581,49 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
         // 2. Sincronizar contexto activo para que Beto IA responda exactamente con los mismos números del dashboard
         if (typeof window !== 'undefined') {
-            window.__indicadores_active_context = {
-                modulo: 'Gobernanza Indicadores - Días Cama y Ocupación',
-                sector: activeSectorConfig.label,
-                subNivel: sectorId === 'UCI' ? uciSubNivel : null,
-                dotacionCamas: camasTotales,
-                periodo: `${fechaDesde} al ${fechaHasta}`,
-                fechaDesde,
-                fechaHasta,
-                kpis: {
-                    diasCamasOcupados: metrics.diasOcupados,
-                    diasCamasDisponibles: metrics.camasDisponibles,
-                    porcentajeOcupacion: `${metrics.porcOcupacion}%`,
-                    porcentajeDefuncion: `${metrics.porcDefuncion}%`,
-                    alosDiasEstancia: `${metrics.alos} días`,
-                    totalAdmisionesUnicas: metrics.totalAdmisiones,
-                    defunciones: metrics.defunciones,
-                    intensidadDiagnostica: `${metrics.intensidadCamaDia} estudios/cama-día`,
-                    totalEstudiosRealizados: metrics.totalEstudiosPeriodo || 0
-                },
-                topEspecialidades: metrics.topEspecialidades?.slice(0, 5) || [],
-                motivosEgreso: metrics.dataMotivosAlta?.slice(0, 4) || [],
-                demografia: {
-                    pctMujeres: `${metrics.pctMujeres}%`,
-                    pctHombres: `${metrics.pctHombres}%`
-                },
-                indicadoresDetalle: activeIndicatorsList
-            };
+            window.__telar_active_sector = sectorId;
+            const isBedOccupancySector = !['GUARDIA', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI'].includes(sectorId);
+
+            if (isBedOccupancySector) {
+                const uciPayload = {
+                    modulo: 'Gobernanza Indicadores - Unidad de Cuidados Críticos (UCI)',
+                    sectorId,
+                    sector: activeSectorConfig.label,
+                    subNivel: sectorId === 'UCI' ? uciSubNivel : null,
+                    dotacionCamas: camasTotales,
+                    periodo: `${fechaDesde} al ${fechaHasta}`,
+                    fechaDesde,
+                    fechaHasta,
+                    kpis: {
+                        diasCamasOcupados: metrics.diasOcupados,
+                        diasCamasDisponibles: metrics.camasDisponibles,
+                        porcentajeOcupacion: `${metrics.porcOcupacion}%`,
+                        porcentajeDefuncion: `${metrics.porcDefuncion}%`,
+                        alosDiasEstancia: `${metrics.alos} días`,
+                        totalAdmisionesUnicas: metrics.totalAdmisiones,
+                        defunciones: metrics.defunciones,
+                        intensidadDiagnostica: `${metrics.intensidadCamaDia} estudios/cama-día`,
+                        totalEstudiosRealizados: metrics.totalEstudiosPeriodo || 0
+                    },
+                    topEspecialidades: metrics.topEspecialidades?.slice(0, 6) || [],
+                    motivosEgreso: metrics.dataMotivosAlta?.slice(0, 5) || [],
+                    demografia: {
+                        pctMujeres: `${metrics.pctMujeres}%`,
+                        pctHombres: `${metrics.pctHombres}%`
+                    },
+                    indicadoresDetalle: activeIndicatorsList
+                };
+                window.__uci_active_context = uciPayload;
+                window.__indicadores_active_context = uciPayload;
+            } else if (sectorId === 'GUARDIA' && window.__guardia_active_context) {
+                window.__indicadores_active_context = window.__guardia_active_context;
+            } else if (sectorId === 'QUIROFANO' && window.__quirofano_active_context) {
+                window.__indicadores_active_context = window.__quirofano_active_context;
+            } else if (sectorId === 'DXI' && window.__dxi_active_context) {
+                window.__indicadores_active_context = window.__dxi_active_context;
+            } else if (sectorId === 'EPIDEMIOLOGIA' && window.__epidemiologia_active_context) {
+                window.__indicadores_active_context = window.__epidemiologia_active_context;
+            }
         }
 
         // 3. Sincronizar store global de Telar

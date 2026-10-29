@@ -2450,10 +2450,15 @@ export default function QuirofanoDashboard({
                         causales: 'Causales #1 (Reprog.), #3 (Ya realizada), #8 (Cirujano), #10 (Prótesis), #13 (Quirófano)'
                     }
                 },
-                motivosOficiales: activeMotivosSuspension
+                motivosOficiales: activeMotivosSuspension,
+                bloquesQuirurgicosResumen: bloquesMetricsSummary,
+                salasDetalle: activeSalasData
             };
+            if (window.__telar_active_sector === 'QUIROFANO') {
+                window.__indicadores_active_context = window.__quirofano_active_context;
+            }
         }
-    }, [dynamicMetrics, suspensionCategoriesSummary, activeMotivosSuspension, classifiedSuspendedSurgeries, activePeriodLabel]);
+    }, [dynamicMetrics, suspensionCategoriesSummary, activeMotivosSuspension, classifiedSuspendedSurgeries, activePeriodLabel, bloquesMetricsSummary, activeSalasData]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>

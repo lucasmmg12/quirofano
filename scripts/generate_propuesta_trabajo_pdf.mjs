@@ -30,3 +30,4 @@ console.log(`Saved PDF to: ${outPublicPath} (${buffer.length} bytes, ${doc.inter
 const desktopPath = path.join('C:\\Users\\Sanatorio Argentino\\Desktop', fileName);
 fs.writeFileSync(desktopPath, buffer);
 console.log(`Saved PDF copy to Desktop: ${desktopPath}`);
+

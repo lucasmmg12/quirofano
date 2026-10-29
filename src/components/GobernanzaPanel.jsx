@@ -48,6 +48,34 @@ export default function GobernanzaPanel({ currentUser }) {
         fetchProyectos();
     }, []);
 
+    // Sincronizar contexto de Proyectos de Gobernanza con Beto IA
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.__gobernanza_proyectos_context = {
+            modulo: 'Proyectos de Gobernanza de Datos (29 Sectores Institucionales)',
+            vistaActiva: viewMode,
+            proyectoSeleccionado: selectedProyecto
+                ? {
+                    id: selectedProyecto.id,
+                    nombre: selectedProyecto.nombre,
+                    descripcion: selectedProyecto.descripcion,
+                    progresoPct: `${selectedProyecto.req_progress || 0}%`,
+                    indicadoresTotales: selectedProyecto.req_count || 0,
+                    entrevistasRealizadas: selectedProyecto.entrevistas_count || 0,
+                    indicadoresDetalle: selectedProyecto.gobernanza_indicadores || []
+                }
+                : null,
+            listaProyectosActivos: (proyectos || []).map(p => ({
+                id: p.id,
+                nombre: p.nombre,
+                descripcion: p.descripcion,
+                progresoPct: `${p.req_progress || 0}%`,
+                indicadoresCount: p.req_count || 0,
+                entrevistasCount: p.entrevistas_count || 0
+            }))
+        };
+    }, [proyectos, selectedProyecto, viewMode]);
+
     const fetchProyectos = async () => {
         setLoading(true);
         try {
