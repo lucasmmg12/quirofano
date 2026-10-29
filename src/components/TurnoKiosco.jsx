@@ -426,38 +426,41 @@ export default function TurnoKiosco() {
                             </div>
 
                             {/* Tarjeta Unificada DNI + Teclado Táctil / Vista Clínica de Confirmación */}
-                            <div style={styles.dniSection}>
+                            <div style={{
+                                ...styles.dniSection,
+                                ...(showConfirmCard ? { minHeight: '580px', padding: '28px 30px 26px', justifyContent: 'space-between' } : {})
+                            }}>
                                 {showConfirmCard ? (
-                                    /* ═══ VISTA CLÍNICA DE CONFIRMACIÓN (Estética Limpia e Institucional) ═══ */
+                                    /* ═══ VISTA CLÍNICA DE CONFIRMACIÓN (Escalada para Tablet 9" y Adultos Mayores) ═══ */
                                     <div style={{
                                         display: 'flex',
                                         flexDirection: 'column',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         textAlign: 'center',
-                                        padding: '20px 16px 12px',
+                                        padding: '6px 4px',
                                         flex: 1,
-                                        gap: '18px',
+                                        gap: '20px',
                                         animation: 'fadeInUp 0.25s ease-out',
                                     }}>
                                         {/* Indicador de Paso Superior */}
                                         <div style={{
                                             display: 'inline-flex',
                                             alignItems: 'center',
-                                            gap: '8px',
-                                            padding: '6px 16px',
+                                            gap: '12px',
+                                            padding: '10px 26px',
                                             borderRadius: '999px',
                                             background: '#EFF6FF',
-                                            border: '1px solid #BFDBFE',
+                                            border: '2px solid #BFDBFE',
                                             color: '#1565C0',
-                                            fontSize: '0.8rem',
+                                            fontSize: '1.2rem',
                                             fontWeight: 800,
-                                            letterSpacing: '1px',
+                                            letterSpacing: '1.2px',
                                             textTransform: 'uppercase',
                                         }}>
                                             <span style={{
-                                                width: '8px',
-                                                height: '8px',
+                                                width: '12px',
+                                                height: '12px',
                                                 borderRadius: '50%',
                                                 background: '#1565C0',
                                                 display: 'inline-block',
@@ -469,77 +472,77 @@ export default function TurnoKiosco() {
                                         <div style={{
                                             width: '100%',
                                             background: '#F8FAFC',
-                                            border: '1.5px solid #E2E8F0',
-                                            borderRadius: '16px',
-                                            padding: '22px 20px',
+                                            border: '2px solid #E2E8F0',
+                                            borderRadius: '22px',
+                                            padding: '26px 24px',
                                             display: 'flex',
                                             flexDirection: 'column',
                                             alignItems: 'center',
-                                            gap: '10px',
+                                            gap: '14px',
                                         }}>
                                             <div style={{
-                                                width: '52px',
-                                                height: '52px',
-                                                borderRadius: '14px',
+                                                width: '72px',
+                                                height: '72px',
+                                                borderRadius: '20px',
                                                 background: pacienteInfo ? '#ECFDF5' : '#EFF6FF',
-                                                border: pacienteInfo ? '1.5px solid #A7F3D0' : '1.5px solid #BFDBFE',
+                                                border: pacienteInfo ? '2px solid #A7F3D0' : '2px solid #BFDBFE',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 color: pacienteInfo ? '#059669' : '#1565C0',
                                                 marginBottom: '2px',
                                             }}>
-                                                {pacienteInfo ? <Check size={28} strokeWidth={2.75} /> : <User size={26} strokeWidth={2.25} />}
+                                                {pacienteInfo ? <Check size={40} strokeWidth={3} /> : <User size={38} strokeWidth={2.5} />}
                                             </div>
 
                                             <div style={{
-                                                fontSize: '1.45rem',
-                                                fontWeight: 800,
+                                                fontSize: pacienteInfo ? '2.25rem' : '2.1rem',
+                                                fontWeight: 900,
                                                 color: '#0F172A',
-                                                lineHeight: 1.25,
+                                                lineHeight: 1.2,
                                             }}>
                                                 {pacienteInfo ? pacienteInfo.displayName : 'Documento listo para ingresar'}
                                             </div>
 
                                             <div style={{
                                                 display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
+                                                alignItems: 'baseline',
+                                                gap: '14px',
                                                 background: '#FFFFFF',
-                                                padding: '8px 22px',
-                                                borderRadius: '12px',
-                                                border: '1.5px solid #CBD5E1',
-                                                fontSize: '1.55rem',
-                                                fontWeight: 800,
+                                                padding: '12px 32px',
+                                                borderRadius: '18px',
+                                                border: '2px solid #CBD5E1',
+                                                fontSize: '2.85rem',
+                                                fontWeight: 900,
                                                 color: '#0D3B66',
-                                                letterSpacing: '1.5px',
-                                                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+                                                letterSpacing: '2.5px',
+                                                boxShadow: '0 2px 8px rgba(15, 23, 42, 0.05)',
                                             }}>
-                                                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#64748B', letterSpacing: '0.5px' }}>DNI</span>
+                                                <span style={{ fontSize: '1.45rem', fontWeight: 800, color: '#64748B', letterSpacing: '1px' }}>DNI</span>
                                                 {formatDniConPuntos(dni)}
                                             </div>
 
                                             {pacienteInfo?.mutua && (
                                                 <div style={{
-                                                    fontSize: '0.88rem',
-                                                    fontWeight: 600,
+                                                    fontSize: '1.3rem',
+                                                    fontWeight: 700,
                                                     color: '#475569',
-                                                    marginTop: '2px',
+                                                    marginTop: '4px',
                                                 }}>
                                                     Cobertura: <strong style={{ color: '#0F172A' }}>{pacienteInfo.mutua}</strong>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Instrucción Clínica Serena */}
+                                        {/* Instrucción Clínica Serena de Gran Tamaño */}
                                         <div style={{
-                                            fontSize: '1.08rem',
-                                            fontWeight: 600,
-                                            color: '#475569',
-                                            maxWidth: '420px',
-                                            lineHeight: 1.4,
+                                            fontSize: '1.55rem',
+                                            fontWeight: 700,
+                                            color: '#334155',
+                                            maxWidth: '680px',
+                                            lineHeight: 1.35,
                                         }}>
-                                            Presioná el botón a continuación para generar tu número de turno en recepción:
+                                            Presioná el botón azul para generar tu número de turno en recepción:
                                         </div>
 
                                         {error && (
@@ -548,15 +551,15 @@ export default function TurnoKiosco() {
                                             </div>
                                         )}
 
-                                        {/* Botón Principal Institucional de Alta Visibilidad */}
+                                        {/* Botón Principal Institucional Gigante para Tablet 9" */}
                                         <button
                                             type="submit"
                                             disabled={loading}
                                             style={{
                                                 width: '100%',
-                                                height: '98px',
-                                                minHeight: '98px',
-                                                borderRadius: '18px',
+                                                height: '144px',
+                                                minHeight: '144px',
+                                                borderRadius: '24px',
                                                 background: loading
                                                     ? '#94A3B8'
                                                     : 'linear-gradient(135deg, #1565C0 0%, #0D3B66 100%)',
@@ -566,43 +569,44 @@ export default function TurnoKiosco() {
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'space-between',
-                                                padding: '0 24px 0 28px',
-                                                boxShadow: '0 10px 28px rgba(21, 101, 192, 0.35)',
+                                                padding: '0 32px 0 36px',
+                                                boxShadow: '0 14px 36px rgba(21, 101, 192, 0.38)',
                                                 animation: loading ? 'none' : 'pulseInstitutionalBtn 2s infinite',
                                                 transition: 'all 0.2s ease',
                                             }}
                                         >
-                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', gap: '3px' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', gap: '6px' }}>
                                                 <span style={{
-                                                    fontSize: '0.78rem',
-                                                    fontWeight: 700,
+                                                    fontSize: '1.15rem',
+                                                    fontWeight: 800,
                                                     textTransform: 'uppercase',
-                                                    letterSpacing: '1.4px',
+                                                    letterSpacing: '1.8px',
                                                     color: '#93C5FD',
                                                 }}>
                                                     {loading ? 'Procesando solicitud' : 'Tocá aquí para finalizar'}
                                                 </span>
                                                 <span style={{
-                                                    fontSize: '1.75rem',
-                                                    fontWeight: 800,
-                                                    letterSpacing: '-0.3px',
+                                                    fontSize: '2.75rem',
+                                                    fontWeight: 900,
+                                                    letterSpacing: '-0.5px',
                                                     color: '#FFFFFF',
+                                                    lineHeight: 1.05,
                                                 }}>
                                                     {loading ? 'Generando Turno...' : 'Obtener Turno'}
                                                 </span>
                                             </div>
 
                                             <div style={{
-                                                width: '54px',
-                                                height: '54px',
-                                                borderRadius: '14px',
-                                                background: 'rgba(255, 255, 255, 0.16)',
+                                                width: '78px',
+                                                height: '78px',
+                                                borderRadius: '20px',
+                                                background: 'rgba(255, 255, 255, 0.18)',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 flexShrink: 0,
                                             }}>
-                                                <ChevronRight size={32} color="#FFFFFF" strokeWidth={2.75} style={{ animation: 'nudgeRight 1.4s ease-in-out infinite' }} />
+                                                <ChevronRight size={48} color="#FFFFFF" strokeWidth={3} style={{ animation: 'nudgeRight 1.4s ease-in-out infinite' }} />
                                             </div>
                                         </button>
 
@@ -615,21 +619,23 @@ export default function TurnoKiosco() {
                                             }}
                                             style={{
                                                 width: '100%',
-                                                padding: '12px 16px',
-                                                borderRadius: '12px',
+                                                height: '72px',
+                                                minHeight: '72px',
+                                                padding: '0 24px',
+                                                borderRadius: '18px',
                                                 background: '#FFFFFF',
-                                                color: '#475569',
-                                                border: '1.5px solid #CBD5E1',
-                                                fontSize: '1rem',
-                                                fontWeight: 700,
+                                                color: '#334155',
+                                                border: '2px solid #CBD5E1',
+                                                fontSize: '1.4rem',
+                                                fontWeight: 800,
                                                 cursor: 'pointer',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                gap: '8px',
+                                                gap: '12px',
                                             }}
                                         >
-                                            <ArrowLeft size={18} /> Corregir número de documento
+                                            <ArrowLeft size={26} strokeWidth={2.5} /> Corregir número de documento
                                         </button>
                                     </div>
                                 ) : (
@@ -1000,7 +1006,7 @@ const styles = {
     // ── Select step ──
     selectContainer: {
         width: '100%',
-        maxWidth: '760px',
+        maxWidth: '940px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -1009,11 +1015,11 @@ const styles = {
     },
     dniForm: {
         width: '100%',
-        maxWidth: '760px',
+        maxWidth: '940px',
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
+        gap: '14px',
         boxSizing: 'border-box',
     },
     dniSection: {
@@ -1286,11 +1292,11 @@ const styles = {
     betoReceptionCard: {
         display: 'flex',
         alignItems: 'center',
-        gap: '14px',
+        gap: '18px',
         background: '#FFFFFF',
         border: '2px solid #BFDBFE',
-        borderRadius: '20px',
-        padding: '10px 16px',
+        borderRadius: '22px',
+        padding: '14px 20px',
         boxShadow: '0 4px 16px rgba(21, 101, 192, 0.08)',
         position: 'relative',
         animation: 'fadeInUp 0.3s ease-out',
@@ -1300,14 +1306,14 @@ const styles = {
     },
     betoAvatarWrapper: {
         position: 'relative',
-        width: '66px',
-        height: '66px',
+        width: '78px',
+        height: '78px',
         flexShrink: 0,
     },
     betoAvatarImg: {
         width: '100%',
         height: '100%',
-        borderRadius: '14px',
+        borderRadius: '16px',
         objectFit: 'cover',
         objectPosition: 'top',
         border: '2.5px solid #1565C0',
@@ -1320,9 +1326,9 @@ const styles = {
         transform: 'translateX(-50%)',
         background: '#1565C0',
         color: '#FFFFFF',
-        fontSize: '0.62rem',
+        fontSize: '0.72rem',
         fontWeight: 900,
-        padding: '2px 7px',
+        padding: '2px 9px',
         borderRadius: '8px',
         letterSpacing: '0.5px',
         whiteSpace: 'nowrap',
@@ -1332,8 +1338,8 @@ const styles = {
         flex: 1,
         background: '#F0F7FF',
         border: '1.5px solid #DBEAFE',
-        borderRadius: '12px',
-        padding: '6px 12px',
+        borderRadius: '14px',
+        padding: '10px 16px',
         position: 'relative',
         textAlign: 'left',
         display: 'flex',
@@ -1343,37 +1349,37 @@ const styles = {
     betoSpeechArrow: {
         position: 'absolute',
         left: '-8px',
-        top: '20px',
+        top: '24px',
         width: 0,
         height: 0,
-        borderTop: '6px solid transparent',
-        borderBottom: '6px solid transparent',
+        borderTop: '7px solid transparent',
+        borderBottom: '7px solid transparent',
         borderRight: '8px solid #DBEAFE',
     },
     betoGreetingHeader: {
-        fontSize: '1.05rem',
+        fontSize: '1.45rem',
         fontWeight: 900,
         color: '#0D3B66',
         lineHeight: 1.2,
-        marginBottom: '2px',
+        marginBottom: '4px',
     },
     betoGreetingBody: {
-        fontSize: '0.8rem',
+        fontSize: '1.12rem',
         color: '#334155',
-        fontWeight: 500,
-        lineHeight: 1.25,
+        fontWeight: 600,
+        lineHeight: 1.3,
     },
     betoInfoPill: {
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '4px',
-        marginTop: '3px',
+        gap: '6px',
+        marginTop: '6px',
         background: '#DBEAFE',
         color: '#1E40AF',
-        padding: '2px 8px',
-        borderRadius: '8px',
-        fontSize: '0.72rem',
-        fontWeight: 700,
+        padding: '4px 12px',
+        borderRadius: '10px',
+        fontSize: '0.95rem',
+        fontWeight: 800,
     },
     patientConfirmedCard: {
         background: '#ECFDF5',
