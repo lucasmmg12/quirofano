@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabaseServiceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
     console.error('⚠️ Supabase URL o Anon Key no configuradas en .env');
@@ -27,8 +26,5 @@ export const supabase = supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey)
     : new Proxy({}, { get: () => createMockChain() });
 
-export const supabaseAdmin = supabaseServiceRoleKey && supabaseUrl
-    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false }
-    })
-    : supabase;
+// Por seguridad (C-03), jamás exponer service_role_key en el bundle del navegador
+export const supabaseAdmin = supabase;

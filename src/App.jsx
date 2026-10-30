@@ -56,6 +56,7 @@ import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
 import UserActivityPanel from './components/UserActivityPanel.jsx';
+import UserSecurityAdminPanel from './components/UserSecurityAdminPanel.jsx';
 import ModuleOnboarding from './components/ModuleOnboarding.jsx';
 import FrojoCelebration from './components/FrojoCelebration.jsx';
 import ActivosPanel from './components/ActivosPanel.jsx';
@@ -197,6 +198,7 @@ const VIEW_LABELS = {
     contact_center_permisos: 'Contact Center - Permisos',
     gobernanza: 'Gobernanza de Datos',
     gobernanza_indicadores: 'Gobernanza UCI',
+    usuarios_seguridad: 'Usuarios y Seguridad',
 };
 
 function App({ currentUser, onLogout }) {
@@ -216,10 +218,10 @@ function App({ currentUser, onLogout }) {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Restricted viewer check
-    const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
-    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim());
-    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim());
+    // Restricted viewer check (soporta tanto usuario histórico como rol en base de datos)
+    const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera' || currentUser?.rol === 'uci';
+    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim()) || currentUser?.rol === 'gobernanza_dashboard';
+    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim()) || currentUser?.rol === 'gobernanza';
 
     // Derive activeView directly from the URL pathname
     // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)
@@ -411,7 +413,7 @@ function App({ currentUser, onLogout }) {
         }
 
         // Master Admins have full access to all views
-        if (MASTER_ADMINS.includes(username)) {
+        if (MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin') {
             return;
         }
 
@@ -429,7 +431,7 @@ function App({ currentUser, onLogout }) {
         } else {
             if (CC_ALL_VIEWS.includes(activeView)) isVisible = canUserAccessContactCenter(currentUser);
             else if (['config', 'manual'].includes(activeView)) isVisible = true;
-            else if (activeView === 'actividad_usuarios') isVisible = MASTER_ADMINS.includes(username);
+            else if (activeView === 'actividad_usuarios' || activeView === 'usuarios_seguridad') isVisible = MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin';
             // Simon IA: Acceso completo y público para todos los usuarios
             else if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) isVisible = true;
             else if (['gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
@@ -1265,6 +1267,10 @@ function App({ currentUser, onLogout }) {
 
                 {activeView === 'actividad_usuarios' && (
                     <UserActivityPanel />
+                )}
+
+                {activeView === 'usuarios_seguridad' && (
+                    <UserSecurityAdminPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'gobernanza' && (

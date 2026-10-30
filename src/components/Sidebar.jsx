@@ -47,7 +47,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         }
 
         // Master Admins can see everything
-        if (MASTER_ADMINS.includes(username)) return true;
+        if (MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin') return true;
 
         // Contact Center items are visible for any authorized user (lmarinero, supervisor, CC agents)
         const CC_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
@@ -63,9 +63,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return id === 'activos';
         }
         
-        // Manual and actividad_usuarios
+        // Manual, actividad_usuarios y usuarios_seguridad
         if (id === 'manual') return true;
-        if (id === 'actividad_usuarios') return MASTER_ADMINS.includes(username);
+        if (id === 'actividad_usuarios' || id === 'usuarios_seguridad') return MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin';
 
         // Simon IA — Acceso completo y público para todos los usuarios
         if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id)) {
@@ -603,8 +603,11 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
-                    ...(['soribarale', ...MASTER_ADMINS].includes(username) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
-                    ...(MASTER_ADMINS.includes(username) ? [{ id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity }] : []),
+                    ...(['soribarale', ...MASTER_ADMINS].includes(username) || currentUser?.rol === 'activos' || currentUser?.rol === 'admin' ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
+                    ...(MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin' ? [
+                        { id: 'usuarios_seguridad', label: 'Usuarios y Seguridad', icon: ShieldCheck },
+                        { id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity },
+                    ] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
                     { id: 'config', label: 'Configuración', icon: Settings },
                 ].filter(item => isModuleVisible(item.id)).map(item => {
