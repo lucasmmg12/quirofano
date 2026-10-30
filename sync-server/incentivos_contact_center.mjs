@@ -116,9 +116,15 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     const isCurrentMonth = periodoIso === currentMonthIso;
     const todayStr = now.toISOString().substring(0, 10).replace(/-/g, ''); // YYYYMMDD
 
-    // Si es mes actual, solo evaluar citas cuya fecha de visita ya ocurrió hasta hoy (las citas futuras no pueden ser ausencias)
+    // Si es mes actual, solo evaluar citas que ya sucedieron (días anteriores a hoy, o de hoy cuya hora ya pasó o ya tienen asistencia registrada)
+    // Se mantiene [Fecha Visita] <= todayStr en el nivel de índice (SARGable) y se excluyen las horas futuras de hoy sin asistencia
     const fechaVisitaEndFilter = isCurrentMonth
-        ? `AND [Fecha Visita] <= '${todayStr}'`
+        ? `AND [Fecha Visita] <= '${todayStr} 23:59:59'
+           AND (
+               [Fecha Visita] < '${todayStr}'
+               OR [Asistencia] IS NOT NULL
+               OR [Hora Inicio Visita Formato Texto] <= CONVERT(VARCHAR(8), GETDATE(), 108)
+           )`
         : `AND [Fecha Visita] < '${endDate}'`;
 
     // Fecha de lookback (3 meses atrás) para aprovechar índices cuando el turno se asignó sobre un hueco creado previamente
@@ -249,8 +255,8 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     const escalonTurnosProy = calculateEscalon(turnosProyectadosGrupal, 'turnos');
 
     const listaAgentes = Object.values(agentesMap).map(ag => {
-        // Evaluables = Asistidas efectivas + Ausencias injustificadas reales
-        const evaluables = ag.asistidas + ag.ausencias;
+        // Evaluables = Todos los turnos ya sucedidos/vencidos (incluyendo los que quedaron con Asistencia NULL al no presentarse el paciente)
+        const evaluables = ag.citasTotales;
         const asistenciaPct = evaluables > 0 
             ? Math.round(((ag.asistidas / evaluables) * 100) * 100) / 100 
             : 0;

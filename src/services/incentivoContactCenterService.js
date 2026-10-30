@@ -290,7 +290,14 @@ export function calcularLiquidacionCompleta({
         // Bolsa Turnos: individual pero con objetivo grupal dividido en las 4 operadoras (Piso 763 / Meta 922)
         const escalonTurnosIndiv = calculateEscalon(ag.turnos || 0, 'turnos', dotacionEvaluada, factorDemanda);
         const montoTurnos = escalonTurnosIndiv.monto * factorPago;
-        const montoAsistencia = (ag.montoAsistencia || 0) * factorPago;
+
+        // Bolsa Asistencia: sobre todos los turnos ya vencidos (citasTotales), tomando como asistidos Presente/Sobreturno/Urgencia
+        const evaluablesReales = (ag.citasTotales && ag.citasTotales > 0) ? ag.citasTotales : (ag.evaluables || 0);
+        const asistenciaPctReal = evaluablesReales > 0
+            ? Math.round(((ag.asistidas || 0) / evaluablesReales) * 10000) / 100
+            : (ag.asistenciaPct || 0);
+        const escalonAsistenciaIndiv = calculateEscalon(asistenciaPctReal, 'asistencia');
+        const montoAsistencia = escalonAsistenciaIndiv.monto * factorPago;
 
         const totalVariable = montoMensajes + montoTurnos + montoAsistencia;
         const totalALiquidar = base + totalVariable;
@@ -302,6 +309,9 @@ export function calcularLiquidacionCompleta({
 
         return {
             ...ag,
+            evaluables: evaluablesReales,
+            asistenciaPct: asistenciaPctReal,
+            escalonAsistencia: escalonAsistenciaIndiv.escalon,
             fte: factorPago,
             factorDemanda,
             mensajesIndividuales: mensajesIndiv,
