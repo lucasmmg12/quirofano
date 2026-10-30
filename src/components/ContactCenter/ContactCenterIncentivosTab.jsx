@@ -33,6 +33,7 @@ import {
     guardarConversacionesAuditadasMes,
     fetchHistoricoComparativoIncentivos
 } from '../../services/incentivoContactCenterService';
+import { exportIncentivosContactCenterPdf } from '../../utils/incentivosContactCenterPdf';
 
 export default function ContactCenterIncentivosTab({ activeAgent, currentUser, addToast }) {
     const [periodo, setPeriodo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
@@ -1862,6 +1863,82 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             </tbody>
                         </table>
 
+                        {/* Gráficos Visuales por Agente: Demanda Exigida vs. Objetivos (Piso / Meta / Tope) */}
+                        <div style={{ marginBottom: '22px', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F2942', marginBottom: '4px' }}>
+                                📊 Gráfico 1: Turnos Otorgados por Colaboradora vs. Demanda Exigida y Objetivos Individuales
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: '10px' }}>
+                                Comparativa de producción real frente a Piso (Esc. 1), Meta (Esc. 5) y Tope (Esc. 10) según el % de Demanda Exigida de cada operadora (100% Senior vs. 50% Curva Érica Leal con cobro al 100%).
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {liquidacion.agentes.map(ag => {
+                                    const fDem = ag.factorDemanda || 1.0;
+                                    const pisoIndiv = Math.round(763 * fDem);
+                                    const metaIndiv = Math.round(922 * fDem);
+                                    const topeIndiv = Math.round(1081 * fDem);
+                                    const turnosVal = Number(ag.turnos || 0);
+                                    const maxRef = Math.max(topeIndiv * 1.25, turnosVal * 1.08, 1);
+                                    const pctWidth = Math.min(100, Math.round((turnosVal / maxRef) * 100));
+                                    const pctPiso = Math.round((pisoIndiv / maxRef) * 100);
+                                    const pctMeta = Math.round((metaIndiv / maxRef) * 100);
+                                    const pctTope = Math.round((topeIndiv / maxRef) * 100);
+                                    const cumplMetaPct = Math.round((turnosVal / metaIndiv) * 100);
+
+                                    return (
+                                        <div key={`chart-t-${ag.id}`} style={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0', padding: '8px 12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.73rem', marginBottom: '4px' }}>
+                                                <div>
+                                                    <strong style={{ color: '#0F2942' }}>{ag.name}</strong>
+                                                    <span style={{ marginLeft: '6px', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '4px', background: fDem < 1 ? '#FEF3C7' : '#EFF6FF', color: fDem < 1 ? '#92400E' : '#1D4ED8', fontWeight: 700 }}>
+                                                        Demanda Exigida {Math.round(fDem * 100)}% • Cobro {Math.round((ag.fte || 1) * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontWeight: 800, color: turnosVal >= topeIndiv ? '#059669' : '#7C3AED' }}>
+                                                    {turnosVal.toLocaleString('es-AR')} turnos ({cumplMetaPct}% s/Meta {metaIndiv}) • Escalón {ag.escalonTurnos ?? 0}/10 (+{formatCurrency(ag.montoTurnos)})
+                                                </div>
+                                            </div>
+                                            <div style={{ position: 'relative', height: '12px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${pctWidth}%`,
+                                                    height: '100%',
+                                                    background: turnosVal >= topeIndiv ? 'linear-gradient(90deg, #10B981, #059669)' : 'linear-gradient(90deg, #8B5CF6, #7C3AED)',
+                                                    borderRadius: '6px'
+                                                }} />
+                                                <div title={`Piso: ${pisoIndiv}`} style={{ position: 'absolute', left: `${pctPiso}%`, top: 0, bottom: 0, width: '2px', background: '#D97706' }} />
+                                                <div title={`Meta: ${metaIndiv}`} style={{ position: 'absolute', left: `${pctMeta}%`, top: 0, bottom: 0, width: '2px', background: '#0284C7' }} />
+                                                <div title={`Tope: ${topeIndiv}`} style={{ position: 'absolute', left: `${pctTope}%`, top: 0, bottom: 0, width: '2px', background: '#065F46' }} />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.63rem', color: '#64748B', marginTop: '3px' }}>
+                                                <span>Piso Exigido (Esc. 1): <strong>{pisoIndiv} turnos</strong></span>
+                                                <span>Meta Exigida (Esc. 5): <strong>{metaIndiv} turnos</strong></span>
+                                                <span>Tope Exigido (Esc. 10): <strong>{topeIndiv} turnos</strong></span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div style={{ marginBottom: '26px', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F2942', marginBottom: '4px' }}>
+                                🎯 Gráfico 2: Asistencia Efectiva a Citas (%) vs. Objetivo (Piso 50% / Meta 55% / Tope 60%)
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '8px' }}>
+                                {liquidacion.agentes.map(ag => (
+                                    <div key={`chart-a-${ag.id}`} style={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0', padding: '8px 10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '4px' }}>
+                                            <strong style={{ color: '#0F2942' }}>{ag.name}</strong>
+                                            <strong style={{ color: '#059669' }}>{ag.asistenciaPct}% ({ag.asistidas}/{ag.evaluables}) • +{formatCurrency(ag.montoAsistencia)}</strong>
+                                        </div>
+                                        <div style={{ height: '8px', background: '#F1F5F9', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${Math.min(100, ag.asistenciaPct)}%`, height: '100%', background: '#059669', borderRadius: '4px' }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
                         <div style={{ marginTop: '16px', textAlign: 'right' }}>
                             <button
                                 onClick={() => setShowEscalonesModal(false)}
@@ -1970,6 +2047,82 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             </tbody>
                         </table>
 
+                        {/* Gráficos Visuales por Agente: Demanda Exigida vs. Objetivos (Piso / Meta / Tope) */}
+                        <div style={{ marginBottom: '22px', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F2942', marginBottom: '4px' }}>
+                                📊 Gráfico 1: Turnos Otorgados por Colaboradora vs. Demanda Exigida y Objetivos Individuales
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: '10px' }}>
+                                Comparativa de producción real frente a Piso (Esc. 1), Meta (Esc. 5) y Tope (Esc. 10) según el % de Demanda Exigida de cada operadora (100% Senior vs. 50% Curva Érica Leal con cobro al 100%).
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {liquidacion.agentes.map(ag => {
+                                    const fDem = ag.factorDemanda || 1.0;
+                                    const pisoIndiv = Math.round(763 * fDem);
+                                    const metaIndiv = Math.round(922 * fDem);
+                                    const topeIndiv = Math.round(1081 * fDem);
+                                    const turnosVal = Number(ag.turnos || 0);
+                                    const maxRef = Math.max(topeIndiv * 1.25, turnosVal * 1.08, 1);
+                                    const pctWidth = Math.min(100, Math.round((turnosVal / maxRef) * 100));
+                                    const pctPiso = Math.round((pisoIndiv / maxRef) * 100);
+                                    const pctMeta = Math.round((metaIndiv / maxRef) * 100);
+                                    const pctTope = Math.round((topeIndiv / maxRef) * 100);
+                                    const cumplMetaPct = Math.round((turnosVal / metaIndiv) * 100);
+
+                                    return (
+                                        <div key={`chart-t-${ag.id}`} style={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0', padding: '8px 12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.73rem', marginBottom: '4px' }}>
+                                                <div>
+                                                    <strong style={{ color: '#0F2942' }}>{ag.name}</strong>
+                                                    <span style={{ marginLeft: '6px', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '4px', background: fDem < 1 ? '#FEF3C7' : '#EFF6FF', color: fDem < 1 ? '#92400E' : '#1D4ED8', fontWeight: 700 }}>
+                                                        Demanda Exigida {Math.round(fDem * 100)}% • Cobro {Math.round((ag.fte || 1) * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontWeight: 800, color: turnosVal >= topeIndiv ? '#059669' : '#7C3AED' }}>
+                                                    {turnosVal.toLocaleString('es-AR')} turnos ({cumplMetaPct}% s/Meta {metaIndiv}) • Escalón {ag.escalonTurnos ?? 0}/10 (+{formatCurrency(ag.montoTurnos)})
+                                                </div>
+                                            </div>
+                                            <div style={{ position: 'relative', height: '12px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${pctWidth}%`,
+                                                    height: '100%',
+                                                    background: turnosVal >= topeIndiv ? 'linear-gradient(90deg, #10B981, #059669)' : 'linear-gradient(90deg, #8B5CF6, #7C3AED)',
+                                                    borderRadius: '6px'
+                                                }} />
+                                                <div title={`Piso: ${pisoIndiv}`} style={{ position: 'absolute', left: `${pctPiso}%`, top: 0, bottom: 0, width: '2px', background: '#D97706' }} />
+                                                <div title={`Meta: ${metaIndiv}`} style={{ position: 'absolute', left: `${pctMeta}%`, top: 0, bottom: 0, width: '2px', background: '#0284C7' }} />
+                                                <div title={`Tope: ${topeIndiv}`} style={{ position: 'absolute', left: `${pctTope}%`, top: 0, bottom: 0, width: '2px', background: '#065F46' }} />
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.63rem', color: '#64748B', marginTop: '3px' }}>
+                                                <span>Piso Exigido (Esc. 1): <strong>{pisoIndiv} turnos</strong></span>
+                                                <span>Meta Exigida (Esc. 5): <strong>{metaIndiv} turnos</strong></span>
+                                                <span>Tope Exigido (Esc. 10): <strong>{topeIndiv} turnos</strong></span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div style={{ marginBottom: '26px', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '14px 16px' }}>
+                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F2942', marginBottom: '4px' }}>
+                                🎯 Gráfico 2: Asistencia Efectiva a Citas (%) vs. Objetivo (Piso 50% / Meta 55% / Tope 60%)
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '8px' }}>
+                                {liquidacion.agentes.map(ag => (
+                                    <div key={`chart-a-${ag.id}`} style={{ background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0', padding: '8px 10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '4px' }}>
+                                            <strong style={{ color: '#0F2942' }}>{ag.name}</strong>
+                                            <strong style={{ color: '#059669' }}>{ag.asistenciaPct}% ({ag.asistidas}/{ag.evaluables}) • +{formatCurrency(ag.montoAsistencia)}</strong>
+                                        </div>
+                                        <div style={{ height: '8px', background: '#F1F5F9', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${Math.min(100, ag.asistenciaPct)}%`, height: '100%', background: '#059669', borderRadius: '4px' }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* Firmas de Validación */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #E2E8F0' }}>
                             <div style={{ textAlign: 'center' }}>
@@ -1993,10 +2146,10 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 Cerrar
                             </button>
                             <button
-                                onClick={() => window.print()}
+                                onClick={() => exportIncentivosContactCenterPdf({ periodo, periodLabel: `${periodMonthName} ${pYear}`, liquidacion, isCurrentMonth, currentDay, totalDaysInMonth, modoProyeccion: octubreModoProyeccion })}
                                 style={{ background: '#003B71', color: '#FFFFFF', border: 'none', padding: '8px 18px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                             >
-                                <Printer size={14} /> Imprimir / Guardar PDF
+                                <Printer size={14} /> Descargar PDF Oficial (con Gráficos)
                             </button>
                         </div>
                     </div>
