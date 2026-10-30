@@ -53,20 +53,24 @@ export function getDeviceLabel() {
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
-export function generateTotpSecret(length = 20) {
-    const randomBytes = new Uint8Array(length);
+export function generateTotpSecret(length = 16) {
+    // IMPORTANTE: En Base32 (RFC 4648) sin padding '=', la longitud DEBE ser múltiplo de 8 (16 o 32 caracteres)
+    // para que represente una cantidad exacta de bytes (16 * 5 = 80 bits = 10 bytes).
+    // Si no es múltiplo de 8 (ej. 20), Google Authenticator / iPhone rechazan el QR.
+    const validLength = length % 8 === 0 ? length : 16;
+    const randomBytes = new Uint8Array(validLength);
     window.crypto.getRandomValues(randomBytes);
     let secret = '';
-    for (let i = 0; i < length; i++) {
+    for (let i = 0; i < validLength; i++) {
         secret += BASE32_ALPHABET[randomBytes[i] % 32];
     }
     return secret;
 }
 
 export function getTotpUri(usuario, secret) {
-    const cleanUser = (usuario || 'usuario').trim();
-    const issuer = 'Sanatorio Argentino';
-    return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(cleanUser)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+    const cleanUser = (usuario || 'usuario').trim().replace(/[^a-zA-Z0-9._@-]/g, '');
+    const issuer = 'SanatorioArgentino';
+    return `otpauth://totp/${issuer}:${cleanUser}?secret=${secret}&issuer=${issuer}`;
 }
 
 function base32ToBytes(base32) {

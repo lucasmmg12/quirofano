@@ -74,11 +74,11 @@ export default function LoginScreen({ onLogin }) {
         setWhatsappPhone(userObj.telefono_whatsapp || '');
         setOtpSent(false);
 
-        if (userObj.totp_secret) {
+        if (userObj.totp_secret && userObj.totp_secret.length % 8 === 0) {
             setTotpSecret(userObj.totp_secret);
             setShowQrSetup(false);
         } else {
-            setTotpSecret(generateTotpSecret(20));
+            setTotpSecret(generateTotpSecret(16));
             setShowQrSetup(true);
         }
         setStep('mfa');
@@ -772,23 +772,26 @@ export default function LoginScreen({ onLogin }) {
                                 }}>
                                     {showQrSetup ? (
                                         <>
-                                            <p style={{ margin: '0 0 10px', fontSize: '0.76rem', color: '#334155', fontWeight: 600 }}>
-                                                1. Escaneá este código QR con <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong>:
+                                            <p style={{ margin: '0 0 6px', fontSize: '0.76rem', color: '#334155', fontWeight: 600 }}>
+                                                1. Abrí la app <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong> en tu celular, tocá <strong>"+" → "Escanear código QR"</strong>:
+                                            </p>
+                                            <p style={{ margin: '0 0 10px', fontSize: '0.68rem', color: '#64748B' }}>
+                                                (No escanees con la cámara normal de fotos; hacelo desde la app autenticadora o elegí la pestaña <strong>"📱 Código WhatsApp"</strong> arriba).
                                             </p>
                                             <div style={{
-                                                display: 'inline-block', padding: '8px', background: '#FFFFFF',
+                                                display: 'inline-block', padding: '10px', background: '#FFFFFF',
                                                 borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '8px',
                                             }}>
                                                 <img
                                                     src={qrImageUrl}
                                                     alt="Código QR 2FA"
-                                                    style={{ width: '155px', height: '155px', display: 'block' }}
+                                                    style={{ width: '175px', height: '175px', display: 'block' }}
                                                 />
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '4px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                                                 <code style={{
-                                                    fontSize: '0.7rem', background: '#E2E8F0', padding: '3px 8px',
-                                                    borderRadius: '6px', color: '#1E293B', fontWeight: 700, letterSpacing: '0.8px',
+                                                    fontSize: '0.72rem', background: '#E2E8F0', padding: '4px 8px',
+                                                    borderRadius: '6px', color: '#1E293B', fontWeight: 700, letterSpacing: '1px',
                                                 }}>
                                                     {totpSecret}
                                                 </code>
@@ -802,6 +805,17 @@ export default function LoginScreen({ onLogin }) {
                                                     }}
                                                 >
                                                     <Copy size={12} /> {copiedSecret ? 'Copiado' : 'Copiar clave'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTotpSecret(generateTotpSecret(16))}
+                                                    style={{
+                                                        background: 'none', border: 'none', cursor: 'pointer',
+                                                        color: '#059669', fontSize: '0.72rem', fontWeight: 600,
+                                                        display: 'flex', alignItems: 'center', gap: '3px',
+                                                    }}
+                                                >
+                                                    <RefreshCw size={12} /> Nuevo QR
                                                 </button>
                                             </div>
                                         </>
