@@ -62,9 +62,9 @@ export async function checkSalusHealth() {
             .single();
 
         if (!error && data && data.online) {
-            // Tolerancia de 15 minutos con Math.abs para cubrir desfasajes horarios de relojes de Windows
+            // Tolerancia de 25 minutos con Math.abs para cubrir desfasajes horarios de relojes de Windows en PCs clientes
             const diffMinutes = Math.abs(Date.now() - new Date(data.last_seen).getTime()) / 60000;
-            if (diffMinutes < 15) {
+            if (diffMinutes < 25) {
                 return {
                     available: true,
                     viaCloud: true,

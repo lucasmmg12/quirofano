@@ -8,7 +8,8 @@
 import { useState, useRef, useEffect } from 'react';
 import {
     Lock, User, Eye, EyeOff, Loader2, AlertCircle, Brain, Sparkles,
-    ShieldCheck, Smartphone, QrCode, CheckCircle2, ArrowLeft, KeyRound, RefreshCw, Copy
+    ShieldCheck, Smartphone, QrCode, CheckCircle2, ArrowLeft, KeyRound, RefreshCw, Copy,
+    UserPlus, Camera, Mail, Building2, Briefcase, Monitor, LogOut
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -20,14 +21,29 @@ import {
     getTotpUri,
     verifyAndSaveTotp,
     finalizeSession,
+    checkOrClaimUserSession,
+    generateSessionToken,
+    submitUserAccessRequest,
+    uploadAvatarFileOnly,
+    validateStrictCellphone,
 } from '../services/authService';
 import { logAction } from '../services/auditService';
 
+const REQUESTABLE_ROLES = [
+    { value: 'operador', label: 'Operador / Admisión / Quirófano / Facturación' },
+    { value: 'contact_center', label: 'Agente Contact Center' },
+    { value: 'gobernanza', label: 'Gobernanza de Datos / Calidad' },
+    { value: 'gobernanza_dashboard', label: 'Gobernanza (Solo Dashboard)' },
+    { value: 'uci', label: 'Indicadores UCI' },
+    { value: 'activos', label: 'Gestión de Activos' },
+];
+
 export default function LoginScreen({ onLogin }) {
-    // Steps: 'credentials' | 'change_password' | 'mfa'
+    // Steps: 'credentials' | 'change_password' | 'mfa' | 'concurrent_session' | 'request_account'
     const [step, setStep] = useState('credentials');
     const [pendingUser, setPendingUser] = useState(null);
     const [requiresMfaAfterPwd, setRequiresMfaAfterPwd] = useState(false);
+    const [concurrentConflict, setConcurrentConflict] = useState(null);
 
     // Step 1: Credentials
     const [usuario, setUsuario] = useState('');
@@ -48,6 +64,23 @@ export default function LoginScreen({ onLogin }) {
     const [showQrSetup, setShowQrSetup] = useState(false);
     const [trustDevice, setTrustDevice] = useState(true);
     const [copiedSecret, setCopiedSecret] = useState(false);
+
+    // Step 4: Solicitud de Alta de Usuario ("Comunicáte con el Administrador")
+    const [reqForm, setReqForm] = useState({
+        nombre: '',
+        dni: '',
+        usuario_sugerido: '',
+        email: '',
+        telefono_whatsapp: '',
+        area_sector: '',
+        cargo: '',
+        rol_solicitado: 'operador',
+        motivo: '',
+        avatar_url: '',
+    });
+    const [uploadingReqAvatar, setUploadingReqAvatar] = useState(false);
+    const [reqSubmittedSuccess, setReqSubmittedSuccess] = useState(false);
+    const reqFileInputRef = useRef(null);
 
     // Shared UI state
     const [loading, setLoading] = useState(false);
@@ -84,7 +117,7 @@ export default function LoginScreen({ onLogin }) {
         setStep('mfa');
     };
 
-    const completeLoginSuccess = async (userObj) => {
+    const completeLoginSuccess = async (userObj, forceTakeover = false) => {
         const LAB_USERS = ['aguero', 'cedap', 'cuyo'];
         const loginUser = (userObj.usuario || '').toLowerCase();
         if (LAB_USERS.includes(loginUser)) {
@@ -94,9 +127,54 @@ export default function LoginScreen({ onLogin }) {
             setStep('credentials');
             return;
         }
-        const session = finalizeSession(userObj);
-        await logAction('login', { usuario: session.usuario, mfa: true });
+
+        const tokenToUse = userObj.sessionToken || generateSessionToken();
+        setLoading(true);
+        const sessionCheck = await checkOrClaimUserSession(userObj.id, tokenToUse, forceTakeover);
+        setLoading(false);
+
+        if (sessionCheck.status === 'account_disabled') {
+            setError(sessionCheck.error || 'Esta cuenta se encuentra deshabilitada.');
+            triggerShake();
+            setStep('credentials');
+            return;
+        }
+
+        if (sessionCheck.status === 'conflict' && !forceTakeover) {
+            setPendingUser({ ...userObj, sessionToken: tokenToUse });
+            setConcurrentConflict({
+                otherDeviceLabel: sessionCheck.otherDeviceLabel || 'Otro dispositivo / navegador',
+                otherStartedAt: sessionCheck.otherStartedAt,
+                otherLastHeartbeat: sessionCheck.otherLastHeartbeat,
+            });
+            setError('');
+            setInfoMsg('');
+            setStep('concurrent_session');
+            return;
+        }
+
+        const session = finalizeSession({ ...userObj, sessionToken: tokenToUse });
+        await logAction('login', {
+            usuario: session.usuario,
+            mfa: Boolean(userObj.mfa_enabled),
+            forced_takeover: Boolean(forceTakeover),
+        });
         onLogin(session);
+    };
+
+    const handleForceTakeoverFromLogin = async () => {
+        if (!pendingUser) return;
+        setError('');
+        await completeLoginSuccess(pendingUser, true);
+    };
+
+    const handleCancelConcurrentLogin = () => {
+        setPendingUser(null);
+        setConcurrentConflict(null);
+        setPassword('');
+        setError('');
+        setInfoMsg('');
+        setStep('credentials');
     };
 
     // === PASO 1: LOGIN INICIAL ===
@@ -145,6 +223,13 @@ export default function LoginScreen({ onLogin }) {
         if (result.requiresMfa) {
             setPendingUser(result.pendingUser);
             prepareMfaStep(result.pendingUser);
+            return;
+        }
+
+        if (result.requiresSessionTakeover) {
+            setPendingUser(result.pendingUser);
+            setConcurrentConflict(result.conflictInfo || { otherDeviceLabel: 'Otro dispositivo / navegador' });
+            setStep('concurrent_session');
             return;
         }
 
@@ -207,25 +292,96 @@ export default function LoginScreen({ onLogin }) {
     const handleSendWhatsAppOtp = async () => {
         setError('');
         setInfoMsg('');
-        const phoneToSend = whatsappPhone.trim();
-        if (!phoneToSend || phoneToSend.replace(/\D/g, '').length < 8) {
-            setError('Ingresá tu número de celular con código de área (ej: 2645123456)');
+        const phoneToSend = whatsappPhone;
+        const phoneCheck = validateStrictCellphone(phoneToSend);
+        if (!phoneCheck.valid) {
+            setError(phoneCheck.error);
             triggerShake();
             return;
         }
 
         setLoading(true);
-        const res = await requestWhatsAppOtp(pendingUser.id, phoneToSend);
+        const res = await requestWhatsAppOtp(pendingUser.id, phoneCheck.clean);
         setLoading(false);
 
         if (!res.success) {
-            setError(res.error || 'No se pudo enviar el código por WhatsApp');
+            setError((res.error || 'No se pudo enviar el código por WhatsApp.') + ' Si no te llega el mensaje, ingresá mediante autenticación con el QR.');
             triggerShake();
             return;
         }
 
         setOtpSent(true);
         setInfoMsg(`Código de 6 dígitos enviado por WhatsApp al ${res.telefono_whatsapp}`);
+    };
+
+    // === PASO 4: SOLICITUD DE ALTA DE USUARIO ===
+    const handleReqAvatarUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setError('');
+        try {
+            setUploadingReqAvatar(true);
+            const url = await uploadAvatarFileOnly(file, reqForm.usuario_sugerido || 'solicitud');
+            setReqForm(prev => ({ ...prev, avatar_url: url }));
+        } catch (err) {
+            setError(err.message || 'No se pudo subir la foto de perfil');
+            triggerShake();
+        } finally {
+            setUploadingReqAvatar(false);
+        }
+    };
+
+    const handleNameChangeAutoSuggestUser = (val) => {
+        const parts = val.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean);
+        let suggested = reqForm.usuario_sugerido;
+        if (!suggested && parts.length >= 2) {
+            suggested = (parts[0][0] + parts[parts.length - 1]).replace(/[^a-z0-9]/g, '');
+        }
+        setReqForm(prev => ({
+            ...prev,
+            nombre: val,
+            usuario_sugerido: prev.usuario_sugerido || suggested,
+            email: (!prev.email && suggested) ? `${suggested}@sanatorioargentino.com.ar` : prev.email,
+        }));
+    };
+
+    const handleRequestAccountSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setInfoMsg('');
+
+        const phoneCheck = validateStrictCellphone(reqForm.telefono_whatsapp);
+        if (!phoneCheck.valid) {
+            setError(phoneCheck.error);
+            triggerShake();
+            return;
+        }
+
+        if (!reqForm.nombre.trim() || !reqForm.usuario_sugerido.trim() || !reqForm.email.trim()) {
+            setError('Completá Nombre y Apellido, Usuario sugerido y Email');
+            triggerShake();
+            return;
+        }
+
+        try {
+            setLoading(true);
+            await submitUserAccessRequest({
+                ...reqForm,
+                telefono_whatsapp: phoneCheck.clean,
+                rol_solicitado: reqForm.rol_solicitado === 'admin' ? 'operador' : reqForm.rol_solicitado,
+            });
+            await logAction('solicitud_alta_usuario', {
+                usuario_sugerido: reqForm.usuario_sugerido,
+                nombre: reqForm.nombre,
+                rol_solicitado: reqForm.rol_solicitado,
+            });
+            setReqSubmittedSuccess(true);
+        } catch (err) {
+            setError(err.message || 'No se pudo enviar la solicitud');
+            triggerShake();
+        } finally {
+            setLoading(false);
+        }
     };
 
     // === PASO 3B: VERIFICAR 2FA (WHATSAPP O TOTP) ===
@@ -297,7 +453,7 @@ export default function LoginScreen({ onLogin }) {
             <div style={{
                 position: 'relative',
                 width: '100%',
-                maxWidth: step === 'mfa' ? '475px' : '440px',
+                maxWidth: step === 'request_account' ? '540px' : step === 'mfa' ? '475px' : '440px',
                 margin: '0 20px',
                 animation: 'loginFadeIn 0.4s ease-out',
             }}>
@@ -534,14 +690,27 @@ export default function LoginScreen({ onLogin }) {
                                 fontWeight: 500,
                             }}>
                                 ¿No tenés cuenta?{' '}
-                                <a
-                                    href="https://wa.me/5492645438114?text=Estoy%20en%20la%20plataforma%20del%20sanatorio%20argentino%20y%20necesito%20crear%20un%20usuario"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{ color: '#1E4078', fontWeight: 600, textDecoration: 'none' }}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setError('');
+                                        setInfoMsg('');
+                                        setReqSubmittedSuccess(false);
+                                        setStep('request_account');
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        padding: 0,
+                                        color: '#1E4078',
+                                        fontWeight: 700,
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        textDecoration: 'underline',
+                                    }}
                                 >
                                     Comunicáte con el Administrador
-                                </a>
+                                </button>
                             </p>
                         </form>
                     )}
@@ -728,14 +897,14 @@ export default function LoginScreen({ onLogin }) {
                                         display: 'block', fontSize: '0.71rem', fontWeight: 700,
                                         color: '#475569', marginBottom: '6px', textTransform: 'uppercase',
                                     }}>
-                                        Tu Celular con WhatsApp (con cód. de área)
+                                        Tu Celular con WhatsApp (10 dígitos sin +549 ni 15)
                                     </label>
-                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                                         <input
                                             type="tel"
                                             value={whatsappPhone}
                                             onChange={e => setWhatsappPhone(e.target.value)}
-                                            placeholder="Ej: 2645123456"
+                                            placeholder="2645438114"
                                             style={{
                                                 flex: 1, padding: '10px 12px', borderRadius: '8px',
                                                 border: '1.5px solid #CBD5E1', background: '#FFFFFF',
@@ -757,9 +926,51 @@ export default function LoginScreen({ onLogin }) {
                                             {otpSent ? 'Reenviar' : 'Enviar código'}
                                         </button>
                                     </div>
-                                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B', lineHeight: 1.35 }}>
+                                    <p style={{ margin: '0 0 4px', fontSize: '0.69rem', color: '#0369A1', fontWeight: 600 }}>
+                                        Formato obligatorio: <strong>2645438114</strong> (sin +549, sin 15 y sin espacios).
+                                    </p>
+                                    <p style={{ margin: '0 0 10px', fontSize: '0.72rem', color: '#64748B', lineHeight: 1.35 }}>
                                         El bot oficial de Sanatorio Argentino te enviará al instante un código de 6 dígitos por WhatsApp.
                                     </p>
+
+                                    <div style={{
+                                        padding: '10px 12px',
+                                        borderRadius: '10px',
+                                        background: '#EFF6FF',
+                                        border: '1px solid #BFDBFE',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px',
+                                    }}>
+                                        <div style={{ fontSize: '0.73rem', color: '#1E3A8A', lineHeight: 1.4, fontWeight: 600 }}>
+                                            ¿No te llega el código por WhatsApp? Ingresá mediante <strong>autenticación con el QR</strong> (App Authenticator).
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setMfaMethod('totp');
+                                                setShowQrSetup(true);
+                                                setError('');
+                                                setInfoMsg('');
+                                            }}
+                                            style={{
+                                                alignSelf: 'flex-start',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '7px 12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #1E4078',
+                                                background: '#FFFFFF',
+                                                color: '#1E4078',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            <QrCode size={14} /> Ingresar mediante Autenticación con QR
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
@@ -918,6 +1129,428 @@ export default function LoginScreen({ onLogin }) {
                                 <ArrowLeft size={14} /> Volver al inicio de sesión
                             </button>
                         </form>
+                    )}
+
+                    {/* ========================================================= */}
+                    {/* PASO 3.5: BLOQUEO DE SESIÓN SIMULTÁNEA EN OTRO EQUIPO     */}
+                    {/* ========================================================= */}
+                    {step === 'concurrent_session' && (
+                        <div style={{ padding: '4px 0' }}>
+                            <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+                                <div style={{
+                                    width: '56px', height: '56px', borderRadius: '50%',
+                                    background: '#FEF3C7', border: '2px solid #F59E0B',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    margin: '0 auto 12px', color: '#D97706',
+                                }}>
+                                    <Monitor size={28} />
+                                </div>
+                                <div style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '4px 12px', borderRadius: '999px',
+                                    background: '#FEF3C7', color: '#B45309',
+                                    fontSize: '0.72rem', fontWeight: 800, marginBottom: '8px',
+                                    textTransform: 'uppercase', letterSpacing: '0.4px',
+                                }}>
+                                    <AlertCircle size={13} /> Control de Sesión Única
+                                </div>
+                                <h2 style={{ margin: '0 0 8px', fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Sesión Abierta en Otro Dispositivo
+                                </h2>
+                                <p style={{ margin: 0, fontSize: '0.82rem', color: '#475569', lineHeight: 1.45 }}>
+                                    Detectamos que el usuario <strong>@{pendingUser?.usuario}</strong> ya tiene una sesión activa en otro dispositivo. Por políticas de ciberseguridad no se permiten 2 usuarios conectados en simultáneo con la misma cuenta.
+                                </p>
+                            </div>
+
+                            <div style={{
+                                background: '#F8FAFC', border: '1.5px solid #E2E8F0',
+                                borderRadius: '12px', padding: '12px 14px', marginBottom: '18px',
+                            }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                    Dispositivo con sesión abierta actualmente:
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
+                                    <Monitor size={16} color="#1E4078" />
+                                    <span>{concurrentConflict?.otherDeviceLabel || 'Otro dispositivo / navegador'}</span>
+                                </div>
+                                {concurrentConflict?.otherLastHeartbeat && (
+                                    <div style={{ fontSize: '0.73rem', color: '#059669', fontWeight: 600, marginTop: '4px' }}>
+                                        ● En línea ahora (última actividad: {new Date(concurrentConflict.otherLastHeartbeat).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{
+                                fontSize: '0.76rem', fontWeight: 700, color: '#334155',
+                                textAlign: 'center', marginBottom: '12px',
+                            }}>
+                                Seleccioná obligatoriamente una opción para continuar:
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    disabled={loading}
+                                    onClick={handleForceTakeoverFromLogin}
+                                    style={{
+                                        width: '100%', padding: '13px 16px', borderRadius: '10px', border: 'none',
+                                        background: 'linear-gradient(135deg, #1E4078 0%, #1E3A8A 100%)',
+                                        color: '#FFFFFF', fontSize: '0.86rem', fontWeight: 800,
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                        boxShadow: '0 4px 12px rgba(30, 64, 120, 0.25)',
+                                    }}
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />
+                                            Cerrando la otra sesión e ingresando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ShieldCheck size={17} />
+                                            Cerrar la sesión en el otro dispositivo y permanecer en este
+                                        </>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    disabled={loading}
+                                    onClick={handleCancelConcurrentLogin}
+                                    style={{
+                                        width: '100%', padding: '12px 16px', borderRadius: '10px',
+                                        border: '1.5px solid #CBD5E1', background: '#FFFFFF',
+                                        color: '#475569', fontSize: '0.83rem', fontWeight: 700,
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                    }}
+                                >
+                                    <LogOut size={16} />
+                                    Mantener la otra sesión y salir de este dispositivo
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ========================================================= */}
+                    {/* PASO 4: FORMULARIO SOLICITUD DE ALTA DE USUARIO           */}
+                    {/* ========================================================= */}
+                    {step === 'request_account' && (
+                        reqSubmittedSuccess ? (
+                            <div style={{ textAlign: 'center', padding: '12px 4px' }}>
+                                <div style={{
+                                    width: '56px', height: '56px', borderRadius: '50%',
+                                    background: '#ECFDF5', color: '#059669',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    margin: '0 auto 14px', border: '2px solid #A7F3D0',
+                                }}>
+                                    <CheckCircle2 size={30} />
+                                </div>
+                                <h2 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                                    ¡Solicitud Enviada al Administrador!
+                                </h2>
+                                <p style={{ margin: '0 0 18px', fontSize: '0.84rem', color: '#475569', lineHeight: 1.5 }}>
+                                    Tu pedido de alta para el usuario <strong>@{reqForm.usuario_sugerido}</strong> quedó registrado en la pestaña de <strong>Gestión de Usuarios y Roles</strong>. Cuando el administrador apruebe tu alta, recibirás tus credenciales por WhatsApp al <strong>{reqForm.telefono_whatsapp}</strong>.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setStep('credentials');
+                                        setReqSubmittedSuccess(false);
+                                    }}
+                                    style={{
+                                        width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
+                                        background: '#1E4078', color: '#FFFFFF', fontSize: '0.9rem', fontWeight: 700,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    Volver al Inicio de Sesión
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleRequestAccountSubmit}>
+                                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                                    <div style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '4px 12px', borderRadius: '999px',
+                                        background: '#EFF6FF', color: '#1E4078',
+                                        fontSize: '0.71rem', fontWeight: 700, marginBottom: '6px',
+                                    }}>
+                                        <UserPlus size={14} /> SOLICITUD DE ALTA DE USUARIO
+                                    </div>
+                                    <h2 style={{ margin: '0 0 4px', fontSize: '1.22rem', fontWeight: 800, color: '#1E293B' }}>
+                                        Solicitar Cuenta al Administrador
+                                    </h2>
+                                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748B' }}>
+                                        Completá tus datos laborales para que Sistemas evalúe y apruebe tu acceso.
+                                    </p>
+                                </div>
+
+                                {/* Foto de Perfil Opcional */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: '12px',
+                                    background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                    borderRadius: '12px', padding: '10px 14px', marginBottom: '14px',
+                                }}>
+                                    <div
+                                        onClick={() => reqFileInputRef.current?.click()}
+                                        style={{
+                                            width: '50px', height: '50px', borderRadius: '50%',
+                                            background: reqForm.avatar_url ? `url(${reqForm.avatar_url}) center/cover` : '#1E4078',
+                                            color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            cursor: 'pointer', flexShrink: 0, border: '2px solid #CBD5E1', position: 'relative',
+                                        }}
+                                    >
+                                        {!reqForm.avatar_url && <Camera size={20} />}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1E293B' }}>
+                                            Foto de Perfil Institucional (Opcional)
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                            Podés cargar tu foto ahora o personalizarla luego desde tu perfil.
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled={uploadingReqAvatar}
+                                        onClick={() => reqFileInputRef.current?.click()}
+                                        style={{
+                                            padding: '6px 11px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                            background: '#FFFFFF', color: '#1E4078', fontSize: '0.74rem',
+                                            fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                                        }}
+                                    >
+                                        {uploadingReqAvatar ? 'Subiendo...' : (reqForm.avatar_url ? 'Cambiar foto' : 'Subir foto')}
+                                    </button>
+                                    <input
+                                        ref={reqFileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleReqAvatarUpload}
+                                        style={{ display: 'none' }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.7fr', gap: '10px', marginBottom: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                            Nombre y Apellido Completo *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={reqForm.nombre}
+                                            onChange={e => handleNameChangeAutoSuggestUser(e.target.value)}
+                                            placeholder="Ej: María Laura Gómez"
+                                            style={{
+                                                width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                                border: '1.5px solid #CBD5E1', fontSize: '0.83rem', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                            DNI *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            inputMode="numeric"
+                                            value={reqForm.dni}
+                                            onChange={e => setReqForm(prev => ({ ...prev, dni: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
+                                            placeholder="Ej: 38123456"
+                                            style={{
+                                                width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                                border: '1.5px solid #CBD5E1', fontSize: '0.83rem', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                            Usuario Sugerido *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={reqForm.usuario_sugerido}
+                                            onChange={e => setReqForm(prev => ({ ...prev, usuario_sugerido: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))}
+                                            placeholder="Ej: mgomez"
+                                            style={{
+                                                width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                                border: '1.5px solid #CBD5E1', fontSize: '0.83rem', fontFamily: 'monospace', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                            Email Institucional / Personal *
+                                        </label>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={reqForm.email}
+                                            onChange={e => setReqForm(prev => ({ ...prev, email: e.target.value }))}
+                                            placeholder="mgomez@sanatorioargentino.com.ar"
+                                            style={{
+                                                width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                                border: '1.5px solid #CBD5E1', fontSize: '0.83rem', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Celular con validación estricta 2645438114 */}
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                        Celular WhatsApp (10 dígitos exactos, sin +549 ni 15) *
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        required
+                                        value={reqForm.telefono_whatsapp}
+                                        onChange={e => setReqForm(prev => ({ ...prev, telefono_whatsapp: e.target.value }))}
+                                        placeholder="2645438114"
+                                        style={{
+                                            width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                            border: `1.5px solid ${
+                                                !reqForm.telefono_whatsapp
+                                                    ? '#CBD5E1'
+                                                    : validateStrictCellphone(reqForm.telefono_whatsapp).valid
+                                                        ? '#10B981'
+                                                        : '#EF4444'
+                                            }`,
+                                            fontSize: '0.88rem', fontWeight: 700, letterSpacing: '0.5px', boxSizing: 'border-box',
+                                        }}
+                                    />
+                                    <div style={{
+                                        marginTop: '4px', fontSize: '0.7rem',
+                                        color: !reqForm.telefono_whatsapp
+                                            ? '#64748B'
+                                            : validateStrictCellphone(reqForm.telefono_whatsapp).valid
+                                                ? '#059669'
+                                                : '#DC2626',
+                                        fontWeight: 600,
+                                    }}>
+                                        {!reqForm.telefono_whatsapp
+                                            ? 'Formato obligatorio: 2645438114 (No se acepta +5492645438114, ni 155438114, ni espacios).'
+                                            : validateStrictCellphone(reqForm.telefono_whatsapp).valid
+                                                ? '✓ Formato de 10 dígitos válido'
+                                                : validateStrictCellphone(reqForm.telefono_whatsapp).error}
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                            Área / Sector *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={reqForm.area_sector}
+                                            onChange={e => setReqForm(prev => ({ ...prev, area_sector: e.target.value }))}
+                                            placeholder="Ej: Admisión Quirófano / Guardia"
+                                            style={{
+                                                width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                                border: '1.5px solid #CBD5E1', fontSize: '0.82rem', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                            Cargo / Puesto *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={reqForm.cargo}
+                                            onChange={e => setReqForm(prev => ({ ...prev, cargo: e.target.value }))}
+                                            placeholder="Ej: Recepcionista / Facturista"
+                                            style={{
+                                                width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                                border: '1.5px solid #CBD5E1', fontSize: '0.82rem', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '12px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                        Perfil / Rol de Acceso Solicitado * (Sin rol Administrador)
+                                    </label>
+                                    <select
+                                        value={reqForm.rol_solicitado}
+                                        onChange={e => setReqForm(prev => ({ ...prev, rol_solicitado: e.target.value }))}
+                                        style={{
+                                            width: '100%', padding: '9px 11px', borderRadius: '8px',
+                                            border: '1.5px solid #CBD5E1', fontSize: '0.83rem', background: '#FFFFFF',
+                                            fontWeight: 600, color: '#1E293B', boxSizing: 'border-box',
+                                        }}
+                                    >
+                                        {REQUESTABLE_ROLES.map(r => (
+                                            <option key={r.value} value={r.value}>{r.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div style={{ marginBottom: '16px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                        Módulos requeridos / Observaciones
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={reqForm.motivo}
+                                        onChange={e => setReqForm(prev => ({ ...prev, motivo: e.target.value }))}
+                                        placeholder="Indicá brevemente qué tareas o módulos vas a utilizar..."
+                                        style={{
+                                            width: '100%', padding: '8px 11px', borderRadius: '8px',
+                                            border: '1.5px solid #CBD5E1', fontSize: '0.8rem', resize: 'vertical', boxSizing: 'border-box',
+                                        }}
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    style={{
+                                        width: '100%', padding: '13px', borderRadius: '10px', border: 'none',
+                                        background: '#1E4078', color: '#FFFFFF', fontSize: '0.9rem', fontWeight: 700,
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                        boxShadow: '0 4px 12px rgba(30,64,120,0.25)',
+                                    }}
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />
+                                            Enviando solicitud...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <UserPlus size={17} /> Enviar Solicitud de Alta
+                                        </>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => { setStep('credentials'); setError(''); setInfoMsg(''); }}
+                                    style={{
+                                        width: '100%', marginTop: '10px', padding: '8px',
+                                        background: 'none', border: 'none', color: '#64748B',
+                                        fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                    }}
+                                >
+                                    <ArrowLeft size={14} /> Volver al inicio de sesión
+                                </button>
+                            </form>
+                        )
                     )}
                 </div>
 

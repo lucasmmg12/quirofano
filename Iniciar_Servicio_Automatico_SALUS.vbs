@@ -11,9 +11,9 @@ strSyncDir = strCurDir & "\sync-server"
 ' Liberar instancia previa en puerto 3456 si existe
 WshShell.Run "cmd /c for /f ""tokens=5"" %p in ('netstat -ano ^| findstr :3456 ^| findstr LISTENING 2^>nul') do taskkill /F /PID %p >nul 2>&1", 0, True
 
-' Iniciar node index.js en modo invisible (0 = oculto, False = no esperar)
+' Iniciar node index.js en modo invisible con auto-reinicio automático (watchdog) si el proceso cae
 WshShell.CurrentDirectory = strSyncDir
-WshShell.Run "cmd /c node index.js", 0, False
+WshShell.Run "cmd /c for /L %i in (1,0,2) do (node index.js & timeout /t 3 /nobreak >nul)", 0, False
 
 If WScript.Arguments.Count = 0 Then
     WScript.Echo "Servidor SALUS Sync iniciado en segundo plano con exito." & vbCrLf & _

@@ -10,10 +10,11 @@ import InternacionSearch from './components/InternacionSearch.jsx';
 import WhatsAppModal from './components/WhatsAppModal.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import ChangePasswordModal from './components/ChangePasswordModal.jsx';
+import UserProfileModal from './components/UserProfileModal.jsx';
 import { getTodayISO } from './utils/searchUtils';
 import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderbotApi';
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
-import { getCurrentUser, logout as authLogout } from './services/authService';
+import { getCurrentUser, logout as authLogout, verifyActiveUserSession, reclaimCurrentUserSession } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
 import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor } from 'lucide-react';
@@ -55,7 +56,6 @@ import SystemAlertBanner from './components/SystemAlertBanner.jsx';
 import DocumentosPanel from './components/DocumentosPanel.jsx';
 import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
-import UserActivityPanel from './components/UserActivityPanel.jsx';
 import UserSecurityAdminPanel from './components/UserSecurityAdminPanel.jsx';
 import ModuleOnboarding from './components/ModuleOnboarding.jsx';
 import FrojoCelebration from './components/FrojoCelebration.jsx';
@@ -107,22 +107,190 @@ function LabPortalWrapper() {
 
 export default function AppRoot() {
     const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+    const [displacedConflict, setDisplacedConflict] = useState(null);
+    const [reclaimingSession, setReclaimingSession] = useState(false);
 
     const handleLogin = useCallback((user) => {
+        setDisplacedConflict(null);
         setCurrentUser(user);
         // Start activity tracking session
         startSession(user);
     }, []);
 
     const handleLogout = useCallback(async () => {
+        setDisplacedConflict(null);
         await logAction('logout', { usuario: currentUser?.usuario });
         await endSession();
         authLogout();
         setCurrentUser(null);
     }, [currentUser]);
 
+    const handleReclaimSessionHere = useCallback(async () => {
+        if (!currentUser) return;
+        try {
+            setReclaimingSession(true);
+            const updatedUser = await reclaimCurrentUserSession(currentUser);
+            setCurrentUser(updatedUser);
+            setDisplacedConflict(null);
+            await logAction('concurrent_session_reclaimed', {
+                usuario: currentUser.usuario,
+            });
+        } catch (err) {
+            console.error('[AppRoot] Error reclamando sesión:', err);
+            await handleLogout();
+        } finally {
+            setReclaimingSession(false);
+        }
+    }, [currentUser, handleLogout]);
+
+    // Verificación continua en vivo del estado de la cuenta y bloqueo de sesiones simultáneas
+    useEffect(() => {
+        if (!currentUser?.id) return;
+        let cancelled = false;
+
+        const checkAccountAndSession = async () => {
+            const status = await verifyActiveUserSession(currentUser.id, currentUser.sessionToken);
+            if (cancelled) return;
+
+            if (status.active === false) {
+                await logAction('forced_logout_account_disabled', { usuario: currentUser.usuario });
+                await endSession();
+                authLogout();
+                setDisplacedConflict(null);
+                setCurrentUser(null);
+                return;
+            }
+
+            if (status.status === 'displaced') {
+                setDisplacedConflict({
+                    otherDeviceLabel: status.otherDeviceLabel || 'Otro dispositivo / navegador',
+                    otherStartedAt: status.otherStartedAt,
+                    otherLastHeartbeat: status.otherLastHeartbeat,
+                });
+            } else if (status.status === 'ok') {
+                setDisplacedConflict(null);
+            }
+        };
+
+        checkAccountAndSession();
+        const intervalId = setInterval(checkAccountAndSession, 8000);
+        const onFocus = () => checkAccountAndSession();
+        window.addEventListener('focus', onFocus);
+
+        return () => {
+            cancelled = true;
+            clearInterval(intervalId);
+            window.removeEventListener('focus', onFocus);
+        };
+    }, [currentUser?.id, currentUser?.usuario, currentUser?.sessionToken]);
+
     return (
-        <Routes>
+        <>
+            {currentUser && displacedConflict && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 999999,
+                    background: 'rgba(15, 23, 42, 0.78)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px', fontFamily: "'Inter', -apple-system, sans-serif",
+                }}>
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '18px', width: '100%', maxWidth: '460px',
+                        padding: '28px 26px', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.35)',
+                        border: '1px solid #E2E8F0', textAlign: 'center',
+                    }}>
+                        <div style={{
+                            width: '60px', height: '60px', borderRadius: '50%',
+                            background: '#FEF3C7', border: '2px solid #F59E0B',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 14px', color: '#D97706',
+                        }}>
+                            <Monitor size={30} />
+                        </div>
+
+                        <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '4px 12px', borderRadius: '999px',
+                            background: '#FEF3C7', color: '#B45309',
+                            fontSize: '0.72rem', fontWeight: 800, marginBottom: '10px',
+                            textTransform: 'uppercase', letterSpacing: '0.4px',
+                        }}>
+                            <AlertCircle size={13} /> Control de Sesión Única
+                        </div>
+
+                        <h2 style={{ margin: '0 0 8px', fontSize: '1.22rem', fontWeight: 800, color: '#0F172A' }}>
+                            Tenés Abierta una Sesión en Otro Dispositivo
+                        </h2>
+
+                        <p style={{ margin: '0 0 16px', fontSize: '0.84rem', color: '#475569', lineHeight: 1.5 }}>
+                            Se detectó que el usuario <strong>@{currentUser.usuario}</strong> inició o mantiene activa una sesión en otro dispositivo. Por seguridad no pueden permanecer 2 usuarios conectados en simultáneo.
+                        </p>
+
+                        <div style={{
+                            background: '#F8FAFC', border: '1.5px solid #E2E8F0',
+                            borderRadius: '12px', padding: '12px 14px', marginBottom: '18px',
+                            textAlign: 'left',
+                        }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                Otro dispositivo detectado:
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
+                                <Monitor size={16} color="#1E4078" />
+                                <span>{displacedConflict.otherDeviceLabel || 'Otro dispositivo / navegador'}</span>
+                            </div>
+                            {displacedConflict.otherLastHeartbeat && (
+                                <div style={{ fontSize: '0.73rem', color: '#059669', fontWeight: 600, marginTop: '4px' }}>
+                                    ● Sesión activa ({new Date(displacedConflict.otherLastHeartbeat).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{
+                            fontSize: '0.78rem', fontWeight: 700, color: '#334155',
+                            marginBottom: '12px',
+                        }}>
+                            Elegí obligatoriamente una opción para continuar:
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <button
+                                type="button"
+                                disabled={reclaimingSession}
+                                onClick={handleReclaimSessionHere}
+                                style={{
+                                    width: '100%', padding: '13px 16px', borderRadius: '10px', border: 'none',
+                                    background: 'linear-gradient(135deg, #1E4078 0%, #1E3A8A 100%)',
+                                    color: '#FFFFFF', fontSize: '0.86rem', fontWeight: 800,
+                                    cursor: reclaimingSession ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                    boxShadow: '0 4px 12px rgba(30, 64, 120, 0.25)',
+                                }}
+                            >
+                                <CheckCircle size={17} />
+                                {reclaimingSession
+                                    ? 'Cerrando la otra sesión...'
+                                    : 'Cerrar la sesión en el otro dispositivo y permanecer en este'}
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={reclaimingSession}
+                                onClick={handleLogout}
+                                style={{
+                                    width: '100%', padding: '12px 16px', borderRadius: '10px',
+                                    border: '1.5px solid #CBD5E1', background: '#FFFFFF',
+                                    color: '#475569', fontSize: '0.83rem', fontWeight: 700,
+                                    cursor: reclaimingSession ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                }}
+                            >
+                                <LogOut size={16} />
+                                Cerrar sesión en este dispositivo y mantener la otra
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <Routes>
             <Route path="/recepcion" element={<RecepcionView />} />
             <Route path="/turno" element={<TurnoKiosco />} />
             <Route path="/recepcion/garantias" element={<PublicRecepcionView />} />
@@ -139,17 +307,18 @@ export default function AppRoot() {
                 !currentUser ? (
                     <PublicSimonChat />
                 ) : (
-                    <App currentUser={currentUser} onLogout={handleLogout} />
+                    <App currentUser={currentUser} onLogout={handleLogout} onUserUpdated={setCurrentUser} />
                 )
             } />
             <Route path="*" element={
                 !currentUser ? (
                     <LoginScreen onLogin={handleLogin} />
                 ) : (
-                    <App currentUser={currentUser} onLogout={handleLogout} />
+                    <App currentUser={currentUser} onLogout={handleLogout} onUserUpdated={setCurrentUser} />
                 )
             } />
         </Routes>
+        </>
     );
 }
 
@@ -201,7 +370,7 @@ const VIEW_LABELS = {
     usuarios_seguridad: 'Usuarios y Seguridad',
 };
 
-function App({ currentUser, onLogout }) {
+function App({ currentUser, onLogout, onUserUpdated }) {
     // Sidebar — persist active view across refreshes
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true');
     // #4 Command Palette
@@ -480,6 +649,7 @@ function App({ currentUser, onLogout }) {
 
     // Change Password Modal
     const [showChangePassword, setShowChangePassword] = useState(false);
+    const [showUserProfile, setShowUserProfile] = useState(false);
 
     // Toast notifications
     const [toasts, setToasts] = useState([]);
@@ -890,35 +1060,57 @@ function App({ currentUser, onLogout }) {
                         <span className="topbar__date">
                             {new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </span>
-                        {/* User Badge + Logout */}
+                        {/* User Badge + Personalizar Perfil + Logout */}
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
                             padding: '2px 4px 2px 8px',
                             background: 'var(--neutral-50)',
                             borderRadius: '14px',
                             border: '1px solid var(--neutral-200)',
-                            height: '26px',
+                            height: '28px',
                         }}>
-                            <span style={{
-                                fontSize: '0.72rem', fontWeight: 600,
-                                color: 'var(--neutral-600)',
-                                whiteSpace: 'nowrap',
-                            }}>
-                                {currentUser.nombre?.includes('@')
-                                    ? currentUser.nombre.split('@')[0].replace(/^\w/, c => c.toUpperCase())
-                                    : currentUser.nombre}
-                            </span>
-                            <div style={{
-                                width: '20px', height: '20px', borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #6366F1, #4F46E5)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-                            }}>
-                                {currentUser.iniciales}
-                            </div>
                             <button
-                                onClick={() => setShowChangePassword(true)}
-                                title="Cambiar contraseña"
+                                type="button"
+                                onClick={() => setShowUserProfile(true)}
+                                title="Personalizar mi perfil, foto y número de celular"
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    background: 'none', border: 'none', padding: 0,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <span style={{
+                                    fontSize: '0.72rem', fontWeight: 600,
+                                    color: 'var(--neutral-700)',
+                                    whiteSpace: 'nowrap',
+                                }}>
+                                    {currentUser.nombre?.includes('@')
+                                        ? currentUser.nombre.split('@')[0].replace(/^\w/, c => c.toUpperCase())
+                                        : currentUser.nombre}
+                                </span>
+                                {currentUser.avatar_url ? (
+                                    <img
+                                        src={currentUser.avatar_url}
+                                        alt={currentUser.nombre}
+                                        style={{
+                                            width: '22px', height: '22px', borderRadius: '50%',
+                                            objectFit: 'cover', border: '1.5px solid #4F46E5',
+                                        }}
+                                    />
+                                ) : (
+                                    <div style={{
+                                        width: '22px', height: '22px', borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #1E4078, #2563EB)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '0.6rem', fontWeight: 800, color: '#fff',
+                                    }}>
+                                        {currentUser.iniciales}
+                                    </div>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setShowUserProfile(true)}
+                                title="Mi Perfil Personal / Cambiar contraseña"
                                 style={{
                                     width: '20px', height: '20px', borderRadius: '50%',
                                     background: 'none', border: '1px solid var(--neutral-200)',
@@ -1265,11 +1457,7 @@ function App({ currentUser, onLogout }) {
                     <ManualProcedimientos />
                 )}
 
-                {activeView === 'actividad_usuarios' && (
-                    <UserActivityPanel />
-                )}
-
-                {activeView === 'usuarios_seguridad' && (
+                {(activeView === 'usuarios_seguridad' || activeView === 'actividad_usuarios') && (
                     <UserSecurityAdminPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
@@ -1334,6 +1522,16 @@ function App({ currentUser, onLogout }) {
                 isOpen={showChangePassword}
                 onClose={() => setShowChangePassword(false)}
                 currentUser={currentUser}
+                addToast={addToast}
+            />
+
+            <UserProfileModal
+                isOpen={showUserProfile}
+                onClose={() => setShowUserProfile(false)}
+                currentUser={currentUser}
+                onUserUpdated={(updatedUser) => {
+                    onUserUpdated?.(updatedUser);
+                }}
                 addToast={addToast}
             />
 

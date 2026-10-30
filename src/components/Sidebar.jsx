@@ -63,9 +63,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return id === 'activos';
         }
         
-        // Manual, actividad_usuarios y usuarios_seguridad
+        // Manual y usuarios_seguridad
         if (id === 'manual') return true;
-        if (id === 'actividad_usuarios' || id === 'usuarios_seguridad') return MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin';
+        if (id === 'usuarios_seguridad') return MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin';
 
         // Simon IA — Acceso completo y público para todos los usuarios
         if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id)) {
@@ -606,7 +606,6 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     ...(['soribarale', ...MASTER_ADMINS].includes(username) || currentUser?.rol === 'activos' || currentUser?.rol === 'admin' ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
                     ...(MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin' ? [
                         { id: 'usuarios_seguridad', label: 'Usuarios y Seguridad', icon: ShieldCheck },
-                        { id: 'actividad_usuarios', label: 'Actividad Usuarios', icon: Activity },
                     ] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },
                     { id: 'config', label: 'Configuración', icon: Settings },
