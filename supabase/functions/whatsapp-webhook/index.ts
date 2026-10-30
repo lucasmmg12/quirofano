@@ -2477,6 +2477,8 @@ async function generateChatGptConversationalResponse(
                 finalSystemPrompt += `\n\nDATOS DEL PACIENTE ACTUAL:\n- Nombre: ${pName}\n- DNI: ${pDni}\n- Cobertura: ${pOs}\n${turnosContextStr}`;
             }
 
+            finalSystemPrompt += `\n\nREGLA CRÍTICA DE CONFIRMACIÓN TARDÍA: Si el paciente escribe "Confirmo" o intenta aceptar un turno después de que la conversación había sido cerrada/finalizada por falta de respuesta (y ese turno NO figura en TURNOS PRÓXIMOS AGENDADOS), NUNCA digas que el turno quedó confirmado ni registrado. Debes indicarle claramente que el turno NO ha sido agendado ya que no respondió a tiempo antes del cierre del chat, y que deberá volver a comunicarse en los horarios de atención (Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs).`;
+
             if (!finalSystemPrompt.includes('"replyText"') || !finalSystemPrompt.includes('"transferToAgent"')) {
                 finalSystemPrompt += `\n\nDevuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:\n{\n  "replyText": "Texto de la respuesta en WhatsApp...",\n  "intent": "derivacion_agente | turno | autorizacion | guardia | chequeo | informes | agradecimiento | general",\n  "transferToAgent": boolean,\n  "summary": "Resumen breve de la consulta en 1 línea para el equipo"\n}`;
             }
@@ -2554,6 +2556,9 @@ DIRECTIVAS PRINCIPALES:
    - Si el paciente consulta si reciben obra social o solicita turno para endocrinología infantil / pediátrica:
      - Infórmale con claridad y cordialidad que los profesionales de endocrinología infantil atienden únicamente de forma particular (sin cobertura de obras sociales ni prepagas).
      - Consúltale amablemente si desea coordinar un turno particular para el paciente.
+18. CONFIRMACIÓN TARDÍA TRAS CIERRE DE CHAT (REGLA CRÍTICA):
+   - Si el paciente escribe "Confirmo" o intenta aceptar un turno después de que la conversación fue cerrada/finalizada por falta de respuesta (y dicho turno NO figura en TURNOS PRÓXIMOS AGENDADOS), NUNCA digas que el turno quedó confirmado ni guardado.
+   - Indícale expresamente que el turno NO ha sido agendado ya que no respondió a tiempo antes de finalizar la conversación, y que deberá volver a comunicarse en los horarios de atención (Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs).
 
 Devuelve OBLIGATORIAMENTE un JSON con esta estructura exacta:
 {
@@ -4645,6 +4650,47 @@ async function handleChatbotTriage(
         activeSessionHistory = lastRestartIdx >= 0 ? filtered.slice(lastRestartIdx) : filtered;
     }
     const recentHistory = activeSessionHistory;
+
+    // =========================================================================
+    // GUARDA CRÍTICA: CONFIRMACIÓN TARDÍA TRAS CIERRE DE CONVERSACIÓN
+    // Si un agente ofreció un turno ("Coloque CONFIRMO si acepta el mismo" / "le puedo ofrecer...")
+    // pero luego cerró la conversación ("Damos por finalizada esta conversación" / status resuelto)
+    // porque el paciente no respondió a tiempo, y recién después el paciente escribe "Confirmo",
+    // debemos informar que el turno NO ha sido agendado y que vuelva a comunicarse en horario de atención.
+    // =========================================================================
+    const rawOutgoingMsgs = (rawHistory || []).filter((m: any) => m.direction === 'outgoing');
+    const closeMsgIndex = rawOutgoingMsgs.findIndex((m: any) =>
+        /damos\s+por\s+finalizada\s+esta\s+conversaci[oó]n|finalizada\s+esta\s+conversaci[oó]n/i.test(m.content || '')
+    );
+    const offerMsgIndex = rawOutgoingMsgs.findIndex((m: any) =>
+        /coloque\s+confirmo|le\s+puedo\s+ofrecer|puedo\s+ofrecerle|si\s+acepta\s+el\s+mismo/i.test(m.content || '')
+    );
+    // En rawOutgoingMsgs (orden DESC, 0 es el más reciente): si closeMsgIndex === 0 o (closeMsgIndex >= 0 && offerMsgIndex > closeMsgIndex),
+    // el agente cerró el chat después de haber ofrecido el turno.
+    const agentClosedAfterOffer = closeMsgIndex === 0 || (closeMsgIndex >= 0 && offerMsgIndex > closeMsgIndex);
+    const isActiveBotTurnoCheck = !wasClosed && !isSessionExpiredByInactivity && (currentStage === 'esperando_confirmacion_turno' || currentStage === 'turno_consultado');
+
+    const isLateConfirmationText =
+        /^(s[ií]+|confirmo|confirmar|confirmado|acepto|lo\s+acepto|s[ií]\s*confirmo|ok\s*confirmo|dale\s*confirmo|confirmo\s+el\s+turno|confirmo\s+turno|acepto\s+el\s+turno|me\s+queda\s+bien|por\s+favor\s+confirmo)[!.,\s]*$/i.test(cleanText.trim()) ||
+        (agentClosedAfterOffer && /\b(confirmo|confirmar|acepto)\b/i.test(cleanText) && !/\b(no\s+confirmo|cancel|reprogram|saber\s+si|quer[ií]a\s+saber|est[aá]\s+reservado|qued[oó]\s+reservado)\b/i.test(cleanText));
+
+    if (isLateConfirmationText && (wasClosed || isSessionExpiredByInactivity || agentClosedAfterOffer) && !isActiveBotTurnoCheck) {
+        console.log(`[triage-bot] ⚠️ Confirmación tardía tras cierre de chat detectada para ${phone} ("${cleanText}"). Informando que el turno NO fue agendado.`);
+        replyText =
+            `⚠️ Hola${whatsappName ? ` *${whatsappName}*` : ''}, te informamos que *el turno ofrecido NO ha sido agendado*, ya que no recibimos tu respuesta a tiempo antes de que finalizara la conversación y la disponibilidad se libera automáticamente.\n\n` +
+            `Por favor, volvé a comunicarte dentro de nuestros *horarios de atención* para verificar nueva disponibilidad:\n` +
+            `⏰ *Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.*\n\n` +
+            `📲 Si deseás iniciar una nueva solicitud ahora, escribí *"Turnos"* o *"Agente"*, o gestionalo desde nuestra web:\n` +
+            `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
+            `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
+
+        updates.status = 'bot';
+        updates.bot_active = true;
+        updates.bot_stage = 'menu_bienvenida';
+        nextStage = 'menu_bienvenida';
+        updates.motivo_consulta = 'Confirmación tardía tras cierre de chat (turno no agendado)';
+        return await finalizeAndSend(replyText, nextStage, updates);
+    }
 
     // Detectar si el paciente envió recientemente una imagen o documento (en este mensaje o en los últimos 2)
     const patientSentImageRecently = isIncomingMedia || recentHistory.slice(-3).some((m: any) => 
