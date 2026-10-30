@@ -120,11 +120,38 @@ export async function verifyTotpCode(secret, code) {
 
     try {
         const secretBytes = base32ToBytes(secret);
-        const currentCounter = Math.floor(Date.now() / 1000 / 30);
-        // Permitir ventana de ±1 paso (±30 seg) por desfasaje de reloj del celular
-        for (const offset of [0, -1, 1]) {
-            const expected = await generateHotp(secretBytes, currentCounter + offset);
+
+        // 1. Obtener la hora UTC real del servidor para no depender del reloj local de Windows (que puede estar adelantado/atrasado)
+        let baseTimestampMs = Date.now();
+        try {
+            const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, { method: 'HEAD', cache: 'no-store' });
+            const serverDateStr = resp.headers.get('date');
+            if (serverDateStr) {
+                const parsed = Date.parse(serverDateStr);
+                if (!Number.isNaN(parsed)) {
+                    baseTimestampMs = parsed;
+                }
+            }
+        } catch {
+            // Si falla el HEAD, usamos Date.now() con ventana extendida
+        }
+
+        const serverCounter = Math.floor(baseTimestampMs / 1000 / 30);
+        const localCounter = Math.floor(Date.now() / 1000 / 30);
+
+        // Verificar primero contra la hora exacta del servidor (±3 pasos = ±90 seg)
+        for (const offset of [0, -1, 1, -2, 2, -3, 3]) {
+            const expected = await generateHotp(secretBytes, serverCounter + offset);
             if (expected === cleanCode) return true;
+        }
+
+        // Y como respaldo adicional, verificar ventana de ±40 pasos (±20 min) alrededor del reloj de la PC
+        for (let delta = 0; delta <= 40; delta++) {
+            const offsets = delta === 0 ? [0] : [-delta, delta];
+            for (const offset of offsets) {
+                const expected = await generateHotp(secretBytes, localCounter + offset);
+                if (expected === cleanCode) return true;
+            }
         }
         return false;
     } catch (err) {
