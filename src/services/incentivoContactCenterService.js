@@ -118,7 +118,7 @@ export function getEscalonesInfo(tipo, dotacion = 4) {
  * Para turnos: si dotacion > 1 (ej: 4), divide los umbrales grupales (3.052 base, 127 paso, 4.324 tope)
  * para evaluar el desempeño individual de cada colaboradora.
  */
-export function calculateEscalon(valor, tipo, dotacion = 1) {
+export function calculateEscalon(valor, tipo, dotacion = 1, factorDemanda = 1.0) {
     const b = INCENTIVO_CONFIG.bolsas[tipo];
     if (!b || valor === null || valor === undefined) {
         return { escalon: 0, monto: 0, progresoPct: 0 };
@@ -126,9 +126,10 @@ export function calculateEscalon(valor, tipo, dotacion = 1) {
 
     const num = Number(valor);
     const div = (tipo === 'turnos' && dotacion > 1) ? Number(dotacion) : 1;
-    const base = b.base / div;
-    const paso = b.paso / div;
-    const tope = b.tope / div;
+    const fDemanda = (tipo === 'turnos' && factorDemanda > 0) ? Number(factorDemanda) : 1.0;
+    const base = (b.base / div) * fDemanda;
+    const paso = (b.paso / div) * fDemanda;
+    const tope = (b.tope / div) * fDemanda;
 
     if (isNaN(num) || num < base) {
         return { 
@@ -280,16 +281,16 @@ export function calcularLiquidacionCompleta({
         // Érica Leal y todos los agentes activos / en curva de aprendizaje cobran el piso garantizado histórico inamovible ($139.470,59).
         // El FTE proporcional (ej: 50% en curva de aprendizaje) aplica a las bolsas de incentivos variables (Msjs, Turnos, Asistencia).
         // Únicamente se prorratea el piso garantizado por FTE en caso de bajas definitivas por días trabajados (ej: Antonella Acosta en septiembre).
-        const base = (ag.id === 'eleal' || ag.estado !== 'BAJA')
-            ? BASE_GARANTIZADA_HISTORICA
-            : BASE_GARANTIZADA_HISTORICA * fte;
+        const factorDemanda = ag.id === 'eleal' ? 0.5 : 1.0;
+        const factorPago = (ag.id === 'eleal' || ag.estado !== 'BAJA') ? 1.0 : fte;
+        const base = BASE_GARANTIZADA_HISTORICA * factorPago;
 
-        const montoMensajes = escalonMensajes.monto * fte;
+        const montoMensajes = escalonMensajes.monto * factorPago;
 
         // Bolsa Turnos: individual pero con objetivo grupal dividido en las 4 operadoras (Piso 763 / Meta 922)
-        const escalonTurnosIndiv = calculateEscalon(ag.turnos || 0, 'turnos', dotacionEvaluada);
-        const montoTurnos = escalonTurnosIndiv.monto * fte;
-        const montoAsistencia = (ag.montoAsistencia || 0) * fte;
+        const escalonTurnosIndiv = calculateEscalon(ag.turnos || 0, 'turnos', dotacionEvaluada, factorDemanda);
+        const montoTurnos = escalonTurnosIndiv.monto * factorPago;
+        const montoAsistencia = (ag.montoAsistencia || 0) * factorPago;
 
         const totalVariable = montoMensajes + montoTurnos + montoAsistencia;
         const totalALiquidar = base + totalVariable;
@@ -301,7 +302,8 @@ export function calcularLiquidacionCompleta({
 
         return {
             ...ag,
-            fte,
+            fte: factorPago,
+            factorDemanda,
             mensajesIndividuales: mensajesIndiv,
             escalonTurnos: escalonTurnosIndiv.escalon,
             baseGarantizadaLiquidada: Math.round(base * 100) / 100,

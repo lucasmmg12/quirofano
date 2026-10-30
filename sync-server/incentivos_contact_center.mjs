@@ -54,14 +54,15 @@ export const INCENTIVO_TIERS = {
 /**
  * Calcula el escalón alcanzado (0 a 10) y el monto correspondiente.
  */
-export function calculateEscalon(valor, tipo, dotacion = 1) {
+export function calculateEscalon(valor, tipo, dotacion = 1, factorDemanda = 1.0) {
     const config = INCENTIVO_TIERS.bolsas[tipo];
     if (!config) return { escalon: 0, monto: 0, progresoPct: 0 };
 
     const div = (tipo === 'turnos' && dotacion > 1) ? Number(dotacion) : 1;
-    const base = config.base / div;
-    const paso = config.paso / div;
-    const tope = config.tope / div;
+    const fDemanda = (tipo === 'turnos' && factorDemanda > 0) ? Number(factorDemanda) : 1.0;
+    const base = (config.base / div) * fDemanda;
+    const paso = (config.paso / div) * fDemanda;
+    const tope = (config.tope / div) * fDemanda;
 
     if (valor < base) {
         return { escalon: 0, monto: 0, progresoPct: Math.min(100, Math.round((valor / base) * 100)) };
@@ -260,7 +261,7 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         let estado = 'ACTIVA';
         let fte = 1.0;
         if (ag.id === 'eleal') {
-            fte = 0.5; // Curva de aprendizaje al 50%
+            fte = 1.0; // Cobra el 100% de todo; su demanda exigida es el 50%
             estado = 'CURVA_APRENDIZAJE';
         } else if (ag.id === 'macosta') {
             if (periodoIso >= '2026-09') {
@@ -270,9 +271,10 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         }
 
         const dotacion = 4;
-        const escalonTurnosIndiv = calculateEscalon(ag.turnos, 'turnos', dotacion);
+        const factorDemanda = ag.id === 'eleal' ? 0.5 : 1.0;
+        const escalonTurnosIndiv = calculateEscalon(ag.turnos, 'turnos', dotacion, factorDemanda);
         const turnosProyIndiv = Math.round(ag.turnos * factorHabiles);
-        const escalonTurnosProyIndiv = calculateEscalon(turnosProyIndiv, 'turnos', dotacion);
+        const escalonTurnosProyIndiv = calculateEscalon(turnosProyIndiv, 'turnos', dotacion, factorDemanda);
 
         return {
             ...ag,
@@ -287,7 +289,8 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             montoTurnosProyectado: escalonTurnosProyIndiv.monto,
             baseGarantizada: INCENTIVO_TIERS.baseGarantizada,
             estado,
-            fte
+            fte,
+            factorDemanda
         };
     }).filter(ag => !(periodoIso >= '2026-10' && ag.id === 'macosta'));
 

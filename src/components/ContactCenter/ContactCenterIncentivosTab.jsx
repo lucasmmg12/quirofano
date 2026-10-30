@@ -112,7 +112,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
             // Inicializar ajustes de FTE para casos específicos de altas/bajas
             if (p === '2026-08') {
                 setAjustesFte({
-                    eleal: 0.5, // Érica ingreso a mediados de agosto
+                    eleal: 1.0, // Érica cobra 100% (exigencia 50%)
                     macosta: 1.0,
                     solivier: 1.0,
                     vjacques: 1.0,
@@ -120,7 +120,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 });
             } else if (p === '2026-09') {
                 setAjustesFte({
-                    eleal: 0.5, // Curva 50%
+                    eleal: 1.0, // Cobra 100% (exigencia 50%)
                     macosta: 0.15, // Baja a principios de septiembre (días trabajados)
                     solivier: 1.0,
                     vjacques: 1.0,
@@ -128,14 +128,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 });
             } else if (p === '2026-10') {
                 setAjustesFte({
-                    eleal: 0.5, // Curva 50%
+                    eleal: 1.0, // Cobra 100% (exigencia 50%)
                     solivier: 1.0,
                     vjacques: 1.0,
                     daguilera: 1.0
                 });
             } else {
                 setAjustesFte({
-                    eleal: 0.5,
+                    eleal: 1.0,
                     solivier: 1.0,
                     vjacques: 1.0,
                     daguilera: 1.0
@@ -967,12 +967,12 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                 <div>
                                                     <div style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <span>{agReal.name}</span>
-                                                        {agReal.fte < 1.0 && (
+                                                        {(agReal.factorDemanda < 1.0 || agReal.fte < 1.0) && (
                                                             <span style={{
                                                                 fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px',
                                                                 background: '#FEF3C7', color: '#92400E', fontWeight: 700, border: '1px solid #FDE68A'
                                                             }}>
-                                                                {Math.round(agReal.fte * 100)}% FTE
+                                                                {agReal.factorDemanda < 1.0 ? `Exigencia ${Math.round(agReal.factorDemanda * 100)}% (Cobro 100%)` : `${Math.round(agReal.fte * 100)}% FTE`}
                                                             </span>
                                                         )}
                                                     </div>
@@ -1956,7 +1956,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 {liquidacion.agentes.map(ag => (
                                     <tr key={ag.id} style={{ borderBottom: '1px solid #E2E8F0' }}>
                                         <td style={{ padding: '8px', fontWeight: 700 }}>{ag.name}</td>
-                                        <td style={{ padding: '8px' }}>{(ag.fte * 100).toFixed(0)}%</td>
+                                        <td style={{ padding: '8px' }}>{(ag.fte * 100).toFixed(0)}%{ag.factorDemanda < 1 ? ` (Exig. ${Math.round(ag.factorDemanda * 100)}%)` : ''}</td>
                                         <td style={{ padding: '8px', textAlign: 'right' }}>{formatCurrency(ag.baseGarantizadaLiquidada)}</td>
                                         <td style={{ padding: '8px', textAlign: 'right' }}>{formatCurrency(ag.montoMensajes)}</td>
                                         <td style={{ padding: '8px', textAlign: 'right' }}>{formatCurrency(ag.montoTurnos)}</td>
