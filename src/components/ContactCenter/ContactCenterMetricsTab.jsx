@@ -212,6 +212,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     const [expandedAgents, setExpandedAgents] = useState({});
     // Modo de métrica para el gráfico de torta de asesoras: 'mensajes' | 'conversaciones'
     const [agentPieMetricMode, setAgentPieMetricMode] = useState('mensajes');
+    // Estado para el Análisis Estratégico de Turnos SALUS (DxI, Chequeo, Prevenir, Kinesiología)
+    const [salusServiciosMap, setSalusServiciosMap] = useState({});
+    const [serviciosSelectedPeriodo, setServiciosSelectedPeriodo] = useState(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [activeServicioTab, setActiveServicioTab] = useState('diagnostico_imagenes');
 
     const toggleAgentExpanded = (agentId) => {
         setExpandedAgents(prev => ({
@@ -367,18 +374,35 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             const salusDataByAgent = {};
             try {
-                const { data: cfgRow } = await supabase
+                const { data: cfgRows } = await supabase
                     .from('app_config')
-                    .select('value')
-                    .eq('key', `cc_incentivo_${targetMonthKey}`)
-                    .maybeSingle();
+                    .select('key, value')
+                    .in('key', [`cc_incentivo_${targetMonthKey}`, 'cc_incentivo_2026-08', 'cc_incentivo_2026-09', 'cc_incentivo_2026-10']);
 
-                if (cfgRow?.value) {
-                    const parsed = typeof cfgRow.value === 'string' ? JSON.parse(cfgRow.value) : cfgRow.value;
-                    if (Array.isArray(parsed?.agentes)) {
-                        parsed.agentes.forEach(ag => {
-                            salusDataByAgent[ag.id] = ag;
-                        });
+                if (Array.isArray(cfgRows)) {
+                    const nextServiciosMap = {};
+                    cfgRows.forEach(r => {
+                        if (!r?.value) return;
+                        const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+                        const pKey = r.key.replace('cc_incentivo_', '');
+                        if (parsed?.analisisServicios) {
+                            nextServiciosMap[pKey] = {
+                                periodo: pKey,
+                                ...parsed.analisisServicios,
+                                isCurrentMonth: parsed.isCurrentMonth,
+                                factorHabiles: parsed.factorHabiles || 1,
+                                agentes: parsed.agentes || []
+                            };
+                        }
+                        if (r.key === `cc_incentivo_${targetMonthKey}` && Array.isArray(parsed?.agentes)) {
+                            parsed.agentes.forEach(ag => {
+                                salusDataByAgent[ag.id] = ag;
+                            });
+                        }
+                    });
+                    setSalusServiciosMap(nextServiciosMap);
+                    if (nextServiciosMap[targetMonthKey]) {
+                        setServiciosSelectedPeriodo(targetMonthKey);
                     }
                 }
             } catch (salusErr) {
@@ -2637,6 +2661,359 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 </div>
             </div>
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* ANÁLISIS ESTRATÉGICO DE TURNOS SALUS: DXI · CHEQUEO · PREVENIR · KINESIO */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {(() => {
+                const srvData = salusServiciosMap[serviciosSelectedPeriodo] || salusServiciosMap['2026-10'] || salusServiciosMap['2026-09'] || null;
+                if (!srvData) return null;
+
+                const SERVICIOS_CARDS = [
+                    {
+                        key: 'diagnostico_imagenes',
+                        title: 'Diagnóstico por Imágenes',
+                        subtitle: 'Ecografías, Mamografías, Densitometría, TC, RX y Doppler',
+                        color: '#0284C7',
+                        bg: '#F0F9FF',
+                        border: '#BAE6FD',
+                        data: srvData.diagnostico_imagenes || { total: 0, pctSobreTotal: 0, porAgente: {}, subcategorias: [] }
+                    },
+                    {
+                        key: 'chequeo',
+                        title: 'Chequeo Preventivo',
+                        subtitle: 'Chequeo Preventivo Integral e Informe Médico',
+                        color: '#059669',
+                        bg: '#ECFDF5',
+                        border: '#A7F3D0',
+                        data: srvData.chequeo || { total: 0, pctSobreTotal: 0, porAgente: {}, subcategorias: [] }
+                    },
+                    {
+                        key: 'prevenir',
+                        title: 'Programa Prevenir',
+                        subtitle: 'Circuito Prevenir y Ginecología Prevenir',
+                        color: '#8B5CF6',
+                        bg: '#F5F3FF',
+                        border: '#DDD6FE',
+                        data: srvData.prevenir || { total: 0, pctSobreTotal: 0, porAgente: {}, subcategorias: [] }
+                    },
+                    {
+                        key: 'kinesiologia',
+                        title: 'Kinesiología y Rehabilitación',
+                        subtitle: 'Fisioterapia, Kinesioterapia, Piso Pélvico y Drenaje',
+                        color: '#D97706',
+                        bg: '#FFFBEB',
+                        border: '#FDE68A',
+                        data: srvData.kinesiologia || { total: 0, pctSobreTotal: 0, porAgente: {}, subcategorias: [] }
+                    }
+                ];
+
+                const activeCard = SERVICIOS_CARDS.find(c => c.key === activeServicioTab) || SERVICIOS_CARDS[0];
+                const PERIODOS_DISPONIBLES = [
+                    { key: '2026-10', label: 'Octubre 2026 (En Curso)' },
+                    { key: '2026-09', label: 'Septiembre 2026' },
+                    { key: '2026-08', label: 'Agosto 2026' }
+                ].filter(p => Boolean(salusServiciosMap[p.key]));
+
+                return (
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '14px',
+                        border: '1.5px solid #BAE6FD',
+                        padding: '22px',
+                        boxShadow: '0 4px 14px rgba(2, 132, 199, 0.06)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '18px'
+                    }}>
+                        {/* Cabecera del Bloque Estratégico */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: '40px', height: '40px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #0F2942 0%, #0284C7 100%)',
+                                    color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 3px 10px rgba(2, 132, 199, 0.22)'
+                                }}>
+                                    <Stethoscope size={20} />
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
+                                            Turnos Otorgados a Servicios Estratégicos (Auditoría SALUS)
+                                        </h3>
+                                        <span style={{
+                                            fontSize: '0.68rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
+                                            background: '#E0F2FE', color: '#0369A1', border: '1px solid #BAE6FD'
+                                        }}>
+                                            {(srvData.totalEstrategicos || 0).toLocaleString('es-AR')} de {(srvData.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos ({srvData.pctEstrategicos || 0}%)
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: '#64748B' }}>
+                                        Desglose exacto de turnos agendados por el Contact Center para <strong>Diagnóstico por Imágenes</strong>, <strong>Chequeo Preventivo</strong>, <strong>Programa Prevenir</strong> y <strong>Kinesiología</strong>.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Selector de Mes del Análisis SALUS */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F1F5F9', padding: '4px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                {PERIODOS_DISPONIBLES.map(p => (
+                                    <button
+                                        key={p.key}
+                                        type="button"
+                                        onClick={() => setServiciosSelectedPeriodo(p.key)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '7px',
+                                            border: 'none',
+                                            fontSize: '0.73rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            background: serviciosSelectedPeriodo === p.key ? '#0F2942' : 'transparent',
+                                            color: serviciosSelectedPeriodo === p.key ? '#FFFFFF' : '#475569',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {p.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 4 Tarjetas KPI de los Servicios Estratégicos */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                            gap: '12px'
+                        }}>
+                            {SERVICIOS_CARDS.map(card => {
+                                const isSelected = activeServicioTab === card.key;
+                                const porAg = card.data.porAgente || {};
+                                return (
+                                    <div
+                                        key={card.key}
+                                        onClick={() => setActiveServicioTab(card.key)}
+                                        style={{
+                                            background: isSelected ? card.bg : '#FFFFFF',
+                                            border: `1.5px solid ${isSelected ? card.color : '#E2E8F0'}`,
+                                            borderRadius: '12px',
+                                            padding: '15px 16px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.18s ease',
+                                            boxShadow: isSelected ? `0 4px 12px ${card.color}22` : '0 1px 3px rgba(0,0,0,0.02)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'space-between',
+                                            gap: '10px'
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                                <span style={{ fontSize: '0.73rem', fontWeight: 800, color: card.color, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                                    {card.title}
+                                                </span>
+                                                <span style={{
+                                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: '12px',
+                                                    background: card.bg, color: card.color, border: `1px solid ${card.border}`
+                                                }}>
+                                                    {card.data.pctSobreTotal || 0}% del total
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '6px' }}>
+                                                <span style={{ fontSize: '1.85rem', fontWeight: 900, color: '#0F2942', lineHeight: 1.1 }}>
+                                                    {(card.data.total || 0).toLocaleString('es-AR')}
+                                                </span>
+                                                <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600 }}>
+                                                    turnos otorgados
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: '0.69rem', color: '#64748B', marginTop: '3px' }}>
+                                                {card.subtitle}
+                                            </div>
+                                        </div>
+
+                                        {/* Mini desglose por asesora dentro de la tarjeta */}
+                                        <div style={{
+                                            paddingTop: '8px',
+                                            borderTop: '1px dashed #CBD5E1',
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(2, 1fr)',
+                                            gap: '4px 8px',
+                                            fontSize: '0.68rem',
+                                            color: '#475569'
+                                        }}>
+                                            <span>👩‍⚕️ <strong>Sofía:</strong> {(porAg.solivier || 0).toLocaleString('es-AR')}</span>
+                                            <span>👩‍⚕️ <strong>Virginia:</strong> {(porAg.vjacques || 0).toLocaleString('es-AR')}</span>
+                                            <span>👩‍⚕️ <strong>Daniela:</strong> {(porAg.daguilera || 0).toLocaleString('es-AR')}</span>
+                                            <span>👩‍⚕️ <strong>Érica:</strong> {(porAg.eleal || 0).toLocaleString('es-AR')}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Panel de Desglose de Subcategorías del Servicio Seleccionado + Tabla Comparativa Mes a Mes */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+                            gap: '16px'
+                        }}>
+                            {/* Columna Izquierda: Desglose de Prácticas / Agendas de la Categoría Seleccionada */}
+                            <div style={{
+                                background: '#F8FAFC',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0',
+                                padding: '16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '10px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0F2942' }}>
+                                            Desglose de {activeCard.title} ({serviciosSelectedPeriodo})
+                                        </h4>
+                                        <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
+                                            Participación por modalidad / agenda y operadora que asignó el turno
+                                        </p>
+                                    </div>
+                                    <span style={{
+                                        fontSize: '0.72rem', fontWeight: 800, color: activeCard.color,
+                                        background: activeCard.bg, border: `1px solid ${activeCard.border}`,
+                                        padding: '3px 10px', borderRadius: '20px'
+                                    }}>
+                                        Total: {(activeCard.data.total || 0).toLocaleString('es-AR')} turnos
+                                    </span>
+                                </div>
+
+                                <div style={{ overflowX: 'auto', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', textAlign: 'left' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800 }}>
+                                                <th style={{ padding: '8px 10px' }}>Práctica / Modalidad</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right' }}>Turnos</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right' }}>% Área</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#8B5CF6' }}>Sofía</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>Virginia</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#E11D48' }}>Daniela</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#D97706' }}>Érica</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(activeCard.data.subcategorias || []).map((sub, idx) => (
+                                                <tr key={sub.nombre || idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                    <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0F2942' }}>{sub.nombre}</td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: activeCard.color }}>
+                                                        {(sub.total || 0).toLocaleString('es-AR')}
+                                                    </td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', color: '#64748B', fontWeight: 600 }}>
+                                                        {sub.pctSobreCategoria || 0}%
+                                                    </td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.solivier || 0).toLocaleString('es-AR')}</td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.vjacques || 0).toLocaleString('es-AR')}</td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.daguilera || 0).toLocaleString('es-AR')}</td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.eleal || 0).toLocaleString('es-AR')}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Columna Derecha: Comparativa Histórica Mes a Mes (Agosto, Septiembre, Octubre) */}
+                            <div style={{
+                                background: '#F8FAFC',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0',
+                                padding: '16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '10px',
+                                justifyContent: 'space-between'
+                            }}>
+                                <div>
+                                    <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0F2942' }}>
+                                        Evolución Mes a Mes por Servicio Estratégico
+                                    </h4>
+                                    <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
+                                        Comparativa de turnos brindados por el Contact Center en los 4 servicios clave vs. Consultorios
+                                    </p>
+                                </div>
+
+                                <div style={{ overflowX: 'auto', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', textAlign: 'left' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800 }}>
+                                                <th style={{ padding: '8px 10px' }}>Período</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#0284C7' }}>Dx. Imágenes</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>Chequeo</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#8B5CF6' }}>Prevenir</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#D97706' }}>Kinesio</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#0F2942' }}>Subtotal 4 Áreas</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748B' }}>Total CC</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {['2026-08', '2026-09', '2026-10'].map(pKey => {
+                                                const rowP = salusServiciosMap[pKey];
+                                                if (!rowP) return null;
+                                                const isAct = serviciosSelectedPeriodo === pKey;
+                                                const labelMes = pKey === '2026-08' ? 'Agosto 2026' : pKey === '2026-09' ? 'Septiembre 2026' : 'Octubre 2026';
+                                                return (
+                                                    <tr
+                                                        key={pKey}
+                                                        onClick={() => setServiciosSelectedPeriodo(pKey)}
+                                                        style={{
+                                                            borderBottom: '1px solid #F1F5F9',
+                                                            background: isAct ? '#F0F9FF' : '#FFFFFF',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <td style={{ padding: '9px 10px', fontWeight: 800, color: '#0F2942' }}>
+                                                            {labelMes}
+                                                        </td>
+                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
+                                                            {(rowP.diagnostico_imagenes?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.diagnostico_imagenes?.pctSobreTotal || 0}%)</span>
+                                                        </td>
+                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                                                            {(rowP.chequeo?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.chequeo?.pctSobreTotal || 0}%)</span>
+                                                        </td>
+                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#8B5CF6' }}>
+                                                            {(rowP.prevenir?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.prevenir?.pctSobreTotal || 0}%)</span>
+                                                        </td>
+                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#D97706' }}>
+                                                            {(rowP.kinesiologia?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.kinesiologia?.pctSobreTotal || 0}%)</span>
+                                                        </td>
+                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#0F2942', background: '#F8FAFC' }}>
+                                                            {(rowP.totalEstrategicos || 0).toLocaleString('es-AR')} ({rowP.pctEstrategicos || 0}%)
+                                                        </td>
+                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>
+                                                            {(rowP.totalTurnosAnalizados || 0).toLocaleString('es-AR')}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div style={{
+                                    fontSize: '0.7rem', color: '#475569', background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE', borderRadius: '8px', padding: '8px 12px',
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px'
+                                }}>
+                                    <span>
+                                        📌 <strong>Conclusión Operativa ({serviciosSelectedPeriodo}):</strong> Aproximadamente <strong>1 de cada 3 turnos ({srvData.pctEstrategicos || 0}%)</strong> otorgados por el Contact Center corresponde a estos 4 servicios estratégicos.
+                                    </span>
+                                    <span style={{ fontWeight: 700, color: '#0369A1' }}>
+                                        Consultorios Restantes: {(srvData.otras_especialidades?.total || 0).toLocaleString('es-AR')} ({srvData.otras_especialidades?.pctSobreTotal || 0}%)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COMPARATIVA HISTÓRICA MES A MES: BOT VS ASESORAS Y COSTOS META   */}

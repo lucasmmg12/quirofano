@@ -83,6 +83,65 @@ export function calculateEscalon(valor, tipo, dotacion = 1, factorDemanda = 1.0)
 }
 
 /**
+ * Clasifica una dupla (Especialidad, TipoVisita) de SALUS dentro de las 4 áreas estratégicas
+ * solicitadas para el análisis del Contact Center (Diagnóstico por Imágenes, Chequeo, Prevenir, Kinesiología)
+ * o bien dentro de Consultorios Externos / Otras Especialidades.
+ */
+export function clasificarServicioTurno(especialidadRaw, tipoVisitaRaw) {
+    const esp = String(especialidadRaw || '').trim().toUpperCase();
+    const tipo = String(tipoVisitaRaw || '').trim().toUpperCase();
+
+    // 1. PROGRAMA PREVENIR
+    if (tipo.startsWith('(PRV)') || tipo.startsWith('(GINEP)') || tipo.includes('PREVENIR') || esp.includes('PREVENIR')) {
+        let sub = 'Programa Prevenir';
+        if (tipo.startsWith('(GINEP)') || tipo.includes('GINECOLOGIA')) sub = 'Consulta Ginecología Prevenir';
+        else if (tipo.startsWith('(PRV)')) sub = 'Circuito Prevenir ((PRV) PREVENIR)';
+        return { key: 'prevenir', label: 'Programa Prevenir', subcategoria: sub };
+    }
+
+    // 2. CHEQUEO PREVENTIVO
+    if (tipo.startsWith('(CHQ)') || tipo.includes('CHEQUEO') || esp === 'CHEQUEO') {
+        let sub = 'Chequeo Preventivo';
+        if (tipo.includes('INFORME')) sub = 'Chequeo Informe Médico';
+        else if (tipo.includes('ELECTRO')) sub = 'Electrocardiograma Chequeo';
+        else if (tipo.includes('PREVENTIVO')) sub = 'Chequeo Preventivo Integral';
+        return { key: 'chequeo', label: 'Chequeo Preventivo', subcategoria: sub };
+    }
+
+    // 3. KINESIOLOGÍA / FISIATRÍA / REHABILITACIÓN
+    if (
+        esp.includes('KINESIO') || esp.includes('FISIATR') || esp.includes('REHABILITACION') ||
+        tipo.startsWith('(KINESIO)') || tipo.includes('KINESIO') || tipo.includes('FISIOTERAPIA')
+    ) {
+        let sub = 'Kinesiología General';
+        if (tipo.includes('FISIOTERAPIA')) sub = 'Fisioterapia';
+        else if (tipo.includes('KINESIOTERAPIA')) sub = 'Kinesioterapia';
+        else if (tipo.includes('PISO PELVICO')) sub = 'Rehabilitación de Piso Pélvico';
+        else if (tipo.includes('DRENAJE LINFATICO')) sub = 'Drenaje Linfático Manual';
+        else if (tipo.includes('CONSULTA KINESIOLOGIA')) sub = 'Consulta Kinesiología';
+        return { key: 'kinesiologia', label: 'Kinesiología y Rehabilitación', subcategoria: sub };
+    }
+
+    // 4. DIAGNÓSTICO POR IMÁGENES
+    if (
+        ['ECOGRAFISTA', 'MAMOGRAFIA', 'DENSITOMETRIA', 'TOMOGRAFIA COMPUTADA', 'RADIOLOGIA', 'DIAGNOSTICO POR IMAGENES'].includes(esp) ||
+        tipo.startsWith('(ECO)') ||
+        tipo.startsWith('(TC)') ||
+        (tipo.startsWith('(RX)') && !tipo.includes('MONITOREO FETAL'))
+    ) {
+        let sub = 'Ecografías y Eco Doppler';
+        if (esp === 'MAMOGRAFIA' || tipo.includes('MAMOGRAF')) sub = 'Mamografía Digital';
+        else if (esp === 'DENSITOMETRIA' || tipo.includes('DENSITOMETR')) sub = 'Densitometría Ósea';
+        else if (esp === 'TOMOGRAFIA COMPUTADA' || tipo.startsWith('(TC)')) sub = 'Tomografía Computada (TC)';
+        else if (esp === 'CARDIOLOGIA' && tipo.startsWith('(ECO)')) sub = 'Ecocardiograma / Doppler Cardíaco';
+        else if (esp === 'RADIOLOGIA' || tipo.startsWith('(RX)')) sub = 'Radiología (RX)';
+        return { key: 'diagnostico_imagenes', label: 'Diagnóstico por Imágenes', subcategoria: sub };
+    }
+
+    return { key: 'otras_especialidades', label: 'Otras Especialidades (Consultorios)', subcategoria: esp || tipo || 'General' };
+}
+
+/**
  * Obtiene métricas reales de SALUS para un período específico (YYYY-MM).
  */
 export async function getIncentivosContactCenter(pool, { periodo = null } = {}) {
@@ -132,10 +191,12 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     const lookbackDate = `${lookbackDateObj.getFullYear()}${String(lookbackDateObj.getMonth() + 1).padStart(2, '0')}01`;
     const citaMonthPattern = `%/${startMonthStr}/${year} %`;
 
-    // 1. TURNOS CREADOS / ASIGNADOS EN EL PERÍODO (Bolsa 2 Grupal + Individual)
+    // 1. TURNOS CREADOS / ASIGNADOS EN EL PERÍODO DESGLOSADOS POR ESPECIALIDAD Y TIPO DE VISITA (Bolsa 2 Grupal + Individual + Análisis de Servicios)
     // Contempla tanto [Usuario Creacion Nombre] como la traza nominal con fecha/hora en [UsuarioCita] (ej. 'APELLIDO, NOMBRE(DD/MM/YYYY HH:MM:SS)')
     const turnosQuery = `
         SELECT 
+            ISNULL([Visita_Especialidad], 'SIN ESPECIALIDAD') AS Especialidad,
+            ISNULL([Tipo Visita], 'SIN TIPO VISITA') AS TipoVisita,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'OLIVIER ESQUIVEL, SOFIA FERNANDA')
                                   OR [UsuarioCita] LIKE '%OLIVIER ESQUIVEL, SOFIA%(${citaMonthPattern}' THEN [idVisita] END) AS solivier,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'JACQUES SORIA, VIRGINIA')
@@ -146,10 +207,11 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
                                   OR [UsuarioCita] LIKE '%LEAL,%ERICA%(${citaMonthPattern}' THEN [idVisita] END) AS eleal,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'ACOSTA ESQUIVEL, MARIA ANTONELLA')
                                   OR [UsuarioCita] LIKE '%ACOSTA ESQUIVEL, MARIA ANTONELLA%(${citaMonthPattern}' THEN [idVisita] END) AS macosta
-        FROM [SALUS].[dbo].[VLISE_Visitas]
+        FROM [SALUS].[dbo].[VLISE_Visitas] WITH (NOLOCK)
         WHERE ([Fecha Hora Creacion] >= '${lookbackDate}' OR [Fecha Visita] >= '${startDate}')
           AND ([Fecha Hora Creacion] IS NULL OR [Fecha Hora Creacion] < '${endDate}')
           AND ([Paciente] IS NULL OR [Paciente] <> 'TURNOS ONLINE, PACIENTE')
+        GROUP BY [Visita_Especialidad], [Tipo Visita]
     `;
 
     // 2. ASISTENCIA EFECTIVA (Bolsa 3 Individual)
@@ -201,18 +263,78 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     ]);
 
     // Consolidar por colaboradora canónica
+    const createEmptyServiciosAgente = () => ({
+        diagnostico_imagenes: 0,
+        chequeo: 0,
+        prevenir: 0,
+        kinesiologia: 0,
+        otras_especialidades: 0
+    });
+
     const agentesMap = {
-        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
-        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
-        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
-        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', rol: 'Curva de Aprendizaje (50%)', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 },
-        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', rol: 'Baja en Septiembre', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0 }
+        solivier: { id: 'solivier', salusKey: 'OLIVIER ESQUIVEL, SOFIA FERNANDA', name: 'Sofia Olivier', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0, servicios: createEmptyServiciosAgente() },
+        vjacques: { id: 'vjacques', salusKey: 'JACQUES SORIA, VIRGINIA', name: 'Virginia Jacques', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0, servicios: createEmptyServiciosAgente() },
+        daguilera: { id: 'daguilera', salusKey: 'AGUILERA CARDOZO, DANIELA ROMINA', name: 'Daniela Aguilera', rol: 'Senior', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0, servicios: createEmptyServiciosAgente() },
+        eleal: { id: 'eleal', salusKey: 'LEAL, ERICA', name: 'Erica Leal', rol: 'Curva de Aprendizaje (50%)', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0, servicios: createEmptyServiciosAgente() },
+        macosta: { id: 'macosta', salusKey: 'ACOSTA ESQUIVEL, MARIA ANTONELLA', name: 'Antonella Acosta', rol: 'Baja en Septiembre', turnos: 0, citasTotales: 0, asistidas: 0, ausencias: 0, justificadas: 0, anuladas: 0, sinRegistrar: 0, servicios: createEmptyServiciosAgente() }
     };
 
-    // Agregar turnos creados / asignados desde fila agregada
-    const turnosRow = (turnosRes.recordset && turnosRes.recordset[0]) || {};
-    for (const agId of Object.keys(agentesMap)) {
-        agentesMap[agId].turnos = Number(turnosRow[agId] || 0);
+    // Estructura de análisis estratégico de servicios (DxI, Chequeo, Prevenir, Kinesiología)
+    const initCatNode = (key, label) => ({
+        key,
+        label,
+        total: 0,
+        porAgente: { solivier: 0, vjacques: 0, daguilera: 0, eleal: 0, macosta: 0 },
+        subcategoriasMap: {}
+    });
+
+    const categoriasServiciosMap = {
+        diagnostico_imagenes: initCatNode('diagnostico_imagenes', 'Diagnóstico por Imágenes'),
+        chequeo: initCatNode('chequeo', 'Chequeo Preventivo'),
+        prevenir: initCatNode('prevenir', 'Programa Prevenir'),
+        kinesiologia: initCatNode('kinesiologia', 'Kinesiología y Rehabilitación'),
+        otras_especialidades: initCatNode('otras_especialidades', 'Consultorios y Otras Especialidades')
+    };
+
+    const activeAgentKeys = Object.keys(agentesMap).filter(agId => !(periodoIso >= '2026-10' && agId === 'macosta'));
+
+    // Agregar turnos creados / asignados desde filas agrupadas por (Especialidad, TipoVisita)
+    for (const row of (turnosRes.recordset || [])) {
+        const clasif = clasificarServicioTurno(row.Especialidad, row.TipoVisita);
+        const catNode = categoriasServiciosMap[clasif.key] || categoriasServiciosMap.otras_especialidades;
+
+        let rowTotalActive = 0;
+        for (const agId of Object.keys(agentesMap)) {
+            const cnt = Number(row[agId] || 0);
+            if (cnt > 0) {
+                agentesMap[agId].turnos += cnt;
+                agentesMap[agId].servicios[clasif.key] = (agentesMap[agId].servicios[clasif.key] || 0) + cnt;
+                if (activeAgentKeys.includes(agId)) {
+                    catNode.porAgente[agId] = (catNode.porAgente[agId] || 0) + cnt;
+                    rowTotalActive += cnt;
+                }
+            }
+        }
+
+        if (rowTotalActive > 0) {
+            catNode.total += rowTotalActive;
+            const subName = clasif.subcategoria;
+            if (!catNode.subcategoriasMap[subName]) {
+                catNode.subcategoriasMap[subName] = {
+                    nombre: subName,
+                    total: 0,
+                    solivier: 0,
+                    vjacques: 0,
+                    daguilera: 0,
+                    eleal: 0,
+                    macosta: 0
+                };
+            }
+            catNode.subcategoriasMap[subName].total += rowTotalActive;
+            for (const agId of activeAgentKeys) {
+                catNode.subcategoriasMap[subName][agId] += Number(row[agId] || 0);
+            }
+        }
     }
 
     // Agregar asistencia
@@ -306,6 +428,47 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     const escalonTurnosActivos = calculateEscalon(totalTurnosActivos, 'turnos');
     const escalonTurnosActivosProy = calculateEscalon(totalTurnosProyectados, 'turnos');
 
+    // Construir objeto final de análisis de servicios (DxI, Chequeo, Prevenir, Kinesiología)
+    const formatCatNode = (catNode) => {
+        const pctSobreTotal = totalTurnosActivos > 0
+            ? Math.round(((catNode.total / totalTurnosActivos) * 100) * 100) / 100
+            : 0;
+        const subcategorias = Object.values(catNode.subcategoriasMap)
+            .sort((a, b) => b.total - a.total)
+            .map(s => ({
+                ...s,
+                pctSobreCategoria: catNode.total > 0 ? Math.round(((s.total / catNode.total) * 100) * 10) / 10 : 0,
+                pctSobreTotal: totalTurnosActivos > 0 ? Math.round(((s.total / totalTurnosActivos) * 100) * 10) / 10 : 0
+            }));
+        return {
+            key: catNode.key,
+            label: catNode.label,
+            total: catNode.total,
+            proyeccion: Math.round(catNode.total * factorHabiles),
+            pctSobreTotal,
+            porAgente: catNode.porAgente,
+            subcategorias
+        };
+    };
+
+    const totalEstrategicos = (
+        categoriasServiciosMap.diagnostico_imagenes.total +
+        categoriasServiciosMap.chequeo.total +
+        categoriasServiciosMap.prevenir.total +
+        categoriasServiciosMap.kinesiologia.total
+    );
+
+    const analisisServicios = {
+        totalTurnosAnalizados: totalTurnosActivos,
+        totalEstrategicos,
+        pctEstrategicos: totalTurnosActivos > 0 ? Math.round(((totalEstrategicos / totalTurnosActivos) * 100) * 100) / 100 : 0,
+        diagnostico_imagenes: formatCatNode(categoriasServiciosMap.diagnostico_imagenes),
+        chequeo: formatCatNode(categoriasServiciosMap.chequeo),
+        prevenir: formatCatNode(categoriasServiciosMap.prevenir),
+        kinesiologia: formatCatNode(categoriasServiciosMap.kinesiologia),
+        otras_especialidades: formatCatNode(categoriasServiciosMap.otras_especialidades)
+    };
+
     return {
         periodo: periodoIso,
         startDate,
@@ -328,6 +491,7 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             tope: INCENTIVO_TIERS.bolsas.turnos.tope,
             progresoPct: escalonTurnosActivos.progresoPct
         },
+        analisisServicios,
         agentes: listaAgentes
     };
 }
