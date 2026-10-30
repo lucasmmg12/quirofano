@@ -1503,8 +1503,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: '8px',
                                 padding: '12px 16px', borderRadius: '12px',
-                                background: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.03)',
-                                fontSize: '0.83rem', color: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.7)' : '#94A3B8',
+                                background: 'rgba(0,0,0,0.04)',
+                                fontSize: '0.83rem', color: '#475569',
                                 fontStyle: 'italic',
                             }}>
                                 <span style={{ fontSize: '1.5rem' }}>{msg.media_type === 'sticker' ? '🏷️' : '🖼️'}</span>
@@ -1521,14 +1521,14 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: '10px',
                         padding: '8px 12px', borderRadius: '20px',
-                        background: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.04)',
+                        background: 'rgba(0,0,0,0.05)',
                         minWidth: '200px',
                     }}>
                         <button
                             onClick={() => toggleAudio(msg.id, msg.media_url)}
                             style={{
                                 width: '36px', height: '36px', borderRadius: '50%',
-                                background: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.25)' : '#25D366',
+                                background: '#25D366',
                                 color: '#fff', border: 'none', cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                             }}
@@ -1538,13 +1538,13 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                         <div style={{ flex: 1 }}>
                             <div style={{
                                 height: '4px', borderRadius: '2px',
-                                background: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.3)' : '#ddd',
+                                background: 'rgba(0,0,0,0.12)',
                                 position: 'relative',
                             }}>
                                 <div style={{
                                     width: playingAudio === msg.id ? '60%' : '0%',
                                     height: '100%', borderRadius: '2px',
-                                    background: msg.direction === 'outgoing' ? '#fff' : '#25D366',
+                                    background: '#25D366',
                                     transition: 'width 0.3s',
                                 }} />
                             </div>
@@ -1577,20 +1577,20 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                             gap: '10px',
                             padding: '10px 12px',
                             borderRadius: '10px',
-                            background: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.18)' : (docMeta?.bgColor || '#EFF6FF'),
-                            border: `1.5px solid ${msg.direction === 'outgoing' ? 'rgba(255,255,255,0.35)' : (docMeta?.borderColor || '#BFDBFE')}`,
+                            background: docMeta?.bgColor || '#EFF6FF',
+                            border: `1.5px solid ${docMeta?.borderColor || '#BFDBFE'}`,
                             boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                         }}>
                             <div style={{
                                 width: '38px',
                                 height: '38px',
                                 borderRadius: '8px',
-                                backgroundColor: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.25)' : '#FFFFFF',
-                                border: `1px solid ${msg.direction === 'outgoing' ? 'rgba(255,255,255,0.4)' : (docMeta?.borderColor || '#BFDBFE')}`,
+                                backgroundColor: '#FFFFFF',
+                                border: `1px solid ${docMeta?.borderColor || '#BFDBFE'}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                color: msg.direction === 'outgoing' ? '#FFFFFF' : (docMeta?.color || '#2563EB'),
+                                color: docMeta?.color || '#2563EB',
                                 flexShrink: 0,
                                 boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
                             }}>
@@ -1604,7 +1604,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                 <div style={{
                                     fontSize: '0.82rem',
                                     fontWeight: 700,
-                                    color: msg.direction === 'outgoing' ? '#FFFFFF' : '#0F172A',
+                                    color: '#0F172A',
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
@@ -1615,7 +1615,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     <span style={{
                                         fontSize: '0.64rem',
                                         fontWeight: 800,
-                                        backgroundColor: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.3)' : (docMeta?.color || '#2563EB'),
+                                        backgroundColor: docMeta?.color || '#2563EB',
                                         color: '#FFFFFF',
                                         padding: '1px 5px',
                                         borderRadius: '4px',
@@ -1625,7 +1625,8 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     </span>
                                     <span style={{
                                         fontSize: '0.70rem',
-                                        color: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.85)' : '#64748B'
+                                        color: '#475569',
+                                        fontWeight: 500
                                     }}>
                                         {docMeta?.label || 'Documento'}
                                     </span>
@@ -1641,9 +1642,9 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                                     style={{
                                         padding: '6px',
                                         borderRadius: '6px',
-                                        backgroundColor: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.2)' : '#FFFFFF',
-                                        border: `1px solid ${msg.direction === 'outgoing' ? 'rgba(255,255,255,0.35)' : (docMeta?.borderColor || '#CBD5E1')}`,
-                                        color: msg.direction === 'outgoing' ? '#FFFFFF' : '#475569',
+                                        backgroundColor: '#FFFFFF',
+                                        border: `1px solid ${docMeta?.borderColor || '#CBD5E1'}`,
+                                        color: docMeta?.color || '#475569',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
