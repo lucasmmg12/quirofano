@@ -76,12 +76,16 @@ Podés responder con el número (*1*, *2*, *3*, *4* o *5*) o escribirnos tu cons
         nodeType: 'decision',
         botResponse: `¡Hola! 🏥 Te ayudamos a coordinar tu nuevo turno médico.
 
-Por favor indícanos:
-• Número de *DNI del paciente* (sin puntos ni espacios)
+Indíqueme los siguientes datos del paciente:
+DNI (sin puntos ni espacios):
+Nombre y Apellido :
+Obra social:
+Departamento donde vive:
+Fecha de nacimiento:
+
+Además, por favor comentanos:
 • ¿Con qué *profesional* o para qué *especialidad médica* solicitás la atención?
-• ¿El turno es para vos o para un familiar / otra persona?
 • Preferencia de *días y horarios* (mañana o tarde)
-• *Obra Social / Prepaga* y plan (o si tu atención será Particular)
 
 ${FOOTER}`,
         availableTags: ['{bot_name}', '{nombre}'],
@@ -149,13 +153,14 @@ Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistem
         nodeType: 'bot_response',
         botResponse: `Constatamos que *no registrás una ficha previa de paciente en Sanatorio Argentino*.
 
-Para poder abrir tu ficha de paciente en nuestro sistema institucional y coordinar tu atención, necesitamos los siguientes datos obligatorios de admisión:
+Para poder abrir tu ficha de paciente en nuestro sistema institucional y coordinar tu atención, necesitamos que completes estos datos:
 
-1️⃣ *Nombre y Apellido* (tal como figuran en tu DNI)
-2️⃣ *Número de DNI* (solo números, sin puntos ni espacios)
-3️⃣ *Fecha de Nacimiento* (DD/MM/AAAA) o *Edad*
-4️⃣ *Obra Social / Prepaga y Plan* (o aclará "Particular" si no poseés cobertura médica)
-5️⃣ *Departamento / Localidad de residencia en San Juan* (ej: Capital, Rivadavia, Rawson, Santa Lucía, Chimbas, Pocito, Caucete, etc.)`,
+Indíqueme los siguientes datos del paciente:
+DNI (sin puntos ni espacios):
+Nombre y Apellido :
+Obra social:
+Departamento donde vive:
+Fecha de nacimiento:`,
         availableTags: ['{bot_name}'],
         childrenIds: ['nodo_recepcion_datos_salus']
     },
