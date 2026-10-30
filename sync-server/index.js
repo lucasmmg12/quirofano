@@ -751,7 +751,8 @@ app.get('/api/salus/incentivos-contact-center', async (req, res) => {
         const pool = await getPool();
         const periodo = req.query.periodo || new Date().toISOString().substring(0, 7);
         console.log(`🏆 [Incentivos Contact Center] Calculando métricas de productividad para período: ${periodo}...`);
-        const data = await getIncentivosContactCenter(pool, { periodo });
+        const { getIncentivosContactCenter: getIncentivosFresh } = await import(`./incentivos_contact_center.mjs?v=${Date.now()}`);
+        const data = await getIncentivosFresh(pool, { periodo });
 
         // Guardar snapshot actualizado en Supabase app_config para acceso Cloud-First
         try {
@@ -4045,7 +4046,8 @@ app.get('/api/salus/cleanup/asociaciones-dups', async (req, res) => {
 export async function syncIncentivosContactCenterToSupabase(periodo) {
     try {
         const poolInst = await getPool();
-        const data = await getIncentivosContactCenter(poolInst, { periodo });
+        const { getIncentivosContactCenter: getIncentivosFresh } = await import(`./incentivos_contact_center.mjs?v=${Date.now()}`);
+        const data = await getIncentivosFresh(poolInst, { periodo });
         if (data) {
             await supabase.from('app_config').upsert({
                 key: `cc_incentivo_${periodo}`,

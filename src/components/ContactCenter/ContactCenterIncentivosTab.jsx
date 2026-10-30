@@ -205,7 +205,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 total: turnosProy
             },
             agentes: (datosSalus.agentes || []).map(ag => {
-                const turnosIndiv = ag.turnosProyectados || Math.round((ag.turnos || 0) * factorProyeccion);
+                const turnosIndiv = Math.max(ag.turnosProyectados || 0, Math.round((ag.turnos || 0) * factorProyeccion));
                 return {
                     ...ag,
                     turnos: turnosIndiv
@@ -832,7 +832,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
                                 <span style={{ color: '#BAE6FD' }}>📍 Real Devengado Hoy:</span>
-                                <strong style={{ color: '#FDE047' }}>$ 139.471 <span style={{ color: '#93C5FD', fontWeight: 500 }}>(+$ 0 var)</span></strong>
+                                <strong style={{ color: '#FDE047' }}>{formatCurrency(liquidacionReal.agentes.find(a => a.fte === 1.0)?.totalALiquidar || BASE_GARANTIZADA_HISTORICA)} <span style={{ color: '#93C5FD', fontWeight: 500 }}>(+{formatCurrency(liquidacionReal.agentes.find(a => a.fte === 1.0)?.totalVariable || 0)} var)</span></strong>
                             </div>
                             <div style={{
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
