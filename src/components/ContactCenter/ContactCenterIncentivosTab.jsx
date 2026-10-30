@@ -35,7 +35,7 @@ import {
 } from '../../services/incentivoContactCenterService';
 
 export default function ContactCenterIncentivosTab({ activeAgent, currentUser, addToast }) {
-    const [periodo, setPeriodo] = useState('2026-09');
+    const [periodo, setPeriodo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [datosSalus, setDatosSalus] = useState(null);
@@ -372,9 +372,9 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 <option value="2026-07">Julio 2026 (Histórico)</option>
                                 <option value="2026-08">Agosto 2026 (Liquidación 1 - Curva Érica)</option>
                                 <option value="2026-09">Septiembre 2026 (Liquidación 2 - Cese Antonella)</option>
-                                <option value="2026-10">Octubre 2026 (Mes en Curso)</option>
-                                <option value="2026-11">Noviembre 2026 (Proyección)</option>
-                                <option value="2026-12">Diciembre 2026</option>
+                                <option value="2026-10">Octubre 2026 {currentMonthIso === '2026-10' ? '(Mes en Curso)' : ''}</option>
+                                <option value="2026-11">Noviembre 2026 {currentMonthIso === '2026-11' ? '(Mes en Curso)' : '(Proyección)'}</option>
+                                <option value="2026-12">Diciembre 2026 {currentMonthIso === '2026-12' ? '(Mes en Curso)' : ''}</option>
                             </select>
                         </div>
 
