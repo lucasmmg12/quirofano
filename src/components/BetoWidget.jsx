@@ -947,15 +947,6 @@ export default function BetoWidget({
                             display: 'flex', alignItems: 'center', gap: '7px',
                         }}>
                             <span>BETO</span>
-                            <span style={{
-                                fontSize: '0.62rem', fontWeight: 800,
-                                padding: '2px 7px', borderRadius: '999px',
-                                background: 'rgba(56, 189, 248, 0.18)',
-                                border: '1px solid rgba(56, 189, 248, 0.5)',
-                                color: '#7DD3FC', letterSpacing: '0.4px'
-                            }}>
-                                NÚCLEO CLÍNICO IA
-                            </span>
                         </div>
                         <div style={{
                             fontSize: '0.71rem', color: '#BAE6FD',
