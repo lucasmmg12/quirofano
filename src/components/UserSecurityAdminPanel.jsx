@@ -8,8 +8,9 @@ import {
     RefreshCw, CheckCircle2, AlertTriangle, Edit3, RotateCcw,
     Phone, Mail, Shield, Check, X, Loader2, ChevronDown, ChevronUp,
     MapPin, Globe, Monitor, Activity, Clock, FileDown, Copy, Printer, ExternalLink,
-    Camera, Inbox, CheckCircle, XCircle
+    Camera, Inbox, CheckCircle, XCircle, Database
 } from 'lucide-react';
+import SalusSyncArchitectureTab from './SalusSyncArchitectureTab.jsx';
 import {
     adminListUsers,
     adminSaveUser,
@@ -642,9 +643,29 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                         {kpis.pendingRequestsCount} pendiente{kpis.pendingRequestsCount !== 1 ? 's' : ''}
                     </span>
                 </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('salus_sync')}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '8px',
+                        padding: '10px 18px', borderRadius: '10px 10px 0 0',
+                        border: 'none', cursor: 'pointer',
+                        background: activeTab === 'salus_sync' ? '#1E4078' : 'transparent',
+                        color: activeTab === 'salus_sync' ? '#FFFFFF' : '#475569',
+                        fontSize: '0.84rem', fontWeight: 700, transition: 'all 0.15s',
+                    }}
+                >
+                    <Database size={16} />
+                    <span>Sync SALUS · Arquitectura y Tráfico</span>
+                </button>
             </div>
 
+            {activeTab === 'salus_sync' && (
+                <SalusSyncArchitectureTab addToast={addToast} currentUser={currentUser} />
+            )}
+
             {/* BARRA DE FILTROS Y BÚSQUEDA */}
+            {activeTab !== 'salus_sync' && (
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '12px',
@@ -726,6 +747,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                     </div>
                 )}
             </div>
+            )}
 
             {/* TABLA DE AUDITORÍA Y GESTIÓN DE USUARIOS */}
             {activeTab === 'users' && (
