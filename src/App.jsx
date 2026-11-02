@@ -1032,7 +1032,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                             margin: '0 auto 14px',
                             color: telemetryState.geo_permission === 'denied' ? '#DC2626' : '#1E4078',
                         }}>
-                            <img src="/beto enojado.jpg" alt="Dr. Beto - Activar Ubicación" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }} />
+                            <img src="/beto-enojado.jpg" alt="Dr. Beto - Activar Ubicación" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }} />
                         </div>
 
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.22rem', fontWeight: 800, color: '#0F172A' }}>
