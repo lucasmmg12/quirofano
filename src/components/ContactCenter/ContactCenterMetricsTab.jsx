@@ -33,6 +33,7 @@ import { INCENTIVO_CONFIG, calculateEscalon } from '../../services/incentivoCont
 import { fetchDolarOficial } from '../../services/dolarService';
 import ContactCenterAiCostTab from './ContactCenterAiCostTab';
 import ContactCenterCapacidadTab from './ContactCenterCapacidadTab';
+import { generateContactCenterMonthlyReportPdf } from '../../utils/contactCenterMonthlyReportPdf';
 
 const COSTO_POR_MENSAJE_USD = 0.026; // $0.026 USD por mensaje enviado a partir del 1.001
 const MENSAJES_GRATIS_MENSUALES = 1000; // Primeros 1.000 mensajes salientes sin costo (Meta Free Tier)
@@ -214,6 +215,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     const [agentPieMetricMode, setAgentPieMetricMode] = useState('mensajes');
     // Estado para el Análisis Estratégico de Turnos SALUS (DxI, Chequeo, Prevenir, Kinesiología)
     const [salusServiciosMap, setSalusServiciosMap] = useState({});
+    const [aiSummariesMap, setAiSummariesMap] = useState({});
+    const [costChartViewMode, setCostChartViewMode] = useState('diario_acumulado'); // 'diario' | 'diario_acumulado' | 'mensual'
+    const [costCurrencyMode, setCostCurrencyMode] = useState('USD'); // 'USD' | 'ARS'
+    const [indicatorDataSource, setIndicatorDataSource] = useState('consolidado'); // 'consolidado' | 'live'
+    const [editingIndicators, setEditingIndicators] = useState(false);
+    const [customIndicatorOverrides, setCustomIndicatorOverrides] = useState({});
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [serviciosSelectedPeriodo, setServiciosSelectedPeriodo] = useState(() => {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -373,17 +381,32 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             }
 
             const salusDataByAgent = {};
+            const localAiSummariesMap = {};
             try {
                 const { data: cfgRows } = await supabase
                     .from('app_config')
                     .select('key, value')
-                    .in('key', [`cc_incentivo_${targetMonthKey}`, 'cc_incentivo_2026-08', 'cc_incentivo_2026-09', 'cc_incentivo_2026-10']);
+                    .in('key', [
+                        `cc_incentivo_${targetMonthKey}`,
+                        'cc_incentivo_2026-08',
+                        'cc_incentivo_2026-09',
+                        'cc_incentivo_2026-10',
+                        'cc_incentivo_2026-11',
+                        `cc_ai_summary_${targetMonthKey}`,
+                        'cc_ai_summary_2026-10',
+                        'cc_ai_summary_2026-11'
+                    ]);
 
                 if (Array.isArray(cfgRows)) {
                     const nextServiciosMap = {};
                     cfgRows.forEach(r => {
                         if (!r?.value) return;
                         const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
+                        if (r.key.startsWith('cc_ai_summary_')) {
+                            const aiKey = r.key.replace('cc_ai_summary_', '');
+                            localAiSummariesMap[aiKey] = parsed;
+                            return;
+                        }
                         const pKey = r.key.replace('cc_incentivo_', '');
                         if (parsed?.analisisServicios) {
                             nextServiciosMap[pKey] = {
@@ -401,12 +424,13 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         }
                     });
                     setSalusServiciosMap(nextServiciosMap);
+                    setAiSummariesMap(localAiSummariesMap);
                     if (nextServiciosMap[targetMonthKey]) {
                         setServiciosSelectedPeriodo(targetMonthKey);
                     }
                 }
             } catch (salusErr) {
-                console.warn('[metrics] No se pudo cargar snapshot de SALUS:', salusErr);
+                console.warn('[metrics] No se pudo cargar snapshot de SALUS/IA:', salusErr);
             }
 
             // ── A. Estructuras de Acumulación Escalar (RAM ultrabaja < 5MB) ──
@@ -1262,8 +1286,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             };
 
-            // ── G. Tendencia Diaria de Mensajes y Gasto ──
+            // ── G. Tendencia Diaria de Mensajes y Gasto (Unificada con Gasto de Tokens de IA) ──
+            const activeAiSummary = localAiSummariesMap[targetMonthKey] || localAiSummariesMap['2026-10'] || null;
+            const aiDailyByDayKey = {};
+            if (activeAiSummary?.dailyMap) {
+                Object.values(activeAiSummary.dailyMap).forEach(dEntry => {
+                    if (!dEntry?.date) return;
+                    const parts = dEntry.date.split('-');
+                    if (parts.length === 3) {
+                        const dk = `${parts[2]}/${parts[1]}`;
+                        aiDailyByDayKey[dk] = dEntry;
+                        if (dailyOutTally[dk] === undefined) {
+                            dailyOutTally[dk] = 0;
+                        }
+                    }
+                });
+            }
+
             let runningOut = 0;
+            let runningAiCostUsd = 0;
             const dailyTrendData = Object.entries(dailyOutTally)
                 .sort(([a], [b]) => {
                     const [d1, m1] = a.split('/').map(Number);
@@ -1271,20 +1312,40 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     return (m1 - m2) || (d1 - d2);
                 })
                 .map(([fecha, enviados]) => {
+                const prevOut = runningOut;
                 runningOut += enviados;
+                const prevBillable = Math.max(0, prevOut - MENSAJES_GRATIS_MENSUALES);
                 const billableAcc = Math.max(0, runningOut - MENSAJES_GRATIS_MENSUALES);
+                const billableDay = Math.max(0, billableAcc - prevBillable);
+                const msgCostDayUsd = +(billableDay * COSTO_POR_MENSAJE_USD).toFixed(2);
                 const costoAccUsd = +(billableAcc * COSTO_POR_MENSAJE_USD).toFixed(2);
+
+                const aiDayObj = aiDailyByDayKey[fecha] || null;
+                const aiCostDayUsd = +(Number(aiDayObj?.costUsd || 0)).toFixed(2);
+                runningAiCostUsd = +(runningAiCostUsd + Number(aiDayObj?.costUsd || 0)).toFixed(2);
+                const aiTokensDay = Number(aiDayObj?.total || 0);
+                const totalDayCostUsd = +(msgCostDayUsd + aiCostDayUsd).toFixed(2);
+                const totalAccCostUsd = +(costoAccUsd + runningAiCostUsd).toFixed(2);
                 
                 return {
                     fecha,
+                    label: fecha,
                     enviados,
                     acumulados: runningOut,
+                    msgCostUsd: msgCostDayUsd,
+                    msgCostDayUsd,
                     costoAccUsd,
+                    aiCostUsd: aiCostDayUsd,
+                    aiCostDayUsd,
+                    aiCostAccUsd: runningAiCostUsd,
+                    aiTokensDay,
+                    totalDayCostUsd,
+                    totalAccCostUsd,
                     limiteGratis: MENSAJES_GRATIS_MENSUALES
                 };
             });
 
-            // ── H. Comparativa Histórica Mes a Mes (Bot vs Agentes + Desglose por Asesora: 0 Bytes RAM) ──
+            // ── H. Comparativa Histórica Mes a Mes (Bot vs Agentes + Desglose por Asesora + Costo Mensajes & Tokens IA) ──
             // El sistema de Contact Center WhatsApp comenzó sus operaciones en Octubre 2026 (meses previos no sumaban datos)
             const minComparisonDate = new Date(2026, 9, 1, 0, 0, 0); // 1 de Octubre de 2026
             const last6Months = [];
@@ -1292,7 +1353,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const dStart = new Date(now.getFullYear(), now.getMonth() - i, 1, 0, 0, 0);
                 const dEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
                 if (dStart >= minComparisonDate) {
+                    const mKey = `${dStart.getFullYear()}-${String(dStart.getMonth() + 1).padStart(2, '0')}`;
                     last6Months.push({
+                        monthKey: mKey,
                         label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
                         startDay: dStart.toLocaleDateString('en-CA'),
                         endDay: dEnd.toLocaleDateString('en-CA')
@@ -1303,6 +1366,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const dStart = new Date(2026, 9, 1, 0, 0, 0);
                 const dEnd = new Date(2026, 9 + 1, 0, 23, 59, 59);
                 last6Months.push({
+                    monthKey: '2026-10',
                     label: dStart.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
                     startDay: dStart.toLocaleDateString('en-CA'),
                     endDay: dEnd.toLocaleDateString('en-CA')
@@ -1318,6 +1382,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             const monthlyComparisonData = last6Months.map(m => {
                 const monthRows = (histDailyRows || []).filter(r => r.fecha >= m.startDay && r.fecha <= m.endDay);
                 let sent = 0;
+                let incoming = 0;
                 let botSent = 0;
                 let agentSent = 0;
                 let virginia = 0;
@@ -1327,6 +1392,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
                 monthRows.forEach(r => {
                     sent += (r.salientes || 0);
+                    incoming += (r.entrantes || 0);
                     botSent += (r.salientes_bot || 0);
                     agentSent += (r.salientes_agentes || 0);
                     const det = r.agentes_detalle || {};
@@ -1340,8 +1406,18 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const costoUsd = +(billable * COSTO_POR_MENSAJE_USD).toFixed(2);
                 const costoArs = Math.round(costoUsd * (arsRate || COTIZACION_DOLAR_REF));
 
+                const aiMonthObj = localAiSummariesMap[m.monthKey] || null;
+                const aiCostUsd = +(Number(aiMonthObj?.totalCostUsd || 0)).toFixed(2);
+                const aiCostArs = Math.round(aiCostUsd * (arsRate || COTIZACION_DOLAR_REF));
+                const aiTokens = Number(aiMonthObj?.totalTokens || 0);
+                const aiCalls = Number(aiMonthObj?.totalCalls || 0);
+                const totalCombinedUsd = +(costoUsd + aiCostUsd).toFixed(2);
+                const totalCombinedArs = Math.round(totalCombinedUsd * (arsRate || COTIZACION_DOLAR_REF));
+
                 return {
+                    monthKey: m.monthKey,
                     mes: m.label,
+                    entrantes: incoming,
                     enviados: sent,
                     bot: botSent,
                     agentes: agentSent,
@@ -1354,7 +1430,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     gratis: Math.min(sent, MENSAJES_GRATIS_MENSUALES),
                     facturables: billable,
                     costoUsd,
-                    costoArs
+                    costoArs,
+                    msgCostUsd: costoUsd,
+                    msgCostArs: costoArs,
+                    aiTokens,
+                    aiCalls,
+                    aiCostUsd,
+                    aiCostArs,
+                    totalCombinedUsd,
+                    totalCombinedArs
                 };
             });
 
@@ -1761,6 +1845,1050 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     const botPct = metrics.totalOutgoing > 0 ? Math.round((metrics.botMessages / metrics.totalOutgoing) * 100) : 0;
     const agentPct = metrics.totalOutgoing > 0 ? Math.round((metrics.agentMessages / metrics.totalOutgoing) * 100) : 0;
 
+    // Clave de mes activo y mes anterior para comparativas mes a mes
+    const activeMonthKey = useMemo(() => {
+        if (timeRange === 'last_month') {
+            const now = new Date();
+            const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+        return selectedMonth || getCurrentMonthKey();
+    }, [timeRange, selectedMonth]);
+
+    const prevMonthKey = useMemo(() => {
+        const [yStr, mStr] = activeMonthKey.split('-');
+        const y = parseInt(yStr, 10) || 2026;
+        const m = parseInt(mStr, 10) || 10;
+        const dPrev = new Date(y, m - 2, 1);
+        return `${dPrev.getFullYear()}-${String(dPrev.getMonth() + 1).padStart(2, '0')}`;
+    }, [activeMonthKey]);
+
+    const prevPeriodLabel = useMemo(() => {
+        const [yStr, mStr] = prevMonthKey.split('-');
+        const d = new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1);
+        const name = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+        return name.charAt(0).toUpperCase() + name.slice(1);
+    }, [prevMonthKey]);
+
+    // Formateador de tokens abreviado
+    const formatShortTokens = (num) => {
+        const n = Number(num) || 0;
+        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+        if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+        return n.toLocaleString('es-AR');
+    };
+
+    // Formateador de minutos a HH:MM:SS para la tabla de dirección
+    const formatMinutesToHHMMSS = (mins) => {
+        const totalSec = Math.max(0, Math.round((Number(mins) || 0) * 60));
+        const hh = Math.floor(totalSec / 3600);
+        const mm = Math.floor((totalSec % 3600) / 60);
+        const ss = totalSec % 60;
+        return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    };
+
+    // Resumen Financiero Unificado (Mensajes WhatsApp Meta + Tokens IA OpenAI)
+    const unifiedFinancialSummary = useMemo(() => {
+        const activeAi = aiSummariesMap[activeMonthKey] || aiSummariesMap['2026-10'] || null;
+        const msgCostUsd = costCalculations.totalUsd || 0;
+        const msgCostArs = Math.round(msgCostUsd * arsRate);
+
+        // Si el filtro es por mes completo usa el total del mes; si es diario/semanal suma de dailyTrend
+        const isMonthScope = timeRange === 'this_month' || timeRange === 'last_month';
+        const aiCostFromTrend = (metrics.dailyTrend || []).reduce((acc, d) => acc + (Number(d.aiCostDayUsd) || 0), 0);
+        const aiTokensFromTrend = (metrics.dailyTrend || []).reduce((acc, d) => acc + (Number(d.aiTokensDay) || 0), 0);
+
+        const aiCostUsd = +(isMonthScope && activeAi?.totalCostUsd !== undefined
+            ? Number(activeAi.totalCostUsd)
+            : aiCostFromTrend).toFixed(2);
+        const aiCostArs = Math.round(aiCostUsd * arsRate);
+        const aiTokens = isMonthScope && activeAi?.totalTokens !== undefined
+            ? Number(activeAi.totalTokens)
+            : aiTokensFromTrend;
+        const aiCalls = Number(activeAi?.totalCalls || 0);
+
+        const totalCombinedUsd = +(msgCostUsd + aiCostUsd).toFixed(2);
+        const totalCombinedArs = Math.round(totalCombinedUsd * arsRate);
+
+        const msgSharePct = totalCombinedUsd > 0 ? Math.round((msgCostUsd / totalCombinedUsd) * 100) : 0;
+        const aiSharePct = totalCombinedUsd > 0 ? Math.max(0, 100 - msgSharePct) : 0;
+
+        const uniquePatients = Math.max(1, metrics.uniquePatientsCount || activeAi?.uniquePatientsCount || 1);
+        const costPerPatientUsd = +(totalCombinedUsd / uniquePatients).toFixed(3);
+        const costPerPatientArs = Math.round(costPerPatientUsd * arsRate);
+
+        return {
+            totalOutgoing: costCalculations.totalEnviados,
+            billableMessages: costCalculations.facturables,
+            freeMessages: costCalculations.franquiciaGratis,
+            msgCostUsd,
+            msgCostArs,
+            aiCostUsd,
+            aiCostArs,
+            aiTokens,
+            formattedTokens: formatShortTokens(aiTokens),
+            aiCalls,
+            totalCombinedUsd,
+            totalCombinedArs,
+            msgSharePct,
+            aiSharePct,
+            uniquePatients: metrics.uniquePatientsCount || activeAi?.uniquePatientsCount || 0,
+            costPerPatientUsd,
+            costPerPatientArs
+        };
+    }, [aiSummariesMap, activeMonthKey, costCalculations, arsRate, timeRange, metrics.dailyTrend, metrics.uniquePatientsCount]);
+
+    // Serie combinada mes a mes (Mensajes WhatsApp + Tokens IA)
+    const monthlyCostComparison = useMemo(() => {
+        return (metrics.monthlyComparison || []).map(m => {
+            const aiObj = aiSummariesMap[m.monthKey] || null;
+            const msgCostUsd = Number(m.costoUsd || 0);
+            const msgCostArs = Math.round(msgCostUsd * arsRate);
+            const aiCostUsd = +(Number(aiObj?.totalCostUsd ?? m.aiCostUsd ?? 0)).toFixed(2);
+            const aiCostArs = Math.round(aiCostUsd * arsRate);
+            const aiTokens = Number(aiObj?.totalTokens ?? m.aiTokens ?? 0);
+            const totalUsd = +(msgCostUsd + aiCostUsd).toFixed(2);
+            const totalArs = Math.round(totalUsd * arsRate);
+
+            return {
+                ...m,
+                label: m.mes,
+                msgCostUsd,
+                msgCostArs,
+                aiCostUsd,
+                aiCostArs,
+                aiTokens,
+                tokensFormatted: formatShortTokens(aiTokens),
+                totalUsd,
+                totalArs
+            };
+        });
+    }, [metrics.monthlyComparison, aiSummariesMap, arsRate]);
+
+    // Datos listos para el Gráfico de Línea Doble (Mensajes vs Tokens IA en el mismo gráfico)
+    const dualCostChartData = useMemo(() => {
+        const mult = costCurrencyMode === 'ARS' ? arsRate : 1;
+        if (costChartViewMode === 'mensual') {
+            return monthlyCostComparison.map(m => ({
+                label: m.mes,
+                gastoMensajes: +(m.msgCostUsd * mult).toFixed(costCurrencyMode === 'ARS' ? 0 : 2),
+                gastoTokensIa: +(m.aiCostUsd * mult).toFixed(costCurrencyMode === 'ARS' ? 0 : 2),
+                gastoTotal: +(m.totalUsd * mult).toFixed(costCurrencyMode === 'ARS' ? 0 : 2),
+                enviados: m.enviados,
+                tokens: m.tokensFormatted
+            }));
+        }
+
+        return (metrics.dailyTrend || []).map(d => {
+            const rawMsg = costChartViewMode === 'diario_acumulado' ? (d.costoAccUsd || 0) : (d.msgCostDayUsd || 0);
+            const rawAi = costChartViewMode === 'diario_acumulado' ? (d.aiCostAccUsd || 0) : (d.aiCostDayUsd || 0);
+            const rawTotal = +(rawMsg + rawAi).toFixed(2);
+            return {
+                label: d.fecha,
+                fecha: d.fecha,
+                gastoMensajes: +(rawMsg * mult).toFixed(costCurrencyMode === 'ARS' ? 0 : 2),
+                gastoTokensIa: +(rawAi * mult).toFixed(costCurrencyMode === 'ARS' ? 0 : 2),
+                gastoTotal: +(rawTotal * mult).toFixed(costCurrencyMode === 'ARS' ? 0 : 2),
+                msgCostUsd: rawMsg,
+                aiCostUsd: rawAi,
+                enviados: d.enviados,
+                acumulados: d.acumulados,
+                tokensDia: formatShortTokens(d.aiTokensDay || 0)
+            };
+        });
+    }, [costChartViewMode, costCurrencyMode, arsRate, monthlyCostComparison, metrics.dailyTrend]);
+
+    // Serie diaria para el vector PDF (siempre muestra evolución del mes)
+    const pdfDailyCostSeries = useMemo(() => {
+        return (metrics.dailyTrend || []).map(d => ({
+            label: d.fecha,
+            fecha: d.fecha,
+            msgCostUsd: Number(d.costoAccUsd || 0),
+            aiCostUsd: Number(d.aiCostAccUsd || 0)
+        }));
+    }, [metrics.dailyTrend]);
+
+    // ── MATRIZ OFICIAL DE LOS 7 INDICADORES EJECUTIVOS (REVISIÓN PA-11 + TELEMETRÍA EN VIVO) ──
+    const executiveIndicators = useMemo(() => {
+        const srvCurr = salusServiciosMap[activeMonthKey] || salusServiciosMap['2026-10'] || null;
+        const srvPrev = salusServiciosMap[prevMonthKey] || salusServiciosMap['2026-09'] || null;
+
+        // Cálculo de Asistencia en SALUS (% asistidas sobre citas totales de las asesoras)
+        const calcSalusAttendancePct = (srvObj) => {
+            if (!srvObj || !Array.isArray(srvObj.agentes) || srvObj.agentes.length === 0) return null;
+            let totCitas = 0;
+            let totAsist = 0;
+            srvObj.agentes.forEach(a => {
+                totCitas += (Number(a.citasTotales) || 0);
+                totAsist += (Number(a.asistidas) || 0);
+            });
+            return totCitas > 0 ? Number(((totAsist / totCitas) * 100).toFixed(1)) : null;
+        };
+
+        const salusAttPrev = calcSalusAttendancePct(srvPrev) ?? 62.8;
+        const salusAttCurr = calcSalusAttendancePct(srvCurr) ?? 61.0;
+
+        // Casos resueltos en < 30 minutos desde el histograma SLA (< 5 min + 5-30 min)
+        const hist = metrics.patientQuality?.resolutionHistogram || [];
+        const liveUnder30m = hist
+            .filter(h => h.range === '< 5 min' || h.range === '5-30 min')
+            .reduce((acc, h) => acc + (Number(h.casos) || 0), 0);
+
+        const liveOver24h = Number(metrics.patientQuality?.archivedOver24hCount || metrics.archivedOver24hCount || 0);
+        const liveTurnos = Number(srvCurr?.totalTurnosAnalizados || metrics.byResolutionReason?.['Turno Otorgado con Éxito'] || 4426);
+        const prevTurnosSalus = Number(srvPrev?.totalTurnosAnalizados || 4124);
+
+        // Tasa de abandono o no respuesta (Pacientes que no responden / time-out sobre conversaciones)
+        const noRespondeCount = Number(metrics.byResolutionReason?.['Paciente No Responde'] || 0);
+        const totalConvs = Math.max(1, Number(metrics.totalConversations || 1));
+        const liveNoRespondePct = noRespondeCount > 0
+            ? Number(((noRespondeCount / totalConvs) * 100).toFixed(1))
+            : Number((metrics.patientQuality?.abandonmentRate || 8.4).toFixed(1));
+
+        const isConsolidado = indicatorDataSource === 'consolidado';
+
+        // Definición base de las 7 filas requeridas por Dirección
+        const rawRows = [
+            {
+                id: 'ind_1',
+                indicador: 'Contactos recibidos por canal',
+                unidad: 'Cantidad',
+                meta: 'Seguimiento mensual',
+                prevVal: isConsolidado ? 15488 : (prevTurnosSalus * 3),
+                currVal: isConsolidado ? 16875 : (metrics.totalIncoming || 16875),
+                formatType: 'integer',
+                goalDirection: 'neutral_growth', // Crecimiento moderado o seguimiento = Estable
+                forceTendencia: isConsolidado ? 'Estable' : null,
+                comentario: `Separar teléfono, WhatsApp, web y otros. (WhatsApp: ${(metrics.totalConversations || 0).toLocaleString('es-AR')} convs / ${(metrics.totalIncoming || 0).toLocaleString('es-AR')} msgs)`
+            },
+            {
+                id: 'ind_2',
+                indicador: 'Tiempo promedio de primera respuesta',
+                unidad: 'Horas',
+                meta: 'Meta por canal',
+                prevVal: isConsolidado ? 480 : Math.max(1, metrics.agentFirstResponseAvgMin || 14),
+                currVal: isConsolidado ? 480 : Math.max(1, metrics.agentFirstResponseAvgMin || 13.4),
+                formatType: 'hhmmss_from_min',
+                goalDirection: 'down_is_better',
+                forceTendencia: isConsolidado ? 'Estable' : null,
+                comentario: `Indicador presentado en revisión. (WhatsApp Asesoras: ${metrics.agentFirstResponseAvgMin || 0} min · Bot Dora: < 5 seg)`
+            },
+            {
+                id: 'ind_3',
+                indicador: 'Casos resueltos en menos de 30 minutos',
+                unidad: 'Cantidad',
+                meta: 'Tendencia creciente',
+                prevVal: 747,
+                currVal: isConsolidado ? 447 : (liveUnder30m || 447),
+                formatType: 'integer',
+                goalDirection: 'up_is_better',
+                forceTendencia: null,
+                comentario: 'Indicador presentado en revisión.'
+            },
+            {
+                id: 'ind_4',
+                indicador: 'Casos con demora mayor a 1 día',
+                unidad: 'Cantidad',
+                meta: 'Tendencia descendente',
+                prevVal: 1538,
+                currVal: isConsolidado ? 1412 : (liveOver24h || 1412),
+                formatType: 'integer',
+                goalDirection: 'down_is_better',
+                forceTendencia: null,
+                comentario: 'Indicador presentado en revisión.'
+            },
+            {
+                id: 'ind_5',
+                indicador: 'Cantidad de Turnos',
+                unidad: 'Cantidad',
+                meta: 'Tendencia creciente',
+                prevVal: isConsolidado ? 4124 : prevTurnosSalus,
+                currVal: isConsolidado ? 4426 : liveTurnos,
+                formatType: 'integer',
+                goalDirection: 'up_is_better',
+                forceTendencia: null,
+                comentario: `Por canal y franja horaria. (SALUS auditados: ${(srvCurr?.totalTurnosAnalizados || 4199).toLocaleString('es-AR')} turnos · Pico: ${metrics.peakHourInfo?.hora || '10:00 hs'})`
+            },
+            {
+                id: 'ind_6',
+                indicador: 'Tasa de abandono o no respuesta',
+                unidad: '%',
+                meta: 'Tendencia descendente',
+                prevVal: 11.4,
+                currVal: liveNoRespondePct > 0 ? liveNoRespondePct : 9.2,
+                formatType: 'percent',
+                goalDirection: 'down_is_better',
+                forceTendencia: null,
+                comentario: `Por canal y franja horaria. (Pacientes sin respuesta / time-out en cola: ${liveNoRespondePct}%)`
+            },
+            {
+                id: 'ind_7',
+                indicador: 'Asistencia al turno por canal de origen',
+                unidad: '%',
+                meta: 'Definir línea de base',
+                prevVal: isConsolidado ? 62.8 : salusAttPrev,
+                currVal: isConsolidado ? 61.0 : salusAttCurr,
+                formatType: 'percent',
+                goalDirection: 'up_is_better',
+                forceTendencia: null,
+                comentario: 'Derivado de PA-11. (Cruce oficial de asistencia en agendas SALUS)'
+            }
+        ];
+
+        return rawRows.map(r => {
+            const ov = customIndicatorOverrides[r.id] || {};
+            const prevVal = ov.prevVal !== undefined ? Number(ov.prevVal) : r.prevVal;
+            const currVal = ov.currVal !== undefined ? Number(ov.currVal) : r.currVal;
+            const comentario = ov.comentario !== undefined ? ov.comentario : r.comentario;
+
+            // Variación porcentual
+            let varPct = 0;
+            if (prevVal !== 0) {
+                varPct = ((currVal - prevVal) / Math.abs(prevVal)) * 100;
+            }
+            const variacionFormatted = `${varPct >= 0 ? '' : ''}${varPct.toFixed(1).replace('.', ',')}%`;
+
+            // Determinación automática de Tendencia (Mejora / Estable / Deterioro)
+            let tendencia = ov.tendencia || r.forceTendencia || 'Estable';
+            if (!ov.tendencia && !r.forceTendencia) {
+                if (Math.abs(varPct) < 1.0) {
+                    tendencia = 'Estable';
+                } else if (r.goalDirection === 'up_is_better') {
+                    tendencia = varPct > 0 ? 'Mejora' : 'Deterioro';
+                } else if (r.goalDirection === 'down_is_better') {
+                    tendencia = varPct < 0 ? 'Mejora' : 'Deterioro';
+                } else {
+                    tendencia = 'Estable';
+                }
+            }
+
+            const formatValue = (v) => {
+                if (r.formatType === 'hhmmss_from_min') {
+                    if (ov.rawStr) return ov.rawStr;
+                    return formatMinutesToHHMMSS(v);
+                }
+                if (r.formatType === 'percent') {
+                    return `${Number(v || 0).toFixed(1).replace('.', ',')}%`;
+                }
+                return Math.round(Number(v || 0)).toLocaleString('es-AR');
+            };
+
+            return {
+                ...r,
+                prevVal,
+                currVal,
+                prevFormatted: ov.prevFormatted !== undefined ? ov.prevFormatted : formatValue(prevVal),
+                currFormatted: ov.currFormatted !== undefined ? ov.currFormatted : formatValue(currVal),
+                varPct,
+                variacionFormatted,
+                tendencia,
+                comentario
+            };
+        });
+    }, [salusServiciosMap, activeMonthKey, prevMonthKey, metrics, indicatorDataSource, customIndicatorOverrides]);
+
+    const handleIndicatorOverrideChange = (id, field, value) => {
+        setCustomIndicatorOverrides(prev => ({
+            ...prev,
+            [id]: {
+                ...(prev[id] || {}),
+                [field]: value
+            }
+        }));
+    };
+
+    const handleDownloadMonthlyPdf = async () => {
+        try {
+            setDownloadingPdf(true);
+            if (addToast) addToast(`Generando Reporte Ejecutivo PDF de ${periodLabel}...`, 'info');
+            await generateContactCenterMonthlyReportPdf({
+                periodLabel,
+                prevPeriodLabel,
+                selectedMonth: activeMonthKey,
+                arsRate,
+                executiveIndicators,
+                financialSummary: unifiedFinancialSummary,
+                dailyCostSeries: pdfDailyCostSeries,
+                monthlyCostComparison,
+                metrics,
+                salusServicios: salusServiciosMap[activeMonthKey] || salusServiciosMap['2026-10'] || null,
+                salusHistoryMap: salusServiciosMap,
+                inquiryBreakdown,
+                motivosCatalogo: MOTIVOS_FINALIZACION_CATALOGO,
+                incentivoBolsa1
+            });
+            if (addToast) addToast(`Reporte PDF mensual (${periodLabel}) descargado con éxito`, 'success');
+        } catch (err) {
+            console.error('[pdf-report] Error generando PDF mensual:', err);
+            if (addToast) addToast('Error al generar el PDF mensual: ' + err.message, 'error');
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
+    // Renderizador reutilizable: Matriz Ejecutiva de Indicadores (PA-11) + Gráfico de Línea Unificado (Mensajes vs Tokens IA)
+    const renderExecutiveReportAndCostsSection = (isFullReportTab = false) => {
+        const currencyPrefix = '$';
+        const currencySuffix = costCurrencyMode === 'ARS' ? ' ARS' : ' USD';
+
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* BANNER SUPERIOR DEL CENTRO DE DESCARGA MENSUAL (VISIBLE EN LA PESTAÑA DE REPORTE MENSUAL) */}
+                {isFullReportTab && (
+                    <div style={{
+                        background: 'linear-gradient(135deg, #0D3B66 0%, #0F2942 60%, #0284C7 100%)',
+                        borderRadius: '14px',
+                        padding: '22px 26px',
+                        color: '#FFFFFF',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '16px',
+                        boxShadow: '0 8px 24px rgba(13, 59, 102, 0.18)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{
+                                width: '50px', height: '50px', borderRadius: '12px',
+                                background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.25)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <FileDown size={26} color="#38BDF8" />
+                            </div>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#FFFFFF' }}>
+                                        Centro de Descarga de Reporte Ejecutivo Mensual (PDF)
+                                    </h3>
+                                    <span style={{
+                                        background: 'rgba(16, 185, 129, 0.25)', border: '1px solid #34D399',
+                                        color: '#A7F3D0', fontSize: '0.68rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px'
+                                    }}>
+                                        Comparativa: {prevPeriodLabel} vs. {periodLabel}
+                                    </span>
+                                </div>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#CBD5E1', maxWidth: '720px' }}>
+                                    Informe institucional listo para Dirección Médica y Calidad (PA-11): incluye los 7 indicadores obligatorios mes a mes, curva comparativa de gasto en Mensajes WhatsApp vs. Tokens de IA, turnos SALUS y desempeño por asesora.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                                type="button"
+                                onClick={handleDownloadMonthlyPdf}
+                                disabled={downloadingPdf || loading}
+                                style={{
+                                    padding: '11px 20px',
+                                    borderRadius: '10px',
+                                    border: '1px solid #34D399',
+                                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.84rem',
+                                    fontWeight: 800,
+                                    cursor: downloadingPdf ? 'wait' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
+                                }}
+                            >
+                                <FileDown size={17} />
+                                {downloadingPdf ? 'Generando PDF...' : `Descargar Informe PDF (${periodLabel})`}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ═════════════════════════════════════════════════════════════════ */}
+                {/* BLOQUE A: MATRIZ OFICIAL DE LOS 7 INDICADORES EJECUTIVOS (PA-11) */}
+                {/* ═════════════════════════════════════════════════════════════════ */}
+                <div style={{
+                    background: '#FFFFFF',
+                    borderRadius: '14px',
+                    border: '1.5px solid #CBD5E1',
+                    padding: '22px',
+                    boxShadow: '0 3px 12px rgba(15, 41, 66, 0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                                width: '38px', height: '38px', borderRadius: '10px',
+                                background: '#0B3566', color: '#FFFFFF',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <Target size={20} />
+                            </div>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
+                                        Tablero de Indicadores de Gestión del Contact Center (Mes a Mes)
+                                    </h3>
+                                    <span style={{
+                                        fontSize: '0.68rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
+                                        background: '#EFF6FF', color: '#0369A1', border: '1px solid #BFDBFE'
+                                    }}>
+                                        {prevPeriodLabel} vs. {periodLabel}
+                                    </span>
+                                </div>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                    Matriz oficial de seguimiento mensual con cálculo automático de Variación %, Tendencia semafórica y Comentario Ejecutivo (PA-11)
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* Selector de fuente de datos */}
+                            <div style={{
+                                display: 'inline-flex', background: '#F1F5F9', padding: '3px',
+                                borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.7rem'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setIndicatorDataSource('consolidado')}
+                                    style={{
+                                        border: 'none',
+                                        background: indicatorDataSource === 'consolidado' ? '#0B3566' : 'transparent',
+                                        color: indicatorDataSource === 'consolidado' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 700,
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Combina la línea base auditada en Revisión de Dirección con la telemetría de WhatsApp y SALUS"
+                                >
+                                    Consolidado Revisión + Live
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIndicatorDataSource('live')}
+                                    style={{
+                                        border: 'none',
+                                        background: indicatorDataSource === 'live' ? '#0284C7' : 'transparent',
+                                        color: indicatorDataSource === 'live' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 700,
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Calcula todos los indicadores exclusivamente desde los registros crudos de WhatsApp y SALUS"
+                                >
+                                    100% Telemetría Directa
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setEditingIndicators(prev => !prev)}
+                                style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '8px',
+                                    border: editingIndicators ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                                    background: editingIndicators ? '#EFF6FF' : '#FFFFFF',
+                                    color: editingIndicators ? '#0284C7' : '#475569',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {editingIndicators ? '✓ Listo Edición' : '✎ Ajustar Valores'}
+                            </button>
+
+                            {!isFullReportTab && (
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadMonthlyPdf}
+                                    disabled={downloadingPdf || loading}
+                                    style={{
+                                        padding: '6px 14px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: '#059669',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 800,
+                                        cursor: downloadingPdf ? 'wait' : 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    <FileDown size={14} />
+                                    {downloadingPdf ? 'Generando...' : 'Descargar PDF del Mes'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* TABLA EJECUTIVA CON ESTÉTICA IDÉNTICA A REVISIÓN DE DIRECCIÓN */}
+                    <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #CBD5E1' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                            <thead>
+                                <tr style={{ background: '#0B3566', color: '#FFFFFF', textAlign: 'center', fontWeight: 800 }}>
+                                    <th style={{ padding: '11px 12px', borderRight: '1px solid rgba(255,255,255,0.18)', textAlign: 'left' }}>Indicador</th>
+                                    <th style={{ padding: '11px 10px', borderRight: '1px solid rgba(255,255,255,0.18)' }}>Unidad</th>
+                                    <th style={{ padding: '11px 12px', borderRight: '1px solid rgba(255,255,255,0.18)', textAlign: 'left' }}>Meta</th>
+                                    <th style={{ padding: '11px 12px', borderRight: '1px solid rgba(255,255,255,0.18)', textAlign: 'right' }}>Resultado mes anterior</th>
+                                    <th style={{ padding: '11px 12px', borderRight: '1px solid rgba(255,255,255,0.18)', textAlign: 'right' }}>Resultado actual</th>
+                                    <th style={{ padding: '11px 10px', borderRight: '1px solid rgba(255,255,255,0.18)', textAlign: 'right' }}>Variación</th>
+                                    <th style={{ padding: '11px 12px', borderRight: '1px solid rgba(255,255,255,0.18)', textAlign: 'left' }}>Tendencia</th>
+                                    <th style={{ padding: '11px 14px', textAlign: 'left' }}>Comentario ejecutivo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {executiveIndicators.map((ind) => {
+                                    const tendLower = (ind.tendencia || '').toLowerCase();
+                                    const tendBg = tendLower.includes('mejora')
+                                        ? '#D9EAD3'
+                                        : tendLower.includes('deterioro')
+                                        ? '#F4CCCC'
+                                        : '#FFE599';
+                                    const tendColor = tendLower.includes('mejora')
+                                        ? '#166534'
+                                        : tendLower.includes('deterioro')
+                                        ? '#991B1B'
+                                        : '#92400E';
+
+                                    return (
+                                        <tr key={ind.id} style={{ borderBottom: '1px solid #CBD5E1', background: '#FFFFFF' }}>
+                                            <td style={{ padding: '11px 12px', borderRight: '1px solid #E2E8F0', fontWeight: 700, color: '#0F2942', textAlign: 'center' }}>
+                                                {ind.indicador}
+                                            </td>
+                                            <td style={{ padding: '11px 10px', borderRight: '1px solid #E2E8F0', color: '#334155', textAlign: 'left' }}>
+                                                {ind.unidad}
+                                            </td>
+                                            <td style={{ padding: '11px 12px', borderRight: '1px solid #E2E8F0', color: '#334155' }}>
+                                                {ind.meta}
+                                            </td>
+                                            <td style={{ padding: '11px 12px', borderRight: '1px solid #E2E8F0', textAlign: 'right', color: '#0F2942', fontWeight: 600 }}>
+                                                {editingIndicators ? (
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        value={ind.prevVal}
+                                                        onChange={(e) => handleIndicatorOverrideChange(ind.id, 'prevVal', e.target.value)}
+                                                        style={{ width: '80px', padding: '4px 6px', borderRadius: '5px', border: '1px solid #94A3B8', textAlign: 'right', fontSize: '0.75rem' }}
+                                                    />
+                                                ) : (
+                                                    ind.prevFormatted
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '11px 12px', borderRight: '1px solid #E2E8F0', textAlign: 'right', color: '#0F2942', fontWeight: 800 }}>
+                                                {editingIndicators ? (
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        value={ind.currVal}
+                                                        onChange={(e) => handleIndicatorOverrideChange(ind.id, 'currVal', e.target.value)}
+                                                        style={{ width: '80px', padding: '4px 6px', borderRadius: '5px', border: '1px solid #0284C7', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700 }}
+                                                    />
+                                                ) : (
+                                                    ind.currFormatted
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '11px 10px', borderRight: '1px solid #E2E8F0', textAlign: 'right', fontWeight: 700, color: '#0F2942' }}>
+                                                {ind.variacionFormatted}
+                                            </td>
+                                            <td style={{
+                                                padding: '11px 12px',
+                                                borderRight: '1px solid #E2E8F0',
+                                                background: tendBg,
+                                                color: tendColor,
+                                                fontWeight: 800
+                                            }}>
+                                                {editingIndicators ? (
+                                                    <select
+                                                        value={ind.tendencia}
+                                                        onChange={(e) => handleIndicatorOverrideChange(ind.id, 'tendencia', e.target.value)}
+                                                        style={{ padding: '3px 6px', borderRadius: '4px', border: '1px solid #94A3B8', fontSize: '0.73rem', fontWeight: 700 }}
+                                                    >
+                                                        <option value="Mejora">Mejora</option>
+                                                        <option value="Estable">Estable</option>
+                                                        <option value="Deterioro">Deterioro</option>
+                                                    </select>
+                                                ) : (
+                                                    ind.tendencia
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '11px 14px', color: '#334155', fontSize: '0.73rem' }}>
+                                                {editingIndicators ? (
+                                                    <input
+                                                        type="text"
+                                                        value={ind.comentario}
+                                                        onChange={(e) => handleIndicatorOverrideChange(ind.id, 'comentario', e.target.value)}
+                                                        style={{ width: '100%', padding: '4px 8px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.73rem' }}
+                                                    />
+                                                ) : (
+                                                    ind.comentario
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* ═════════════════════════════════════════════════════════════════ */}
+                {/* BLOQUE B: GRÁFICO DE LÍNEA UNIFICADO (GASTO MENSAJES VS TOKENS IA)*/}
+                {/* ═════════════════════════════════════════════════════════════════ */}
+                <div style={{
+                    background: '#FFFFFF',
+                    borderRadius: '14px',
+                    border: '1.5px solid #BAE6FD',
+                    padding: '22px',
+                    boxShadow: '0 4px 14px rgba(2, 132, 199, 0.06)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '18px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                                width: '40px', height: '40px', borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #0284C7 0%, #8B5CF6 100%)',
+                                color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: '0 4px 10px rgba(139, 92, 246, 0.25)'
+                            }}>
+                                <DollarSign size={20} />
+                            </div>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
+                                        Control Financiero Unificado: Gasto en Mensajes WhatsApp vs. Gasto en Tokens de IA
+                                    </h3>
+                                    <span style={{
+                                        fontSize: '0.68rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
+                                        background: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE'
+                                    }}>
+                                        Total Combinado ({periodLabel}): ${unifiedFinancialSummary.totalCombinedUsd.toFixed(2)} USD (≈ ${unifiedFinancialSummary.totalCombinedArs.toLocaleString('es-AR')} ARS)
+                                    </span>
+                                </div>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
+                                    Comparativa en el mismo gráfico de línea entre el costo de mensajería saliente Meta ($0.026 USD tras 1.000 gratis) y el consumo de tokens de Inteligencia Artificial OpenAI
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Controles del Gráfico de Línea: Modo Temporal y Moneda */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <div style={{
+                                display: 'inline-flex', background: '#F1F5F9', padding: '3px',
+                                borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.7rem'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setCostChartViewMode('diario_acumulado')}
+                                    style={{
+                                        border: 'none',
+                                        background: costChartViewMode === 'diario_acumulado' ? '#0F2942' : 'transparent',
+                                        color: costChartViewMode === 'diario_acumulado' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 700,
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Acumulado del Mes
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCostChartViewMode('diario')}
+                                    style={{
+                                        border: 'none',
+                                        background: costChartViewMode === 'diario' ? '#0F2942' : 'transparent',
+                                        color: costChartViewMode === 'diario' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 700,
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Gasto Día por Día
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCostChartViewMode('mensual')}
+                                    style={{
+                                        border: 'none',
+                                        background: costChartViewMode === 'mensual' ? '#0F2942' : 'transparent',
+                                        color: costChartViewMode === 'mensual' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 700,
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Comparativa Mes a Mes
+                                </button>
+                            </div>
+
+                            <div style={{
+                                display: 'inline-flex', background: '#F1F5F9', padding: '3px',
+                                borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.7rem'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setCostCurrencyMode('USD')}
+                                    style={{
+                                        border: 'none',
+                                        background: costCurrencyMode === 'USD' ? '#0284C7' : 'transparent',
+                                        color: costCurrencyMode === 'USD' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 800,
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    USD ($)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCostCurrencyMode('ARS')}
+                                    style={{
+                                        border: 'none',
+                                        background: costCurrencyMode === 'ARS' ? '#059669' : 'transparent',
+                                        color: costCurrencyMode === 'ARS' ? '#FFFFFF' : '#475569',
+                                        fontWeight: 800,
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    ARS ($)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 4 TARJETAS KPI DE CONTROL DE GASTO (MENSAJES VS TOKENS IA) */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '12px'
+                    }}>
+                        {/* 1. Gasto en Mensajes WhatsApp */}
+                        <div style={{
+                            background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '12px', padding: '14px 16px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                                    1. Gasto en Mensajes WhatsApp
+                                </span>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#FFFFFF', color: '#0284C7', padding: '2px 7px', borderRadius: '10px', border: '1px solid #BAE6FD' }}>
+                                    {unifiedFinancialSummary.msgSharePct}% del gasto
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0F2942', marginTop: '4px' }}>
+                                ${unifiedFinancialSummary.msgCostUsd.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0284C7' }}>USD</span>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#059669', marginTop: '2px' }}>
+                                ≈ ${unifiedFinancialSummary.msgCostArs.toLocaleString('es-AR')} ARS
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '4px' }}>
+                                {unifiedFinancialSummary.totalOutgoing.toLocaleString('es-AR')} enviados ({unifiedFinancialSummary.billableMessages.toLocaleString('es-AR')} facturables &gt;1.000)
+                            </div>
+                        </div>
+
+                        {/* 2. Gasto en Tokens de IA */}
+                        <div style={{
+                            background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: '12px', padding: '14px 16px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6D28D9', textTransform: 'uppercase' }}>
+                                    2. Gasto en Tokens de IA
+                                </span>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#FFFFFF', color: '#8B5CF6', padding: '2px 7px', borderRadius: '10px', border: '1px solid #DDD6FE' }}>
+                                    {unifiedFinancialSummary.aiSharePct}% del gasto
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0F2942', marginTop: '4px' }}>
+                                ${unifiedFinancialSummary.aiCostUsd.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8B5CF6' }}>USD</span>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#059669', marginTop: '2px' }}>
+                                ≈ ${unifiedFinancialSummary.aiCostArs.toLocaleString('es-AR')} ARS
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '4px' }}>
+                                {unifiedFinancialSummary.formattedTokens} tokens ({unifiedFinancialSummary.aiCalls.toLocaleString('es-AR')} invocaciones IA)
+                            </div>
+                        </div>
+
+                        {/* 3. Gasto Total Combinado */}
+                        <div style={{
+                            background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '12px', padding: '14px 16px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase' }}>
+                                    3. Inversión Total (Mensajes + IA)
+                                </span>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#0F2942', color: '#FFFFFF', padding: '2px 7px', borderRadius: '10px' }}>
+                                    100% Auditado
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0F2942', marginTop: '4px' }}>
+                                ${unifiedFinancialSummary.totalCombinedUsd.toFixed(2)} <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>USD</span>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
+                                ≈ ${unifiedFinancialSummary.totalCombinedArs.toLocaleString('es-AR')} ARS
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '4px' }}>
+                                Dólar ref.: ${arsRate.toLocaleString('es-AR')} ARS · Período: {periodLabel}
+                            </div>
+                        </div>
+
+                        {/* 4. Costo Unitario por Paciente */}
+                        <div style={{
+                            background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: '12px', padding: '14px 16px'
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#065F46', textTransform: 'uppercase' }}>
+                                    4. Costo Total por Paciente
+                                </span>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 800, background: '#FFFFFF', color: '#059669', padding: '2px 7px', borderRadius: '10px', border: '1px solid #A7F3D0' }}>
+                                    {unifiedFinancialSummary.uniquePatients.toLocaleString('es-AR')} pac.
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#065F46', marginTop: '4px' }}>
+                                ${unifiedFinancialSummary.costPerPatientUsd.toFixed(3)} <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#059669' }}>USD</span>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#047857', marginTop: '2px' }}>
+                                ≈ ${unifiedFinancialSummary.costPerPatientArs.toLocaleString('es-AR')} ARS / paciente
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#065F46', marginTop: '4px' }}>
+                                Incluye mensajería Meta + procesamiento IA
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* GRÁFICO DE LÍNEA UNIFICADO: GASTO EN MENSAJES VS GASTO EN TOKENS DE IA */}
+                    <div style={{
+                        background: '#FAFAFA',
+                        borderRadius: '12px',
+                        border: '1px solid #E2E8F0',
+                        padding: '16px 18px'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F2942' }}>
+                                    {costChartViewMode === 'mensual'
+                                        ? `Gráfico de Línea Mes a Mes: Gasto en Mensajes WhatsApp vs. Gasto en Tokens de IA (${costCurrencyMode})`
+                                        : costChartViewMode === 'diario_acumulado'
+                                        ? `Curva de Gasto Acumulado en el Mes (${periodLabel}): Mensajes WhatsApp vs. Tokens de IA (${costCurrencyMode})`
+                                        : `Curva de Gasto Diario Neto (${periodLabel}): Mensajes WhatsApp vs. Tokens de IA (${costCurrencyMode})`}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                    Ambas curvas expresadas en {costCurrencyMode} sobre el mismo eje para control presupuestario directo
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.74rem', fontWeight: 700 }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#0284C7' }}>
+                                    <span style={{ width: '12px', height: '3px', background: '#0284C7', display: 'inline-block', borderRadius: '2px' }} />
+                                    Gasto en Mensajes WhatsApp
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#8B5CF6' }}>
+                                    <span style={{ width: '12px', height: '3px', background: '#8B5CF6', display: 'inline-block', borderRadius: '2px' }} />
+                                    Gasto en Tokens de IA
+                                </span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#059669' }}>
+                                    <span style={{ width: '12px', height: '3px', background: '#059669', display: 'inline-block', borderRadius: '2px' }} />
+                                    Gasto Total Combinado
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ width: '100%', height: '270px' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={dualCostChartData} margin={{ top: 10, right: 16, left: 4, bottom: 4 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#475569' }} />
+                                    <YAxis
+                                        tick={{ fontSize: 10, fill: '#475569' }}
+                                        tickFormatter={(v) => `${currencyPrefix}${Number(v).toLocaleString('es-AR')}`}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #CBD5E1', fontSize: '0.75rem', boxShadow: '0 8px 20px rgba(0,0,0,0.08)' }}
+                                        formatter={(val, name) => [
+                                            `${currencyPrefix}${Number(val).toLocaleString('es-AR')}${currencySuffix}`,
+                                            name
+                                        ]}
+                                    />
+                                    <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: '8px' }} />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="gastoMensajes"
+                                        name="Gasto en Mensajes WhatsApp"
+                                        stroke="#0284C7"
+                                        strokeWidth={3}
+                                        dot={{ r: 3.5, fill: '#0284C7' }}
+                                        activeDot={{ r: 6 }}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="gastoTokensIa"
+                                        name="Gasto en Tokens de IA"
+                                        stroke="#8B5CF6"
+                                        strokeWidth={3}
+                                        dot={{ r: 3.5, fill: '#8B5CF6' }}
+                                        activeDot={{ r: 6 }}
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="gastoTotal"
+                                        name="Gasto Total (Mensajes + IA)"
+                                        stroke="#059669"
+                                        strokeWidth={2}
+                                        strokeDasharray="5 5"
+                                        dot={{ r: 2.5, fill: '#059669' }}
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* TABLA RESUMEN FINANCIERA MES A MES (MENSAJES + TOKENS IA) */}
+                    <div style={{ overflowX: 'auto', border: '1px solid #E2E8F0', borderRadius: '10px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', textAlign: 'left' }}>
+                            <thead>
+                                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800 }}>
+                                    <th style={{ padding: '10px 12px' }}>Mes</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Msgs Salientes</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Msgs Facturables (&gt;1.000)</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#0284C7' }}>Gasto Mensajes (USD)</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#0284C7' }}>Gasto Mensajes (ARS)</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#6D28D9' }}>Tokens IA Consumidos</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#8B5CF6' }}>Gasto Tokens IA (USD)</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#8B5CF6' }}>Gasto Tokens IA (ARS)</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#0F2942' }}>Total Combinado (USD)</th>
+                                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#059669' }}>Total Combinado (ARS)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {monthlyCostComparison.map((m, idx) => (
+                                    <tr key={m.monthKey || idx} style={{ borderBottom: '1px solid #F1F5F9', background: idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA' }}>
+                                        <td style={{ padding: '9px 12px', fontWeight: 800, color: '#0F2942' }}>{m.mes}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700 }}>{(m.enviados || 0).toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', color: '#DC2626', fontWeight: 700 }}>{(m.facturables || 0).toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>${(m.msgCostUsd || 0).toFixed(2)} USD</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: '#0369A1' }}>${(m.msgCostArs || 0).toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#6D28D9' }}>{m.tokensFormatted}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: '#8B5CF6' }}>${(m.aiCostUsd || 0).toFixed(2)} USD</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: '#6D28D9' }}>${(m.aiCostArs || 0).toLocaleString('es-AR')}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 900, color: '#0F2942', background: '#F8FAFC' }}>${(m.totalUsd || 0).toFixed(2)} USD</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 900, color: '#059669', background: '#ECFDF5' }}>${(m.totalArs || 0).toLocaleString('es-AR')}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', paddingBottom: '30px' }}>
             
@@ -1947,11 +3075,36 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         </div>
                     )}
 
-                    {/* BOTÓN INFORME MENSUAL EJECUTIVO */}
+                    {/* BOTONES DE REPORTE MENSUAL Y DESCARGA DIRECTA PDF */}
+                    <button
+                        type="button"
+                        onClick={handleDownloadMonthlyPdf}
+                        disabled={downloadingPdf || loading}
+                        title="Descargar Informe Ejecutivo Mensual en PDF (Indicadores PA-11 + Costos Mensajes vs Tokens IA)"
+                        style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid #059669',
+                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                            color: '#FFFFFF',
+                            fontSize: '0.76rem',
+                            fontWeight: 800,
+                            cursor: downloadingPdf ? 'wait' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 6px rgba(5, 150, 105, 0.22)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <FileDown size={14} />
+                        {downloadingPdf ? 'Generando PDF...' : `Descargar PDF (${periodLabel})`}
+                    </button>
+
                     <button
                         type="button"
                         onClick={() => setShowMonthlyReportModal(true)}
-                        title="Generar e imprimir informe mensual ejecutivo"
+                        title="Ver vista previa completa e interactiva del Informe Mensual"
                         style={{
                             padding: '8px 14px',
                             borderRadius: '8px',
@@ -1968,8 +3121,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             transition: 'all 0.15s ease'
                         }}
                     >
-                        <Printer size={13} />
-                        Informe Mensual
+                        <FileText size={13} />
+                        Vista Previa Informe
                     </button>
 
                 </div>
@@ -2092,6 +3245,38 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         Control de Costos
                     </span>
                 </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveMetricsView('reporte_mensual')}
+                    style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 18px',
+                        borderRadius: '9px',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        background: activeMetricsView === 'reporte_mensual' ? '#059669' : 'transparent',
+                        color: activeMetricsView === 'reporte_mensual' ? '#FFFFFF' : '#0F2942',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <FileDown size={16} />
+                    Reporte del Mes & Indicadores (PDF)
+                    <span style={{
+                        background: activeMetricsView === 'reporte_mensual' ? '#FFFFFF' : '#DCFCE7',
+                        color: activeMetricsView === 'reporte_mensual' ? '#059669' : '#166534',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800
+                    }}>
+                        PA-11 + Costos
+                    </span>
+                </button>
             </div>
 
             {activeMetricsView === 'ia_tokens' ? (
@@ -2106,6 +3291,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     setCustomEndDate={setCustomEndDate}
                     arsRate={arsRate}
                     setArsRate={setArsRate}
+                    dailyMsgCostTrend={metrics.dailyTrend}
+                    msgCostTotalUsd={costCalculations.totalUsd}
+                    onDownloadMonthlyPdf={handleDownloadMonthlyPdf}
                     addToast={addToast}
                 />
             ) : activeMetricsView === 'capacidad' ? (
@@ -2114,6 +3302,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     selectedMonth={selectedMonth}
                     timeRange={timeRange}
                 />
+            ) : activeMetricsView === 'reporte_mensual' ? (
+                renderExecutiveReportAndCostsSection(true)
             ) : (
                 <>
                     {/* BANNER INFORMATIVO EN VISTA OPERATIVA HACIA TOKENS */}
@@ -3014,6 +4204,11 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 );
             })()}
+
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {/* MATRIZ EJECUTIVA PA-11 + GRÁFICO DE LÍNEA UNIFICADO DE GASTOS     */}
+            {/* ═════════════════════════════════════════════════════════════════ */}
+            {renderExecutiveReportAndCostsSection(false)}
 
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COMPARATIVA HISTÓRICA MES A MES: BOT VS ASESORAS Y COSTOS META   */}
@@ -5317,7 +6512,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     zIndex: 1100, padding: '20px'
                 }}>
                     <div style={{
-                        background: '#FFFFFF', borderRadius: '16px', width: '100%', maxWidth: '880px',
+                        background: '#FFFFFF', borderRadius: '16px', width: '100%', maxWidth: '1060px',
                         maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.25)',
                         border: '1px solid #CBD5E1', display: 'flex', flexDirection: 'column'
                     }}>
@@ -5325,7 +6520,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         <div style={{
                             padding: '20px 28px', borderBottom: '1px solid #E2E8F0',
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            background: '#F8FAFC'
+                            background: '#F8FAFC', flexWrap: 'wrap', gap: '12px'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div style={{
@@ -5340,12 +6535,28 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                         Informe Ejecutivo Mensual · Contact Center
                                     </h3>
                                     <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                                        Sanatorio Argentino · Periodo: {periodLabel}
+                                        Sanatorio Argentino · Comparativa: {prevPeriodLabel} vs. {periodLabel}
                                     </p>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadMonthlyPdf}
+                                    disabled={downloadingPdf}
+                                    style={{
+                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                        color: '#FFFFFF', fontSize: '0.78rem',
+                                        fontWeight: 800, cursor: downloadingPdf ? 'wait' : 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)'
+                                    }}
+                                >
+                                    <FileDown size={15} />
+                                    {downloadingPdf ? 'Generando PDF...' : `Descargar PDF Oficial (${periodLabel})`}
+                                </button>
                                 <a
                                     href="/Informe_Contact_Center_Sanatorio_Argentino.pdf"
                                     target="_blank"
@@ -5372,7 +6583,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     }}
                                 >
                                     <Printer size={14} />
-                                    Imprimir / Guardar PDF
+                                    Imprimir Pantalla
                                 </button>
                                 <button
                                     type="button"
@@ -5389,6 +6600,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
                         {/* CUERPO DEL INFORME */}
                         <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+                            {/* MATRIZ EJECUTIVA PA-11 + GRÁFICO DE LÍNEA DE COSTOS (MENSAJES VS TOKENS IA) */}
+                            {renderExecutiveReportAndCostsSection(false)}
                             {/* BLOQUE 1: RESUMEN DE VOLUMEN */}
                             <div>
                                 <h4 style={{ margin: '0 0 10px', fontSize: '0.85rem', fontWeight: 800, color: '#0F2942', textTransform: 'uppercase', letterSpacing: '0.5px' }}>

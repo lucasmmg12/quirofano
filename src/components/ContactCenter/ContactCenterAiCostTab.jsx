@@ -17,6 +17,7 @@ import {
     YAxis,
     Tooltip,
     CartesianGrid,
+    Legend,
     Cell
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
@@ -51,6 +52,9 @@ export default function ContactCenterAiCostTab({
     setCustomEndDate,
     arsRate = 1380,
     setArsRate,
+    dailyMsgCostTrend = [],
+    msgCostTotalUsd = 0,
+    onDownloadMonthlyPdf,
     onNavigateToConfig,
     addToast
 }) {
@@ -839,41 +843,82 @@ export default function ContactCenterAiCostTab({
                     </div>
                 </div>
 
-                {/* GRÁFICO 2: EVOLUCIÓN DEL GASTO EN USD */}
+                {/* GRÁFICO 2: GRÁFICO DE LÍNEA UNIFICADO (GASTO EN MENSAJES VS GASTO EN TOKENS DE IA) */}
                 <div style={{
                     background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0',
                     padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
                 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
                         <div>
                             <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: '#0F2942' }}>
-                                Gasto Diario en Dólares (USD)
+                                Gasto en Mensajes WhatsApp vs. Gasto en Tokens de IA (USD)
                             </h4>
                             <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748B' }}>
-                                Inversión estimada por día en OpenAI en base a volumen real
+                                Comparativa en el mismo gráfico de línea: Mensajes Meta (${Number(msgCostTotalUsd || 0).toFixed(2)} USD) vs. Tokens IA (${Number(stats.totalCostUsd || 0).toFixed(2)} USD)
                             </p>
                         </div>
                     </div>
 
                     <div style={{ width: '100%', height: '240px' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={stats.dailyTrend}>
+                            <LineChart
+                                data={(() => {
+                                    const msgByDay = {};
+                                    (dailyMsgCostTrend || []).forEach(m => {
+                                        if (m.fecha) msgByDay[m.fecha] = m;
+                                    });
+                                    const allDates = new Set([
+                                        ...Object.keys(msgByDay),
+                                        ...(stats.dailyTrend || []).map(d => d.displayDate)
+                                    ]);
+                                    return Array.from(allDates)
+                                        .sort((a, b) => {
+                                            const [d1, m1] = a.split('/').map(Number);
+                                            const [d2, m2] = b.split('/').map(Number);
+                                            return (m1 - m2) || (d1 - d2);
+                                        })
+                                        .map(dk => {
+                                            const mEntry = msgByDay[dk];
+                                            const aEntry = (stats.dailyTrend || []).find(x => x.displayDate === dk);
+                                            const msgUsd = Number(mEntry?.msgCostDayUsd ?? 0);
+                                            const aiUsd = Number(aEntry?.costUsd ?? mEntry?.aiCostDayUsd ?? 0);
+                                            return {
+                                                displayDate: dk,
+                                                msgCostUsd: +msgUsd.toFixed(2),
+                                                aiCostUsd: +aiUsd.toFixed(2),
+                                                totalUsd: +(msgUsd + aiUsd).toFixed(2)
+                                            };
+                                        });
+                                })()}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
                                 <XAxis dataKey="displayDate" tick={{ fontSize: 10, fill: '#64748B' }} />
                                 <YAxis tick={{ fontSize: 10, fill: '#64748B' }} tickFormatter={(val) => `$${val}`} />
                                 <Tooltip
-                                    formatter={(val, name, item) => [
-                                        `$${Number(val).toFixed(2)} USD (≈ $${item.payload.costArs.toLocaleString()} ARS)`,
-                                        'Gasto del Día'
+                                    formatter={(val, name) => [
+                                        `$${Number(val).toFixed(2)} USD (≈ $${Math.round(Number(val) * arsRate).toLocaleString('es-AR')} ARS)`,
+                                        name
                                     ]}
                                     contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.75rem' }}
                                 />
-                                <Bar dataKey="costUsd" fill="#0F2942" radius={[4, 4, 0, 0]}>
-                                    {stats.dailyTrend.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={index === stats.dailyTrend.length - 1 ? '#0284C7' : '#0F2942'} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
+                                <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                <Line
+                                    type="monotone"
+                                    dataKey="msgCostUsd"
+                                    name="Gasto Mensajes WhatsApp (USD)"
+                                    stroke="#0284C7"
+                                    strokeWidth={2.5}
+                                    dot={{ r: 3, fill: '#0284C7' }}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="aiCostUsd"
+                                    name="Gasto Tokens IA (USD)"
+                                    stroke="#8B5CF6"
+                                    strokeWidth={2.5}
+                                    dot={{ r: 3, fill: '#8B5CF6' }}
+                                />
+                            </LineChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
