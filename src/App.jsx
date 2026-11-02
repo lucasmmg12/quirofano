@@ -433,6 +433,30 @@ function App({ currentUser, onLogout, onUserUpdated }) {
     };
 
     // Estado de geolocalización obligatoria por Ciberseguridad
+    const [geoVerifyFeedback, setGeoVerifyFeedback] = useState(null);
+    const [geoModalShake, setGeoModalShake] = useState(false);
+
+    const handleManualVerifyGeolocation = useCallback(async () => {
+        setGeoVerifyFeedback(null);
+        setTelemetryState(prev => ({ ...prev, geo_checking: true }));
+        const [ctx] = await Promise.all([
+            requestAndRecordGeolocation(),
+            new Promise(r => setTimeout(r, 400)),
+        ]);
+        if (!ctx || ctx.geo_permission !== 'granted') {
+            setGeoModalShake(true);
+            setTimeout(() => setGeoModalShake(false), 450);
+            setGeoVerifyFeedback(prev => ({
+                attempts: (prev?.attempts || 0) + 1,
+                time: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                message: ctx?.geo_os_blocked
+                    ? 'Aún no se ha activado la ubicación en tu sistema operativo (Windows / macOS). Activala en Configuración → Privacidad y seguridad → Ubicación.'
+                    : 'Aún no se ha activado la ubicación en tu navegador. Primero tocá el botón de ubicación tachado arriba a la derecha en la barra de direcciones de Chrome, seleccioná "Permitir siempre" y luego volvé a verificar (o presioná Recargar página).',
+            }));
+        } else {
+            setGeoVerifyFeedback(null);
+        }
+    }, []);
     const [telemetryState, setTelemetryState] = useState({
         geo_permission: 'prompt',
         geo_checked: false,
@@ -996,7 +1020,9 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                     <div style={{
                         background: '#FFFFFF', borderRadius: '18px', width: '100%', maxWidth: '490px',
                         padding: '28px 26px', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.42)',
-                        border: '1px solid #E2E8F0', textAlign: 'center',
+                        border: geoVerifyFeedback ? '2px solid #EF4444' : '1px solid #E2E8F0', textAlign: 'center',
+                        transform: geoModalShake ? 'translateX(-6px)' : 'translateX(0)',
+                        transition: 'transform 0.1s ease-in-out, border-color 0.2s',
                     }}>
                         <div style={{
                             width: '62px', height: '62px', borderRadius: '50%',
@@ -1108,11 +1134,27 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                             )}
                         </div>
 
+                        {geoVerifyFeedback && (
+                            <div style={{
+                                background: '#FEF2F2', border: '1.5px solid #FCA5A5',
+                                borderRadius: '10px', padding: '11px 14px', marginBottom: '14px',
+                                textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '10px',
+                            }}>
+                                <AlertCircle size={18} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div style={{ fontSize: '0.78rem', color: '#991B1B', lineHeight: 1.45 }}>
+                                    <div style={{ fontWeight: 800, color: '#DC2626', marginBottom: '2px' }}>
+                                        ⚠️ Todavía no se ha activado la ubicación ({geoVerifyFeedback.time})
+                                    </div>
+                                    <div>{geoVerifyFeedback.message}</div>
+                                </div>
+                            </div>
+                        )}
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <button
                                 type="button"
                                 disabled={telemetryState.geo_checking}
-                                onClick={() => requestAndRecordGeolocation()}
+                                onClick={handleManualVerifyGeolocation}
                                 style={{
                                     width: '100%', padding: '13px 16px', borderRadius: '10px', border: 'none',
                                     background: 'linear-gradient(135deg, #1E4078 0%, #2563EB 100%)',
