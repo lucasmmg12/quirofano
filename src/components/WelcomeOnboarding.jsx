@@ -45,9 +45,8 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
     if (!visible) return null;
 
     const firstName = currentUser?.nombre || 'Usuario';
-    const isFrojo = currentUser?.usuario === 'frojo';
-    const assistantName = isFrojo ? 'Tim Payne' : 'Beto';
-    const assistantTagline = isFrojo ? '"No Payne, No Gain" 💪' : 'Asistente virtual listo para ayudarte. ¡Hacé click para empezar!';
+    const assistantName = 'Beto';
+    const assistantTagline = 'Asistente virtual listo para ayudarte. ¡Hacé click para empezar!';
 
     return (
         <>
@@ -201,19 +200,11 @@ export default function WelcomeOnboarding({ currentUser, onClose, onOpenBeto }) 
                                 boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)',
                                 border: '2px solid rgba(99, 102, 241, 0.3)',
                             }}>
-                                {isFrojo ? (
-                                    <img
-                                        src="/tim-payne-ya-supero-la-barrera-de-los-cinco-JYXMRXEMGZAUJOQH5XSJ2AY2DA.avif"
-                                        alt="Tim Payne"
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                    />
-                                ) : (
-                                    <video
-                                        src="/the_avatar_is_greetings_202606091123.mp4"
-                                        autoPlay muted loop playsInline
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                    />
-                                )}
+                                <video
+                                    src="/the_avatar_is_greetings_202606091123.mp4"
+                                    autoPlay muted loop playsInline
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                />
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{

@@ -10,7 +10,6 @@ import { Link } from 'react-router-dom';
 import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from '../services/contactCenterService';
 
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
-    const isFrojo = currentUser?.usuario === 'frojo';
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
     const isUciOnly = username === 'naguilera';
@@ -687,28 +686,17 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                                 position: 'relative', zIndex: 2,
                                 transition: 'all 0.3s ease',
                             }}>
-                                {isFrojo ? (
-                                    <img
-                                        src="/tim-payne-ya-supero-la-barrera-de-los-cinco-JYXMRXEMGZAUJOQH5XSJ2AY2DA.avif"
-                                        alt="Tim Payne"
-                                        style={{
-                                            width: '100%', height: '100%', objectFit: 'cover',
-                                            pointerEvents: 'none',
-                                        }}
-                                    />
-                                ) : (
-                                    <video
-                                        src="/the_avatar_is_greetings_202606091123.mp4"
-                                        autoPlay
-                                        loop
-                                        muted
-                                        playsInline
-                                        style={{
-                                            width: '100%', height: '100%', objectFit: 'cover',
-                                            pointerEvents: 'none',
-                                        }}
-                                    />
-                                )}
+                                <video
+                                    src="/the_avatar_is_greetings_202606091123.mp4"
+                                    autoPlay
+                                    loop
+                                    muted
+                                    playsInline
+                                    style={{
+                                        width: '100%', height: '100%', objectFit: 'cover',
+                                        pointerEvents: 'none',
+                                    }}
+                                />
                             </div>
                             {/* Online indicator */}
                             <div style={{
@@ -730,11 +718,11 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                                     margin: 0, fontSize: '0.72rem', fontWeight: 700,
                                     color: 'rgba(255,255,255,0.9)',
                                     letterSpacing: '0.5px',
-                                }}>{ isFrojo ? 'TIM PAYNE' : 'BETO' } <span style={{ fontWeight: 400, opacity: 0.7 }}>IA</span></p>
+                                }}>BETO <span style={{ fontWeight: 400, opacity: 0.7 }}>IA</span></p>
                                 <p style={{
                                     margin: '2px 0 0', fontSize: '0.6rem',
                                     color: 'rgba(255,255,255,0.45)',
-                                }}>{ isFrojo ? 'No Payne, No Gain 💪' : 'Tu asistente personal' }</p>
+                                }}>Tu asistente personal</p>
                             </div>
                         )}
                     </>
