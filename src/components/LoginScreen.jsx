@@ -2371,7 +2371,7 @@ export default function LoginScreen({ onLogin }) {
 
                                 <div style={{ marginBottom: '12px' }}>
                                     <label style={{ display: 'block', fontSize: '0.69rem', fontWeight: 700, color: '#374151', marginBottom: '4px', textTransform: 'uppercase' }}>
-                                        Perfil / Rol de Acceso Solicitado * (Sin rol Administrador)
+                                        Rol de Acceso Solicitado *
                                     </label>
                                     <select
                                         value={reqForm.rol_solicitado}
