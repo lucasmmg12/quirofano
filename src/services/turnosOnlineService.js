@@ -93,21 +93,59 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
         .map(v => String(v || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim());
     if (vars.some(v => !v)) throw new Error('Completá las 3 variables de la plantilla antes de enviar.');
 
-    const tpl = META_TEMPLATE_TURNOS_MISMO_DIA;
-    // 1. Envío oficial a Meta (lanza error si Meta lo rechaza → no se registra nada falso)
-    const metaResult = await sendMetaTemplate({
-        to: phone,
-        templateName: tpl.name,
-        languageCode: tpl.language,
-        components: [{ type: 'body', parameters: vars.map(text => ({ type: 'text', text })) }],
-        lineId: 'contact_center'
-    });
-
     const now = new Date().toISOString();
-    const agenteId = agente?.id || null;
+    const agenteId = agente?.id || 'daniela';
     const agenteNombre = agente?.fullName || agente?.name || 'Contact Center';
-    const resolvedText = renderTemplateBody(tpl.body, vars);
-    const displayContent = `📋 [Plantilla Meta: ${tpl.name}] ${resolvedText}`;
+
+    const tpl = META_TEMPLATE_TURNOS_MISMO_DIA;
+    let metaResult;
+    let templateUsedName = tpl.name;
+    let resolvedText = renderTemplateBody(tpl.body, vars);
+
+    // 1. Envío oficial a Meta (si turnos_duplicados falla con #131009 por tener botón FLOW en Meta, aplica fallback a ojonoscobran)
+    try {
+        metaResult = await sendMetaTemplate({
+            to: phone,
+            templateName: tpl.name,
+            languageCode: tpl.language,
+            components: [{ type: 'body', parameters: vars.map(text => ({ type: 'text', text })) }],
+            lineId: 'contact_center',
+            agentName: agenteNombre
+        });
+        if (metaResult?.fallbackUsed) {
+            templateUsedName = metaResult.fallbackUsed;
+        }
+    } catch (metaErr) {
+        const msg = String(metaErr?.message || '');
+        if (msg.includes('131009') || msg.toLowerCase().includes('sub_type invalid')) {
+            console.warn('[turnosOnline] Plantilla turnos_duplicados rechazada por botón FLOW (#131009). Reintentando con plantilla aprobada ojonoscobran...');
+            const fallbackParam2 = `${agenteNombre} del Contact Center (registramos más de un turno agendado para el ${vars[1]}: ${vars[2]}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`
+                .replace(/[\r\n\t]+/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+            metaResult = await sendMetaTemplate({
+                to: phone,
+                templateName: 'ojonoscobran',
+                languageCode: 'es_AR',
+                components: [
+                    {
+                        type: 'body',
+                        parameters: [
+                            { type: 'text', text: vars[0] },
+                            { type: 'text', text: fallbackParam2 }
+                        ]
+                    }
+                ],
+                lineId: 'contact_center',
+                agentName: agenteNombre
+            });
+            templateUsedName = 'ojonoscobran';
+        } else {
+            throw metaErr;
+        }
+    }
+
+    const displayContent = `📋 [Plantilla Meta: ${templateUsedName}] ${resolvedText}`;
 
     // 2. Registrar en whatsapp_messages (línea Contact Center)
     const { error: msgErr } = await supabase.from('whatsapp_messages').insert({
@@ -115,14 +153,14 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
         direction: 'outgoing',
         content: displayContent,
         media_type: 'template',
-        sender_name: agente?.name || agenteNombre,
+        sender_name: agenteNombre,
         is_read: true,
         line_id: 'contact_center',
         raw_payload: {
             source: 'contact_center',
             line: 'contact_center',
             type: 'meta_template',
-            templateName: tpl.name,
+            templateName: templateUsedName,
             variables: vars,
             agent: agenteId,
             agentName: agenteNombre,
@@ -133,7 +171,7 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
     });
     if (msgErr) console.warn('[turnosOnline] No se pudo registrar el mensaje en whatsapp_messages:', msgErr.message);
 
-    // 3. Crear o actualizar la conversación asignada a la agente (bot pausado)
+    // 3. Crear o actualizar la conversación asignada exclusivamente a la agente que escribió (bot pausado)
     const convPayload = {
         status: 'abierto',
         assigned_agent_id: agenteId,
@@ -141,6 +179,11 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
         assigned_at: now,
         bot_active: false,
         bot_stage: 'esperando_agente',
+        dni: caso.dni ? String(caso.dni).trim() : null,
+        nombre_completo: caso.nombre ? String(caso.nombre).trim() : null,
+        telefono_contacto: phone,
+        email: caso.email || null,
+        motivo_consulta: caso.esMismoDia ? 'Turnos online múltiples el mismo día' : 'Auditoría de turnos online duplicados',
         last_message_text: displayContent,
         last_message_at: now,
         updated_at: now,
@@ -149,26 +192,40 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
         closed_by_agent_id: null,
         closed_by_agent_name: null
     };
+
     const { data: existing } = await supabase
         .from('contact_center_conversations')
         .select('phone')
         .eq('phone', phone)
         .maybeSingle();
+
     const convRes = existing
         ? await supabase.from('contact_center_conversations').update(convPayload).eq('phone', phone)
         : await supabase.from('contact_center_conversations').insert({
             phone,
             ...convPayload,
-            dni: caso.dni || null,
-            nombre_completo: caso.nombre || null,
-            telefono_contacto: phone,
-            email: caso.email || null,
-            motivo_consulta: 'Turnos online múltiples el mismo día',
             created_at: now
         });
     if (convRes.error) console.warn('[turnosOnline] No se pudo crear/actualizar la conversación:', convRes.error.message);
 
-    // 4. Marcar el caso como contactado
+    // Si existía un registro previo con el teléfono sin normalizar (ej: 10 dígitos), sincronizar su asignación también
+    const rawDigits = String(caso.telefono || '').replace(/\D/g, '');
+    if (rawDigits && rawDigits !== phone) {
+        await supabase
+            .from('contact_center_conversations')
+            .update({
+                status: 'abierto',
+                assigned_agent_id: agenteId,
+                assigned_agent_name: agenteNombre,
+                assigned_at: now,
+                bot_active: false,
+                bot_stage: 'esperando_agente',
+                updated_at: now
+            })
+            .eq('phone', rawDigits);
+    }
+
+    // 4. Marcar el caso como contactado con el nombre e ID real de la agente
     if (caso.key) {
         try {
             await saveGestionTurnoOnline({
@@ -176,14 +233,14 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
                 estado: 'contactado',
                 agenteId,
                 agenteNombre,
-                notas: `Plantilla Meta "${tpl.name}" enviada por ${agenteNombre}`
+                notas: `Plantilla Meta "${templateUsedName}" enviada por ${agenteNombre}`
             });
         } catch (e) {
             console.warn('Error auto-marcando contactado:', e.message);
         }
     }
 
-    return { success: true, phone, variables: vars, metaResult };
+    return { success: true, phone, variables: vars, metaResult, displayContent, agenteId, agenteNombre };
 }
 
 export const PLANTILLAS_TURNOS_ONLINE = [
@@ -430,7 +487,7 @@ export async function saveGestionTurnoOnline({ key, estado, agenteId, agenteNomb
 /**
  * Envía un mensaje de WhatsApp directo al paciente
  */
-export async function sendWhatsappAvisoTurno({ phone, text, agente, pacienteNombre, casoKey }) {
+export async function sendWhatsappAvisoTurno({ phone, text, agente, pacienteNombre, pacienteDni, casoKey }) {
     if (!phone) {
         throw new Error('El paciente no posee número de teléfono registrado.');
     }
@@ -442,25 +499,79 @@ export async function sendWhatsappAvisoTurno({ phone, text, agente, pacienteNomb
     }
 
     const recipientPhone = normalized.startsWith('549') ? normalized : `549${normalized}`;
+    const now = new Date().toISOString();
+    const agenteId = agente?.id || 'daniela';
+    const agenteNombre = agente?.fullName || agente?.name || 'Contact Center';
 
-    // 1. Envío vía BuilderBot / WhatsApp API
-    const result = await sendWhatsAppMessage(recipientPhone, text);
+    // 1. Envío vía BuilderBot / WhatsApp API (línea Contact Center)
+    const result = await sendWhatsAppMessage({
+        content: text,
+        number: recipientPhone,
+        lineId: 'contact_center'
+    });
 
     // 2. Registro en tabla whatsapp_messages para trazabilidad y consola de Contact Center
     try {
-        await saveOutgoingMessage({
+        await supabase.from('whatsapp_messages').insert({
             phone: recipientPhone,
-            message: text,
-            sender: agente?.fullName || agente?.name || 'Contact Center',
-            metadata: {
+            direction: 'outgoing',
+            content: text,
+            media_type: 'text',
+            sender_name: agenteNombre,
+            is_read: true,
+            line_id: 'contact_center',
+            raw_payload: {
+                source: 'contact_center',
+                line: 'contact_center',
                 tipo: 'aviso_turnos_online_duplicados',
                 paciente: pacienteNombre,
-                agenteId: agente?.id,
+                agent: agenteId,
+                agentName: agenteNombre,
                 casoKey
             }
         });
     } catch (err) {
-        console.warn('⚠️ No se pudo registrar en whatsapp_messages local:', err.message);
+        console.warn('⚠️ No se pudo registrar en whatsapp_messages:', err.message);
+    }
+
+    // 2b. Asociar conversación en contact_center_conversations a la agente emisora
+    try {
+        const convPayload = {
+            status: 'abierto',
+            assigned_agent_id: agenteId,
+            assigned_agent_name: agenteNombre,
+            assigned_at: now,
+            bot_active: false,
+            bot_stage: 'esperando_agente',
+            dni: pacienteDni ? String(pacienteDni).trim() : undefined,
+            nombre_completo: pacienteNombre ? String(pacienteNombre).trim() : undefined,
+            telefono_contacto: recipientPhone,
+            motivo_consulta: 'Auditoría de turnos online duplicados',
+            last_message_text: text,
+            last_message_at: now,
+            updated_at: now,
+            resolution_reason: null,
+            closed_at: null,
+            closed_by_agent_id: null,
+            closed_by_agent_name: null
+        };
+        const { data: existing } = await supabase
+            .from('contact_center_conversations')
+            .select('phone')
+            .eq('phone', recipientPhone)
+            .maybeSingle();
+
+        if (existing) {
+            await supabase.from('contact_center_conversations').update(convPayload).eq('phone', recipientPhone);
+        } else {
+            await supabase.from('contact_center_conversations').insert({
+                phone: recipientPhone,
+                ...convPayload,
+                created_at: now
+            });
+        }
+    } catch (convErr) {
+        console.warn('⚠️ No se pudo asociar conversación a la agente:', convErr.message);
     }
 
     // 3. Marcar automáticamente el caso como "contactado" en Supabase si se proveyó la clave
@@ -469,14 +580,14 @@ export async function sendWhatsappAvisoTurno({ phone, text, agente, pacienteNomb
             await saveGestionTurnoOnline({
                 key: casoKey,
                 estado: 'contactado',
-                agenteId: agente?.id,
-                agenteNombre: agente?.fullName || agente?.name,
-                notas: `WhatsApp enviado: "${text.substring(0, 80)}..."`
+                agenteId,
+                agenteNombre,
+                notas: `WhatsApp enviado por ${agenteNombre}: "${text.substring(0, 80)}..."`
             });
         } catch (e) {
             console.warn('Error auto-marcando contactado:', e.message);
         }
     }
 
-    return result;
+    return { ...result, phone: recipientPhone, displayContent: text, agenteId, agenteNombre };
 }

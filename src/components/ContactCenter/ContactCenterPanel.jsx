@@ -1162,23 +1162,112 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     };
 
     // Conversación iniciada con plantilla Meta desde Turnos Online:
-    // recarga la bandeja (para traer la conversación ya asignada) y la abre en la consola.
-    const handleTemplateConversationStarted = async (phone) => {
+    // inyecta/actualiza de inmediato la conversación asignada a la agente en memoria, la abre en la consola y sincroniza con BD.
+    const handleTemplateConversationStarted = async (phone, metaInfo = {}) => {
         if (!phone) return;
-        const cleanPhone = String(phone).replace(/\D/g, '');
-        await reloadChats(true);
+        const normPhone = normalizeArgentinePhone(phone) || String(phone).replace(/\D/g, '');
+        const chatId = `REAL_${normPhone}`;
+        const caso = metaInfo?.caso || null;
+        const ag = metaInfo?.agente || activeAgent;
+        const agId = ag?.id || activeAgent?.id || 'daniela';
+        const agName = ag?.fullName || ag?.name || activeAgent?.name || 'Agente';
+        const msgText = metaInfo?.displayContent || 'Aviso de turnos online duplicados enviado';
+        const nowMs = Date.now();
+        const timeStr = new Date(nowMs).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
         setChats(current => {
-            const found = current.find(c => {
-                const p = (c.contactPhone || c.phone || '').replace(/\D/g, '');
-                return p && (p.includes(cleanPhone) || cleanPhone.includes(p));
+            const existingIdx = current.findIndex(c => {
+                const p = normalizeArgentinePhone(c.contactPhone || c.phone || '');
+                return p === normPhone || c.id === chatId;
             });
-            if (found) {
-                setActiveChatId(found.id);
-                try { localStorage.setItem('sa_cc_active_chat_id', String(found.id)); } catch (_) {}
+
+            const newMsgObj = {
+                id: `tpl_${nowMs}`,
+                sender: 'agent',
+                senderName: agName,
+                senderAgentId: agId,
+                type: 'template',
+                text: msgText,
+                timestamp: timeStr,
+                createdAt: new Date(nowMs).toISOString()
+            };
+
+            if (existingIdx >= 0) {
+                const existing = current[existingIdx];
+                const updatedChat = {
+                    ...existing,
+                    contactName: caso?.nombre || existing.contactName,
+                    status: 'abierto',
+                    assignedTo: agId,
+                    assignedToName: agName,
+                    assignedAt: new Date(nowMs).toISOString(),
+                    botActive: false,
+                    unread: false,
+                    lastMessage: msgText,
+                    lastMessageTimestamp: nowMs,
+                    timeAgo: 'hace instantes',
+                    lastResponder: agName,
+                    lastResponderRole: 'agent',
+                    customFields: {
+                        ...(existing.customFields || {}),
+                        dni: caso?.dni || existing.customFields?.dni || null,
+                        pacienteNombre: caso?.nombre || existing.customFields?.pacienteNombre || existing.contactName,
+                        pacienteContacto: normPhone,
+                        email: caso?.email || existing.customFields?.email || null
+                    },
+                    messages: [...(existing.messages || []), newMsgObj]
+                };
+                const next = [...current];
+                next.splice(existingIdx, 1);
+                return [updatedChat, ...next];
             }
-            return current;
+
+            const createdChat = {
+                id: chatId,
+                contactName: caso?.nombre || `+${normPhone}`,
+                phone: normPhone,
+                channel: 'WHATSAPP',
+                channelNumber: '5492645825637',
+                status: 'abierto',
+                unread: false,
+                lastMessage: msgText,
+                lastMessageTimestamp: nowMs,
+                timeAgo: 'hace instantes',
+                department: 'Atención al cliente',
+                assignedTo: agId,
+                assignedToName: agName,
+                assignedAt: new Date(nowMs).toISOString(),
+                botActive: false,
+                lastResponder: agName,
+                lastResponderRole: 'agent',
+                lastResponseAt: 'hace instantes',
+                isWaitingResponse: false,
+                waitingMinutes: 0,
+                waitingTimeText: 'Respondido',
+                badgeTimeText: 'Respondido',
+                chatbot: '#triage-sanatorio',
+                avatarColor: '#0284C7',
+                tags: ['Turnos Online', 'Asignado'],
+                customFields: {
+                    dni: caso?.dni || null,
+                    pacienteNombre: caso?.nombre || `+${normPhone}`,
+                    pacienteContacto: normPhone,
+                    email: caso?.email || null,
+                    motivoConsulta: 'Turnos online múltiples el mismo día',
+                    botActive: false
+                },
+                messages: [newMsgObj]
+            };
+            return [createdChat, ...current];
         });
+
+        setActiveChatId(chatId);
+        try { localStorage.setItem('sa_cc_active_chat_id', chatId); } catch (_) {}
         setActiveSubTab('conversaciones');
+
+        // Refrescar desde BD en segundo plano
+        reloadInFlightRef.current = false;
+        await reloadChats(true);
     };
 
     // Callback cuando una cancelación es gestionada o descartada en Cancelaciones:

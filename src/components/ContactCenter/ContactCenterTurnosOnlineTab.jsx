@@ -180,6 +180,10 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
         setModalData(prev => ({ ...prev, sending: true }));
         try {
+            const nowIso = new Date().toISOString();
+            const agentLabel = activeAgent?.fullName || activeAgent?.name || currentUser?.nombre || 'Agente';
+            const agentId = activeAgent?.id || 'daniela';
+
             if (modalData.plantillaId === META_OPTION_ID) {
                 const res = await sendTemplateTurnosMismoDia({
                     caso,
@@ -187,27 +191,60 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     agente: activeAgent
                 });
                 setCasos(prev => prev.map(c => c.key === caso.key
-                    ? { ...c, gestion: { ...c.gestion, estado: 'contactado', agenteId: activeAgent?.id, agenteNombre: activeAgent?.fullName || activeAgent?.name, fechaContacto: new Date().toISOString() } }
+                    ? {
+                        ...c,
+                        gestion: {
+                            ...c.gestion,
+                            estado: 'contactado',
+                            agenteId: agentId,
+                            agenteNombre: agentLabel,
+                            fechaContacto: nowIso,
+                            updatedAt: nowIso
+                        }
+                    }
                     : c));
-                if (addToast) addToast(`Plantilla oficial enviada a ${caso.nombre}. La conversación quedó en tus chats.`, 'success');
+                setStats(prev => {
+                    const prevEstado = caso.gestion?.estado;
+                    if (prevEstado === 'contactado') return prev;
+                    return {
+                        ...prev,
+                        totalPendientes: Math.max(0, prev.totalPendientes - (prevEstado === 'pendiente' ? 1 : 0)),
+                        totalContactados: prev.totalContactados + 1
+                    };
+                });
+                if (addToast) addToast(`Aviso enviado a ${caso.nombre}. El chat quedó asociado a ${agentLabel} en Mis Chats.`, 'success');
                 setModalData(null);
-                if (onConversationStarted) onConversationStarted(res.phone);
+                if (onConversationStarted) {
+                    onConversationStarted(res.phone, {
+                        caso,
+                        agente: activeAgent,
+                        displayContent: res.displayContent
+                    });
+                }
                 return;
             }
 
-            await sendWhatsappAvisoTurno({
+            const res = await sendWhatsappAvisoTurno({
                 phone: caso.telefono,
                 text: texto,
                 agente: activeAgent,
                 pacienteNombre: caso.nombre,
+                pacienteDni: caso.dni,
                 casoKey: caso.key
             });
 
             // Actualizar estado a "contactado"
-            await handleUpdateEstado(caso, 'contactado', `Plantilla enviada por ${activeAgent?.name || 'Agente'}: "${modalData.plantillaId}"`);
+            await handleUpdateEstado(caso, 'contactado', `Plantilla enviada por ${agentLabel}: "${modalData.plantillaId}"`);
 
-            if (addToast) addToast(`Mensaje de WhatsApp enviado a ${caso.nombre}`, 'success');
+            if (addToast) addToast(`Mensaje de WhatsApp enviado a ${caso.nombre} y asociado a ${agentLabel}`, 'success');
             setModalData(null);
+            if (onConversationStarted && res?.phone) {
+                onConversationStarted(res.phone, {
+                    caso,
+                    agente: activeAgent,
+                    displayContent: res.displayContent || texto
+                });
+            }
         } catch (err) {
             console.error('Error enviando WhatsApp:', err);
             if (addToast) addToast(err.message || 'Error al enviar WhatsApp', 'error');
@@ -825,7 +862,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
                                                 {onOpenChatWithPhone && caso.telefono && (
                                                     <button
-                                                        onClick={() => onOpenChatWithPhone(caso.telefono)}
+                                                        onClick={() => onOpenChatWithPhone(caso.telefono, { name: caso.nombre, dni: caso.dni })}
                                                         style={{
                                                             display: 'flex', alignItems: 'center', gap: '6px',
                                                             padding: '8px 14px', borderRadius: '10px',

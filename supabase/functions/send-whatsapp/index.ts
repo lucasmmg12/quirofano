@@ -183,6 +183,79 @@ Deno.serve(async (req) => {
             
             if (!response.ok) {
                 console.error('[send-whatsapp] Template send FAILED:', response.status, data);
+                const errStr = String(data?.message || data?.error || rawText || '');
+
+                // Fallback automático cuando Meta/BuilderBot rechaza una plantilla por tener botón FLOW (#131009 Components sub_type invalid)
+                if (
+                    (errStr.includes('131009') || errStr.toLowerCase().includes('sub_type invalid')) &&
+                    (lineId === 'contact_center' || templateName === 'turnos_duplicados')
+                ) {
+                    console.warn(`[send-whatsapp] Detectado error #131009 (botón FLOW en ${templateName}). Aplicando fallback automático con plantilla aprobada 'ojonoscobran' (es_AR)...`);
+                    const bodyComp = Array.isArray(components)
+                        ? components.find((c: { type?: string }) => String(c?.type || '').toLowerCase() === 'body')
+                        : null;
+                    const bodyParams: string[] = Array.isArray(bodyComp?.parameters)
+                        ? bodyComp.parameters.map((p: { text?: string }) => String(p?.text || '').trim())
+                        : [];
+
+                    const pacienteNombre = bodyParams[0] || 'Paciente';
+                    const fechaTexto = bodyParams[1] || 'los próximos días';
+                    const detalleTurnos = bodyParams[2] || 'más de un horario reservado';
+                    const agentLabel = body.agentName
+                        ? `${String(body.agentName).trim()} del Contact Center`
+                        : 'el equipo de Contact Center';
+
+                    const fallbackParam2 = `${agentLabel} (registramos más de un turno agendado para el ${fechaTexto}: ${detalleTurnos}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`
+                        .replace(/[\r\n\t]+/g, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+
+                    const fallbackPayload = {
+                        to,
+                        templateName: 'ojonoscobran',
+                        languageCode: 'es_AR',
+                        components: [
+                            {
+                                type: 'body',
+                                parameters: [
+                                    { type: 'text', text: pacienteNombre },
+                                    { type: 'text', text: fallbackParam2 }
+                                ]
+                            }
+                        ]
+                    };
+
+                    const fbRes = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-builderbot': config.apiKey,
+                        },
+                        body: JSON.stringify(fallbackPayload),
+                    });
+
+                    const fbRaw = await fbRes.text();
+                    let fbData;
+                    try {
+                        fbData = JSON.parse(fbRaw);
+                    } catch {
+                        fbData = { rawResponse: fbRaw };
+                    }
+
+                    if (fbRes.ok && fbData?.success !== false) {
+                        console.log(`[send-whatsapp] ✅ Fallback 'ojonoscobran' enviado con éxito a ${to}`);
+                        return new Response(
+                            JSON.stringify({
+                                success: true,
+                                data: fbData,
+                                fallbackUsed: 'ojonoscobran',
+                                originalTemplate: templateName
+                            }),
+                            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        );
+                    }
+                }
+
                 return new Response(
                     JSON.stringify({ 
                         success: false, 

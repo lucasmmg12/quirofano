@@ -58,7 +58,7 @@ export async function fetchMetaTemplates(lineId = 'line_b') {
  * @param {string} [params.lineId] — ID de la línea Meta (default: 'line_meta')
  * @returns {Promise<Object>} — Respuesta del envío
  */
-export async function sendMetaTemplate({ to, templateName, languageCode = 'es', components, lineId = 'line_b' }) {
+export async function sendMetaTemplate({ to, templateName, languageCode = 'es', components, lineId = 'line_b', agentName }) {
     try {
         console.log('[metaTemplateService] Sending template:', { to, templateName, languageCode, lineId, hasComponents: !!components });
         
@@ -70,6 +70,7 @@ export async function sendMetaTemplate({ to, templateName, languageCode = 'es', 
                 templateName,
                 languageCode,
                 components: components || undefined,
+                agentName: agentName || undefined,
             },
         });
 
