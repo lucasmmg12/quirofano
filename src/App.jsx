@@ -1388,7 +1388,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
                 {/* Content */}
                 {activeView === 'inicio' && (
-                    <HomePanel key={viewKey} onNavigate={setActiveView} />
+                    <HomePanel key={viewKey} onNavigate={setActiveView} currentUser={currentUser} />
                 )}
 
                 {activeView === 'mensajeria' && (
