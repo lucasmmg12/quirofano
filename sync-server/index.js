@@ -1602,6 +1602,26 @@ async function syncDeudas(db, fastSync = false) {
                 
                 if (nuevaDeudaTotal === 0 && pacienteViejo && pacienteViejo.categoria !== 'deuda_cancelada') {
                     // Borrar al paciente si ya no tiene deuda en SALUS (excepto canceladas)
+                    const [{ count: planesCount }, { count: segCount }] = await Promise.all([
+                        supabase.from('deudas_planes_pago').select('id', { count: 'exact', head: true }).eq('paciente_id', pid),
+                        supabase.from('deudas_seguimiento').select('id', { count: 'exact', head: true }).eq('paciente_id', pid),
+                    ]);
+                    const fueGestionado = pacienteViejo.categoria !== 'sin_gestionar' || (planesCount || 0) > 0 || (segCount || 0) > 0;
+                    if (fueGestionado) {
+                        await supabase.from('deudas_pacientes').update({
+                            categoria: 'deuda_cancelada',
+                            deuda_cancelada_at: new Date().toISOString(),
+                            deuda_cancelada_por: 'SALUS Sync (Saldo $0)',
+                            updated_at: new Date().toISOString(),
+                        }).eq('id', pid);
+                        await supabase.from('deudas_seguimiento').insert({
+                            paciente_id: pid,
+                            usuario: 'Sistema',
+                            descripcion: '✅ Saldo en SALUS llegó a $0 tras pagos/cuotas. Se preserva el paciente e historial como Deuda Cancelada.',
+                            tipo: 'cambio_categoria',
+                        });
+                        continue;
+                    }
                     await supabase.from('deudas_pacientes').delete().eq('id', pid);
                     continue;
                 }

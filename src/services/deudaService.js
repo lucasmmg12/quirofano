@@ -274,16 +274,24 @@ export async function fetchSeguimiento(pacienteId) {
     return historial;
 }
 
-export async function addSeguimiento(pacienteId, { tipo, descripcion, monto, usuario }) {
+export async function addSeguimiento(pacienteId, { tipo, descripcion, monto, usuario, fecha }) {
+    const payload = {
+        paciente_id: pacienteId,
+        tipo,
+        descripcion,
+        monto: monto || null,
+        usuario,
+    };
+    if (fecha && /^\d{4}-\d{2}-\d{2}/.test(String(fecha).trim())) {
+        const datePart = String(fecha).trim().substring(0, 10);
+        const todayPart = new Date().toISOString().substring(0, 10);
+        if (datePart !== todayPart) {
+            payload.created_at = `${datePart}T12:00:00.000Z`;
+        }
+    }
     const { data, error } = await supabase
         .from('deudas_seguimiento')
-        .insert({
-            paciente_id: pacienteId,
-            tipo,
-            descripcion,
-            monto: monto || null,
-            usuario,
-        })
+        .insert(payload)
         .select()
         .single();
     if (error) throw error;
@@ -519,12 +527,36 @@ export async function importarDeudas(registros, usuario, onProgress) {
         
         for (const pDb of activosDb) {
             if (!nhcsEnExcel.has(pDb.nhc)) {
-                // No está en el Excel → ya no tiene deuda en SALUS → borrar
-                await supabase
-                    .from('deudas_pacientes')
-                    .delete()
-                    .eq('id', pDb.id);
-                
+                const [{ count: planesCount }, { count: segCount }] = await Promise.all([
+                    supabase.from('deudas_planes_pago').select('id', { count: 'exact', head: true }).eq('paciente_id', pDb.id),
+                    supabase.from('deudas_seguimiento').select('id', { count: 'exact', head: true }).eq('paciente_id', pDb.id),
+                ]);
+                const fueGestionado = pDb.categoria !== 'sin_gestionar' || (planesCount || 0) > 0 || (segCount || 0) > 0;
+                if (fueGestionado) {
+                    await supabase
+                        .from('deudas_pacientes')
+                        .update({
+                            categoria: 'deuda_cancelada',
+                            deuda_cancelada_at: new Date().toISOString(),
+                            deuda_cancelada_por: usuario || 'Conciliación Excel',
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq('id', pDb.id);
+                    await supabase
+                        .from('deudas_seguimiento')
+                        .insert({
+                            paciente_id: pDb.id,
+                            usuario: usuario || 'Sistema',
+                            descripcion: '✅ Saldo en SALUS llegó a $0 tras pagos/cuotas. Se preserva el paciente e historial como Deuda Cancelada.',
+                            tipo: 'cambio_categoria',
+                        });
+                } else {
+                    await supabase
+                        .from('deudas_pacientes')
+                        .delete()
+                        .eq('id', pDb.id);
+                }
+
                 pacientesConciliados++;
             }
         }
@@ -827,7 +859,7 @@ export async function createPlanPago(pacienteId, { montoOriginal, tipoInteres, t
     return plan;
 }
 
-export async function marcarCuotaPagada(cuotaId, { fechaPago, comprobante, usuario }) {
+export async function marcarCuotaPagada(cuotaId, { fechaPago, comprobante, usuario, skipSeguimiento = false }) {
     // 1. Obtener info de la cuota y plan para el registro de seguimiento
     const { data: cuota } = await supabase
         .from('deudas_cuotas')
@@ -835,23 +867,27 @@ export async function marcarCuotaPagada(cuotaId, { fechaPago, comprobante, usuar
         .eq('id', cuotaId)
         .single();
 
+    const effFechaPago = fechaPago || new Date().toISOString().split('T')[0];
+
     // 2. Marcar cuota como pagada
     const { error } = await supabase
         .from('deudas_cuotas')
-        .update({ pagada: true, fecha_pago: fechaPago || new Date().toISOString().split('T')[0], comprobante: comprobante || null })
+        .update({ pagada: true, fecha_pago: effFechaPago, comprobante: comprobante || null })
         .eq('id', cuotaId);
     if (error) throw error;
 
-    // 3. Registrar en seguimiento si tenemos paciente_id
-    if (cuota?.plan?.paciente_id) {
+    // 3. Registrar en seguimiento si tenemos paciente_id y no fue ya registrado por el modal
+    if (cuota?.plan?.paciente_id && !skipSeguimiento) {
         const desc = `Pago cuota ${cuota.numero_cuota}/${cuota.plan.cantidad_cuotas} del plan de pago.${comprobante ? ' Comprobante: ' + comprobante : ''}`;
         await addSeguimiento(cuota.plan.paciente_id, {
             tipo: 'pago',
             descripcion: desc,
             monto: cuota.monto,
             usuario: usuario || 'Sistema',
+            fecha: effFechaPago,
         });
     }
+    return cuota;
 }
 
 export async function cancelarPlan(planId) {
@@ -1090,10 +1126,10 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         .select('*')
         .order('created_at', { ascending: true });
 
-    // 3. Obtener cuotas pagadas
+    // 3. Obtener cuotas pagadas con referencia al plan y paciente
     let queryCuotas = supabase
         .from('deudas_cuotas')
-        .select('*')
+        .select('*, plan:deudas_planes_pago(paciente_id, cantidad_cuotas)')
         .eq('pagada', true);
 
     // 4. Obtener todas las facturas para cruzar fecha de alta y exigibilidad
@@ -1293,16 +1329,25 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     // Nivel 1: Cobros reales registrados en caja SALUS (deudas_cobros)
     // REGLA DE ORO DEL INCENTIVO: Solo se suman como Deuda Cobrada aquellos pagos realizados >= 30 días post-alta (esExigible === true).
     // Los pagos realizados durante la internación o antes de los 30 días del alta se contabilizan aparte en montoCobradoEnGracia (excluidos del incentivo).
-    const nhcsConCobros = new Set();
+    const salusMontoPorPacMes = new Map(); // `${pacId}_${ym}` -> monto total en SALUS ese mes
+    const totalContabilizadoPorPac = new Map(); // pacId -> monto total ya contabilizado (Nivel 1 + Nivel 2)
+    const pacsConCobroEnMes = new Set(); // `${pacId}_${ym}`
     const pacsCanceladosEnPeriodoSet = new Set();
+
     cobros.forEach(c => {
         const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
         const ym = cDate ? cDate.substring(0, 7) : '';
         const monto = Number(c.importe) || 0;
         const pac = nhcToPac[c.nhc];
-        if (c.nhc && monto > 0) nhcsConCobros.add(c.nhc);
 
         if (monto > 0 && ym) {
+            if (pac?.id) {
+                const keyMes = `${pac.id}_${ym}`;
+                salusMontoPorPacMes.set(keyMes, (salusMontoPorPacMes.get(keyMes) || 0) + monto);
+                pacsConCobroEnMes.add(keyMes);
+                totalContabilizadoPorPac.set(pac.id, (totalContabilizadoPorPac.get(pac.id) || 0) + monto);
+            }
+
             const { esExigible } = evaluarExigibilidadCobro(pac?.id, cDate);
             const inRange = (effDesde && effHasta)
                 ? (cDate >= effDesde && cDate <= effHasta)
@@ -1328,70 +1373,128 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         }
     });
 
-    // Nivel 2: Pagos manuales en seguimiento (solo para pacientes sin recibos duplicados en SALUS)
-    const pacIdsConPagoSeg = new Set();
+    // Consolidar pagos de seguimiento y cuotas pagadas de planes de pago (imputando cada cuota en su fecha_pago real y sin duplicar clicks)
+    const pagosConsolidados = [];
+    const seenSegKeys = new Set();
     seguimientos.forEach(s => {
         if (s.tipo === 'pago' && Number(s.monto) > 0) {
-            const pac = pacientesMap[s.paciente_id];
-            if (pac?.nhc && nhcsConCobros.has(pac.nhc)) return;
-            pacIdsConPagoSeg.add(s.paciente_id);
-
             const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
-            const ym = sDate ? sDate.substring(0, 7) : '';
             const monto = Number(s.monto) || 0;
-
-            if (monto > 0 && ym) {
-                const { esExigible } = evaluarExigibilidadCobro(s.paciente_id, sDate);
-                const inRange = (effDesde && effHasta)
-                    ? (sDate >= effDesde && sDate <= effHasta)
-                    : true;
-
-                if (esExigible) {
-                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
-                    if (inRange) {
-                        totalDeudaCobrada += monto;
-                        montoCobradoExigible += monto;
-                        if (s.paciente_id) pacsCobradosExigiblesSet.add(s.paciente_id);
-                        if (pac?.categoria === 'deuda_cancelada') {
-                            montoDeudasCanceladas += monto;
-                            pacsCanceladosEnPeriodoSet.add(pac.id);
-                        } else {
-                            montoCobrosCuotasYSeg += monto;
-                        }
-                    }
-                } else if (inRange) {
-                    montoCobradoEnGracia += monto;
-                    if (s.paciente_id) pacsCobradosEnGraciaSet.add(s.paciente_id);
-                }
-            }
+            const dedupKey = `${s.paciente_id}|${sDate}|${Math.round(monto)}|${(s.descripcion || '').trim()}`;
+            if (seenSegKeys.has(dedupKey)) return;
+            seenSegKeys.add(dedupKey);
+            pagosConsolidados.push({
+                paciente_id: s.paciente_id,
+                fechaISO: sDate,
+                monto,
+                descripcion: s.descripcion || '',
+                usuario: s.usuario || 'Sistema',
+                matchedCuota: false,
+            });
         }
     });
 
-    // Nivel 3: Pacientes con deuda_cancelada (si no tienen cobros ya sumados en Nivel 1 o Nivel 2)
+    cuotas.forEach(cu => {
+        const pacId = cu.plan?.paciente_id;
+        const monto = Number(cu.monto) || 0;
+        if (!pacId || monto <= 0) return;
+        const fPago = normalizeToISO(cu.fecha_pago) || (cu.created_at ? cu.created_at.substring(0, 10) : '');
+        if (!fPago) return;
+        const cuotaTag = `cuota ${cu.numero_cuota}/`;
+        const match = pagosConsolidados.find(pg =>
+            pg.paciente_id === pacId &&
+            !pg.matchedCuota &&
+            (pg.descripcion.toLowerCase().includes(cuotaTag) ||
+             (pg.fechaISO.substring(0, 7) === fPago.substring(0, 7) && Math.abs(pg.monto - monto) < 10))
+        );
+        if (match) {
+            match.matchedCuota = true;
+            if (fPago) match.fechaISO = fPago;
+        } else {
+            pagosConsolidados.push({
+                paciente_id: pacId,
+                fechaISO: fPago,
+                monto,
+                descripcion: `Pago cuota ${cu.numero_cuota}/${cu.plan?.cantidad_cuotas || ''} del plan de pago.`,
+                usuario: 'Plan de Pagos',
+                matchedCuota: true,
+            });
+        }
+    });
+
+    // Nivel 2: Pagos de cuotas y seguimiento mes a mes (deduplicados por paciente + mes contra SALUS, sin que un recibo viejo bloquee cuotas nuevas)
+    pagosConsolidados.forEach(pg => {
+        const pac = pacientesMap[pg.paciente_id];
+        const sDate = pg.fechaISO || '';
+        const ym = sDate ? sDate.substring(0, 7) : '';
+        const monto = Number(pg.monto) || 0;
+        if (monto <= 0 || !ym) return;
+
+        // Si en este mismo mes (ym) el paciente ya tiene recibo en Caja SALUS que cubre este pago, evitar duplicarlo
+        const keyMes = `${pg.paciente_id}_${ym}`;
+        if (salusMontoPorPacMes.has(keyMes)) return;
+
+        pacsConCobroEnMes.add(keyMes);
+        totalContabilizadoPorPac.set(pg.paciente_id, (totalContabilizadoPorPac.get(pg.paciente_id) || 0) + monto);
+
+        const { esExigible } = evaluarExigibilidadCobro(pg.paciente_id, sDate);
+        const inRange = (effDesde && effHasta)
+            ? (sDate >= effDesde && sDate <= effHasta)
+            : true;
+
+        if (esExigible) {
+            cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+            if (inRange) {
+                totalDeudaCobrada += monto;
+                montoCobradoExigible += monto;
+                if (pg.paciente_id) pacsCobradosExigiblesSet.add(pg.paciente_id);
+                if (pac?.categoria === 'deuda_cancelada') {
+                    montoDeudasCanceladas += monto;
+                    pacsCanceladosEnPeriodoSet.add(pac.id);
+                } else {
+                    montoCobrosCuotasYSeg += monto;
+                }
+            }
+        } else if (inRange) {
+            montoCobradoEnGracia += monto;
+            if (pg.paciente_id) pacsCobradosEnGraciaSet.add(pg.paciente_id);
+        }
+    });
+
+    // Nivel 3: Pacientes con deuda_cancelada (si cancelaron directo o si les quedaba un saldo remanente al cancelar en ese mes)
     pacientes.forEach(p => {
         if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
             const cancDate = p.deuda_cancelada_at.substring(0, 10);
             const ym = cancDate.substring(0, 7);
-            const monto = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
-            const yaContabilizado = (p.nhc && nhcsConCobros.has(p.nhc)) || pacIdsConPagoSeg.has(p.id);
+            const montoTotalDeuda = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+            const yaContabilizado = totalContabilizadoPorPac.get(p.id) || 0;
+            const tieneCobroEnMesCanc = pacsConCobroEnMes.has(`${p.id}_${ym}`);
+
+            // Si no tenía cuotas previas contabilizadas, se imputa el total; si tenía cuotas en meses previos y faltaba imputar el saldo final en el mes de cancelación, se imputa solo el saldo restante
+            let montoAImputar = 0;
+            if (yaContabilizado === 0) {
+                montoAImputar = montoTotalDeuda;
+            } else if (!tieneCobroEnMesCanc && Number(p.deuda_total) > yaContabilizado + 1000) {
+                montoAImputar = Number(p.deuda_total) - yaContabilizado;
+            }
 
             const inRange = (effDesde && effHasta)
                 ? (cancDate >= effDesde && cancDate <= effHasta)
                 : true;
 
-            if (!yaContabilizado && monto > 0 && ym) {
+            if (montoAImputar > 0 && ym) {
                 const { esExigible } = evaluarExigibilidadCobro(p.id, cancDate);
                 if (esExigible) {
-                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + montoAImputar;
                     if (inRange) {
-                        totalDeudaCobrada += monto;
-                        montoCobradoExigible += monto;
+                        totalDeudaCobrada += montoAImputar;
+                        montoCobradoExigible += montoAImputar;
                         pacsCobradosExigiblesSet.add(p.id);
-                        montoDeudasCanceladas += monto;
+                        montoDeudasCanceladas += montoAImputar;
                         pacsCanceladosEnPeriodoSet.add(p.id);
                     }
                 } else if (inRange) {
-                    montoCobradoEnGracia += monto;
+                    montoCobradoEnGracia += montoAImputar;
                     pacsCobradosEnGraciaSet.add(p.id);
                 }
             }
@@ -1795,17 +1898,27 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
     };
 
     // Nivel 1: Cobros de caja SALUS
-    const nhcsConCobrosSalus = new Set();
+    const salusMontoPorPacMes = new Map();
+    const totalContabilizadoPorPac = new Map();
+    const pacsConCobroEnMes = new Set();
+
     cobrosSalus.forEach(c => {
         const pac = nhcToPacMap[c.nhc];
         if (!pac) return;
         const pacId = pac.id;
         const monto = Number(c.importe) || 0;
         if (monto <= 0) return;
-        if (c.nhc) nhcsConCobrosSalus.add(c.nhc);
 
         const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
+        const ym = cDate ? cDate.substring(0, 7) : '';
         const cDateTime = c.fecha ? c.fecha.replace('T', ' ').substring(0, 16) : '';
+
+        if (ym) {
+            const keyMes = `${pacId}_${ym}`;
+            salusMontoPorPacMes.set(keyMes, (salusMontoPorPacMes.get(keyMes) || 0) + monto);
+            pacsConCobroEnMes.add(keyMes);
+        }
+        totalContabilizadoPorPac.set(pacId, (totalContabilizadoPorPac.get(pacId) || 0) + monto);
 
         ensurePacCobroEntry(pacId, cDate, c.descripcion || '', 'Caja SALUS');
         cobrosPorPaciente[pacId].totalHistorico += monto;
@@ -1846,72 +1959,142 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         }
     });
 
-    // Nivel 2: Seguimientos de pago (solo si el paciente no tuvo recibo ya contabilizado en SALUS)
-    const pacIdsConPagoSeg = new Set();
+    // Consolidar pagos de seguimiento y cuotas pagadas de planes de pago
+    const pagosConsolidadosExcel = [];
+    const seenSegKeysExcel = new Set();
     seguimientos.forEach(s => {
         if (s.tipo === 'pago' && Number(s.monto) > 0) {
-            const pac = pacientesMap[s.paciente_id];
-            if (pac && pac.nhc && nhcsConCobrosSalus.has(pac.nhc)) return;
-            pacIdsConPagoSeg.add(s.paciente_id);
-
-            const pacNombre = pac ? pac.nombre : 'Paciente Desconocido';
-            const pacNhc = pac ? (pac.nhc || 'S/D') : 'S/D';
             const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
             const sDateTime = s.created_at ? s.created_at.replace('T', ' ').substring(0, 16) : '';
-            const monto = Number(s.monto);
+            const monto = Number(s.monto) || 0;
+            const dedupKey = `${s.paciente_id}|${sDate}|${Math.round(monto)}|${(s.descripcion || '').trim()}`;
+            if (seenSegKeysExcel.has(dedupKey)) return;
+            seenSegKeysExcel.add(dedupKey);
+            pagosConsolidadosExcel.push({
+                paciente_id: s.paciente_id,
+                fechaISO: sDate,
+                fechaHoraISO: sDateTime,
+                monto,
+                descripcion: s.descripcion || '',
+                usuario: s.usuario || 'Sistema',
+                matchedCuota: false,
+            });
+        }
+    });
 
-            ensurePacCobroEntry(s.paciente_id, sDate, s.descripcion || '', s.usuario || '');
-            cobrosPorPaciente[s.paciente_id].totalHistorico += monto;
-
-            const inRange = effDesde && effHasta 
-                ? (sDate >= effDesde && sDate <= effHasta)
-                : true;
-
-            if (inRange) {
-                const evalExig = evaluarExigibilidadCobro(s.paciente_id, sDate);
-                if (evalExig.esExigible) {
-                    cobrosPorPaciente[s.paciente_id].totalPeriodo += monto;
-                    cobrosPorPaciente[s.paciente_id].cobradoExigiblePeriodo += monto;
-                    cobrosPorPaciente[s.paciente_id].ultimoCobroFechaISO = sDate;
-                    if (s.usuario) cobrosPorPaciente[s.paciente_id].ultimoOperador = s.usuario;
-                    if (s.descripcion) cobrosPorPaciente[s.paciente_id].ultimoComprobante = s.descripcion;
-
-                    const moraInfo = pacFechasMoraMap[s.paciente_id] || {};
-                    movimientosCaja.push({
-                        rawFecha: sDateTime,
-                        fecha: formatFechaHoraDDMMYYYY(sDateTime),
-                        paciente: pacNombre,
-                        nhc: pacNhc,
-                        fechaAlta: moraInfo.fechaAltaDisplay || '-',
-                        fechaExigible: moraInfo.fechaExigibleDisplay || '-',
-                        condicionCobro: evalExig.label,
-                        monto,
-                        concepto: 'Cuota / Pago a cuenta (≥30d post-alta)',
-                        medio: s.descripcion?.includes('[') ? s.descripcion.split('[')[1]?.split(']')[0] : 'Transferencia / Efectivo',
-                        comprobante: s.descripcion?.includes('Ref:') ? s.descripcion.split('Ref:')[1]?.split('—')[0]?.trim() : (s.descripcion || '-'),
-                        usuario: s.usuario || 'Sistema',
-                        detalle: s.descripcion || ''
-                    });
-                } else {
-                    cobrosPorPaciente[s.paciente_id].cobradoEnGraciaPeriodo += monto;
-                    totalExcluidoMenos30d += monto;
-                    countRecibosExcluidosMenos30d++;
+    planes.forEach(pl => {
+        const pacId = pl.paciente_id;
+        (pl.cuotas || []).forEach(cu => {
+            if (!cu.pagada) return;
+            const monto = Number(cu.monto) || 0;
+            if (!pacId || monto <= 0) return;
+            const fPago = normalizeToISO(cu.fecha_pago) || (cu.created_at ? cu.created_at.substring(0, 10) : '');
+            if (!fPago) return;
+            const cuotaTag = `cuota ${cu.numero_cuota}/`;
+            const match = pagosConsolidadosExcel.find(pg =>
+                pg.paciente_id === pacId &&
+                !pg.matchedCuota &&
+                (pg.descripcion.toLowerCase().includes(cuotaTag) ||
+                 (pg.fechaISO.substring(0, 7) === fPago.substring(0, 7) && Math.abs(pg.monto - monto) < 10))
+            );
+            if (match) {
+                match.matchedCuota = true;
+                if (fPago) {
+                    match.fechaISO = fPago;
+                    match.fechaHoraISO = fPago + (match.fechaHoraISO?.length > 10 ? match.fechaHoraISO.substring(10) : ' 12:00');
                 }
+            } else {
+                pagosConsolidadosExcel.push({
+                    paciente_id: pacId,
+                    fechaISO: fPago,
+                    fechaHoraISO: `${fPago} 12:00`,
+                    monto,
+                    descripcion: `Pago cuota ${cu.numero_cuota}/${pl.cantidad_cuotas || ''} del plan de pago.`,
+                    usuario: pl.usuario || 'Plan de Pagos',
+                    matchedCuota: true,
+                });
+            }
+        });
+    });
+
+    // Nivel 2: Cuotas y Seguimientos de pago mes a mes (deduplicados por paciente + mes contra SALUS)
+    pagosConsolidadosExcel.forEach(s => {
+        const pac = pacientesMap[s.paciente_id];
+        const sDate = s.fechaISO || '';
+        const ym = sDate ? sDate.substring(0, 7) : '';
+        const sDateTime = s.fechaHoraISO || sDate;
+        const monto = Number(s.monto);
+        if (monto <= 0 || !ym) return;
+
+        const keyMes = `${s.paciente_id}_${ym}`;
+        if (salusMontoPorPacMes.has(keyMes)) return;
+
+        pacsConCobroEnMes.add(keyMes);
+        totalContabilizadoPorPac.set(s.paciente_id, (totalContabilizadoPorPac.get(s.paciente_id) || 0) + monto);
+
+        const pacNombre = pac ? pac.nombre : 'Paciente Desconocido';
+        const pacNhc = pac ? (pac.nhc || 'S/D') : 'S/D';
+
+        ensurePacCobroEntry(s.paciente_id, sDate, s.descripcion || '', s.usuario || '');
+        cobrosPorPaciente[s.paciente_id].totalHistorico += monto;
+
+        const inRange = effDesde && effHasta 
+            ? (sDate >= effDesde && sDate <= effHasta)
+            : true;
+
+        if (inRange) {
+            const evalExig = evaluarExigibilidadCobro(s.paciente_id, sDate);
+            if (evalExig.esExigible) {
+                cobrosPorPaciente[s.paciente_id].totalPeriodo += monto;
+                cobrosPorPaciente[s.paciente_id].cobradoExigiblePeriodo += monto;
+                cobrosPorPaciente[s.paciente_id].ultimoCobroFechaISO = sDate;
+                if (s.usuario) cobrosPorPaciente[s.paciente_id].ultimoOperador = s.usuario;
+                if (s.descripcion) cobrosPorPaciente[s.paciente_id].ultimoComprobante = s.descripcion;
+
+                const moraInfo = pacFechasMoraMap[s.paciente_id] || {};
+                movimientosCaja.push({
+                    rawFecha: sDateTime,
+                    fecha: formatFechaHoraDDMMYYYY(sDateTime),
+                    paciente: pacNombre,
+                    nhc: pacNhc,
+                    fechaAlta: moraInfo.fechaAltaDisplay || '-',
+                    fechaExigible: moraInfo.fechaExigibleDisplay || '-',
+                    condicionCobro: evalExig.label,
+                    monto,
+                    concepto: 'Cuota / Pago a cuenta (≥30d post-alta)',
+                    medio: s.descripcion?.includes('[') ? s.descripcion.split('[')[1]?.split(']')[0] : 'Transferencia / Efectivo',
+                    comprobante: s.descripcion?.includes('Ref:') ? s.descripcion.split('Ref:')[1]?.split('—')[0]?.trim() : (s.descripcion || '-'),
+                    usuario: s.usuario || 'Sistema',
+                    detalle: s.descripcion || ''
+                });
+            } else {
+                cobrosPorPaciente[s.paciente_id].cobradoEnGraciaPeriodo += monto;
+                totalExcluidoMenos30d += monto;
+                countRecibosExcluidosMenos30d++;
             }
         }
     });
 
-    // Nivel 3: Pacientes con deuda_cancelada que NO tengan cobros duplicados ni en SALUS ni en Seguimiento
+    // Nivel 3: Pacientes con deuda_cancelada (si cancelaron directo o si les quedaba saldo remanente al cancelar en ese mes)
     pacientes.forEach(p => {
         if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
             const cancDate = p.deuda_cancelada_at.substring(0, 10);
+            const ym = cancDate.substring(0, 7);
             const cancDateTime = p.deuda_cancelada_at.replace('T', ' ').substring(0, 16);
-            const montoCanc = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
-            const yaContabilizado = (p.nhc && nhcsConCobrosSalus.has(p.nhc)) || pacIdsConPagoSeg.has(p.id);
+            const montoTotalDeuda = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+            const yaContabilizado = totalContabilizadoPorPac.get(p.id) || 0;
+            const tieneCobroEnMesCanc = pacsConCobroEnMes.has(`${p.id}_${ym}`);
+
+            let montoCanc = 0;
+            if (yaContabilizado === 0) {
+                montoCanc = montoTotalDeuda;
+            } else if (!tieneCobroEnMesCanc && Number(p.deuda_total) > yaContabilizado + 1000) {
+                montoCanc = Number(p.deuda_total) - yaContabilizado;
+            }
 
             ensurePacCobroEntry(p.id, cancDate, 'Cancelación 100% Deuda', p.deuda_cancelada_por || 'Administración');
 
-            if (!yaContabilizado && montoCanc > 0) {
+            if (montoCanc > 0) {
                 cobrosPorPaciente[p.id].totalHistorico += montoCanc;
 
                 const inRange = effDesde && effHasta

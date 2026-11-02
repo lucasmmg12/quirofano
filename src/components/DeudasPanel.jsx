@@ -488,7 +488,13 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
     const handleMarcarCuota = useCallback(async (cuotaId) => {
         try {
-            await marcarCuotaPagada(cuotaId, { fechaPago: null, comprobante: null, usuario: empleadoNombre });
+            const cuotaPagada = await marcarCuotaPagada(cuotaId, { fechaPago: null, comprobante: null, usuario: empleadoNombre });
+            if (cuotaPagada && Number(cuotaPagada.monto) > 0 && selectedDeudor) {
+                const deudaRestante = Math.max(0, Number(selectedDeudor.deuda_total) - Number(cuotaPagada.monto));
+                await updateDeudor(selectedDeudor.id, { deuda_total: deudaRestante });
+                setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
+                setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
+            }
             const planesData = await fetchPlanesPago(selectedDeudor.id);
             setPlanes(planesData);
             const segs = await fetchSeguimiento(selectedDeudor.id);
@@ -512,12 +518,13 @@ export default function DeudasPanel({ addToast, currentUser }) {
         const descCompleta = `Pago Cobrado Virtual${medioText}${compText}${obsText}`;
 
         try {
-            // 1. Agregar nota de pago en seguimiento
+            // 1. Agregar nota de pago en seguimiento respetando la fecha de pago ingresada
             await addSeguimiento(selectedDeudor.id, {
                 tipo: 'pago',
                 descripcion: descCompleta,
                 monto: montoNum,
                 usuario: empleadoNombre,
+                fecha: modalPagoForm.fecha,
             });
 
             // 1.5. Descontar de la deuda total y actualizar localmente
@@ -527,12 +534,13 @@ export default function DeudasPanel({ addToast, currentUser }) {
             setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
             setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
 
-            // 2. Si se seleccionó una cuota, marcarla pagada
+            // 2. Si se seleccionó una cuota, marcarla pagada sin duplicar registro en seguimiento
             if (modalPagoForm.cuotaId) {
                 await marcarCuotaPagada(modalPagoForm.cuotaId, {
                     fechaPago: modalPagoForm.fecha,
                     comprobante: modalPagoForm.comprobante || modalPagoForm.medioPago,
                     usuario: empleadoNombre,
+                    skipSeguimiento: true,
                 });
             }
 
