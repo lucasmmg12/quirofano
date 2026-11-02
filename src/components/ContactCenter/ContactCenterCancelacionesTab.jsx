@@ -323,13 +323,15 @@ export default function ContactCenterCancelacionesTab({
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '16px',
-                padding: '20px 24px',
+                padding: '18px 24px 0 24px',
                 border: '1px solid #E2E8F0',
                 boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
-                marginBottom: '20px'
+                marginBottom: '20px',
+                position: 'relative',
+                overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '18px' }}>
                         {onBackToConsole && (
                             <button
                                 onClick={onBackToConsole}
@@ -389,33 +391,61 @@ export default function ContactCenterCancelacionesTab({
                         </div>
                     </div>
 
-                    {/* Botón de Recarga Manual */}
-                    <button
-                        onClick={() => {
-                            loadData(false);
-                            if (onRefreshPendingCount) onRefreshPendingCount();
-                        }}
-                        disabled={loading}
-                        title="Recargar bolsa de cancelaciones en tiempo real"
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '8px 14px',
-                            borderRadius: '10px',
-                            border: '1px solid #E2E8F0',
-                            background: '#F8FAFC',
-                            color: '#0F2942',
-                            fontSize: '12.5px',
-                            fontWeight: '700',
-                            cursor: loading ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.15s ease',
-                            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)'
-                        }}
-                    >
-                        <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} color="#0284C7" />
-                        <span>{loading ? 'Actualizando...' : 'Actualizar'}</span>
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px' }}>
+                        {/* Botón de Recarga Manual */}
+                        <div style={{ paddingBottom: '18px' }}>
+                            <button
+                                onClick={() => {
+                                    loadData(false);
+                                    if (onRefreshPendingCount) onRefreshPendingCount();
+                                }}
+                                disabled={loading}
+                                title="Recargar bolsa de cancelaciones en tiempo real"
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 14px',
+                                    borderRadius: '10px',
+                                    border: '1px solid #E2E8F0',
+                                    background: '#F8FAFC',
+                                    color: '#0F2942',
+                                    fontSize: '12.5px',
+                                    fontWeight: '700',
+                                    cursor: loading ? 'not-allowed' : 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)'
+                                }}
+                            >
+                                <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} color="#0284C7" />
+                                <span>{loading ? 'Actualizando...' : 'Actualizar'}</span>
+                            </button>
+                        </div>
+
+                        {/* Ilustración Dr. Beto (Contact Center) */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'center',
+                            marginTop: '-10px',
+                            marginRight: '4px',
+                            pointerEvents: 'none',
+                            userSelect: 'none'
+                        }}>
+                            <img
+                                src="/contact-center-beto.png"
+                                alt="Dr. Beto - Contact Center"
+                                style={{
+                                    height: '124px',
+                                    width: 'auto',
+                                    objectFit: 'contain',
+                                    objectPosition: 'bottom center',
+                                    display: 'block',
+                                    filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                                }}
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 

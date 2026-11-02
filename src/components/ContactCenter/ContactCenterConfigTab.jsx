@@ -339,15 +339,17 @@ export default function ContactCenterConfigTab({ currentUser, activeAgent, addTo
                 background: '#FFFFFF',
                 borderRadius: '16px',
                 border: '1px solid #E2E8F0',
-                padding: '24px',
+                padding: '20px 24px 0 24px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 flexWrap: 'wrap',
-                gap: '16px'
+                gap: '16px',
+                position: 'relative',
+                overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingBottom: '20px', flex: '1 1 420px' }}>
                     <div style={{
                         width: '48px',
                         height: '48px',
@@ -362,7 +364,7 @@ export default function ContactCenterConfigTab({ currentUser, activeAgent, addTo
                         <Bot size={26} />
                     </div>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F2942' }}>
                                 Configuración del Asistente Virtual (Bot WhatsApp)
                             </h2>
@@ -388,70 +390,96 @@ export default function ContactCenterConfigTab({ currentUser, activeAgent, addTo
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <button
-                        onClick={loadConfig}
-                        disabled={loading}
-                        style={{
-                            padding: '8px 14px',
-                            background: '#F8FAFC',
-                            border: '1px solid #CBD5E1',
-                            borderRadius: '8px',
-                            color: '#475569',
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                        }}
-                    >
-                        <RefreshCw size={14} className={loading ? 'spin' : ''} />
-                        Recargar
-                    </button>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '20px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={loadConfig}
+                            disabled={loading}
+                            style={{
+                                padding: '8px 14px',
+                                background: '#F8FAFC',
+                                border: '1px solid #CBD5E1',
+                                borderRadius: '8px',
+                                color: '#475569',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                        >
+                            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+                            Recargar
+                        </button>
 
-                    <button
-                        onClick={handleResetDefault}
-                        style={{
-                            padding: '8px 14px',
-                            background: '#FEF2F2',
-                            border: '1px solid #FECACA',
-                            borderRadius: '8px',
-                            color: '#DC2626',
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px'
-                        }}
-                    >
-                        <RotateCcw size={14} />
-                        Restablecer Predeterminado
-                    </button>
+                        <button
+                            onClick={handleResetDefault}
+                            style={{
+                                padding: '8px 14px',
+                                background: '#FEF2F2',
+                                border: '1px solid #FECACA',
+                                borderRadius: '8px',
+                                color: '#DC2626',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                        >
+                            <RotateCcw size={14} />
+                            Restablecer Predeterminado
+                        </button>
 
-                    <button
-                        onClick={handleSave}
-                        disabled={saving || loading}
-                        style={{
-                            padding: '8px 20px',
-                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                            border: 'none',
-                            borderRadius: '8px',
-                            color: '#FFFFFF',
-                            fontSize: '0.84rem',
-                            fontWeight: 700,
-                            cursor: saving || loading ? 'not-allowed' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
-                            opacity: saving ? 0.7 : 1
-                        }}
-                    >
-                        <Save size={15} />
-                        {saving ? 'Guardando...' : 'Guardar Cambios'}
-                    </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={saving || loading}
+                            style={{
+                                padding: '8px 20px',
+                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                border: 'none',
+                                borderRadius: '8px',
+                                color: '#FFFFFF',
+                                fontSize: '0.84rem',
+                                fontWeight: 700,
+                                cursor: saving || loading ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
+                                opacity: saving ? 0.7 : 1
+                            }}
+                        >
+                            <Save size={15} />
+                            {saving ? 'Guardando...' : 'Guardar Cambios'}
+                        </button>
+                    </div>
+
+                    {/* Ilustración Dr. Beto (Contact Center) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/contact-center-beto.png"
+                            alt="Dr. Beto - Contact Center"
+                            style={{
+                                height: '124px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

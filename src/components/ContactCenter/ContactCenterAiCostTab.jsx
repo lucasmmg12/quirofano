@@ -572,15 +572,17 @@ export default function ContactCenterAiCostTab({
                 background: '#FFFFFF',
                 borderRadius: '12px',
                 border: '1px solid #E2E8F0',
-                padding: '16px 20px',
+                padding: '16px 20px 0 20px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 flexWrap: 'wrap',
-                gap: '14px'
+                gap: '14px',
+                position: 'relative',
+                overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px' }}>
                     <div style={{
                         width: '40px', height: '40px', borderRadius: '10px',
                         background: 'linear-gradient(135deg, #0F2942 0%, #0284C7 100%)',
@@ -610,69 +612,95 @@ export default function ContactCenterAiCostTab({
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    {/* Cotización Dólar Oficial en vivo desde DolarApi.com */}
-                    <div style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        background: '#F8FAFC', padding: '6px 12px', borderRadius: '8px',
-                        border: '1px solid #CBD5E1'
-                    }} title="Cotización oficial automática desde DolarApi.com (editable)">
-                        <DollarSign size={15} color="#059669" />
-                        <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 700 }}>Dólar Ref:</span>
-                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>$</span>
-                        <input
-                            type="number"
-                            value={arsRate}
-                            onChange={(e) => setArsRate(Number(e.target.value) || 1)}
-                            style={{
-                                width: '70px', border: 'none', background: 'transparent',
-                                fontSize: '0.78rem', fontWeight: 800, color: '#0F2942',
-                                outline: 'none'
-                            }}
-                            title="Cotización ARS editable (actualizada vía DolarApi)"
-                        />
-                        <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>ARS</span>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', paddingBottom: '16px' }}>
+                        {/* Cotización Dólar Oficial en vivo desde DolarApi.com */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            background: '#F8FAFC', padding: '6px 12px', borderRadius: '8px',
+                            border: '1px solid #CBD5E1'
+                        }} title="Cotización oficial automática desde DolarApi.com (editable)">
+                            <DollarSign size={15} color="#059669" />
+                            <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 700 }}>Dólar Ref:</span>
+                            <span style={{ fontSize: '0.72rem', color: '#64748B' }}>$</span>
+                            <input
+                                type="number"
+                                value={arsRate}
+                                onChange={(e) => setArsRate(Number(e.target.value) || 1)}
+                                style={{
+                                    width: '70px', border: 'none', background: 'transparent',
+                                    fontSize: '0.78rem', fontWeight: 800, color: '#0F2942',
+                                    outline: 'none'
+                                }}
+                                title="Cotización ARS editable (actualizada vía DolarApi)"
+                            />
+                            <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>ARS</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    fetchDolarOficial(true).then(d => {
+                                        if (d?.venta && setArsRate) {
+                                            setArsRate(d.venta);
+                                            if (addToast) addToast(`Dólar actualizado a $${d.venta} ARS (DolarApi Oficial)`, 'success');
+                                        }
+                                    });
+                                }}
+                                title="Sincronizar en tiempo real con DolarApi.com"
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    cursor: 'pointer',
+                                    color: '#0284C7',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '2px',
+                                    marginLeft: '2px'
+                                }}
+                            >
+                                <RefreshCw size={12} />
+                            </button>
+                        </div>
+
+                        {/* Botón Refrescar */}
                         <button
                             type="button"
-                            onClick={() => {
-                                fetchDolarOficial(true).then(d => {
-                                    if (d?.venta && setArsRate) {
-                                        setArsRate(d.venta);
-                                        if (addToast) addToast(`Dólar actualizado a $${d.venta} ARS (DolarApi Oficial)`, 'success');
-                                    }
-                                });
-                            }}
-                            title="Sincronizar en tiempo real con DolarApi.com"
+                            onClick={loadAiUsageData}
+                            disabled={loading}
                             style={{
-                                border: 'none',
-                                background: 'transparent',
-                                cursor: 'pointer',
-                                color: '#0284C7',
-                                display: 'flex',
-                                alignItems: 'center',
-                                padding: '2px',
-                                marginLeft: '2px'
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                background: '#FFFFFF', border: '1px solid #CBD5E1', color: '#0F2942',
+                                padding: '7px 14px', borderRadius: '8px', fontSize: '0.75rem',
+                                fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
                             }}
                         >
-                            <RefreshCw size={12} />
+                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                            Actualizar
                         </button>
                     </div>
 
-                    {/* Botón Refrescar */}
-                    <button
-                        type="button"
-                        onClick={loadAiUsageData}
-                        disabled={loading}
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            background: '#FFFFFF', border: '1px solid #CBD5E1', color: '#0F2942',
-                            padding: '7px 14px', borderRadius: '8px', fontSize: '0.75rem',
-                            fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s'
-                        }}
-                    >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                        Actualizar
-                    </button>
+                    {/* Ilustración Dr. Beto (Contact Center) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/contact-center-beto.png"
+                            alt="Dr. Beto - Contact Center"
+                            style={{
+                                height: '118px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

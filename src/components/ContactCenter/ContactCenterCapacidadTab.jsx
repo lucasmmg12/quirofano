@@ -141,15 +141,17 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
                 background: '#FFFFFF',
                 borderRadius: '12px',
                 border: '1px solid #E2E8F0',
-                padding: '20px 24px',
+                padding: '18px 24px 0 24px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 flexWrap: 'wrap',
-                gap: '16px'
+                gap: '16px',
+                position: 'relative',
+                overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '18px' }}>
                     <div style={{
                         width: '44px', height: '44px', borderRadius: '10px',
                         background: 'linear-gradient(135deg, #C2410C 0%, #EA580C 100%)',
@@ -170,24 +172,50 @@ export default function ContactCenterCapacidadTab({ metrics, selectedMonth, time
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* Botón de Descarga del PDF Oficial */}
-                    <a
-                        href="/Informe_Contact_Center_Sanatorio_Argentino.pdf"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download="Informe_Contact_Center_Sanatorio_Argentino.pdf"
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            background: '#0F2942', color: '#FFFFFF', padding: '9px 16px',
-                            borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700,
-                            textDecoration: 'none', boxShadow: '0 2px 6px rgba(15, 41, 66, 0.15)',
-                            transition: 'all 0.15s ease'
-                        }}
-                    >
-                        <FileDown size={15} />
-                        Descargar Informe Oficial (PDF)
-                    </a>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '18px' }}>
+                        {/* Botón de Descarga del PDF Oficial */}
+                        <a
+                            href="/Informe_Contact_Center_Sanatorio_Argentino.pdf"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download="Informe_Contact_Center_Sanatorio_Argentino.pdf"
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                background: '#0F2942', color: '#FFFFFF', padding: '9px 16px',
+                                borderRadius: '8px', fontSize: '0.78rem', fontWeight: 700,
+                                textDecoration: 'none', boxShadow: '0 2px 6px rgba(15, 41, 66, 0.15)',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <FileDown size={15} />
+                            Descargar Informe Oficial (PDF)
+                        </a>
+                    </div>
+
+                    {/* Ilustración Dr. Beto (Contact Center) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/contact-center-beto.png"
+                            alt="Dr. Beto - Contact Center"
+                            style={{
+                                height: '120px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

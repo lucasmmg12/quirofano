@@ -5167,19 +5167,20 @@ export default function ContactCenterChatConsole({
                         textAlign: 'center',
                         color: ccTheme.chatHeaderColor || '#64748B'
                     }}>
-                        <div style={{
-                            width: '64px',
-                            height: '64px',
-                            borderRadius: '50%',
-                            background: ccTheme.isDark ? '#1E293B' : '#E0F2FE',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginBottom: '16px',
-                            color: '#0284C7'
-                        }}>
-                            <MessageSquare size={32} />
-                        </div>
+                        <img
+                            src="/contact-center-beto.png"
+                            alt="Dr. Beto - Contact Center"
+                            style={{
+                                height: '148px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                display: 'block',
+                                marginBottom: '12px',
+                                filter: 'drop-shadow(0 8px 18px rgba(15, 41, 66, 0.16))',
+                                pointerEvents: 'none',
+                                userSelect: 'none'
+                            }}
+                        />
                         <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 8px 0', color: ccTheme.isDark ? '#F1F5F9' : '#0F172A' }}>
                             {filterTab === 'asignadas_mi' 
                                 ? 'No tienes conversaciones asignadas activas' 
@@ -5822,6 +5823,24 @@ export default function ContactCenterChatConsole({
                                 })}
                             </div>
                         )}
+
+                        {/* Mini Ilustración Dr. Beto en cabecera de conversación */}
+                        <img
+                            src="/contact-center-beto.png"
+                            alt="Dr. Beto - Contact Center"
+                            style={{
+                                height: '42px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                marginBottom: '-5px',
+                                marginLeft: '4px',
+                                filter: 'drop-shadow(0 3px 8px rgba(15, 41, 66, 0.14))',
+                                pointerEvents: 'none',
+                                userSelect: 'none'
+                            }}
+                        />
                     </div>
                 </div>
 
