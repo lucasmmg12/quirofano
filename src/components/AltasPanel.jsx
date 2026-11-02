@@ -362,7 +362,7 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => !a.en_carrito_traspaso && a.ficha_estado !== 'devuelta_a_recepcion' && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
+            .filter(a => !a.en_carrito_traspaso && a.ficha_estado !== 'devuelta_a_recepcion' && (!(a._isFacturada && !a._cruzaMes && !a._isDevueltaFac)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
             .map(a => a.id);
         setSelectedIds(new Set(selectableIds));
     };
@@ -762,7 +762,8 @@ export default function AltasPanel({ addToast, currentUser }) {
             }
 
             const isFacturada = !!(alta.facturada || alta.estado_fac === 'Facturada');
-            const isDevueltaFac = !!(alta.devolucion_id && alta.estado_fac === 'Devuelta' && !isFacturada);
+            const wasReturnedAfterLastTransfer = !!(alta.devolucion_id && (!alta.traspasada_at || (alta.devuelta_at && alta.devuelta_at > alta.traspasada_at)));
+            const isDevueltaFac = !!(alta.devolucion_id && (alta.estado_fac === 'Devuelta' || wasReturnedAfterLastTransfer));
             
             // Si el cliente no empieza con código numérico (2-3 dígitos), es Particular (SALUS pone nombre del paciente)
             const rawCliente = (cliente || alta.cliente || '').trim();
@@ -1960,7 +1961,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                     <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
                                         {!isReadOnly && (
                                             <input type="checkbox"
-                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && (!(a._isFacturada && !a._cruzaMes)) && (!(a.traspaso_id && !a._cruzaMes))).every(a => selectedIds.has(a.id))}
+                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && (!(a._isFacturada && !a._cruzaMes && !a._isDevueltaFac)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac))).every(a => selectedIds.has(a.id))}
                                                 onChange={e => {
                                                     if (e.target.checked) handleSelectAllSelectable();
                                                     else setSelectedIds(new Set());
@@ -2065,7 +2066,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         >
                                             {/* Checkbox / Cart status */}
                                             <td className="cart__td" style={{ textAlign: 'center', padding: '4px' }} onClick={e => e.stopPropagation()}>
-                                                {(alta._isFacturada && !alta._cruzaMes) ? (
+                                                {(alta._isFacturada && !alta._cruzaMes && !alta._isDevueltaFac) ? (
                                                     <Receipt size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya facturada" />
                                                 ) : (alta.traspaso_id && !alta._cruzaMes && !alta._isDevueltaFac) ? (
                                                     <PackageCheck size={14} style={{ color: '#059669', opacity: 0.7 }} title="Ya traspasada" />
@@ -2297,17 +2298,34 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <td className="cart__td">
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                                                     {alta._isFacturada ? (
-                                                        <span style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                                                            background: '#ECFDF5', color: '#059669',
-                                                            border: '1px solid #A7F3D0',
-                                                            fontSize: '0.7rem', fontWeight: 700,
-                                                            whiteSpace: 'nowrap',
-                                                        }}>
-                                                            <Receipt size={10} />
-                                                            {alta.usuario_facturo || 'Facturada'}
-                                                        </span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                                            <span style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                                background: '#ECFDF5', color: '#059669',
+                                                                border: '1px solid #A7F3D0',
+                                                                fontSize: '0.7rem', fontWeight: 700,
+                                                                whiteSpace: 'nowrap',
+                                                            }}>
+                                                                <Receipt size={10} />
+                                                                {alta.usuario_facturo || 'Facturada'}
+                                                            </span>
+                                                            {alta._isDevueltaFac && (
+                                                                <span
+                                                                    title={`Devuelta desde Facturación por ${alta.devuelta_por || 'Facturación'} (${formatDate(alta.devuelta_at)}) — Lista para volver a enviar al Carrito de Traspaso`}
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                        padding: '2px 6px', borderRadius: 'var(--radius-full)',
+                                                                        background: '#FEF2F2', color: '#DC2626',
+                                                                        border: '1px solid #FECACA',
+                                                                        fontSize: '0.65rem', fontWeight: 700,
+                                                                        whiteSpace: 'nowrap', cursor: 'help'
+                                                                    }}
+                                                                >
+                                                                    🔙 Devuelta FAC
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     ) : alta._isDevueltaFac ? (
                                                         <span style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: '4px',
