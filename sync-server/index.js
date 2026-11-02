@@ -4641,7 +4641,8 @@ app.listen(PORT, '0.0.0.0', () => {
         async function syncIncentivosCiclo() {
             if (syncInProgress) return;
             try {
-                const meses = ['2026-08', '2026-09', '2026-10'];
+                const currentMonthIso = new Date().toISOString().substring(0, 7);
+                const meses = Array.from(new Set(['2026-08', '2026-09', '2026-10', '2026-11', currentMonthIso]));
                 for (const m of meses) {
                     await syncIncentivosContactCenterToSupabase(m);
                 }

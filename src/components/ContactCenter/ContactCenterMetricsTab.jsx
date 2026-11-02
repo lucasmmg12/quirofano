@@ -3856,8 +3856,20 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             {/* ANÁLISIS ESTRATÉGICO DE TURNOS SALUS: DXI · CHEQUEO · PREVENIR · KINESIO */}
             {/* ═════════════════════════════════════════════════════════════════ */}
             {(() => {
-                const srvData = salusServiciosMap[serviciosSelectedPeriodo] || salusServiciosMap['2026-10'] || salusServiciosMap['2026-09'] || null;
+                const currentMonthIso = getCurrentMonthKey();
+                const effectivePeriodo = salusServiciosMap[serviciosSelectedPeriodo]
+                    ? serviciosSelectedPeriodo
+                    : (salusServiciosMap[currentMonthIso] ? currentMonthIso : (salusServiciosMap['2026-10'] ? '2026-10' : '2026-09'));
+                const srvData = salusServiciosMap[effectivePeriodo] || null;
                 if (!srvData) return null;
+
+                const MESES_NOMBRES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                const formatPeriodoLabel = (pKey, withEnCurso = true) => {
+                    const [yStr, mStr] = String(pKey || '').split('-');
+                    const mIdx = Math.max(0, Math.min(11, (parseInt(mStr, 10) || 1) - 1));
+                    const base = `${MESES_NOMBRES[mIdx]} ${yStr}`;
+                    return (withEnCurso && pKey === currentMonthIso) ? `${base} (En Curso)` : base;
+                };
 
                 const SERVICIOS_CARDS = [
                     {
@@ -3899,11 +3911,20 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 ];
 
                 const activeCard = SERVICIOS_CARDS.find(c => c.key === activeServicioTab) || SERVICIOS_CARDS[0];
-                const PERIODOS_DISPONIBLES = [
-                    { key: '2026-10', label: 'Octubre 2026 (En Curso)' },
-                    { key: '2026-09', label: 'Septiembre 2026' },
-                    { key: '2026-08', label: 'Agosto 2026' }
-                ].filter(p => Boolean(salusServiciosMap[p.key]));
+                const allPeriodoKeysDesc = Array.from(new Set([
+                    currentMonthIso,
+                    '2026-11',
+                    '2026-10',
+                    '2026-09',
+                    '2026-08',
+                    ...Object.keys(salusServiciosMap)
+                ])).filter(k => Boolean(salusServiciosMap[k])).sort((a, b) => b.localeCompare(a));
+
+                const PERIODOS_DISPONIBLES = allPeriodoKeysDesc.map(k => ({
+                    key: k,
+                    label: formatPeriodoLabel(k, true)
+                }));
+                const allPeriodoKeysAsc = [...allPeriodoKeysDesc].reverse();
 
                 return (
                     <div style={{
@@ -3959,8 +3980,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             fontSize: '0.73rem',
                                             fontWeight: 700,
                                             cursor: 'pointer',
-                                            background: serviciosSelectedPeriodo === p.key ? '#0F2942' : 'transparent',
-                                            color: serviciosSelectedPeriodo === p.key ? '#FFFFFF' : '#475569',
+                                            background: effectivePeriodo === p.key ? '#0F2942' : 'transparent',
+                                            color: effectivePeriodo === p.key ? '#FFFFFF' : '#475569',
                                             transition: 'all 0.15s ease'
                                         }}
                                     >
@@ -4061,7 +4082,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
                                         <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0F2942' }}>
-                                            Desglose de {activeCard.title} ({serviciosSelectedPeriodo})
+                                            Desglose de {activeCard.title} ({formatPeriodoLabel(effectivePeriodo, true)})
                                         </h4>
                                         <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
                                             Participación por modalidad / agenda y operadora que asignó el turno
@@ -4144,11 +4165,11 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {['2026-08', '2026-09', '2026-10'].map(pKey => {
+                                            {allPeriodoKeysAsc.map(pKey => {
                                                 const rowP = salusServiciosMap[pKey];
                                                 if (!rowP) return null;
-                                                const isAct = serviciosSelectedPeriodo === pKey;
-                                                const labelMes = pKey === '2026-08' ? 'Agosto 2026' : pKey === '2026-09' ? 'Septiembre 2026' : 'Octubre 2026';
+                                                const isAct = effectivePeriodo === pKey;
+                                                const labelMes = formatPeriodoLabel(pKey, true);
                                                 return (
                                                     <tr
                                                         key={pKey}
@@ -4193,7 +4214,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px'
                                 }}>
                                     <span>
-                                        📌 <strong>Conclusión Operativa ({serviciosSelectedPeriodo}):</strong> Aproximadamente <strong>1 de cada 3 turnos ({srvData.pctEstrategicos || 0}%)</strong> otorgados por el Contact Center corresponde a estos 4 servicios estratégicos.
+                                        📌 <strong>Conclusión Operativa ({formatPeriodoLabel(effectivePeriodo, true)}):</strong> Aproximadamente <strong>1 de cada 3 turnos ({srvData.pctEstrategicos || 0}%)</strong> otorgados por el Contact Center corresponde a estos 4 servicios estratégicos.
                                     </span>
                                     <span style={{ fontWeight: 700, color: '#0369A1' }}>
                                         Consultorios Restantes: {(srvData.otras_especialidades?.total || 0).toLocaleString('es-AR')} ({srvData.otras_especialidades?.pctSobreTotal || 0}%)
