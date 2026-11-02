@@ -102,6 +102,12 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
     let templateUsedName = tpl.name;
     let resolvedText = renderTemplateBody(tpl.body, vars);
 
+    const fallbackParam2 = `${agenteNombre} del Contact Center (registramos más de un turno agendado para el ${vars[1]}: ${vars[2]}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    const fallbackResolvedText = `Hola ${vars[0]} soy ${fallbackParam2} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
+
     // 1. Envío oficial a Meta (si turnos_duplicados falla con #131009 por tener botón FLOW en Meta, aplica fallback a ojonoscobran)
     try {
         metaResult = await sendMetaTemplate({
@@ -114,15 +120,12 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
         });
         if (metaResult?.fallbackUsed) {
             templateUsedName = metaResult.fallbackUsed;
+            resolvedText = fallbackResolvedText;
         }
     } catch (metaErr) {
         const msg = String(metaErr?.message || '');
         if (msg.includes('131009') || msg.toLowerCase().includes('sub_type invalid')) {
             console.warn('[turnosOnline] Plantilla turnos_duplicados rechazada por botón FLOW (#131009). Reintentando con plantilla aprobada ojonoscobran...');
-            const fallbackParam2 = `${agenteNombre} del Contact Center (registramos más de un turno agendado para el ${vars[1]}: ${vars[2]}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`
-                .replace(/[\r\n\t]+/g, ' ')
-                .replace(/\s{2,}/g, ' ')
-                .trim();
             metaResult = await sendMetaTemplate({
                 to: phone,
                 templateName: 'ojonoscobran',
@@ -140,6 +143,7 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
                 agentName: agenteNombre
             });
             templateUsedName = 'ojonoscobran';
+            resolvedText = fallbackResolvedText;
         } else {
             throw metaErr;
         }
@@ -152,7 +156,7 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
         phone,
         direction: 'outgoing',
         content: displayContent,
-        media_type: 'template',
+        media_type: 'text',
         sender_name: agenteNombre,
         is_read: true,
         line_id: 'contact_center',

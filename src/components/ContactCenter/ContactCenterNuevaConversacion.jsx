@@ -237,7 +237,7 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
                 phone: normalizedPhone,
                 direction: 'outgoing',
                 content: finalMessage,
-                media_type: 'template',
+                media_type: 'text',
                 sender_name: usuarioAsignado,
                 is_read: true,
                 line_id: 'contact_center', // Exclusivo línea Contact Center
