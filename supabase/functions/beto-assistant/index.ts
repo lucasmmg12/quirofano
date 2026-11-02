@@ -2167,8 +2167,12 @@ Deno.serve(async (req) => {
                     .from('app_config')
                     .select('value')
                     .eq('key', 'elevenlabs_tts_config')
-                    .single();
-                elevenKey = cfgRow?.value?.apiKey || '';
+                    .maybeSingle();
+                const rawVal = cfgRow?.value;
+                const parsedVal = typeof rawVal === 'string'
+                    ? (() => { try { return JSON.parse(rawVal); } catch { return { apiKey: rawVal }; } })()
+                    : rawVal;
+                elevenKey = parsedVal?.apiKey || '';
             }
             if (!elevenKey) {
                 return new Response(

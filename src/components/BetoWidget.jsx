@@ -499,17 +499,22 @@ export default function BetoWidget({
             let audioUrl = ttsCacheRef.current.get(cacheKey);
 
             if (!audioUrl) {
-                let res = await fetch('/api/elevenlabs/tts', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: textContent,
-                        voiceId: selectedVoiceId,
-                        modelId: 'eleven_flash_v2_5'
-                    })
-                }).catch(() => null);
+                const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+                let res = null;
 
-                // Fallback automático a Supabase Edge Function (producción Vercel / nube)
+                if (isLocalDev) {
+                    res = await fetch('/api/elevenlabs/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: textContent,
+                            voiceId: selectedVoiceId,
+                            modelId: 'eleven_flash_v2_5'
+                        })
+                    }).catch(() => null);
+                }
+
+                // En producción (Vercel / nube) o fallback local: usar Supabase Edge Function beto-assistant
                 if (!res || !res.ok || !(res.headers.get('content-type') || '').includes('audio')) {
                     const supabaseUrl = supabase.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
                     const supabaseKey = supabase.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
