@@ -17,7 +17,7 @@ import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from 
 import { getCurrentUser, logout as authLogout, verifyActiveUserSession, reclaimCurrentUserSession } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor, MapPin, ShieldCheck, RefreshCw, Lock } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor, MapPin, MapPinOff, ShieldCheck, RefreshCw, Lock } from 'lucide-react';
 import SnowBackground from './components/SnowBackground';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
@@ -1050,17 +1050,48 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                             ) : telemetryState.geo_permission === 'denied' ? (
                                 <>
                                     <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E4078', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                        Pasos para activarla en tu navegador (10 segundos):
+                                        Pasos para activarla en Google Chrome (10 segundos):
                                     </div>
+
+                                    {/* Mini guía visual de la barra de direcciones de Chrome */}
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        background: '#1E293B', color: '#E2E8F0', borderRadius: '999px',
+                                        padding: '6px 12px', marginBottom: '10px', fontSize: '0.73rem',
+                                        border: '1px solid #334155',
+                                    }}>
+                                        <span style={{ color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            quirofano.vercel.app/...
+                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                            <span style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                background: '#DC2626', color: '#FFFFFF',
+                                                padding: '3px 8px', borderRadius: '999px',
+                                                fontWeight: 800, fontSize: '0.7rem',
+                                                boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.35)',
+                                            }}>
+                                                <MapPinOff size={13} /> Tocá aquí a la derecha
+                                            </span>
+                                            <span style={{ color: '#94A3B8', fontSize: '0.82rem' }}>☆</span>
+                                        </div>
+                                    </div>
+
                                     <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#334155', lineHeight: 1.65 }}>
                                         <li>
-                                            Hacé clic en el ícono de ajustes o candado <strong style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: '4px' }}>🔒</strong> a la izquierda de la dirección web (arriba junto a la URL).
+                                            En <strong>Google Chrome</strong>, desplazate hacia la <strong>derecha de la barra de direcciones</strong> (arriba, al lado de la estrella ☆) y tocá el <strong>botón de ubicación tachado</strong>{' '}
+                                            <span style={{
+                                                display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle',
+                                                background: '#FEE2E2', color: '#DC2626', padding: '2px 5px', borderRadius: '4px',
+                                            }}>
+                                                <MapPinOff size={13} />
+                                            </span>.
                                         </li>
                                         <li>
-                                            En la opción <strong>Ubicación</strong>, cambiala a <strong style={{ color: '#059669' }}>Permitir / Activar</strong>.
+                                            Marcá la opción <strong style={{ color: '#059669' }}>"Permitir siempre que este sitio acceda a tu ubicación"</strong> y tocá en <strong>"Hecho"</strong>.
                                         </li>
                                         <li>
-                                            Presioná el botón <strong>"Ya activé la ubicación — Verificar ahora"</strong> aquí abajo.
+                                            Presioná el botón azul <strong>"Ya activé la ubicación — Verificar ahora"</strong> aquí abajo.
                                         </li>
                                     </ol>
                                 </>

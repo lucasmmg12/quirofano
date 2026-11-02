@@ -197,7 +197,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
             if (ctx?.geo_permission === 'granted') {
                 addToast?.(`📍 Ubicación verificada: ${ctx.geo_label}`, 'success');
             } else if (ctx?.geo_permission === 'denied') {
-                addToast?.('⚠️ El navegador tiene bloqueado el permiso de Ubicación. Hacé clic en el ícono de candado junto a la URL y activá "Ubicación: Permitir".', 'error');
+                addToast?.('⚠️ Ubicación bloqueada en Chrome: desplazate a la derecha de la barra de direcciones (junto a la estrella ☆), tocá el ícono de ubicación tachado y elegí "Permitir siempre".', 'error');
             } else {
                 addToast?.(`📍 Ubicación registrada por red IP: ${ctx?.geo_label || ctx?.ip || 'Activa'}`, 'info');
             }
