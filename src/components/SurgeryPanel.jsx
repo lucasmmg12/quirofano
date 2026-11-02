@@ -1985,49 +1985,116 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 </div>
             )}
 
-            {/* ==================== KPI STATS BAR ==================== */}
+            {/* ==================== HEADER BANNER + KPI STATUS BAR ==================== */}
             <div style={{
-                display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap',
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                borderRadius: '20px',
+                padding: '18px 28px 0 24px',
+                border: '1.5px solid #E2E8F0',
+                boxShadow: '0 2px 12px rgba(15, 23, 42, 0.04)',
+                display: 'flex',
+                alignItems: 'stretch',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '16px',
+                position: 'relative',
+                overflow: 'hidden',
             }}>
-                {/* All filter */}
-                <button
-                    onClick={() => setFilter('all')}
-                    style={{
-                        padding: '6px 14px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
-                        fontSize: '0.78rem', fontWeight: 600, border: '1.5px solid',
-                        borderColor: filter === 'all' ? 'var(--primary-500)' : 'var(--neutral-200)',
-                        background: filter === 'all' ? 'var(--primary-500)' : 'transparent',
-                        color: filter === 'all' ? '#fff' : 'var(--neutral-600)',
-                        transition: 'all 0.2s',
-                    }}
-                >
-                    Todos <span style={{ opacity: 0.8 }}>({surgeries.length})</span>
-                </button>
+                <div style={{
+                    flex: '1 1 560px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    gap: '14px',
+                    paddingBottom: '18px',
+                    zIndex: 1,
+                }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                            <div style={{
+                                width: '38px', height: '38px', borderRadius: '10px',
+                                background: '#EFF6FF', color: '#2563EB',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <Activity size={22} />
+                            </div>
+                            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
+                                Control de Cirugías
+                            </h2>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>
+                            Seguimiento de cirugías programadas, autorización administrativa y confirmación de asistencia vía WhatsApp.
+                        </p>
+                    </div>
 
-                {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                    <button
-                        key={key}
-                        onClick={() => setFilter(filter === key ? 'all' : key)}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap',
+                    }}>
+                        {/* All filter */}
+                        <button
+                            onClick={() => setFilter('all')}
+                            style={{
+                                padding: '6px 14px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
+                                fontSize: '0.78rem', fontWeight: 600, border: '1.5px solid',
+                                borderColor: filter === 'all' ? 'var(--primary-500)' : 'var(--neutral-200)',
+                                background: filter === 'all' ? 'var(--primary-500)' : '#FFFFFF',
+                                color: filter === 'all' ? '#fff' : 'var(--neutral-600)',
+                                transition: 'all 0.2s',
+                            }}
+                        >
+                            Todos <span style={{ opacity: 0.8 }}>({surgeries.length})</span>
+                        </button>
+
+                        {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                            <button
+                                key={key}
+                                onClick={() => setFilter(filter === key ? 'all' : key)}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                    padding: '6px 12px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
+                                    fontSize: '0.76rem', fontWeight: 600,
+                                    border: `1.5px solid ${filter === key ? cfg.color : 'transparent'}`,
+                                    background: filter === key ? cfg.color : cfg.bg,
+                                    color: filter === key ? '#fff' : cfg.color,
+                                    transition: 'all 0.2s',
+                                }}
+                            >
+                                <span style={{ fontSize: '0.65rem' }}>{cfg.icon}</span>
+                                {cfg.label}
+                                <span style={{
+                                    background: filter === key ? 'rgba(255,255,255,0.25)' : cfg.color + '18',
+                                    padding: '1px 7px', borderRadius: '10px', fontSize: '0.7rem',
+                                }}>
+                                    {stats[key] || 0}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Ilustración Dr. Beto — Control de Cirugías (Sin Fondo) */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    marginTop: '-10px',
+                    marginRight: '8px',
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                }}>
+                    <img
+                        src="/control-cirugias-beto.png"
+                        alt="Dr. Beto - Control de Cirugías"
                         style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            padding: '6px 12px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
-                            fontSize: '0.76rem', fontWeight: 600,
-                            border: `1.5px solid ${filter === key ? cfg.color : 'transparent'}`,
-                            background: filter === key ? cfg.color : cfg.bg,
-                            color: filter === key ? '#fff' : cfg.color,
-                            transition: 'all 0.2s',
+                            height: '132px',
+                            width: 'auto',
+                            objectFit: 'contain',
+                            objectPosition: 'bottom center',
+                            display: 'block',
+                            filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))',
                         }}
-                    >
-                        <span style={{ fontSize: '0.65rem' }}>{cfg.icon}</span>
-                        {cfg.label}
-                        <span style={{
-                            background: filter === key ? 'rgba(255,255,255,0.25)' : cfg.color + '18',
-                            padding: '1px 7px', borderRadius: '10px', fontSize: '0.7rem',
-                        }}>
-                            {stats[key] || 0}
-                        </span>
-                    </button>
-                ))}
+                    />
+                </div>
             </div>
 
             {/* ==================== ACTION BAR ==================== */}
