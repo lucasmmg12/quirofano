@@ -17,7 +17,7 @@ import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from 
 import { getCurrentUser, logout as authLogout, verifyActiveUserSession, reclaimCurrentUserSession } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
-import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor } from 'lucide-react';
+import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor, MapPin, ShieldCheck, RefreshCw, Lock } from 'lucide-react';
 import SnowBackground from './components/SnowBackground';
 import SurgeryPanel from './components/SurgeryPanel.jsx';
 import ConfigPanel from './components/ConfigPanel.jsx';
@@ -68,7 +68,7 @@ import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
 import ContactCenterPanel from './components/ContactCenter/ContactCenterPanel.jsx';
 import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from './services/contactCenterService';
-import { startSession, endSession, trackModuleChange } from './lib/activityTracker';
+import { startSession, endSession, trackModuleChange, subscribeTelemetry, requestAndRecordGeolocation } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import RecepcionView from './components/RecepcionView.jsx';
@@ -431,6 +431,37 @@ function App({ currentUser, onLogout, onUserUpdated }) {
             return 'auto';
         });
     };
+
+    // Estado de geolocalización obligatoria por Ciberseguridad
+    const [telemetryState, setTelemetryState] = useState({
+        geo_permission: 'prompt',
+        geo_checked: false,
+        geo_checking: false,
+        geo_os_blocked: false,
+    });
+
+    useEffect(() => {
+        const unsub = subscribeTelemetry((ctx) => {
+            setTelemetryState({
+                geo_permission: ctx.geo_permission || 'prompt',
+                geo_checked: Boolean(ctx.geo_checked),
+                geo_checking: Boolean(ctx.geo_checking),
+                geo_os_blocked: Boolean(ctx.geo_os_blocked),
+            });
+        });
+
+        requestAndRecordGeolocation();
+
+        const onWindowFocus = () => {
+            requestAndRecordGeolocation();
+        };
+        window.addEventListener('focus', onWindowFocus);
+
+        return () => {
+            unsub();
+            window.removeEventListener('focus', onWindowFocus);
+        };
+    }, []);
 
     // Start activity tracking + fetch module preferences on mount
     useEffect(() => {
@@ -954,6 +985,156 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
     return (
         <div className="app">
+            {/* Bloqueo obligatorio por Ciberseguridad si la ubicación del navegador no está habilitada */}
+            {telemetryState.geo_checked && telemetryState.geo_permission !== 'granted' && (
+                <div className="no-print" style={{
+                    position: 'fixed', inset: 0, zIndex: 999998,
+                    background: 'rgba(15, 23, 42, 0.84)', backdropFilter: 'blur(8px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '20px', fontFamily: "'Inter', -apple-system, sans-serif",
+                }}>
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '18px', width: '100%', maxWidth: '490px',
+                        padding: '28px 26px', boxShadow: '0 25px 60px rgba(0, 0, 0, 0.42)',
+                        border: '1px solid #E2E8F0', textAlign: 'center',
+                    }}>
+                        <div style={{
+                            width: '62px', height: '62px', borderRadius: '50%',
+                            background: telemetryState.geo_permission === 'denied' ? '#FEF2F2' : '#EFF6FF',
+                            border: `2px solid ${telemetryState.geo_permission === 'denied' ? '#EF4444' : '#2563EB'}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto 14px',
+                            color: telemetryState.geo_permission === 'denied' ? '#DC2626' : '#1E4078',
+                        }}>
+                            <MapPin size={30} />
+                        </div>
+
+                        <div style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '4px 12px', borderRadius: '999px',
+                            background: '#EFF6FF', color: '#1E4078',
+                            fontSize: '0.71rem', fontWeight: 800, marginBottom: '10px',
+                            textTransform: 'uppercase', letterSpacing: '0.4px',
+                            border: '1px solid #BFDBFE',
+                        }}>
+                            <ShieldCheck size={13} /> Ciberseguridad · Ubicación Obligatoria
+                        </div>
+
+                        <h2 style={{ margin: '0 0 8px', fontSize: '1.22rem', fontWeight: 800, color: '#0F172A' }}>
+                            {telemetryState.geo_permission === 'denied'
+                                ? 'Ubicación del Navegador Desactivada'
+                                : 'Habilitá la Ubicación para Continuar'}
+                        </h2>
+
+                        <p style={{ margin: '0 0 16px', fontSize: '0.83rem', color: '#475569', lineHeight: 1.5 }}>
+                            Estamos mejorando nuestra <strong>Ciberseguridad</strong>. Por políticas de seguridad y auditoría institucional de <strong>Sanatorio Argentino</strong>, el sistema no permite continuar sin activar el permiso de ubicación en tu navegador.
+                        </p>
+
+                        <div style={{
+                            background: '#F8FAFC', border: '1.5px solid #E2E8F0',
+                            borderRadius: '12px', padding: '14px 16px', marginBottom: '18px',
+                            textAlign: 'left',
+                        }}>
+                            {telemetryState.geo_os_blocked ? (
+                                <>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#B91C1C', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                        ⚠️ Ubicación desactivada en tu Sistema Operativo:
+                                    </div>
+                                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#334155', lineHeight: 1.6 }}>
+                                        <li>Tu navegador tiene permiso, pero la ubicación de <strong>Windows / macOS</strong> está desactivada.</li>
+                                        <li>Abrí <strong>Configuración de Windows → Privacidad y seguridad → Ubicación</strong>.</li>
+                                        <li>Activá <strong>Servicios de ubicación</strong> y <strong>Permitir que las aplicaciones de escritorio accedan a tu ubicación</strong>.</li>
+                                        <li>Volvé a esta pantalla y hacé clic en <strong>Verificar Ubicación Ahora</strong>.</li>
+                                    </ol>
+                                </>
+                            ) : telemetryState.geo_permission === 'denied' ? (
+                                <>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E4078', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                        Pasos para activarla en tu navegador (10 segundos):
+                                    </div>
+                                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#334155', lineHeight: 1.65 }}>
+                                        <li>
+                                            Hacé clic en el ícono de ajustes o candado <strong style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: '4px' }}>🔒</strong> a la izquierda de la dirección web (arriba junto a la URL).
+                                        </li>
+                                        <li>
+                                            En la opción <strong>Ubicación</strong>, cambiala a <strong style={{ color: '#059669' }}>Permitir / Activar</strong>.
+                                        </li>
+                                        <li>
+                                            Presioná el botón <strong>"Ya activé la ubicación — Verificar ahora"</strong> aquí abajo.
+                                        </li>
+                                    </ol>
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1E4078', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                        ¿Cómo habilitarla ahora?
+                                    </div>
+                                    <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#334155', lineHeight: 1.65 }}>
+                                        <li>Hacé clic en el botón azul <strong>"Activar Ubicación Ahora"</strong> aquí abajo.</li>
+                                        <li>En el cartel que mostrará tu navegador arriba a la izquierda, seleccioná <strong style={{ color: '#059669' }}>"Permitir"</strong> (o <em>Allow mientras se usa el sitio</em>).</li>
+                                    </ol>
+                                </>
+                            )}
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <button
+                                type="button"
+                                disabled={telemetryState.geo_checking}
+                                onClick={() => requestAndRecordGeolocation()}
+                                style={{
+                                    width: '100%', padding: '13px 16px', borderRadius: '10px', border: 'none',
+                                    background: 'linear-gradient(135deg, #1E4078 0%, #2563EB 100%)',
+                                    color: '#FFFFFF', fontSize: '0.88rem', fontWeight: 800,
+                                    cursor: telemetryState.geo_checking ? 'wait' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                    boxShadow: '0 4px 12px rgba(30, 64, 120, 0.25)',
+                                }}
+                            >
+                                <MapPin size={17} />
+                                {telemetryState.geo_checking
+                                    ? 'Verificando permiso de ubicación...'
+                                    : telemetryState.geo_permission === 'denied'
+                                        ? 'Ya activé la ubicación — Verificar ahora'
+                                        : 'Activar Ubicación Ahora'}
+                            </button>
+
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => window.location.reload()}
+                                    style={{
+                                        flex: 1, padding: '10px 12px', borderRadius: '10px',
+                                        border: '1.5px solid #CBD5E1', background: '#F8FAFC',
+                                        color: '#334155', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                    }}
+                                >
+                                    <RefreshCw size={14} />
+                                    Recargar página
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={onLogout}
+                                    style={{
+                                        flex: 1, padding: '10px 12px', borderRadius: '10px',
+                                        border: '1.5px solid #CBD5E1', background: '#FFFFFF',
+                                        color: '#64748B', fontSize: '0.8rem', fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                    }}
+                                >
+                                    <LogOut size={14} />
+                                    Cerrar sesión
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Mobile Sidebar Backdrop */}
             {mobileMenuOpen && <div className="sidebar--mobile-backdrop" onClick={() => setMobileMenuOpen(false)} />}
 

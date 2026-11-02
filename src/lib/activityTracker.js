@@ -33,6 +33,9 @@ let _telemetryContext = {
     longitud: null,
     precision_metros: null,
     geo_permission: 'prompt',
+    geo_checked: false,
+    geo_checking: false,
+    geo_os_blocked: false,
     geo_label: null,
     device_fingerprint: null,
     os_browser: null,
@@ -201,57 +204,105 @@ async function _reverseGeocode(lat, lng) {
 export async function requestAndRecordGeolocation() {
     if (typeof navigator === 'undefined') return null;
 
+    _telemetryContext.geo_checking = true;
+    _notifyTelemetryListeners();
+
     // Consultar estado actual del permiso si la API Permissions está disponible
     let permState = 'prompt';
+    let permStatusObj = null;
     try {
         if (navigator.permissions?.query) {
-            const pStatus = await navigator.permissions.query({ name: 'geolocation' });
-            permState = pStatus.state;
-            pStatus.onchange = () => {
-                if (pStatus.state === 'granted') {
-                    requestAndRecordGeolocation();
-                }
+            permStatusObj = await navigator.permissions.query({ name: 'geolocation' });
+            permState = permStatusObj.state;
+            if (permState === 'granted') {
+                _telemetryContext.geo_permission = 'granted';
+                _telemetryContext.geo_os_blocked = false;
+                _telemetryContext.geo_checked = true;
+                _notifyTelemetryListeners();
+            }
+            permStatusObj.onchange = () => {
+                requestAndRecordGeolocation();
             };
         }
     } catch (_) {}
 
-    const gpsPos = await new Promise((resolve) => {
-        if (!navigator.geolocation) {
-            resolve({ error: 'unsupported' });
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                accuracy: Math.round(pos.coords.accuracy || 0),
-            }),
-            (err) => resolve({
-                error: err.code === 1 ? 'denied' : err.code === 2 ? 'unavailable' : 'timeout',
-                message: err.message,
-            }),
-            {
-                enableHighAccuracy: true,
-                timeout: 12000,
-                maximumAge: 0, // SIEMPRE pedir lectura fresca al abrir el programa
+    const getPositionOnce = (highAccuracy, timeoutMs, maxAgeMs) =>
+        new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve({ error: 'unsupported' });
+                return;
             }
-        );
-    });
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                    accuracy: Math.round(pos.coords.accuracy || 0),
+                }),
+                (err) => resolve({
+                    error: err.code === 1 ? 'denied' : err.code === 2 ? 'unavailable' : 'timeout',
+                    code: err.code,
+                    message: err.message,
+                }),
+                {
+                    enableHighAccuracy: highAccuracy,
+                    timeout: timeoutMs,
+                    maximumAge: maxAgeMs,
+                }
+            );
+        });
+
+    // Intento 1: Alta precisión (GPS / Wi-Fi) con lectura fresca
+    let gpsPos = await getPositionOnce(true, 8000, 0);
+
+    // Intento 2: Si falló por timeout o sensor no disponible (ej. PC de escritorio por cable LAN),
+    // reintentar inmediatamente con precisión estándar de red del navegador
+    if (gpsPos?.error && gpsPos.error !== 'denied' && gpsPos.error !== 'unsupported') {
+        gpsPos = await getPositionOnce(false, 8000, 60000);
+    }
+
+    // Re-evaluar el estado real del permiso tras la respuesta del usuario al popup del navegador
+    try {
+        if (permStatusObj) {
+            permState = permStatusObj.state;
+        }
+    } catch (_) {}
 
     if (gpsPos && typeof gpsPos.lat === 'number' && typeof gpsPos.lng === 'number') {
-        const placeName = await _reverseGeocode(gpsPos.lat, gpsPos.lng);
         _telemetryContext.latitud = Number(gpsPos.lat.toFixed(6));
         _telemetryContext.longitud = Number(gpsPos.lng.toFixed(6));
         _telemetryContext.precision_metros = gpsPos.accuracy;
         _telemetryContext.geo_permission = 'granted';
-        _telemetryContext.geo_label = placeName
-            ? `${placeName} (GPS ±${gpsPos.accuracy}m)`
-            : `${_telemetryContext.latitud}, ${_telemetryContext.longitud} (GPS ±${gpsPos.accuracy}m)`;
+        _telemetryContext.geo_os_blocked = false;
+        _telemetryContext.geo_checked = true;
+        _telemetryContext.geo_checking = false;
+        if (!_telemetryContext.geo_label || _telemetryContext.geo_label.includes('Aprox. por IP')) {
+            _telemetryContext.geo_label = `${_telemetryContext.latitud}, ${_telemetryContext.longitud} (GPS ±${gpsPos.accuracy}m)`;
+        }
+        // Notificar de inmediato para desbloquear la interfaz sin esperar a Nominatim
+        _notifyTelemetryListeners();
+
+        const placeName = await _reverseGeocode(gpsPos.lat, gpsPos.lng);
+        if (placeName) {
+            _telemetryContext.geo_label = `${placeName} (GPS ±${gpsPos.accuracy}m)`;
+            _notifyTelemetryListeners();
+        }
     } else {
-        _telemetryContext.geo_permission = gpsPos?.error === 'denied' ? 'denied' : (permState || 'fallback_ip');
+        if (gpsPos?.error === 'denied' || permState === 'denied') {
+            _telemetryContext.geo_permission = 'denied';
+            _telemetryContext.geo_os_blocked = (permState === 'granted' && gpsPos?.error === 'denied');
+        } else if (permState === 'granted') {
+            // El usuario sí otorgó el permiso en el navegador, pero el hardware de la PC no tiene chip GPS/Wi-Fi
+            _telemetryContext.geo_permission = 'granted';
+            _telemetryContext.geo_os_blocked = false;
+        } else {
+            _telemetryContext.geo_permission = 'prompt';
+            _telemetryContext.geo_os_blocked = false;
+        }
+        _telemetryContext.geo_checked = true;
+        _telemetryContext.geo_checking = false;
+        _notifyTelemetryListeners();
     }
 
-    _notifyTelemetryListeners();
     await _syncTelemetryToSessionAndAudit();
     return _telemetryContext;
 }
@@ -356,23 +407,27 @@ export async function startSession(user) {
         // Attach DLP cybersecurity listeners (copy, print, export)
         _attachDlpListeners();
 
-        // 1. Obtener IP e ISP en paralelo con Geolocalización GPS obligatoria (maximumAge: 0)
+        // 1. Obtener Geolocalización GPS obligatoria e IP/ISP en paralelo sin demoras
         (async () => {
-            const ipData = await _fetchIpTelemetry();
-            if (ipData) {
-                _telemetryContext.ip = ipData.ip || _telemetryContext.ip;
-                _telemetryContext.isp_org = ipData.isp || _telemetryContext.isp_org;
-                if (!_telemetryContext.latitud && typeof ipData.lat === 'number') {
-                    _telemetryContext.latitud = ipData.lat;
-                    _telemetryContext.longitud = ipData.lng;
-                    const cityStr = [ipData.city, ipData.region].filter(Boolean).join(', ');
-                    _telemetryContext.geo_label = cityStr ? `${cityStr} (Aprox. por IP)` : 'Ubicación por IP';
-                }
-                _notifyTelemetryListeners();
-                await _syncTelemetryToSessionAndAudit();
-            }
+            await Promise.all([
+                requestAndRecordGeolocation(),
+                (async () => {
+                    const ipData = await _fetchIpTelemetry();
+                    if (ipData) {
+                        _telemetryContext.ip = ipData.ip || _telemetryContext.ip;
+                        _telemetryContext.isp_org = ipData.isp || _telemetryContext.isp_org;
+                        if (!_telemetryContext.latitud && typeof ipData.lat === 'number') {
+                            _telemetryContext.latitud = ipData.lat;
+                            _telemetryContext.longitud = ipData.lng;
+                            const cityStr = [ipData.city, ipData.region].filter(Boolean).join(', ');
+                            _telemetryContext.geo_label = cityStr ? `${cityStr} (Aprox. por IP)` : 'Ubicación por IP';
+                        }
+                        _notifyTelemetryListeners();
+                    }
+                })(),
+            ]);
 
-            await requestAndRecordGeolocation();
+            await _syncTelemetryToSessionAndAudit();
 
             // Registrar evento de Apertura / Inicio de Sesión con telemetría completa en audit_log
             try {
