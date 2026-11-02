@@ -2156,7 +2156,92 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { messages, user, currentModule, moduleContext, stream, images } = await req.json();
+        const bodyPayload = await req.json();
+        const { messages, user, currentModule, moduleContext, stream, images, action, text, voiceId, modelId } = bodyPayload;
+
+        // ─── ACCIÓN TTS CON ELEVENLABS (VOZ FEMENINA ARGENTINA PARA SIMÓN IA) ───
+        if (action === 'tts') {
+            let elevenKey = Deno.env.get('ELEVENLABS_API_KEY') ?? '';
+            if (!elevenKey) {
+                const { data: cfgRow } = await supabase
+                    .from('app_config')
+                    .select('value')
+                    .eq('key', 'elevenlabs_tts_config')
+                    .single();
+                elevenKey = cfgRow?.value?.apiKey || '';
+            }
+            if (!elevenKey) {
+                return new Response(
+                    JSON.stringify({ error: 'ELEVENLABS_API_KEY no configurada en el servidor' }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const rawText = String(text || '')
+                .replace(/```[\s\S]*?```/g, '')
+                .replace(/\[ACTION:[^\]]+\]/g, '')
+                .replace(/^\|.*\|$/gm, '')
+                .replace(/^[═─=\-*_]{3,}$/gm, '')
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                .replace(/#{1,6}\s*/g, '')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/\*([^*]+)\*/g, '$1')
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+                .replace(/\bUCI\b/g, 'U C I')
+                .replace(/\bDxI\b/gi, 'Diagnóstico por Imágenes')
+                .replace(/\bHdD\b/g, 'Hospital de Día')
+                .replace(/\bNHC\b/g, 'historia clínica')
+                .replace(/\bOS\b/g, 'Obra Social')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            const spokenText = rawText.length > 900
+                ? rawText.slice(0, 900) + '. Podés ver el detalle completo en pantalla.'
+                : rawText;
+
+            const targetVoice = voiceId || 'XrExE9yKIg1WjnnlVkGX';
+            const targetModel = modelId || 'eleven_flash_v2_5';
+
+            const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${targetVoice}?output_format=mp3_44100_128`, {
+                method: 'POST',
+                headers: {
+                    'xi-api-key': elevenKey,
+                    'Content-Type': 'application/json',
+                    'Accept': 'audio/mpeg',
+                },
+                body: JSON.stringify({
+                    text: spokenText,
+                    model_id: targetModel,
+                    language_code: 'es',
+                    voice_settings: {
+                        stability: 0.45,
+                        similarity_boost: 0.78,
+                        style: 0.15,
+                        use_speaker_boost: true,
+                    },
+                }),
+            });
+
+            if (!ttsRes.ok) {
+                const errText = await ttsRes.text();
+                return new Response(
+                    JSON.stringify({ error: `ElevenLabs HTTP ${ttsRes.status}: ${errText}` }),
+                    { status: ttsRes.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const audioBytes = await ttsRes.arrayBuffer();
+            return new Response(audioBytes, {
+                status: 200,
+                headers: {
+                    ...corsHeaders,
+                    'Content-Type': 'audio/mpeg',
+                    'X-Character-Count': String(spokenText.length),
+                },
+            });
+        }
+
         const startTime = Date.now(); // #12 analytics
 
         if (!messages || !Array.isArray(messages)) {

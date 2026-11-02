@@ -34,15 +34,20 @@ import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turno
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { getDxIAnalytics } from './sync_dxi.mjs';
 import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
+import { synthesizeSimonSpeech, ELEVENLABS_VOICES_CATALOG, DEFAULT_FEMALE_VOICE_ID, DEFAULT_TTS_MODEL_ID } from './elevenlabsTts.mjs';
 
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Cargar .env: primero buscar en el directorio actual, luego en el padre
+// Cargar .env: primero buscar en el directorio actual, luego en el padre y .env.local
 const envLocal = resolve(__dirname, '.env');
 const envParent = resolve(__dirname, '..', '.env');
+const envParentLocal = resolve(__dirname, '..', '.env.local');
 config({ path: fs.existsSync(envLocal) ? envLocal : envParent });
+if (fs.existsSync(envParentLocal)) {
+    config({ path: envParentLocal });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -92,6 +97,35 @@ async function getPool() {
 // ── Middleware ──
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json());
+
+// ─── ElevenLabs TTS para Simón IA (Beto) ───
+app.get('/api/elevenlabs/voices', (req, res) => {
+    res.json({
+        voices: ELEVENLABS_VOICES_CATALOG,
+        defaultVoiceId: DEFAULT_FEMALE_VOICE_ID,
+        defaultModelId: DEFAULT_TTS_MODEL_ID,
+        configured: Boolean(process.env.ELEVENLABS_API_KEY)
+    });
+});
+
+app.post('/api/elevenlabs/tts', async (req, res) => {
+    try {
+        const { text, voiceId, modelId } = req.body || {};
+        const { audioBuffer, characterCount, voiceId: usedVoice, modelId: usedModel } = await synthesizeSimonSpeech({
+            text,
+            voiceId: voiceId || DEFAULT_FEMALE_VOICE_ID,
+            modelId: modelId || DEFAULT_TTS_MODEL_ID,
+        });
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('X-Character-Count', String(characterCount));
+        res.setHeader('X-Voice-Id', usedVoice);
+        res.setHeader('X-Model-Id', usedModel);
+        res.send(audioBuffer);
+    } catch (err) {
+        console.error('❌ [ElevenLabs TTS] Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // ─── Turnos Online Duplicados (Contact Center) ───
 app.get('/api/salus/turnos-online/duplicados', async (req, res) => {

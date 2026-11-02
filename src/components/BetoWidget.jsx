@@ -14,7 +14,7 @@ import {
     Send, X, Maximize2, Minimize2, Sparkles, Loader2, Palette,
     FileSpreadsheet, Printer, FileDown, ThumbsUp, ThumbsDown,
     Share2, History, RefreshCw, Search, ArrowUpRight,
-    Paperclip, Mic, Square, Image as ImageIcon, FileText, Volume2, Activity, ShieldCheck
+    Paperclip, Mic, Square, Image as ImageIcon, FileText, Volume2, VolumeX, Pause, Play, Activity, ShieldCheck
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -33,6 +33,13 @@ import { getCurrentUser } from '../services/authService';
 
 const BETO_AVATAR = '/beto.jpg';
 const BETO_GIF = '/The_avatar_is_greetings.gif';
+
+const SIMON_VOICES = [
+    { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda (Femenina · Cálida y Ejecutiva — Acento Argentino)', short: 'Matilda (AR)' },
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Femenina · Suave y Clínica)', short: 'Sarah (Suave)' },
+    { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella (Femenina · Dinámica y Clara)', short: 'Bella (Clara)' },
+    { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura (Femenina · Joven y Conversacional)', short: 'Laura (Joven)' },
+];
 
 // #1 — Sugerencias inteligentes contextualizadas por módulo y Gobernanza
 const SMART_SUGGESTIONS = {
@@ -274,6 +281,17 @@ export default function BetoWidget({
     const [liveVoiceTranscript, setLiveVoiceTranscript] = useState('');
     const [isTranscribingAudio, setIsTranscribingAudio] = useState(false);
 
+    // ─── ELEVENLABS VOZ HABLA (SIMÓN IA) ───
+    const [selectedVoiceId, setSelectedVoiceId] = useState(() => localStorage.getItem('simon_elevenlabs_voice') || 'XrExE9yKIg1WjnnlVkGX');
+    const [autoSpeakEnabled, setAutoSpeakEnabled] = useState(() => localStorage.getItem('simon_elevenlabs_autospeak') === 'true');
+    const [showVoiceMenu, setShowVoiceMenu] = useState(false);
+    const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null);
+    const [loadingTtsIdx, setLoadingTtsIdx] = useState(null);
+    const [isPausedTts, setIsPausedTts] = useState(false);
+    const ttsAudioRef = useRef(null);
+    const ttsCacheRef = useRef(new Map());
+    const lastQueryWasVoiceRef = useRef(false);
+
     const fileInputRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
@@ -444,6 +462,122 @@ export default function BetoWidget({
     const removeAttachedFile = useCallback((fileId) => {
         setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
     }, []);
+
+    // ─── REPRODUCCIÓN DE VOZ ELEVENLABS (SIMÓN IA) ───
+    const stopSimonSpeech = useCallback(() => {
+        if (ttsAudioRef.current) {
+            try {
+                ttsAudioRef.current.pause();
+                ttsAudioRef.current.currentTime = 0;
+            } catch (_) {}
+            ttsAudioRef.current = null;
+        }
+        setSpeakingMsgIdx(null);
+        setIsPausedTts(false);
+    }, []);
+
+    const speakMessageWithElevenLabs = useCallback(async (msgIdx, textContent) => {
+        if (!textContent) return;
+
+        // Si ya está hablando este mismo mensaje, alternar pausa / reproducción
+        if (speakingMsgIdx === msgIdx && ttsAudioRef.current) {
+            if (ttsAudioRef.current.paused) {
+                ttsAudioRef.current.play();
+                setIsPausedTts(false);
+            } else {
+                ttsAudioRef.current.pause();
+                setIsPausedTts(true);
+            }
+            return;
+        }
+
+        stopSimonSpeech();
+        setLoadingTtsIdx(msgIdx);
+
+        try {
+            const cacheKey = `${selectedVoiceId}::${textContent.slice(0, 400)}`;
+            let audioUrl = ttsCacheRef.current.get(cacheKey);
+
+            if (!audioUrl) {
+                let res = await fetch('/api/elevenlabs/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: textContent,
+                        voiceId: selectedVoiceId,
+                        modelId: 'eleven_flash_v2_5'
+                    })
+                }).catch(() => null);
+
+                // Fallback automático a Supabase Edge Function (producción Vercel / nube)
+                if (!res || !res.ok || !(res.headers.get('content-type') || '').includes('audio')) {
+                    const supabaseUrl = supabase.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+                    const supabaseKey = supabase.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
+                    res = await fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${supabaseKey}`,
+                            'apikey': supabaseKey,
+                        },
+                        body: JSON.stringify({
+                            action: 'tts',
+                            text: textContent,
+                            voiceId: selectedVoiceId,
+                            modelId: 'eleven_flash_v2_5',
+                        })
+                    });
+                }
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || `Error HTTP ${res.status}`);
+                }
+
+                const blob = await res.blob();
+                audioUrl = URL.createObjectURL(blob);
+                ttsCacheRef.current.set(cacheKey, audioUrl);
+            }
+
+            const audio = new Audio(audioUrl);
+            ttsAudioRef.current = audio;
+            setSpeakingMsgIdx(msgIdx);
+            setIsPausedTts(false);
+
+            audio.onended = () => {
+                setSpeakingMsgIdx(null);
+                setIsPausedTts(false);
+                ttsAudioRef.current = null;
+            };
+            audio.onerror = () => {
+                setSpeakingMsgIdx(null);
+                setIsPausedTts(false);
+                ttsAudioRef.current = null;
+            };
+
+            await audio.play();
+        } catch (err) {
+            console.error('[ElevenLabs Simón IA] Error al reproducir voz:', err);
+        } finally {
+            setLoadingTtsIdx(null);
+        }
+    }, [selectedVoiceId, speakingMsgIdx, stopSimonSpeech]);
+
+    const toggleAutoSpeak = useCallback(() => {
+        setAutoSpeakEnabled(prev => {
+            const next = !prev;
+            localStorage.setItem('simon_elevenlabs_autospeak', String(next));
+            if (!next) stopSimonSpeech();
+            return next;
+        });
+    }, [stopSimonSpeech]);
+
+    const handleSelectVoice = useCallback((voiceId) => {
+        setSelectedVoiceId(voiceId);
+        localStorage.setItem('simon_elevenlabs_voice', voiceId);
+        setShowVoiceMenu(false);
+        stopSimonSpeech();
+    }, [stopSimonSpeech]);
 
     // ─── GRABACIÓN DE VOZ EN VIVO (MICRÓFONO + WEB SPEECH API + DEEPGRAM / WHISPER) ───
     const startVoiceRecording = useCallback(async () => {
@@ -648,7 +782,14 @@ export default function BetoWidget({
                 }
                 content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
                 setStreamingText('');
-                setMessages(prev => [...prev, { role: 'assistant', content, interaction_id: null }]);
+                setMessages(prev => {
+                    const next = [...prev, { role: 'assistant', content, interaction_id: null }];
+                    if (autoSpeakEnabled || lastQueryWasVoiceRef.current) {
+                        lastQueryWasVoiceRef.current = false;
+                        setTimeout(() => speakMessageWithElevenLabs(next.length - 1, content), 150);
+                    }
+                    return next;
+                });
             } else {
                 const data = await response.json();
                 if (data?.message) {
@@ -659,12 +800,19 @@ export default function BetoWidget({
                         setTimeout(() => onNavigate(navMatch[1]), 500);
                     }
                     content = content.replace(/\[ACTION:[^\]]+\]/g, '').trim();
-                    setMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content,
-                        interaction_id: data.interaction_id || null,
-                        excel_data: data.excel_data || null,
-                    }]);
+                    setMessages(prev => {
+                        const next = [...prev, {
+                            role: 'assistant',
+                            content,
+                            interaction_id: data.interaction_id || null,
+                            excel_data: data.excel_data || null,
+                        }];
+                        if (autoSpeakEnabled || lastQueryWasVoiceRef.current) {
+                            lastQueryWasVoiceRef.current = false;
+                            setTimeout(() => speakMessageWithElevenLabs(next.length - 1, content), 150);
+                        }
+                        return next;
+                    });
                 } else if (data?.error) {
                     setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${data.message || data.error}` }]);
                 }
@@ -717,6 +865,7 @@ export default function BetoWidget({
 
             if (cleanTranscript) {
                 if (autoSendAfterTranscribe) {
+                    lastQueryWasVoiceRef.current = true;
                     await handleSend(cleanTranscript);
                 } else {
                     setInput(prev => (prev ? `${prev} ${cleanTranscript}` : cleanTranscript));
@@ -961,7 +1110,24 @@ export default function BetoWidget({
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        {/* Botón Voz ElevenLabs (Auto-Speak + Selector de Voz Femenina Argentina) */}
+                        <button
+                            onClick={() => setShowVoiceMenu(p => !p)}
+                            title="Configurar Voz Femenina ElevenLabs de Simón IA"
+                            style={{
+                                height: '31px', padding: '0 8px', borderRadius: '8px',
+                                border: autoSpeakEnabled ? '1px solid #38BDF8' : '1px solid rgba(255,255,255,0.14)',
+                                background: autoSpeakEnabled ? 'rgba(56, 189, 248, 0.24)' : 'rgba(255,255,255,0.08)',
+                                color: autoSpeakEnabled ? '#BAE6FD' : 'white',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                fontSize: '0.7rem', fontWeight: 700
+                            }}
+                        >
+                            {autoSpeakEnabled ? <Volume2 size={14} color="#38BDF8" /> : <VolumeX size={14} />}
+                            <span>Voz IA</span>
+                        </button>
                         <button
                             onClick={handleShareRecord}
                             disabled={isSharing || messages.length < 2}
@@ -1026,6 +1192,50 @@ export default function BetoWidget({
                             <X size={15} />
                         </button>
                     </div>
+
+                    {/* Selector de Voz ElevenLabs */}
+                    {showVoiceMenu && (
+                        <div style={{
+                            position: 'absolute', top: '100%', right: '18px',
+                            background: '#071E36', borderRadius: '12px',
+                            border: '1px solid rgba(56, 189, 248, 0.45)',
+                            boxShadow: '0 12px 28px rgba(0,0,0,0.45)', padding: '10px',
+                            zIndex: 28, display: 'flex', flexDirection: 'column', gap: '6px',
+                            minWidth: '280px',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#BAE6FD' }}>
+                                    🎙️ Voz ElevenLabs (Femenina AR)
+                                </span>
+                                <button
+                                    onClick={toggleAutoSpeak}
+                                    style={{
+                                        padding: '3px 8px', borderRadius: '6px', border: 'none',
+                                        background: autoSpeakEnabled ? '#10B981' : 'rgba(255,255,255,0.12)',
+                                        color: '#FFFFFF', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer'
+                                    }}
+                                >
+                                    {autoSpeakEnabled ? 'Auto-Hablar: ON' : 'Auto-Hablar: OFF'}
+                                </button>
+                            </div>
+                            {SIMON_VOICES.map((v) => (
+                                <button
+                                    key={v.id}
+                                    onClick={() => handleSelectVoice(v.id)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                                        padding: '7px 10px', borderRadius: '8px', border: 'none',
+                                        background: selectedVoiceId === v.id ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                                        cursor: 'pointer', fontSize: '0.75rem', fontWeight: selectedVoiceId === v.id ? 700 : 500,
+                                        color: '#F8FAFC', textAlign: 'left', width: '100%',
+                                    }}
+                                >
+                                    <span>{v.name}</span>
+                                    {selectedVoiceId === v.id && <span style={{ color: '#38BDF8', fontWeight: 800 }}>✓</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Selector de Temas */}
                     {showThemes && (
@@ -1375,72 +1585,133 @@ export default function BetoWidget({
                                                 return null;
                                             })}
 
-                                            {/* BARRA UNIVERSAL DE EXPORTACIÓN OFICIAL (PDF / EXCEL / IMPRIMIR) */}
-                                            {isExportable && (
-                                                <div style={{
-                                                    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '7px', marginTop: '12px',
-                                                    paddingTop: '10px', borderTop: '1px solid rgba(13, 59, 102, 0.12)',
-                                                }}>
-                                                    <span style={{ fontSize: '0.7rem', color: '#0D3B66', fontWeight: 800, marginRight: '2px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                                        Exportar:
-                                                    </span>
-                                                    <button
-                                                        onClick={() => downloadBetoReportPdf(msg.content, null, effectiveExcelData)}
-                                                        style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                            padding: '5px 11px', borderRadius: '8px',
-                                                            border: '1px solid #0D3B66',
-                                                            background: 'linear-gradient(135deg, #071E36 0%, #0D3B66 100%)',
-                                                            color: '#FFFFFF',
-                                                            fontSize: '0.73rem', fontWeight: 700,
-                                                            cursor: 'pointer', transition: 'all 0.15s',
-                                                            boxShadow: '0 2px 6px rgba(13, 59, 102, 0.22)',
-                                                        }}
-                                                        title="Descargar informe oficial en PDF con membrete del Sanatorio Argentino"
-                                                    >
-                                                        <FileDown size={13} color="#38BDF8" />
-                                                        PDF Oficial
-                                                    </button>
+                                            {/* BARRA DE VOZ ELEVENLABS Y EXPORTACIÓN OFICIAL (PDF / EXCEL / IMPRIMIR) */}
+                                            <div style={{
+                                                display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '7px', marginTop: '10px',
+                                                paddingTop: '9px', borderTop: '1px solid rgba(13, 59, 102, 0.12)',
+                                            }}>
+                                                <button
+                                                    onClick={() => speakMessageWithElevenLabs(i, cleanText)}
+                                                    disabled={loadingTtsIdx === i}
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                        padding: '5px 11px', borderRadius: '8px',
+                                                        border: speakingMsgIdx === i ? '1px solid #0284C7' : '1px solid #38BDF8',
+                                                        background: speakingMsgIdx === i
+                                                            ? 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)'
+                                                            : '#F0F9FF',
+                                                        color: speakingMsgIdx === i ? '#FFFFFF' : '#0369A1',
+                                                        fontSize: '0.73rem', fontWeight: 700,
+                                                        cursor: loadingTtsIdx === i ? 'wait' : 'pointer',
+                                                        transition: 'all 0.15s',
+                                                    }}
+                                                    title="Escuchar respuesta con voz femenina argentina de ElevenLabs"
+                                                >
+                                                    {loadingTtsIdx === i ? (
+                                                        <>
+                                                            <Loader2 size={13} className="animate-spin" />
+                                                            <span>Generando voz...</span>
+                                                        </>
+                                                    ) : speakingMsgIdx === i ? (
+                                                        isPausedTts ? (
+                                                            <>
+                                                                <Play size={13} />
+                                                                <span>Reanudar voz</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Pause size={13} />
+                                                                <span>Pausar voz</span>
+                                                            </>
+                                                        )
+                                                    ) : (
+                                                        <>
+                                                            <Volume2 size={13} />
+                                                            <span>Escuchar</span>
+                                                        </>
+                                                    )}
+                                                </button>
 
+                                                {speakingMsgIdx === i && (
                                                     <button
-                                                        onClick={() => downloadBetoReportExcel(msg.content, effectiveExcelData)}
-                                                        style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                            padding: '5px 11px', borderRadius: '8px',
-                                                            border: '1px solid #059669',
-                                                            background: '#ECFDF5', color: '#065F46',
-                                                            fontSize: '0.73rem', fontWeight: 700,
-                                                            cursor: 'pointer', transition: 'all 0.15s',
-                                                        }}
-                                                        title="Descargar datos estructurados en Excel (.xlsx)"
-                                                    >
-                                                        <FileSpreadsheet size={13} color="#059669" />
-                                                        Excel (.xlsx)
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() => {
-                                                            const printW = window.open('', '_blank');
-                                                            printW.document.write(`<html><head><title>Reporte Oficial Beto IA — Sanatorio Argentino</title><style>body{font-family:'Inter',system-ui,sans-serif;padding:36px;max-width:820px;margin:0 auto;color:#0F172A}table{border-collapse:collapse;width:100%;margin:14px 0}th,td{border:1px solid #CBD5E1;padding:7px 10px;text-align:left;font-size:12.5px}th{background:#0D3B66;color:#fff}tr:nth-child(even){background:#F8FAFC}h1,h2,h3{color:#0D3B66}</style></head><body><h2>Sanatorio Argentino — Reporte Beto IA</h2><div>${cleanText.replace(/\n/g, '<br/>')}</div></body></html>`);
-                                                            printW.document.close();
-                                                            printW.print();
-                                                        }}
+                                                        onClick={stopSimonSpeech}
                                                         style={{
                                                             display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                            padding: '5px 9px', borderRadius: '8px',
-                                                            border: '1px solid #CBD5E1',
-                                                            background: '#F8FAFC',
-                                                            color: '#475569',
-                                                            fontSize: '0.71rem', fontWeight: 600,
-                                                            cursor: 'pointer',
+                                                            padding: '5px 8px', borderRadius: '8px',
+                                                            border: '1px solid #FECACA', background: '#FEF2F2',
+                                                            color: '#DC2626', fontSize: '0.7rem', fontWeight: 700,
+                                                            cursor: 'pointer'
                                                         }}
-                                                        title="Imprimir reporte"
+                                                        title="Detener reproducción"
                                                     >
-                                                        <Printer size={12} />
-                                                        Imprimir
+                                                        <Square size={10} fill="#DC2626" />
+                                                        Detener
                                                     </button>
-                                                </div>
-                                            )}
+                                                )}
+
+                                                {isExportable && (
+                                                    <>
+                                                        <span style={{ fontSize: '0.7rem', color: '#0D3B66', fontWeight: 800, marginLeft: '4px', marginRight: '2px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                                            Exportar:
+                                                        </span>
+                                                        <button
+                                                            onClick={() => downloadBetoReportPdf(msg.content, null, effectiveExcelData)}
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                padding: '5px 11px', borderRadius: '8px',
+                                                                border: '1px solid #0D3B66',
+                                                                background: 'linear-gradient(135deg, #071E36 0%, #0D3B66 100%)',
+                                                                color: '#FFFFFF',
+                                                                fontSize: '0.73rem', fontWeight: 700,
+                                                                cursor: 'pointer', transition: 'all 0.15s',
+                                                                boxShadow: '0 2px 6px rgba(13, 59, 102, 0.22)',
+                                                            }}
+                                                            title="Descargar informe oficial en PDF con membrete del Sanatorio Argentino"
+                                                        >
+                                                            <FileDown size={13} color="#38BDF8" />
+                                                            PDF Oficial
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => downloadBetoReportExcel(msg.content, effectiveExcelData)}
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                padding: '5px 11px', borderRadius: '8px',
+                                                                border: '1px solid #059669',
+                                                                background: '#ECFDF5', color: '#065F46',
+                                                                fontSize: '0.73rem', fontWeight: 700,
+                                                                cursor: 'pointer', transition: 'all 0.15s',
+                                                            }}
+                                                            title="Descargar datos estructurados en Excel (.xlsx)"
+                                                        >
+                                                            <FileSpreadsheet size={13} color="#059669" />
+                                                            Excel (.xlsx)
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => {
+                                                                const printW = window.open('', '_blank');
+                                                                printW.document.write(`<html><head><title>Reporte Oficial Beto IA — Sanatorio Argentino</title><style>body{font-family:'Inter',system-ui,sans-serif;padding:36px;max-width:820px;margin:0 auto;color:#0F172A}table{border-collapse:collapse;width:100%;margin:14px 0}th,td{border:1px solid #CBD5E1;padding:7px 10px;text-align:left;font-size:12.5px}th{background:#0D3B66;color:#fff}tr:nth-child(even){background:#F8FAFC}h1,h2,h3{color:#0D3B66}</style></head><body><h2>Sanatorio Argentino — Reporte Beto IA</h2><div>${cleanText.replace(/\n/g, '<br/>')}</div></body></html>`);
+                                                                printW.document.close();
+                                                                printW.print();
+                                                            }}
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                padding: '5px 9px', borderRadius: '8px',
+                                                                border: '1px solid #CBD5E1',
+                                                                background: '#F8FAFC',
+                                                                color: '#475569',
+                                                                fontSize: '0.71rem', fontWeight: 600,
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            title="Imprimir reporte"
+                                                        >
+                                                            <Printer size={12} />
+                                                            Imprimir
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     ) : (
                                         <span>{msg.content}</span>
