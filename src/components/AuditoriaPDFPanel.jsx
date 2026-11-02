@@ -913,17 +913,54 @@ export default function AuditoriaPDFPanel({ addToast }) {
     return (
         <div style={{ padding: '24px', background: BG, minHeight: '100vh' }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-                <div>
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                padding: '18px 24px 0 24px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                marginBottom: 24, flexWrap: 'wrap', gap: 12,
+                position: 'relative', overflow: 'hidden'
+            }}>
+                <div style={{ paddingBottom: '18px' }}>
                     <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#111827', display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Stethoscope size={28} style={{ color: PRIMARY }} />
                         Auditoría HC por PDF
                     </h1>
                     <p style={{ margin: '4px 0 0', color: '#6B7280', fontSize: '0.9rem' }}>Sistema de auditoría médica inteligente</p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: '20px', background: '#DCFCE7', border: '1px solid #BBF7D0' }}>
-                    <Activity size={16} style={{ color: '#16A34A' }} />
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#166534' }}>Sistema Activo</span>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>
+                    <div style={{ paddingBottom: '18px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: '20px', background: '#DCFCE7', border: '1px solid #BBF7D0' }}>
+                            <Activity size={16} style={{ color: '#16A34A' }} />
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#166534' }}>Sistema Activo</span>
+                        </div>
+                    </div>
+
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
+                            style={{
+                                height: '122px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

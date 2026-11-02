@@ -182,8 +182,17 @@ export default function AsignacionPanel({ addToast, currentUser }) {
         <div className="content no-print" style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
 
             {/* ── Header ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                padding: '16px 22px 0 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: '12px',
+                position: 'relative', overflow: 'hidden'
+            }}>
+                <div style={{ paddingBottom: '16px' }}>
                     <h2 style={{
                         margin: 0, fontSize: '1.35rem', fontWeight: 800,
                         color: 'var(--neutral-800)', letterSpacing: '-0.3px',
@@ -201,30 +210,56 @@ export default function AsignacionPanel({ addToast, currentUser }) {
                         {reglas.length} reglas activas · Matching jerárquico OS → Especialidad → Proceso
                     </p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {isEditor && (
-                        <>
-                            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsm" onChange={handleFileSelect} style={{ display: 'none' }} />
-                            <button onClick={() => fileInputRef.current?.click()} style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: '#fff', color: '#10B981',
-                                border: '1px solid #10B98140', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                            }}><Upload size={14} /> Importar Excel</button>
-                            <button onClick={() => { setShowNewRow(true); setNewForm({ obra_social: '', especialidad: '', proceso: '', responsable: '', tutor: '' }); }} style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: 'linear-gradient(135deg, #10B981, #059669)', color: '#fff',
-                                border: 'none', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                            }}><Plus size={14} /> Nueva Regla</button>
-                        </>
-                    )}
-                    <button onClick={loadData} disabled={loading} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '8px 14px', borderRadius: '10px',
-                        background: '#fff', color: 'var(--neutral-600)',
-                        border: '1px solid var(--neutral-200)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                    }}><RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Actualizar</button>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '16px' }}>
+                        {isEditor && (
+                            <>
+                                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.xlsm" onChange={handleFileSelect} style={{ display: 'none' }} />
+                                <button onClick={() => fileInputRef.current?.click()} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 14px', borderRadius: '10px',
+                                    background: '#fff', color: '#10B981',
+                                    border: '1px solid #10B98140', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                                }}><Upload size={14} /> Importar Excel</button>
+                                <button onClick={() => { setShowNewRow(true); setNewForm({ obra_social: '', especialidad: '', proceso: '', responsable: '', tutor: '' }); }} style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 14px', borderRadius: '10px',
+                                    background: 'linear-gradient(135deg, #10B981, #059669)', color: '#fff',
+                                    border: 'none', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                                }}><Plus size={14} /> Nueva Regla</button>
+                            </>
+                        )}
+                        <button onClick={loadData} disabled={loading} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '10px',
+                            background: '#fff', color: 'var(--neutral-600)',
+                            border: '1px solid var(--neutral-200)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                        }}><RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Actualizar</button>
+                    </div>
+
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
+                            style={{
+                                height: '122px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

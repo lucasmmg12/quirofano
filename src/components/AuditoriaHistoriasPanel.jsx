@@ -1728,8 +1728,17 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
             `}} />
 
             {/* ── TITULO Y CABECERA ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                padding: '16px 22px 0 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: '12px',
+                position: 'relative', overflow: 'hidden'
+            }}>
+                <div style={{ paddingBottom: '16px' }}>
                     <h2 style={{ 
                         margin: 0, fontSize: '1.35rem', fontWeight: 800,
                         color: 'var(--neutral-800)', letterSpacing: '-0.3px',
@@ -1748,130 +1757,156 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                     </p>
                 </div>
 
-                {fileName && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        {availableMonths.length > 0 && (
-                            <select
-                                value={selectedMonthFilter}
-                                onChange={(e) => {
-                                    setSelectedMonthFilter(e.target.value);
-                                    setPatientPage(1);
-                                    setCurrentPage(1);
-                                }}
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    {fileName && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '16px' }}>
+                            {availableMonths.length > 0 && (
+                                <select
+                                    value={selectedMonthFilter}
+                                    onChange={(e) => {
+                                        setSelectedMonthFilter(e.target.value);
+                                        setPatientPage(1);
+                                        setCurrentPage(1);
+                                    }}
+                                    style={{
+                                        padding: '8px 14px', borderRadius: '10px',
+                                        background: '#fff', color: 'var(--primary-700)',
+                                        border: '1px solid rgba(30, 95, 166, 0.25)',
+                                        fontSize: '0.85rem', fontWeight: 700,
+                                        cursor: 'pointer', outline: 'none',
+                                        appearance: 'none',
+                                        minWidth: '150px'
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                                    onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                                >
+                                    <option value="all">📅 Todos los Meses</option>
+                                    {availableMonths.map(m => (
+                                        <option key={m} value={m}>{m}</option>
+                                    ))}
+                                </select>
+                            )}
+                            {availableObrasSociales.length > 0 && (
+                                <select
+                                    value={selectedObraSocialFilter}
+                                    onChange={(e) => {
+                                        setSelectedObraSocialFilter(e.target.value);
+                                        setPatientPage(1);
+                                        setCurrentPage(1);
+                                    }}
+                                    style={{
+                                        padding: '8px 14px', borderRadius: '10px',
+                                        background: '#fff', color: 'var(--primary-700)',
+                                        border: '1px solid rgba(30, 95, 166, 0.25)',
+                                        fontSize: '0.85rem', fontWeight: 700,
+                                        cursor: 'pointer', outline: 'none',
+                                        appearance: 'none',
+                                        minWidth: '170px'
+                                    }}
+                                    onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                                    onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                                >
+                                    <option value="all">🏥 Todas las Obras Sociales</option>
+                                    {availableObrasSociales.map(os => (
+                                        <option key={os} value={os}>{os}</option>
+                                    ))}
+                                </select>
+                            )}
+                            <button
+                                onClick={() => setShowStats(prev => !prev)}
                                 style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
                                     padding: '8px 14px', borderRadius: '10px',
-                                    background: '#fff', color: 'var(--primary-700)',
+                                    background: showStats ? '#EBF2FA' : '#fff', color: '#1e5fa6',
                                     border: '1px solid rgba(30, 95, 166, 0.25)',
-                                    fontSize: '0.85rem', fontWeight: 700,
-                                    cursor: 'pointer', outline: 'none',
-                                    appearance: 'none',
-                                    minWidth: '150px'
+                                    fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.2s',
                                 }}
-                                onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
-                                onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                                onMouseOver={e => e.currentTarget.style.background = '#f1f7fc'}
+                                onMouseOut={e => e.currentTarget.style.background = showStats ? '#EBF2FA' : '#fff'}
                             >
-                                <option value="all">📅 Todos los Meses</option>
-                                {availableMonths.map(m => (
-                                    <option key={m} value={m}>{m}</option>
-                                ))}
-                            </select>
-                        )}
-                        {availableObrasSociales.length > 0 && (
-                            <select
-                                value={selectedObraSocialFilter}
-                                onChange={(e) => {
-                                    setSelectedObraSocialFilter(e.target.value);
-                                    setPatientPage(1);
-                                    setCurrentPage(1);
-                                }}
+                                <FileText size={14} />
+                                {showStats ? 'Ocultar Analíticas' : 'Ver Estadísticas'}
+                            </button>
+                            <button
+                                onClick={handleExportPdf}
+                                disabled={sortedRows.length === 0}
                                 style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
                                     padding: '8px 14px', borderRadius: '10px',
-                                    background: '#fff', color: 'var(--primary-700)',
-                                    border: '1px solid rgba(30, 95, 166, 0.25)',
-                                    fontSize: '0.85rem', fontWeight: 700,
-                                    cursor: 'pointer', outline: 'none',
-                                    appearance: 'none',
-                                    minWidth: '170px'
+                                    background: '#1e5fa6', color: '#fff',
+                                    border: 'none', fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.2s',
+                                    boxShadow: '0 2px 8px rgba(30, 95, 166, 0.25)',
+                                    opacity: sortedRows.length === 0 ? 0.6 : 1
                                 }}
-                                onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
-                                onMouseOut={e => e.currentTarget.style.background = '#fff'}
+                                onMouseOver={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#184d87'; }}
+                                onMouseOut={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#1e5fa6'; }}
                             >
-                                <option value="all">🏥 Todas las Obras Sociales</option>
-                                {availableObrasSociales.map(os => (
-                                    <option key={os} value={os}>{os}</option>
-                                ))}
-                            </select>
-                        )}
-                        <button
-                            onClick={() => setShowStats(prev => !prev)}
+                                <FileText size={14} />
+                                Imprimir PDF Clínico
+                            </button>
+                            <button
+                                onClick={exportAuditedExcel}
+                                disabled={sortedRows.length === 0}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 14px', borderRadius: '10px',
+                                    background: '#10B981', color: '#fff',
+                                    border: 'none', fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.2s',
+                                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+                                    opacity: sortedRows.length === 0 ? 0.6 : 1
+                                }}
+                                onMouseOver={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#059669'; }}
+                                onMouseOut={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#10B981'; }}
+                            >
+                                <Download size={14} />
+                                Exportar Reporte
+                            </button>
+                            <button
+                                onClick={handleClearData}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 14px', borderRadius: '10px',
+                                    background: '#fff', color: '#DC2626',
+                                    border: '1px solid #DC262630',
+                                    fontSize: '0.78rem', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.2s',
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#DC2626'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#DC262630'; }}
+                            >
+                                <Trash2 size={14} />
+                                Limpiar
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
                             style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: showStats ? '#EBF2FA' : '#fff', color: '#1e5fa6',
-                                border: '1px solid rgba(30, 95, 166, 0.25)',
-                                fontSize: '0.78rem', fontWeight: 600,
-                                cursor: 'pointer', transition: 'all 0.2s',
+                                height: '122px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
                             }}
-                            onMouseOver={e => e.currentTarget.style.background = '#f1f7fc'}
-                            onMouseOut={e => e.currentTarget.style.background = showStats ? '#EBF2FA' : '#fff'}
-                        >
-                            <FileText size={14} />
-                            {showStats ? 'Ocultar Analíticas' : 'Ver Estadísticas'}
-                        </button>
-                        <button
-                            onClick={handleExportPdf}
-                            disabled={sortedRows.length === 0}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: '#1e5fa6', color: '#fff',
-                                border: 'none', fontSize: '0.78rem', fontWeight: 600,
-                                cursor: 'pointer', transition: 'all 0.2s',
-                                boxShadow: '0 2px 8px rgba(30, 95, 166, 0.25)',
-                                opacity: sortedRows.length === 0 ? 0.6 : 1
-                            }}
-                            onMouseOver={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#184d87'; }}
-                            onMouseOut={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#1e5fa6'; }}
-                        >
-                            <FileText size={14} />
-                            Imprimir PDF Clínico
-                        </button>
-                        <button
-                            onClick={exportAuditedExcel}
-                            disabled={sortedRows.length === 0}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: '#10B981', color: '#fff',
-                                border: 'none', fontSize: '0.78rem', fontWeight: 600,
-                                cursor: 'pointer', transition: 'all 0.2s',
-                                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
-                                opacity: sortedRows.length === 0 ? 0.6 : 1
-                            }}
-                            onMouseOver={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#059669'; }}
-                            onMouseOut={e => { if (sortedRows.length > 0) e.currentTarget.style.background = '#10B981'; }}
-                        >
-                            <Download size={14} />
-                            Exportar Reporte
-                        </button>
-                        <button
-                            onClick={handleClearData}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: '#fff', color: '#DC2626',
-                                border: '1px solid #DC262630',
-                                fontSize: '0.78rem', fontWeight: 600,
-                                cursor: 'pointer', transition: 'all 0.2s',
-                            }}
-                            onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#DC2626'; }}
-                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#DC262630'; }}
-                        >
-                            <Trash2 size={14} />
-                            Limpiar
-                        </button>
+                        />
                     </div>
-                )}
+                </div>
             </div>
 
             {/* ── CARGA DE ARCHIVO (VISTA VACÍA) ── */}

@@ -521,10 +521,16 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
 
             {/* Header del Panel */}
             <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexWrap: 'wrap', gap: '16px', marginBottom: '20px'
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                padding: '18px 24px 0 24px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: '16px', marginBottom: '20px',
+                position: 'relative', overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '18px' }}>
                     <div style={{
                         width: '46px', height: '46px', borderRadius: '12px',
                         background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
@@ -546,82 +552,108 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {!isPublic && (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', paddingBottom: '18px' }}>
+                        {!isPublic && (
+                            <button
+                                type="button"
+                                onClick={handleCopiarLinkPublico}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '8px 14px', borderRadius: '8px',
+                                    background: '#f8fafc', border: '1px solid #cbd5e1',
+                                    color: '#0284c7', fontSize: '0.82rem', fontWeight: 700,
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >
+                                <Copy size={15} />
+                                Copiar Link para Recepción
+                            </button>
+                        )}
+
                         <button
                             type="button"
-                            onClick={handleCopiarLinkPublico}
+                            id="fichas-sync-salus-btn"
+                            disabled={syncingAltas}
+                            title="Trae desde SALUS las últimas admisiones / altas (se ejecuta automáticamente cada 20 min de 6 a 22 hs)"
+                            onClick={async () => {
+                                setSyncingAltas(true);
+                                setSyncProgress('Solicitando...');
+                                try {
+                                    const res = await triggerAltasSync({
+                                        requestedBy: currentUser?.nombre || (isPublic ? 'Recepción (link público)' : 'Usuario'),
+                                        onProgress: (t) => setSyncProgress(t)
+                                    });
+                                    showToast(`Fichas sincronizadas con SALUS${res?.elapsed ? ` (${res.elapsed})` : ''}`);
+                                    if (activeTab === 'pendientes') loadPendientes();
+                                    else if (activeTab === 'carrito') loadCarrito();
+                                    else loadHistorial();
+                                } catch (err) {
+                                    console.error('[FichasAdmisiones] Error sync altas:', err);
+                                    showToast(err.message || 'Error sincronizando con SALUS', 'error');
+                                } finally {
+                                    setSyncingAltas(false);
+                                    setSyncProgress('');
+                                }
+                            }}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '6px',
                                 padding: '8px 14px', borderRadius: '8px',
-                                background: '#f8fafc', border: '1px solid #cbd5e1',
-                                color: '#0284c7', fontSize: '0.82rem', fontWeight: 700,
-                                cursor: 'pointer', transition: 'all 0.2s'
+                                background: syncingAltas ? '#e0f2fe' : '#0284c7',
+                                border: '1px solid #0284c7',
+                                color: syncingAltas ? '#0369a1' : '#ffffff',
+                                fontSize: '0.82rem', fontWeight: 700,
+                                cursor: syncingAltas ? 'wait' : 'pointer',
+                                boxShadow: '0 1px 2px rgba(2,132,199,0.25)', transition: 'all 0.2s'
                             }}
                         >
-                            <Copy size={15} />
-                            Copiar Link para Recepción
+                            <RefreshCw size={15} className={syncingAltas ? 'animate-spin' : ''} />
+                            {syncingAltas ? (syncProgress || 'Sincronizando...') : 'Sincronizar SALUS'}
                         </button>
-                    )}
 
-                    <button
-                        type="button"
-                        id="fichas-sync-salus-btn"
-                        disabled={syncingAltas}
-                        title="Trae desde SALUS las últimas admisiones / altas (se ejecuta automáticamente cada 20 min de 6 a 22 hs)"
-                        onClick={async () => {
-                            setSyncingAltas(true);
-                            setSyncProgress('Solicitando...');
-                            try {
-                                const res = await triggerAltasSync({
-                                    requestedBy: currentUser?.nombre || (isPublic ? 'Recepción (link público)' : 'Usuario'),
-                                    onProgress: (t) => setSyncProgress(t)
-                                });
-                                showToast(`Fichas sincronizadas con SALUS${res?.elapsed ? ` (${res.elapsed})` : ''}`);
+                        <button
+                            type="button"
+                            onClick={() => {
                                 if (activeTab === 'pendientes') loadPendientes();
                                 else if (activeTab === 'carrito') loadCarrito();
                                 else loadHistorial();
-                            } catch (err) {
-                                console.error('[FichasAdmisiones] Error sync altas:', err);
-                                showToast(err.message || 'Error sincronizando con SALUS', 'error');
-                            } finally {
-                                setSyncingAltas(false);
-                                setSyncProgress('');
-                            }
-                        }}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 14px', borderRadius: '8px',
-                            background: syncingAltas ? '#e0f2fe' : '#0284c7',
-                            border: '1px solid #0284c7',
-                            color: syncingAltas ? '#0369a1' : '#ffffff',
-                            fontSize: '0.82rem', fontWeight: 700,
-                            cursor: syncingAltas ? 'wait' : 'pointer',
-                            boxShadow: '0 1px 2px rgba(2,132,199,0.25)', transition: 'all 0.2s'
-                        }}
-                    >
-                        <RefreshCw size={15} className={syncingAltas ? 'animate-spin' : ''} />
-                        {syncingAltas ? (syncProgress || 'Sincronizando...') : 'Sincronizar SALUS'}
-                    </button>
+                            }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                background: '#ffffff', border: '1px solid #cbd5e1',
+                                color: '#475569', fontSize: '0.82rem', fontWeight: 600,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <RefreshCw size={15} />
+                            Actualizar
+                        </button>
+                    </div>
 
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (activeTab === 'pendientes') loadPendientes();
-                            else if (activeTab === 'carrito') loadCarrito();
-                            else loadHistorial();
-                        }}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 14px', borderRadius: '8px',
-                            background: '#ffffff', border: '1px solid #cbd5e1',
-                            color: '#475569', fontSize: '0.82rem', fontWeight: 600,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        <RefreshCw size={15} />
-                        Actualizar
-                    </button>
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
+                            style={{
+                                height: '124px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

@@ -1268,8 +1268,17 @@ export default function FacturacionPanel({ addToast, currentUser }) {
             <CircuitoFichasBanner step={3} />
 
             {/* ── Header ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-                <div>
+            <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                padding: '16px 22px 0 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: '16px', marginBottom: '20px',
+                position: 'relative', overflow: 'hidden'
+            }}>
+                <div style={{ paddingBottom: '16px' }}>
                     <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: 'var(--neutral-800)' }}>
                         <Receipt size={22} style={{ verticalAlign: 'middle', marginRight: '8px', color: '#6366F1' }} />
                         3. Control de Facturación Internada
@@ -1278,19 +1287,45 @@ export default function FacturacionPanel({ addToast, currentUser }) {
                         Control de facturación internada — PDV 21/31
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <SalusSyncButton />
-                    <button onClick={loadData} disabled={loading}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 14px', borderRadius: '8px',
-                            background: '#EEF2FF', border: '1px solid #C7D2FE',
-                            color: '#4F46E5', fontSize: '0.82rem', fontWeight: 600,
-                            cursor: 'pointer',
-                        }}>
-                        <RefreshCw size={14} className={loading ? 'spin' : ''} />
-                        Actualizar
-                    </button>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingBottom: '16px' }}>
+                        <SalusSyncButton />
+                        <button onClick={loadData} disabled={loading}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                background: '#EEF2FF', border: '1px solid #C7D2FE',
+                                color: '#4F46E5', fontSize: '0.82rem', fontWeight: 600,
+                                cursor: 'pointer',
+                            }}>
+                            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+                            Actualizar
+                        </button>
+                    </div>
+
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
+                            style={{
+                                height: '122px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
 

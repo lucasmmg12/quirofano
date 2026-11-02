@@ -272,12 +272,12 @@ export default function TxtProvinciaPanel({ addToast }) {
         <div style={{ width: '100%', minHeight: '100vh', background: '#f8fafc', padding: '24px 32px', boxSizing: 'border-box' }}>
             {/* ─── Encabezado Institucional ─── */}
             <div style={{
-                background: '#ffffff', borderRadius: '12px', padding: '20px 24px',
+                background: '#ffffff', borderRadius: '14px', padding: '18px 24px 0 24px',
                 border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexWrap: 'wrap', gap: '16px'
+                marginBottom: '20px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                flexWrap: 'wrap', gap: '16px', position: 'relative', overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '18px', flex: '1 1 420px' }}>
                     <div style={{
                         width: '46px', height: '46px', borderRadius: '10px',
                         background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
@@ -295,53 +295,79 @@ export default function TxtProvinciaPanel({ addToast }) {
                     </div>
                 </div>
 
-                {auditResult && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <button
-                            type="button"
-                            onClick={handleDownloadTxt}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '7px',
-                                padding: '9px 16px', borderRadius: '8px',
-                                background: '#16a34a', color: '#ffffff', border: 'none',
-                                fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer',
-                                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)'
-                            }}
-                        >
-                            <Download size={15} />
-                            Descargar TXT Corregido (.dat)
-                        </button>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    {auditResult && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '18px', flexWrap: 'wrap' }}>
+                            <button
+                                type="button"
+                                onClick={handleDownloadTxt}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '7px',
+                                    padding: '9px 16px', borderRadius: '8px',
+                                    background: '#16a34a', color: '#ffffff', border: 'none',
+                                    fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer',
+                                    boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)'
+                                }}
+                            >
+                                <Download size={15} />
+                                Descargar TXT Corregido (.dat)
+                            </button>
 
-                        <button
-                            type="button"
-                            onClick={handleExportExcel}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '7px',
-                                padding: '9px 16px', borderRadius: '8px',
-                                background: '#0284c7', color: '#ffffff', border: 'none',
-                                fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer',
-                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
-                            }}
-                        >
-                            <FileSpreadsheet size={15} />
-                            Exportar Informe (.xlsx)
-                        </button>
+                            <button
+                                type="button"
+                                onClick={handleExportExcel}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '7px',
+                                    padding: '9px 16px', borderRadius: '8px',
+                                    background: '#0284c7', color: '#ffffff', border: 'none',
+                                    fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer',
+                                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                                }}
+                            >
+                                <FileSpreadsheet size={15} />
+                                Exportar Informe (.xlsx)
+                            </button>
 
-                        <button
-                            type="button"
-                            onClick={handleReset}
+                            <button
+                                type="button"
+                                onClick={handleReset}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                    padding: '9px 14px', borderRadius: '8px',
+                                    background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer'
+                                }}
+                            >
+                                <RefreshCw size={14} />
+                                Nuevo Análisis
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
                             style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                padding: '9px 14px', borderRadius: '8px',
-                                background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
-                                fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer'
+                                height: '122px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
                             }}
-                        >
-                            <RefreshCw size={14} />
-                            Nuevo Análisis
-                        </button>
+                        />
                     </div>
-                )}
+                </div>
             </div>
 
             {/* ─── Área de Carga de Archivos (si no hay análisis activo) ─── */}

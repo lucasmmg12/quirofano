@@ -1232,10 +1232,16 @@ export default function AltasPanel({ addToast, currentUser }) {
 
             {/* ── Header ── */}
             <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                padding: '16px 22px 0 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
                 flexWrap: 'wrap', gap: '12px',
+                position: 'relative', overflow: 'hidden'
             }}>
-                <div>
+                <div style={{ paddingBottom: '16px' }}>
                     <h2 style={{ 
                         margin: 0, fontSize: '1.35rem', fontWeight: 800,
                         color: 'var(--neutral-800)', letterSpacing: '-0.3px',
@@ -1253,103 +1259,129 @@ export default function AltasPanel({ addToast, currentUser }) {
                         Gestión del proceso de alta hospitalaria — {total} registros
                     </p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button onClick={handleCheckCorte}
-                        title="Corte de Mes (Internaciones Prolongadas Neo/UCI)"
-                        style={{
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '16px' }}>
+                        <button onClick={handleCheckCorte}
+                            title="Corte de Mes (Internaciones Prolongadas Neo/UCI)"
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                background: '#F0FDFA', color: '#0F766E',
+                                border: '1px solid #14B8A6', cursor: 'pointer',
+                                fontSize: '0.8rem', fontWeight: 600,
+                            }}>
+                            <Scissors size={14} /> Corte de Mes (Neo/UCI)
+                        </button>
+                        {hcLoadedCount > 0 && (
+                            <span style={{ fontSize: '0.75rem', color: '#059669', background: '#D1FAE5', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                                {hcLoadedCount} HC en memoria
+                            </span>
+                        )}
+                        <label style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
                             padding: '8px 14px', borderRadius: '8px',
-                            background: '#F0FDFA', color: '#0F766E',
-                            border: '1px solid #14B8A6', cursor: 'pointer',
+                            background: '#EFF6FF', color: '#1D4ED8',
+                            border: '1px solid #BFDBFE', cursor: 'pointer',
                             fontSize: '0.8rem', fontWeight: 600,
                         }}>
-                        <Scissors size={14} /> Corte de Mes (Neo/UCI)
-                    </button>
-                    {hcLoadedCount > 0 && (
-                        <span style={{ fontSize: '0.75rem', color: '#059669', background: '#D1FAE5', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                            {hcLoadedCount} HC en memoria
-                        </span>
-                    )}
-                    <label style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        padding: '8px 14px', borderRadius: '8px',
-                        background: '#EFF6FF', color: '#1D4ED8',
-                        border: '1px solid #BFDBFE', cursor: 'pointer',
-                        fontSize: '0.8rem', fontWeight: 600,
-                    }}>
-                        <FileDown size={14} /> Cargar HC (Excel)
-                        <input type="file" accept=".xlsx" style={{ display: 'none' }}
-                            onChange={async (e) => {
-                                if(e.target.files && e.target.files[0]) {
-                                    try {
-                                        addToast?.('Procesando archivo Excel...', 'info');
-                                        const count = await processHCExcelFile(e.target.files[0]);
-                                        setHcLoadedCount(count);
-                                        addToast?.(`¡${count} historias cargadas a memoria!`, 'success');
-                                    } catch(err) {
-                                        addToast?.(`Error: ${err.message}`, 'error');
+                            <FileDown size={14} /> Cargar HC (Excel)
+                            <input type="file" accept=".xlsx" style={{ display: 'none' }}
+                                onChange={async (e) => {
+                                    if(e.target.files && e.target.files[0]) {
+                                        try {
+                                            addToast?.('Procesando archivo Excel...', 'info');
+                                            const count = await processHCExcelFile(e.target.files[0]);
+                                            setHcLoadedCount(count);
+                                            addToast?.(`¡${count} historias cargadas a memoria!`, 'success');
+                                        } catch(err) {
+                                            addToast?.(`Error: ${err.message}`, 'error');
+                                        }
                                     }
-                                }
-                            }} 
+                                }} 
+                            />
+                        </label>
+                        <SalusSyncButton onComplete={loadData} addToast={addToast} />
+                        {/* Export buttons */}
+                        <button
+                            onClick={exportToExcel}
+                            disabled={loading || sortedAltas.length === 0}
+                            title="Exportar a Excel (.csv)"
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                padding: '8px 12px', borderRadius: '10px',
+                                background: '#fff', color: '#059669',
+                                border: '1px solid #05966930',
+                                fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                opacity: sortedAltas.length === 0 ? 0.4 : 1,
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#059669'; }}
+                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#05966930'; }}
+                        >
+                            <FileDown size={14} />
+                            Excel
+                        </button>
+                        <button
+                            onClick={exportToPDF}
+                            disabled={loading || sortedAltas.length === 0}
+                            title="Exportar a PDF"
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                padding: '8px 12px', borderRadius: '10px',
+                                background: '#fff', color: '#DC2626',
+                                border: '1px solid #DC262630',
+                                fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                opacity: sortedAltas.length === 0 ? 0.4 : 1,
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#DC2626'; }}
+                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#DC262630'; }}
+                        >
+                            <Download size={14} />
+                            PDF
+                        </button>
+                        <button
+                            onClick={loadData}
+                            disabled={loading}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 14px', borderRadius: '10px',
+                                background: '#fff', color: 'var(--neutral-600)',
+                                border: '1px solid var(--neutral-200)',
+                                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.2s',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.borderColor = '#6366F1'; e.currentTarget.style.color = '#6366F1'; }}
+                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
+                        >
+                            <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+                            Actualizar
+                        </button>
+                    </div>
+
+                    {/* Ilustración Dr. Beto (Administración) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-10px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/administracion-beto.png"
+                            alt="Dr. Beto - Administración"
+                            style={{
+                                height: '122px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
                         />
-                    </label>
-                    <SalusSyncButton onComplete={loadData} addToast={addToast} />
-                    {/* Export buttons */}
-                    <button
-                        onClick={exportToExcel}
-                        disabled={loading || sortedAltas.length === 0}
-                        title="Exportar a Excel (.csv)"
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            padding: '8px 12px', borderRadius: '10px',
-                            background: '#fff', color: '#059669',
-                            border: '1px solid #05966930',
-                            fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            opacity: sortedAltas.length === 0 ? 0.4 : 1,
-                        }}
-                        onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#059669'; }}
-                        onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#05966930'; }}
-                    >
-                        <FileDown size={14} />
-                        Excel
-                    </button>
-                    <button
-                        onClick={exportToPDF}
-                        disabled={loading || sortedAltas.length === 0}
-                        title="Exportar a PDF"
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            padding: '8px 12px', borderRadius: '10px',
-                            background: '#fff', color: '#DC2626',
-                            border: '1px solid #DC262630',
-                            fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            opacity: sortedAltas.length === 0 ? 0.4 : 1,
-                        }}
-                        onMouseOver={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.borderColor = '#DC2626'; }}
-                        onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#DC262630'; }}
-                    >
-                        <Download size={14} />
-                        PDF
-                    </button>
-                    <button
-                        onClick={loadData}
-                        disabled={loading}
-                        style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 14px', borderRadius: '10px',
-                            background: '#fff', color: 'var(--neutral-600)',
-                            border: '1px solid var(--neutral-200)',
-                            fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                            transition: 'all 0.2s',
-                        }}
-                        onMouseOver={e => { e.currentTarget.style.borderColor = '#6366F1'; e.currentTarget.style.color = '#6366F1'; }}
-                        onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
-                    >
-                        <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                        Actualizar
-                    </button>
+                    </div>
                 </div>
             </div>
 
