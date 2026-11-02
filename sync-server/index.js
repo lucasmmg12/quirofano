@@ -1606,6 +1606,11 @@ async function syncDeudas(db, fastSync = false) {
                     continue;
                 }
                 
+                if (nuevaDeudaTotal === 0 && pacienteViejo && pacienteViejo.categoria === 'deuda_cancelada') {
+                    // Preservar el monto histórico de la deuda cancelada cuando las facturas pasan a saldo 0 en SALUS
+                    continue;
+                }
+
                 // Si aún queda deuda parcial, actualizar montos y registrar reducción
                 const updPaciente = {
                     deuda_total: nuevaDeudaTotal,

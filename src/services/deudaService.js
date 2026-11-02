@@ -23,18 +23,29 @@ export const MIN_DEUDA = 50000;
 export async function fetchDeudores(filters = {}) {
     const sortBy = filters.sortBy || 'deuda_total';
     const ascending = filters.sortDir === 'asc';
+    const hasSearch = Boolean(filters.search && filters.search.trim());
     let query = supabase
         .from('deudas_pacientes')
         .select('*')
-        .gte('deuda_total', MIN_DEUDA)
         .order(sortBy, { ascending });
+
+    if (!hasSearch && filters.categoria !== 'deuda_cancelada') {
+        query = query.or(`deuda_total.gte.${MIN_DEUDA},categoria.eq.deuda_cancelada`);
+    }
 
     if (filters.categoria) {
         query = query.eq('categoria', filters.categoria);
     }
-    if (filters.search) {
-        const safeSearch = filters.search.trim().replace(/[\s,]+/g, '%');
-        query = query.or(`nombre.ilike.%${safeSearch}%,nhc.ilike.%${safeSearch}%,telefono.ilike.%${safeSearch}%`);
+    if (hasSearch) {
+        const tokens = filters.search
+            .trim()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .split(/[\s,]+/)
+            .filter(Boolean);
+        for (const token of tokens) {
+            query = query.or(`nombre.ilike.%${token}%,nhc.ilike.%${token}%,dni.ilike.%${token}%,telefono.ilike.%${token}%`);
+        }
     }
     if (filters.conTelefono === true) {
         query = query.not('telefono', 'is', null);
@@ -550,7 +561,7 @@ export async function fetchMetricasDeudas(filtros = {}) {
     let query = supabase
         .from('deudas_pacientes')
         .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas, deuda_cancelada_at')
-        .gte('deuda_total', MIN_DEUDA)
+        .or(`deuda_total.gte.${MIN_DEUDA},categoria.eq.deuda_cancelada`)
         .order('deuda_total', { ascending: false });
 
     // Filtro por rango de fechas (campo dinámico)
