@@ -845,8 +845,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         const catKeyLow = cat.key.toLowerCase();
                         if (r.includes(catKeyLow) || catKeyLow.includes(r) ||
                             (cat.key === 'Inactividad (+24h sin respuesta)' && (r.includes('24h') || r.includes('inactividad') || r.includes('barrido') || r.includes('expir'))) ||
-                            (cat.key === 'Turno Coordinado' && (r.includes('turno') || r.includes('coordinado') || r.includes('otorgado'))) ||
-                            (cat.key === 'Consulta Informativa Resuelta' && (r.includes('informativa') || r.includes('información') || r.includes('resuelta'))) ||
+                            (cat.key === 'Turno Otorgado con Éxito' && (r.includes('turno') || r.includes('coordinado') || r.includes('otorgado'))) ||
+                            (cat.key === 'Estudio / Autorización Tramitada' && (r.includes('autoriz') || r.includes('estudio'))) ||
+                            (cat.key === 'Información Brindada / Consulta Respondida' && (r.includes('informativa') || r.includes('información') || r.includes('resuelta'))) ||
                             (cat.key === 'Auto-gestión Bot Completa (Inactividad)' && (r.includes('auto-gestión') || r.includes('inactividad') || r.includes('bot'))) ||
                             (cat.key === 'Paciente No Responde' && (r.includes('no responde') || r.includes('time-out'))) ||
                             (cat.key === 'Cierre masivo de cola' && (r.includes('masivo') || r.includes('cola')))
