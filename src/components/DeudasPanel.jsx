@@ -760,17 +760,60 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     </button>
                 </div>
 
-                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                    <div>
-                        <h2 style={{ ...st.headerTitle, fontSize: '1.4rem' }}>Dashboard de Métricas y Recupero de Deudas</h2>
-                        <span style={st.headerSub}>Monitoreo de deuda gestionada, efectividad de cobranzas y evolución temporal del pasivo</span>
+                <div style={{
+                    ...st.header,
+                    padding: '16px 24px 0 24px',
+                    alignItems: 'stretch',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    marginBottom: '20px',
+                }}>
+                    <div style={{
+                        flex: '1 1 520px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        paddingBottom: '16px',
+                        zIndex: 1,
+                    }}>
+                        <div>
+                            <h2 style={{ ...st.headerTitle, fontSize: '1.4rem' }}>Dashboard de Métricas y Recupero de Deudas</h2>
+                            <span style={st.headerSub}>Monitoreo de deuda gestionada, efectividad de cobranzas y evolución temporal del pasivo</span>
+                        </div>
+                        <div>
+                            <button
+                                onClick={() => { setActiveSubmodule('gestion'); setView(VIEWS.LIST); }}
+                                style={{ ...st.btnSmall, background: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1' }}
+                            >
+                                <ArrowLeft size={14} /> Volver a la Lista
+                            </button>
+                        </div>
                     </div>
-                    <button
-                        onClick={() => { setActiveSubmodule('gestion'); setView(VIEWS.LIST); }}
-                        style={{ ...st.btnSmall, background: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1' }}
-                    >
-                        <ArrowLeft size={14} /> Volver a la Lista
-                    </button>
+
+                    {/* Ilustración Dr. Beto — Deudas (Sin Fondo) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-6px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none',
+                    }}>
+                        <img
+                            src="/deudas-beto.png"
+                            alt="Dr. Beto - Gestión de Deudas"
+                            style={{
+                                height: '128px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))',
+                            }}
+                        />
+                    </div>
                 </div>
 
                 <DeudasMetricasDashboard
@@ -851,64 +894,105 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 </div>
 
                 {/* HEADER */}
-                <div style={st.header}>
-                    <div style={st.headerLeft}>
-                        <div style={{ ...st.iconBadge, background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
-                            <img src="/logosanatorio.png" alt="SA" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+                <div style={{
+                    ...st.header,
+                    padding: '16px 24px 0 24px',
+                    alignItems: 'stretch',
+                    position: 'relative',
+                    overflow: 'hidden',
+                }}>
+                    <div style={{
+                        flex: '1 1 560px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        gap: '14px',
+                        paddingBottom: '16px',
+                        zIndex: 1,
+                    }}>
+                        <div style={st.headerLeft}>
+                            <div style={{ ...st.iconBadge, background: 'linear-gradient(135deg, #F59E0B, #D97706)' }}>
+                                <img src="/logosanatorio.png" alt="SA" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+                            </div>
+
+                            <div>
+                                <h2 style={st.headerTitle}>Gestión de Deudas</h2>
+                                <span style={st.headerSub}>Seguimiento de cobros · Deudas ≥ ${MIN_DEUDA.toLocaleString('es-AR')} · Fuente: SALUS</span>
+                            </div>
                         </div>
 
-                        <div>
-                            <h2 style={st.headerTitle}>Gestión de Deudas</h2>
-                            <span style={st.headerSub}>Seguimiento de cobros · Deudas ≥ ${MIN_DEUDA.toLocaleString('es-AR')} · Fuente: SALUS</span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {/* Selector de Layout: Split View vs Tabla */}
+                            <div style={{
+                                display: 'inline-flex', padding: '3px', background: '#F1F5F9',
+                                borderRadius: '10px', border: '1px solid #E2E8F0', marginRight: '4px'
+                            }}>
+                                <button
+                                    onClick={() => setLayoutMode('split')}
+                                    title="Vista Dividida: lista y ficha en vivo simultáneas"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                        padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                        fontSize: '0.75rem', fontWeight: layoutMode === 'split' ? 800 : 600,
+                                        background: layoutMode === 'split' ? '#FFFFFF' : 'transparent',
+                                        color: layoutMode === 'split' ? '#0D3B66' : '#64748B',
+                                        boxShadow: layoutMode === 'split' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                        cursor: 'pointer', transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <Columns size={13} /> Split View
+                                </button>
+                                <button
+                                    onClick={() => setLayoutMode('table')}
+                                    title="Vista tradicional: tabla ancha completa"
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px',
+                                        padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                        fontSize: '0.75rem', fontWeight: layoutMode === 'table' ? 800 : 600,
+                                        background: layoutMode === 'table' ? '#FFFFFF' : 'transparent',
+                                        color: layoutMode === 'table' ? '#0D3B66' : '#64748B',
+                                        boxShadow: layoutMode === 'table' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                        cursor: 'pointer', transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    <Table size={13} /> Tabla
+                                </button>
+                            </div>
+
+                            <button onClick={exportToExcel} style={{ ...st.btnSmall, background: '#16A34A', color: '#fff', border: 'none' }} disabled={!deudores.length}>
+                                <Download size={14} /> Excel
+                            </button>
+                            <button onClick={exportToPDF} style={{ ...st.btnSmall, background: '#DC2626', color: '#fff', border: 'none' }} disabled={!deudores.length}>
+                                <Download size={14} /> PDF
+                            </button>
+                            <button onClick={() => setShowMetricas(p => !p)} style={st.btnSmall}>
+                                <BarChart3 size={14} /> {showMetricas ? 'Ocultar' : 'Métricas'}
+                            </button>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {/* Selector de Layout: Split View vs Tabla */}
-                        <div style={{
-                            display: 'inline-flex', padding: '3px', background: '#F1F5F9',
-                            borderRadius: '10px', border: '1px solid #E2E8F0', marginRight: '4px'
-                        }}>
-                            <button
-                                onClick={() => setLayoutMode('split')}
-                                title="Vista Dividida: lista y ficha en vivo simultáneas"
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '5px',
-                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
-                                    fontSize: '0.75rem', fontWeight: layoutMode === 'split' ? 800 : 600,
-                                    background: layoutMode === 'split' ? '#FFFFFF' : 'transparent',
-                                    color: layoutMode === 'split' ? '#0D3B66' : '#64748B',
-                                    boxShadow: layoutMode === 'split' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                                    cursor: 'pointer', transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <Columns size={13} /> Split View
-                            </button>
-                            <button
-                                onClick={() => setLayoutMode('table')}
-                                title="Vista tradicional: tabla ancha completa"
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '5px',
-                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
-                                    fontSize: '0.75rem', fontWeight: layoutMode === 'table' ? 800 : 600,
-                                    background: layoutMode === 'table' ? '#FFFFFF' : 'transparent',
-                                    color: layoutMode === 'table' ? '#0D3B66' : '#64748B',
-                                    boxShadow: layoutMode === 'table' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                                    cursor: 'pointer', transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <Table size={13} /> Tabla
-                            </button>
-                        </div>
 
-                        <button onClick={exportToExcel} style={{ ...st.btnSmall, background: '#16A34A', color: '#fff', border: 'none' }} disabled={!deudores.length}>
-                            <Download size={14} /> Excel
-                        </button>
-                        <button onClick={exportToPDF} style={{ ...st.btnSmall, background: '#DC2626', color: '#fff', border: 'none' }} disabled={!deudores.length}>
-                            <Download size={14} /> PDF
-                        </button>
-                        <button onClick={() => setShowMetricas(p => !p)} style={st.btnSmall}>
-                            <BarChart3 size={14} /> {showMetricas ? 'Ocultar' : 'Métricas'}
-                        </button>
+                    {/* Ilustración Dr. Beto — Deudas (Sin Fondo) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-6px',
+                        marginRight: '4px',
+                        pointerEvents: 'none',
+                        userSelect: 'none',
+                    }}>
+                        <img
+                            src="/deudas-beto.png"
+                            alt="Dr. Beto - Gestión de Deudas"
+                            style={{
+                                height: '132px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))',
+                            }}
+                        />
                     </div>
                 </div>
 
