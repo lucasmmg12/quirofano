@@ -3032,8 +3032,9 @@ Deno.serve(async (req) => {
 
             const targetVoice = voiceId || 'XrExE9yKIg1WjnnlVkGX';
             const targetModel = modelId || 'eleven_flash_v2_5';
+            const MALE_LIBRARY_VOICES = new Set(['ByVRQtaK1WDOvTmP1PKO', 'D09EpJbk4um1HKSpeTSc', 'KqSsYz0buWgkvSbaGn1n', 'kIyh6OkdYnM02DNUILKo']);
 
-            const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${targetVoice}?output_format=mp3_44100_128`, {
+            const callElevenTts = (vId: string) => fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vId}?output_format=mp3_44100_128`, {
                 method: 'POST',
                 headers: {
                     'xi-api-key': elevenKey,
@@ -3053,6 +3054,22 @@ Deno.serve(async (req) => {
                 }),
             });
 
+            let effectiveVoice = targetVoice;
+            let ttsRes = await callElevenTts(effectiveVoice);
+
+            // Si la cuenta está en plan gratuito y la voz de librería (ej. Agustín ByVRQtaK1WDOvTmP1PKO) devuelve 402/403,
+            // hacer fallback inmediato a voz masculina premade (Eric: cjVigY5qzO86Huf0OWal) o femenina (Matilda: XrExE9yKIg1WjnnlVkGX)
+            if (!ttsRes.ok && (ttsRes.status === 402 || ttsRes.status === 403)) {
+                const fallbackVoice = MALE_LIBRARY_VOICES.has(targetVoice)
+                    ? 'cjVigY5qzO86Huf0OWal'
+                    : 'XrExE9yKIg1WjnnlVkGX';
+                if (fallbackVoice !== effectiveVoice) {
+                    console.warn(`[beto-tts] Voz ${effectiveVoice} devolvió ${ttsRes.status}, aplicando fallback a ${fallbackVoice}`);
+                    effectiveVoice = fallbackVoice;
+                    ttsRes = await callElevenTts(effectiveVoice);
+                }
+            }
+
             if (!ttsRes.ok) {
                 const errText = await ttsRes.text();
                 return new Response(
@@ -3068,6 +3085,7 @@ Deno.serve(async (req) => {
                     ...corsHeaders,
                     'Content-Type': 'audio/mpeg',
                     'X-Character-Count': String(spokenText.length),
+                    'X-Voice-Id': effectiveVoice,
                 },
             });
         }

@@ -7,11 +7,11 @@
  *   - Items sin grupo → botón directo
  *   - Items con grupo → primero muestra grupo, luego sub-opciones
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     Receipt, ShieldCheck, Building2, Users, Baby,
     HelpCircle, ArrowLeft, CheckCircle, RefreshCw,
-    ChevronRight, FileText, Microscope, Check, Sparkles, User, Heart
+    ChevronRight, FileText, Microscope, Check, Sparkles, User, Heart, Volume2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getBoxesDisponibles, getBoxBalanceado, isHorarioAtencion } from '../services/boxService';
@@ -23,6 +23,9 @@ const ICON_MAP = {
 
 const STEPS = { DNI: 'dni', TICKET: 'ticket' };
 
+// Voz masculina argentina en ElevenLabs: "Agustin - Conversational & Expressive" (es-AR)
+const AGUSTIN_VOICE_ID = 'ByVRQtaK1WDOvTmP1PKO';
+
 export default function TurnoKiosco() {
     const [step, setStep] = useState(STEPS.DNI);
     const [dni, setDni] = useState('');
@@ -33,8 +36,13 @@ export default function TurnoKiosco() {
     const [boxesDisponibles, setBoxesDisponibles] = useState(null); // null = loading, [] = none
     const [pacienteInfo, setPacienteInfo] = useState(null);
     const [buscandoPaciente, setBuscandoPaciente] = useState(false);
+    const [searchedDni, setSearchedDni] = useState('');
     const [showConfirmCard, setShowConfirmCard] = useState(false);
     const [manualEditMode, setManualEditMode] = useState(false);
+
+    const ttsAudioRef = useRef(null);
+    const ttsCacheRef = useRef(new Map());
+    const ttsAbortRef = useRef(0);
 
     const saludoActual = useMemo(() => getSaludoPorHora(), []);
 
@@ -44,17 +52,98 @@ export default function TurnoKiosco() {
         return clean.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }, []);
 
-    const speakGuidance = useCallback((text) => {
+    const stopGuidanceSpeech = useCallback(() => {
+        ttsAbortRef.current += 1;
+        if (ttsAudioRef.current) {
+            try {
+                ttsAudioRef.current.pause();
+                ttsAudioRef.current.currentTime = 0;
+            } catch (_) {}
+            ttsAudioRef.current = null;
+        }
         try {
-            if ('speechSynthesis' in window && text) {
-                window.speechSynthesis.cancel();
-                const u = new SpeechSynthesisUtterance(text);
-                u.lang = 'es-AR';
-                u.rate = 0.96;
-                window.speechSynthesis.speak(u);
-            }
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         } catch (_) {}
     }, []);
+
+    const speakGuidance = useCallback(async (text) => {
+        if (!text) return;
+        stopGuidanceSpeech();
+        const currentReqId = ttsAbortRef.current;
+
+        try {
+            const cacheKey = `${AGUSTIN_VOICE_ID}::${text}`;
+            let audioUrl = ttsCacheRef.current.get(cacheKey);
+
+            if (!audioUrl) {
+                const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+                let res = null;
+
+                if (isLocalDev) {
+                    res = await fetch('/api/elevenlabs/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text,
+                            voiceId: AGUSTIN_VOICE_ID,
+                            modelId: 'eleven_flash_v2_5',
+                        }),
+                    }).catch(() => null);
+                }
+
+                if (!res || !res.ok || !(res.headers.get('content-type') || '').includes('audio')) {
+                    const supabaseUrl = supabase.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+                    const supabaseKey = supabase.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
+                    res = await fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${supabaseKey}`,
+                            'apikey': supabaseKey,
+                        },
+                        body: JSON.stringify({
+                            action: 'tts',
+                            text,
+                            voiceId: AGUSTIN_VOICE_ID,
+                            modelId: 'eleven_flash_v2_5',
+                        }),
+                    });
+                }
+
+                if (!res.ok) {
+                    throw new Error(`ElevenLabs HTTP ${res.status}`);
+                }
+
+                const blob = await res.blob();
+                audioUrl = URL.createObjectURL(blob);
+                ttsCacheRef.current.set(cacheKey, audioUrl);
+            }
+
+            if (ttsAbortRef.current !== currentReqId) return;
+
+            const audio = new Audio(audioUrl);
+            ttsAudioRef.current = audio;
+            audio.onended = () => {
+                if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
+            };
+            audio.onerror = () => {
+                if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
+            };
+            await audio.play();
+        } catch (err) {
+            console.warn('[TurnoKiosco ElevenLabs TTS] Fallback a síntesis local:', err);
+            if (ttsAbortRef.current !== currentReqId) return;
+            try {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance(text);
+                    u.lang = 'es-AR';
+                    u.rate = 0.96;
+                    window.speechSynthesis.speak(u);
+                }
+            } catch (_) {}
+        }
+    }, [stopGuidanceSpeech]);
 
     const checkBoxes = useCallback(() => {
         getBoxesDisponibles()
@@ -111,6 +200,7 @@ export default function TurnoKiosco() {
         const cleanDni = dni.replace(/\D/g, '').trim();
         if (cleanDni.length < 6) {
             setPacienteInfo(null);
+            setSearchedDni('');
             setBuscandoPaciente(false);
             return;
         }
@@ -118,18 +208,21 @@ export default function TurnoKiosco() {
         let active = true;
         setBuscandoPaciente(true);
 
+        const waitMs = cleanDni.length === 8 ? 60 : 220;
         const timer = setTimeout(async () => {
             try {
                 const info = await fetchPatientByDniLive(cleanDni);
                 if (active) {
                     setPacienteInfo(info);
+                    setSearchedDni(cleanDni);
                 }
             } catch (err) {
                 console.warn('[TurnoKiosco] Error buscando paciente:', err);
+                if (active) setSearchedDni(cleanDni);
             } finally {
                 if (active) setBuscandoPaciente(false);
             }
-        }, 250);
+        }, waitMs);
 
         return () => {
             active = false;
@@ -146,7 +239,7 @@ export default function TurnoKiosco() {
             setShowConfirmCard(false);
             return;
         }
-        if (buscandoPaciente) return;
+        if (buscandoPaciente || searchedDni !== cleanDni) return;
 
         if (cleanDni.length === 8) {
             setShowConfirmCard(true);
@@ -162,24 +255,27 @@ export default function TurnoKiosco() {
             }, waitMs);
             return () => clearTimeout(t);
         }
-    }, [dni, buscandoPaciente, manualEditMode, pacienteInfo]);
+    }, [dni, buscandoPaciente, searchedDni, manualEditMode, pacienteInfo]);
 
-    // Guía por voz clara + recordatorio a los 6 segundos si el paciente no toca el botón
+    // Guía por voz de Dr. Beto (Agustín - ElevenLabs) + recordatorio si el paciente no toca el botón
     useEffect(() => {
         if (step !== STEPS.DNI || !showConfirmCard || loading) return;
 
         if (pacienteInfo?.displayName) {
-            speakGuidance(`${saludoActual} ${pacienteInfo.displayName}. Por favor, presioná el botón Obtener Turno para finalizar.`);
+            speakGuidance(`¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`);
         } else {
-            speakGuidance(`${saludoActual}. Por favor, presioná el botón Obtener Turno en pantalla para finalizar.`);
+            speakGuidance(`¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`);
         }
 
         const reminderTimer = setTimeout(() => {
             speakGuidance('Para finalizar, presioná el botón azul Obtener Turno en el centro de la pantalla.');
-        }, 6500);
+        }, 9500);
 
-        return () => clearTimeout(reminderTimer);
-    }, [step, showConfirmCard, loading, pacienteInfo, saludoActual, speakGuidance]);
+        return () => {
+            clearTimeout(reminderTimer);
+            stopGuidanceSpeech();
+        };
+    }, [step, showConfirmCard, loading, pacienteInfo, saludoActual, speakGuidance, stopGuidanceSpeech]);
 
     // Crear turno con asignación balanceada de box
     const handleCreateTurno = useCallback(async (e) => {
@@ -189,9 +285,7 @@ export default function TurnoKiosco() {
             return;
         }
 
-        try {
-            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-        } catch (_) {}
+        stopGuidanceSpeech();
 
         setLoading(true);
         setError(null);
@@ -248,18 +342,17 @@ export default function TurnoKiosco() {
 
     // Reset completo
     const handleReset = useCallback(() => {
-        try {
-            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-        } catch (_) {}
+        stopGuidanceSpeech();
         setStep(STEPS.DNI);
         setDni('');
         setTurno(null);
         setError(null);
         setPacienteInfo(null);
+        setSearchedDni('');
         setBuscandoPaciente(false);
         setShowConfirmCard(false);
         setManualEditMode(false);
-    }, []);
+    }, [stopGuidanceSpeech]);
 
     // Auto-reset después de 8 segundos en la pantalla de ticket
     useEffect(() => {
@@ -378,10 +471,10 @@ export default function TurnoKiosco() {
                                     </div>
                                 </div>
 
-                                <div style={styles.betoSpeechWrapper}>
+                                <div style={{ ...styles.betoSpeechWrapper, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                                     <div style={styles.betoSpeechArrow} />
                                     {pacienteInfo ? (
-                                        <div style={{ animation: 'fadeInUp 0.25s ease-out' }}>
+                                        <div style={{ animation: 'fadeInUp 0.25s ease-out', flex: 1 }}>
                                             <div style={styles.betoGreetingHeader}>
                                                 ¡{saludoActual}, <span style={{ color: '#1565C0' }}>{pacienteInfo.displayName}</span>!
                                             </div>
@@ -395,7 +488,7 @@ export default function TurnoKiosco() {
                                             )}
                                         </div>
                                     ) : buscandoPaciente ? (
-                                        <div>
+                                        <div style={{ flex: 1 }}>
                                             <div style={styles.betoGreetingHeader}>
                                                 Verificando documento...
                                             </div>
@@ -404,7 +497,7 @@ export default function TurnoKiosco() {
                                             </div>
                                         </div>
                                     ) : dni.length >= 7 ? (
-                                        <div>
+                                        <div style={{ flex: 1 }}>
                                             <div style={styles.betoGreetingHeader}>
                                                 ¡{saludoActual}! Documento completo
                                             </div>
@@ -413,7 +506,7 @@ export default function TurnoKiosco() {
                                             </div>
                                         </div>
                                     ) : (
-                                        <div>
+                                        <div style={{ flex: 1 }}>
                                             <div style={styles.betoGreetingHeader}>
                                                 ¡{saludoActual}! Te damos la bienvenida
                                             </div>
@@ -421,6 +514,33 @@ export default function TurnoKiosco() {
                                                 Ingresá tu DNI en el teclado táctil para sacar tu turno de atención.
                                             </div>
                                         </div>
+                                    )}
+                                    {showConfirmCard && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const msg = pacienteInfo?.displayName
+                                                    ? `¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`
+                                                    : `¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`;
+                                                speakGuidance(msg);
+                                            }}
+                                            title="Volver a escuchar a Dr. Beto"
+                                            style={{
+                                                width: '44px',
+                                                height: '44px',
+                                                borderRadius: '12px',
+                                                background: '#EFF6FF',
+                                                border: '1.5px solid #BFDBFE',
+                                                color: '#1565C0',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                cursor: 'pointer',
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            <Volume2 size={22} />
+                                        </button>
                                     )}
                                 </div>
                             </div>

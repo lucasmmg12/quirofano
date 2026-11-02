@@ -45,10 +45,28 @@ export const ELEVENLABS_VOICES_CATALOG = [
         gender: 'female',
         accent: 'Argentina (Rioplatense)',
         description: 'Voz argentina nativa de biblioteca compartida (requiere agregarla en tu librería ElevenLabs).'
+    },
+    {
+        id: 'ByVRQtaK1WDOvTmP1PKO',
+        name: 'Agustín (Masculina · Argentino Conversacional — Dr. Beto)',
+        shortName: 'Agustín (Argentino Masculino)',
+        gender: 'male',
+        accent: 'Argentina (es-AR)',
+        description: 'Voz masculina argentina cálida y natural para recepción y tótem de turnos.'
+    },
+    {
+        id: 'cjVigY5qzO86Huf0OWal',
+        name: 'Eric (Masculina · Cálida y Clara — Multilingüe)',
+        shortName: 'Eric (Masculino Cálido)',
+        gender: 'male',
+        accent: 'es-AR (Multilingüe)',
+        description: 'Voz masculina serena y confiable disponible en todos los planes.'
     }
 ];
 
 export const DEFAULT_FEMALE_VOICE_ID = 'XrExE9yKIg1WjnnlVkGX'; // Matilda
+export const DEFAULT_MALE_VOICE_ID = 'ByVRQtaK1WDOvTmP1PKO'; // Agustín (Argentino)
+export const FALLBACK_MALE_VOICE_ID = 'cjVigY5qzO86Huf0OWal'; // Eric (Premade Male)
 export const DEFAULT_TTS_MODEL_ID = 'eleven_flash_v2_5';
 
 let cachedClient = null;
@@ -136,7 +154,21 @@ export async function synthesizeSimonSpeech({
         requestOptions.languageCode = 'es';
     }
 
-    const audioStream = await client.textToSpeech.convert(voiceId, requestOptions);
+    const MALE_LIBRARY_VOICES = new Set(['ByVRQtaK1WDOvTmP1PKO', 'D09EpJbk4um1HKSpeTSc', 'KqSsYz0buWgkvSbaGn1n', 'kIyh6OkdYnM02DNUILKo']);
+    let effectiveVoiceId = voiceId;
+    let audioStream;
+    try {
+        audioStream = await client.textToSpeech.convert(effectiveVoiceId, requestOptions);
+    } catch (err) {
+        const msg = String(err?.message || err?.body || '');
+        if (err?.statusCode === 402 || err?.statusCode === 403 || msg.includes('paid_plan_required') || msg.includes('free_users')) {
+            effectiveVoiceId = MALE_LIBRARY_VOICES.has(voiceId) ? FALLBACK_MALE_VOICE_ID : DEFAULT_FEMALE_VOICE_ID;
+            console.warn(`[ElevenLabs TTS] Voz de librería ${voiceId} requiere plan pago en API; usando fallback ${effectiveVoiceId}`);
+            audioStream = await client.textToSpeech.convert(effectiveVoiceId, requestOptions);
+        } else {
+            throw err;
+        }
+    }
 
     const chunks = [];
     for await (const chunk of audioStream) {
@@ -145,7 +177,7 @@ export async function synthesizeSimonSpeech({
     return {
         audioBuffer: Buffer.concat(chunks),
         spokenText: cleanText,
-        voiceId,
+        voiceId: effectiveVoiceId,
         modelId,
         characterCount: cleanText.length
     };
