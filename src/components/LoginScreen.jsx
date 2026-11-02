@@ -855,7 +855,7 @@ export default function LoginScreen({ onLogin }) {
                                         type="text"
                                         value={usuario}
                                         onChange={e => setUsuario(e.target.value)}
-                                        placeholder="lmarinero@sanatorioargentino.com.ar"
+                                        placeholder="Ingresá tu usuario"
                                         autoComplete="username"
                                         style={{
                                             width: '100%',
@@ -1374,7 +1374,7 @@ export default function LoginScreen({ onLogin }) {
                                                 type="text"
                                                 value={recoveryUsername}
                                                 onChange={e => setRecoveryUsername(e.target.value)}
-                                                placeholder="Ej: abenegas"
+                                                placeholder="Ingresá tu usuario"
                                                 style={{
                                                     width: '100%', padding: '12px 14px 12px 40px',
                                                     borderRadius: '10px', border: '1.5px solid #CBD5E1',
