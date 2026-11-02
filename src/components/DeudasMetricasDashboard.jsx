@@ -59,6 +59,9 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                 fechaHasta: fHasta
             });
             setData(res);
+            if (typeof window !== 'undefined') {
+                window.__deudas_active_context = res;
+            }
         } catch (error) {
             console.error('Error al cargar métricas avanzadas de deudas:', error);
             addToast?.('Error al cargar analíticas de cobranza', 'error');

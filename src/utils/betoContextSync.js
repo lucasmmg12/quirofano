@@ -17,6 +17,7 @@ export function buildUnifiedBetoContext(activeModule = 'global') {
     const dxiCtx = window.__dxi_active_context || null;
     const epidemiologiaCtx = window.__epidemiologia_active_context || null;
     const proyectosCtx = window.__gobernanza_proyectos_context || null;
+    const deudasCtx = window.__deudas_active_context || null;
     const legacyIndCtx = window.__indicadores_active_context || null;
 
     // Determinar cuál es el panel exacto que el usuario está mirando ahora mismo en pantalla
@@ -42,6 +43,8 @@ export function buildUnifiedBetoContext(activeModule = 'global') {
         }
     } else if (activeModule === 'gobernanza') {
         pantallaActiva.datosEnPantallaAhoraMismo = proyectosCtx;
+    } else if (activeModule === 'deudas') {
+        pantallaActiva.datosEnPantallaAhoraMismo = deudasCtx;
     }
 
     // Compendio estructurado de los 5 Dossiers Oficiales de Gobernanza de Datos
@@ -71,7 +74,8 @@ export function buildUnifiedBetoContext(activeModule = 'global') {
             QuirofanoCentral_HospitalDeDia: quirofanoCtx,
             DiagnosticoPorImagenes_DxI: dxiCtx,
             VigilanciaEpidemiologica_SNVS_C2: epidemiologiaCtx,
-            ProyectosGobernanza: proyectosCtx
+            ProyectosGobernanza: proyectosCtx,
+            Deudas_Cobranzas: deudasCtx
         },
         baseConocimientoGobernanzaDatos: {
             resumenEjecutivo:

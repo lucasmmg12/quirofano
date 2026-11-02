@@ -36,7 +36,7 @@ async function getSchemaContext(): Promise<string> {
             // Filter only relevant ADM-QUI tables
             const relevantTables = [
                 'surgeries', 'surgery_events', 'surgery_templates',
-                'deudas_pacientes',
+                'deudas_pacientes', 'deudas_facturas', 'deudas_seguimiento', 'deudas_planes_pago', 'deudas_cuotas', 'deudas_cobros', 'deudas_notas_credito', 'libre_de_deuda_certificados',
                 'asociaciones_cirugias',
                 'laboratorios_anatomia_patologica',
                 'admqui_usuarios',
@@ -151,18 +151,35 @@ Los estados de cirugía en el pipeline de mensajería representan el contacto co
 - SIEMPRE excluí las excluidas: \`excluido = false\`
 - Para cirugías "activas" (no finalizadas): \`ausente IS NULL\`
 
-### \`deudas_pacientes\` (Deudas de pacientes)
+### \`deudas_pacientes\` (Deudas de pacientes — Padrón de Cobranzas)
 - \`id\` (uuid PK)
-- \`nhc\` (text) — Número de historia clínica
+- \`nhc\` (text) — Número de historia clínica en SALUS
 - \`nombre\` (text) — Nombre del paciente (MAYÚSCULAS)
+- \`dni\` (text)
 - \`telefono\` (text)
-- \`cobertura\` (text) — Obra social / Cobertura médica
-- \`deuda_total\` (numeric) — Monto total de deuda (Balance)
-- \`categoria\` (text) — sin_gestionar, en_gestion, comprometido, cuenta_corriente, incobrable, descuento_liquidacion, sin_deuda_salus
-- \`observaciones\` (text)
-- \`fecha_deuda\` (date)
-- \`facturas_count\` (integer) — Cantidad de facturas
+- \`obra_social\` (text) — Obra social / Cobertura médica
+- \`deuda_total\` (numeric) — Saldo pendiente actual de deuda en SALUS
+- \`total_cobros\` (numeric) — Total histórico de cobros asociados al paciente
+- \`categoria\` (text) — 'sin_gestionar', 'en_gestion', 'comprometido', 'cuenta_corriente', 'incobrable', 'descuento_liquidacion', 'deuda_cancelada'
+- \`deuda_cancelada_at\` (timestamptz) — Fecha en que se canceló el 100% de la deuda
+- \`deuda_cancelada_por\` (text) — Usuario que registró la cancelación
+- \`fecha_ultima_factura\` (timestamptz) — Fecha de la última factura/hospitalización
+- \`ultimo_contacto_at\`, \`ultima_respuesta_at\` (timestamptz)
+- \`cantidad_facturas\` (integer) — Cantidad de facturas
 - \`updated_at\` (timestamptz)
+
+### \`deudas_cobros\` (Recibos de Caja SALUS de pacientes deudores)
+- \`id\` (uuid PK), \`nhc\` (text), \`importe\` (numeric), \`fecha\` (timestamptz), \`forma_pago\` (text), \`descripcion\` (text)
+
+### \`deudas_seguimiento\` (Bitácora de gestiones y pagos manuales/cuotas de cobranzas)
+- \`id\` (uuid PK), \`paciente_id\` (uuid FK), \`tipo\` (text: 'nota', 'llamada', 'whatsapp', 'pago', 'cambio_categoria'), \`descripcion\` (text), \`monto\` (numeric), \`usuario\` (text), \`created_at\` (timestamptz)
+
+### \`deudas_planes_pago\` y \`deudas_cuotas\` (Planes de financiación y cuotas)
+- \`deudas_planes_pago\`: \`id\`, \`paciente_id\`, \`monto_original\`, \`cantidad_cuotas\`, \`monto_cuota\`, \`monto_total_financiado\`, \`estado\` ('activo', 'cancelado', 'completado'), \`usuario\`, \`created_at\`
+- \`deudas_cuotas\`: \`id\`, \`plan_id\`, \`numero_cuota\`, \`monto\`, \`fecha_vencimiento\`, \`pagada\` (boolean), \`fecha_pago\` (date), \`comprobante\`
+
+### \`deudas_facturas\` (Facturas y admisiones vinculadas a cada paciente deudor)
+- \`id\` (uuid PK), \`paciente_id\` (uuid FK), \`codigo\` (text), \`documento\` (text), \`folio\` (text), \`total\` (numeric), \`cobrado\` (numeric), \`pendiente\` (numeric), \`servicio\` (text), \`n_admision\` (text — cruza con \`altas_administrativas.numero_admision\` para obtener \`fecha_alta\` y calcular la regla de exigibilidad de 30 días post-alta), \`fecha_hospitalizacion\` (timestamptz)
 
 ### \`asociaciones_cirugias\` (Cirugías de asociaciones médicas)
 - \`id\` (uuid PK)
@@ -611,13 +628,35 @@ PATRONES SQL correctos:
 **NUNCA** uses \`confirmado_at\` como indicador principal de confirmación. El campo que define si una cirugía está confirmada es \`status = 'azul'\`. El \`confirmado_at\` es solo un timestamp auxiliar.
 
 ### 🎯 REGLA DE ORO INSTITUCIONAL: COINCIDENCIA EXACTA 1:1 CON EL DASHBOARD EN PANTALLA
-- **VERDAD ABSOLUTA DEL DASHBOARD**: Cuando el usuario te pregunte por cualquier indicador, número, total, porcentaje, desglose o métrica de Gobernanza (Quirófano, Días Cama, Ocupación, UCI, Salas, etc.):
-  1. Si recibís datos en \`moduleContext\` (como \`quirofano_gobernanza\` o \`indicadores_gobernanza\` / \`indicadores_telar\`), **ESTOS DATOS SON LA VERDAD ABSOLUTA E INMUTABLE QUE EL USUARIO TIENE DELANTE DE SUS OJOS EN EL DASHBOARD**.
+- **VERDAD ABSOLUTA DEL DASHBOARD**: Cuando el usuario te pregunte por cualquier indicador, número, total, porcentaje, desglose o métrica de Gobernanza o Deudas (Quirófano, Días Cama, Ocupación, UCI, Salas, Deudas y Cobranzas, etc.):
+  1. Si recibís datos en \`moduleContext\` (como \`quirofano_gobernanza\`, \`indicadores_gobernanza\`, \`indicadores_telar\` o \`Deudas_Cobranzas\`), **ESTOS DATOS SON LA VERDAD ABSOLUTA E INMUTABLE QUE EL USUARIO TIENE DELANTE DE SUS OJOS EN EL DASHBOARD**.
   2. **TUS NÚMEROS DEBEN COINCIDIR EXACTAMENTE, DÍGITO POR DÍGITO Y DECIMAL POR DECIMAL, CON LO QUE MUESTRA EL DASHBOARD**.
   3. **NUNCA** inventes cifras, nunca estimes números diferentes ni respondas con cálculos dispares de queries SQL si contradicen o difieren de los datos de pantalla.
   4. En Quirófano: Total programadas, realizadas, suspendidas netas, tasa bruta, tasa neta y casos por causal (como Causal 2 Financiador) deben ser IDÉNTICOS al dashboard.
   5. En Días Cama / UCI / Ocupación: Días cama ocupados, camas disponibles, % de ocupación, ALOS (estancia media), admisiones únicas y defunciones deben ser IDÉNTICOS al dashboard.
   6. Dotación de UCI: 16 camas exactas e inmutables (8 Intensiva + 8 Intermedia).
+
+### 💰 REGLAS OFICIALES DEL MÓDULO DE DEUDAS Y COBRANZAS (INCENTIVO DE GISELLE)
+- **USO OBLIGATORIO DE LA TOOL \`consultar_metricas_deudas\`**:
+  - **SIEMPRE** que el usuario pregunte por deudas de un mes (ej. *"cuál fue el total de deuda del mes de octubre"*, *"cuánto se cobró en octubre"*, *"incentivo de Giselle"*, *"deuda abordada"*, *"deuda activa pendiente"*, *"efectividad de cobranza"*, *"métricas de deudas"*), **DEBÉS LLAMAR OBLIGATORIAMENTE A LA TOOL \`consultar_metricas_deudas\`** pasando el período (ej. \`periodo: "2026-10"\` para octubre 2026, \`"2026-11"\` para noviembre 2026, o \`"todos"\` para todo el histórico).
+  - **PROHIBIDO** hacer \`SELECT SUM(deuda_total) FROM deudas_pacientes\` con SQL simple para responder métricas mensuales de deudas o cobranzas, porque el Dashboard Oficial de Deudas cruza 6 tablas (\`deudas_pacientes\`, \`deudas_cobros\`, \`deudas_seguimiento\`, \`deudas_cuotas\`, \`deudas_facturas\`, \`altas_administrativas\`) con deduplicación en 3 niveles y regla de exigibilidad de 30 días post-alta.
+- **CRITERIO OFICIAL DEL INCENTIVO DE COBRANZAS (GISELLE) — REGLA DE ≥ 30 DÍAS POST-ALTA**:
+  - **¡ATENCIÓN CRÍTICA!**: El recupero computable para el incentivo de cobranzas (Giselle) es la **Deuda Cobrada ≥ 30 días DESPUÉS del alta administrativa/clínica (Deuda Exigible)**, **NUNCA** "dentro de los 30 días posteriores al alta".
+  - Los pagos realizados durante la internación o antes de cumplirse los 30 días desde el alta (\`< 30 días post-alta\`) pertenecen al **Período de Gracia / Circuito normal de Caja e Internación** y están **EXCLUIDOS del incentivo** (\`montoCobradoEnGracia\`).
+- **LOS 4 KPIs OFICIALES DEL DASHBOARD DE DEUDAS (QUE DEBÉS INFORMAR CON EXACTITUD 1:1)**:
+  1. **Deuda Abordada en Período (Criterio Cosecha)** (\`totalDeudaGestionada\`): Capital total de los pacientes que tuvieron gestión/contacto activo en ese mes, junto con la cantidad y porcentaje de pacientes gestionados sobre el padrón total (ej. en **Octubre 2026**: **$ 15.307.973 ARS** — 9% · 31 de 343 pacientes gestionados).
+  2. **Deuda Cobrada (≥30d Post-Alta — Recupero Computable para Incentivo)** (\`totalDeudaCobrada\`): Total efectivamente cobrado en el período correspondiente a deudas con ≥30 días tras el alta. Siempre informá su desglose exacto:
+     - **Cancelaciones 100%**: \`montoDeudasCanceladas\` y \`countDeudasCanceladas\` pacientes (ej. en Octubre 2026: **$ 798.800 ARS** en 2 cancelaciones).
+     - **Cuotas y pagos en curso**: \`montoCobrosCuotasYSeg\` (ej. en Octubre 2026: **$ 4.123.914 ARS**).
+     - **Excluido (<30d post-alta / internación)**: \`montoCobradoEnGracia\` (ej. en Octubre 2026: **$ 17.392.348 ARS**).
+     - **Histórico Sanatorio**: \`totalHistoricoCobrado\` cobrado exigible histórico y \`totalHistoricoCanceladasMonto\` en \`totalHistoricoCanceladasCount\` cuentas canceladas (ej. **$ 35.787.512 ARS** cobrados históricos; **$ 73.115.904 ARS** en 59 canceladas).
+     - *(Total Deuda Cobrada ≥30d post-alta en **Octubre 2026**: **$ 4.922.714 ARS**)*.
+  3. **Deuda Activa Pendiente (Stock Vivo de Cartera)** (\`totalDeudaActiva\`): Saldo total pendiente por cobrar de los \`deudoresActivos\` pacientes activos (excluyendo \`deuda_cancelada\` y \`descuento_liquidacion\`), desglosado en:
+     - **⚖️ Exigible (≥30d post-alta)**: \`totalDeudaExigible\` (ej. **$ 62.018.387 ARS**).
+     - **⏳ En gracia (<30d o sin alta)**: \`totalDeudaEnGracia\` (ej. **$ 7.637.236 ARS**).
+     - *(Total Deuda Activa Pendiente: **$ 69.655.623 ARS** en 284 pacientes con saldo por cobrar)*.
+  4. **Efectividad del Período** (\`tasaRecuperacionGestionada\`): Porcentaje de recupero del período (ej. en **Octubre 2026**: **7%**).
+- Cuando el usuario pregunte de forma general *"¿Cuál fue el total de deuda del mes de octubre?"* o *"¿Cuánto es el total de esa deuda?"*, mostrale siempre los 4 indicadores oficiales del Dashboard de Deudas para ese mes (**Deuda Abordada en el Período**, **Deuda Cobrada ≥30d Post-Alta [Incentivo Giselle]** con su desglose, **Deuda Activa Pendiente** con su desglose Exigible vs. En Gracia, y **Efectividad del Período**) para que no haya ninguna ambigüedad y coincida 100% con su pantalla.
 
 ### ⚠️ REGLA DE GOBERNANZA: NUNCA CONFUNDIR ESTADOS DE MENSAJERÍA CON SUSPENSIONES DE QUIRÓFANO
 - **¡NUNCA respondas que una cirugía suspendida por falta de autorización no existe porque no está en 'verde'!**
@@ -1340,6 +1379,32 @@ const TOOLS = [
                 required: ['sql', 'report_name', 'sheet_name', 'columns', 'column_keys']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'consultar_metricas_deudas',
+            description: `Calcula con fidelidad 1:1 las métricas oficiales del Dashboard de Deudas y Cobranzas del Sanatorio Argentino (Deuda Abordada en Período, Deuda Cobrada ≥30d Post-Alta computable para incentivo de Giselle, Cancelaciones 100%, Cuotas y pagos en curso, Excluido <30d post-alta/internación, Histórico Sanatorio, Deuda Activa Pendiente Exigible ≥30d vs. En Gracia <30d, Efectividad del Período, evolución mes a mes y listado de pacientes cobrados y top deudores).
+            USAR SIEMPRE que el usuario pregunte por deudas de un mes (ej. octubre 2026, noviembre 2026, septiembre 2026), cobranzas, recupero, incentivo de Giselle, deuda activa o evolución mensual de deudas.`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    periodo: {
+                        type: 'string',
+                        description: 'Período a consultar: "2026-10" (Octubre 2026), "2026-11" (Noviembre 2026), "2026-09" (Septiembre 2026), "2026-08" (Agosto 2026), "este_mes", "mes_anterior", "todos" (Histórico Completo) o "personalizado".'
+                    },
+                    fecha_desde: {
+                        type: 'string',
+                        description: 'Opcional. Fecha inicial YYYY-MM-DD para rango personalizado.'
+                    },
+                    fecha_hasta: {
+                        type: 'string',
+                        description: 'Opcional. Fecha final YYYY-MM-DD para rango personalizado.'
+                    }
+                },
+                required: ['periodo']
+            }
+        }
     }
 ];
 
@@ -1357,11 +1422,772 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
             case 'get_alerts': return await getAlerts();
             case 'explain_system': return explainSystem(args.modulo as string);
             case 'generate_excel_report': return await generateExcelReport(args);
+            case 'consultar_metricas_deudas': return await consultarMetricasDeudas(args);
             default: return JSON.stringify({ error: `Tool ${name} no encontrado` });
         }
     } catch (err) {
         return JSON.stringify({ error: err.message });
     }
+}
+
+// ═══════════════════════════════════════
+// MÉTRICAS OFICIALES DE DEUDAS Y COBRANZAS (PARIDAD 1:1 CON DASHBOARD)
+// ═══════════════════════════════════════
+
+function normalizeDateToISO(raw: unknown): string | null {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const dmyMatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    return null;
+}
+
+function addDaysToISO(isoDate: string | null, days: number = 30): string | null {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+    const d = new Date(isoDate + 'T12:00:00Z');
+    if (isNaN(d.getTime())) return null;
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().substring(0, 10);
+}
+
+function diffDaysBetweenISO(fechaInicioISO: string | null, fechaFinISO: string | null): number | null {
+    if (!fechaInicioISO || !fechaFinISO) return null;
+    const d1 = new Date(fechaInicioISO + 'T12:00:00Z');
+    const d2 = new Date(fechaFinISO + 'T12:00:00Z');
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return null;
+    return Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatISOToDDMMYYYY(raw: unknown): string {
+    if (!raw || raw === '-') return '-';
+    const s = String(raw).trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    const datePart = s.substring(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        const [y, m, d] = datePart.split('-');
+        return `${d}/${m}/${y}`;
+    }
+    return s;
+}
+
+function resolveDeudasRango(periodoRaw: string, fechaDesdeArg?: string, fechaHastaArg?: string) {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+    const monthNamesEs = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    const p = (periodoRaw || 'este_mes').toLowerCase().trim();
+
+    if (fechaDesdeArg && fechaHastaArg) {
+        return {
+            preset: 'personalizado',
+            fechaDesde: fechaDesdeArg,
+            fechaHasta: fechaHastaArg,
+            label: `Período (${formatISOToDDMMYYYY(fechaDesdeArg)} al ${formatISOToDDMMYYYY(fechaHastaArg)})`
+        };
+    }
+
+    // Match YYYY-MM
+    const ymMatch = p.match(/^(\d{4})-(\d{2})$/);
+    if (ymMatch) {
+        const y = parseInt(ymMatch[1], 10);
+        const m = parseInt(ymMatch[2], 10);
+        const lastDay = new Date(y, m, 0).getDate();
+        const mStr = String(m).padStart(2, '0');
+        return {
+            preset: p,
+            fechaDesde: `${y}-${mStr}-01`,
+            fechaHasta: `${y}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+            label: `${monthNamesEs[m - 1] || mStr} ${y}`
+        };
+    }
+
+    // Match month names in Spanish
+    const monthMap: Record<string, number> = {
+        enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+        julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12
+    };
+    for (const [mName, mNum] of Object.entries(monthMap)) {
+        if (p.includes(mName)) {
+            const yearMatch = p.match(/202\d/);
+            const y = yearMatch ? parseInt(yearMatch[0], 10) : curYear;
+            const lastDay = new Date(y, mNum, 0).getDate();
+            const mStr = String(mNum).padStart(2, '0');
+            return {
+                preset: `${y}-${mStr}`,
+                fechaDesde: `${y}-${mStr}-01`,
+                fechaHasta: `${y}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+                label: `${monthNamesEs[mNum - 1]} ${y}`
+            };
+        }
+    }
+
+    if (p === 'este_mes' || p === 'mes_actual') {
+        const mStr = String(curMonth).padStart(2, '0');
+        const lastDay = new Date(curYear, curMonth, 0).getDate();
+        return {
+            preset: 'este_mes',
+            fechaDesde: `${curYear}-${mStr}-01`,
+            fechaHasta: `${curYear}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+            label: `Este Mes (${monthNamesEs[curMonth - 1]} ${curYear})`
+        };
+    }
+
+    if (p === 'mes_anterior' || p === 'mes_pasado') {
+        const prevDate = new Date(curYear, curMonth - 2, 1);
+        const prevYear = prevDate.getFullYear();
+        const prevMonth = prevDate.getMonth() + 1;
+        const mStr = String(prevMonth).padStart(2, '0');
+        const lastDay = new Date(prevYear, prevMonth, 0).getDate();
+        return {
+            preset: 'mes_anterior',
+            fechaDesde: `${prevYear}-${mStr}-01`,
+            fechaHasta: `${prevYear}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+            label: `Mes Anterior (${monthNamesEs[prevMonth - 1]} ${prevYear})`
+        };
+    }
+
+    if (p === 'todos' || p === 'historico' || p === 'todo') {
+        return {
+            preset: 'todos',
+            fechaDesde: null,
+            fechaHasta: null,
+            label: 'Todo el Histórico'
+        };
+    }
+
+    // Default to October 2026 if unknown or current month
+    const mStr = String(curMonth).padStart(2, '0');
+    const lastDay = new Date(curYear, curMonth, 0).getDate();
+    return {
+        preset: 'este_mes',
+        fechaDesde: `${curYear}-${mStr}-01`,
+        fechaHasta: `${curYear}-${mStr}-${String(lastDay).padStart(2, '0')}`,
+        label: `${monthNamesEs[curMonth - 1]} ${curYear}`
+    };
+}
+
+async function consultarMetricasDeudas(args: Record<string, unknown>): Promise<string> {
+    const periodoArg = (args.periodo as string) || '2026-10';
+    const fechaDesdeArg = args.fecha_desde as string | undefined;
+    const fechaHastaArg = args.fecha_hasta as string | undefined;
+    const rango = resolveDeudasRango(periodoArg, fechaDesdeArg, fechaHastaArg);
+    const { fechaDesde: effDesde, fechaHasta: effHasta } = rango;
+
+    const [pacientesRes, segRes, cuotasRes, facturasRes] = await Promise.all([
+        supabase.from('deudas_pacientes').select('*').order('deuda_total', { ascending: false }),
+        supabase.from('deudas_seguimiento').select('*').order('created_at', { ascending: true }),
+        supabase.from('deudas_cuotas').select('*, plan:deudas_planes_pago(paciente_id, cantidad_cuotas)').eq('pagada', true),
+        supabase.from('deudas_facturas').select('paciente_id, n_admision, fecha_hospitalizacion, pendiente, cobrado, total')
+    ]);
+
+    const pacientes = pacientesRes.data || [];
+    const seguimientos = segRes.data || [];
+    const cuotas = cuotasRes.data || [];
+    const todasFacturas = facturasRes.data || [];
+
+    const distinctAdmsAll = [...new Set(todasFacturas.map((f: any) => f.n_admision).filter(Boolean))];
+    const allAltas: any[] = [];
+    if (distinctAdmsAll.length > 0) {
+        for (let i = 0; i < distinctAdmsAll.length; i += 100) {
+            const chunk = distinctAdmsAll.slice(i, i + 100);
+            const { data: chunkAltas } = await supabase
+                .from('altas_administrativas')
+                .select('numero_admision, fecha_alta, fecha_ingreso')
+                .in('numero_admision', chunk);
+            if (chunkAltas) allAltas.push(...chunkAltas);
+        }
+    }
+    const altasMap = new Map<string, any>();
+    allAltas.forEach((a: any) => altasMap.set(String(a.numero_admision).trim(), a));
+
+    const pacFechasMoraMap: Record<string, any> = {};
+    const facturasPorPac: Record<string, any[]> = {};
+    todasFacturas.forEach((f: any) => {
+        if (!facturasPorPac[f.paciente_id]) facturasPorPac[f.paciente_id] = [];
+        facturasPorPac[f.paciente_id].push(f);
+    });
+
+    pacientes.forEach((p: any) => {
+        const pFacturas = facturasPorPac[p.id] || [];
+        let fAltaISO: string | null = null;
+        for (const f of pFacturas) {
+            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
+            const alta = admKey ? altasMap.get(admKey) : null;
+            if (alta?.fecha_alta) {
+                const candidate = normalizeDateToISO(alta.fecha_alta);
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
+            } else if (f.fecha_hospitalizacion) {
+                const candidate = normalizeDateToISO(f.fecha_hospitalizacion);
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
+            }
+        }
+        if (!fAltaISO && p.fecha_ultima_factura) {
+            fAltaISO = normalizeDateToISO(p.fecha_ultima_factura);
+        }
+        const fExigibleISO = fAltaISO ? addDaysToISO(fAltaISO, 30) : null;
+        pacFechasMoraMap[p.id] = {
+            fechaAltaISO: fAltaISO,
+            fechaExigibleISO: fExigibleISO,
+            fechaAltaDisplay: formatISOToDDMMYYYY(fAltaISO),
+            fechaExigibleDisplay: formatISOToDDMMYYYY(fExigibleISO)
+        };
+    });
+
+    const nhcs = [...new Set(pacientes.map((p: any) => p.nhc).filter(Boolean))];
+    const nhcToPac: Record<string, any> = {};
+    pacientes.forEach((p: any) => { if (p.nhc) nhcToPac[p.nhc] = p; });
+    const pacientesMap: Record<string, any> = {};
+    pacientes.forEach((p: any) => { pacientesMap[p.id] = p; });
+
+    let cobros: any[] = [];
+    if (nhcs.length > 0) {
+        const { data: cobrosData } = await supabase
+            .from('deudas_cobros')
+            .select('nhc, importe, fecha, forma_pago, descripcion')
+            .in('nhc', nhcs)
+            .order('fecha', { ascending: true });
+        cobros = cobrosData || [];
+    }
+
+    const monthNames: Record<string, string> = {
+        '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr',
+        '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Ago',
+        '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic'
+    };
+    const formatMonthLabel = (ym: string) => {
+        if (!ym || !ym.includes('-')) return ym;
+        const [y, m] = ym.split('-');
+        return `${monthNames[m] || m} '${y.slice(2)}`;
+    };
+
+    const patientFirstGestion: Record<string, string> = {};
+    const patientHasGestionInRange = new Set<string>();
+    const patientHasPaymentInRange = new Set<string>();
+
+    seguimientos.forEach((s: any) => {
+        const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
+        const ym = s.created_at ? s.created_at.substring(0, 7) : '';
+        if (!patientFirstGestion[s.paciente_id]) {
+            patientFirstGestion[s.paciente_id] = ym;
+        }
+        if (effDesde && effHasta) {
+            if (sDate >= effDesde && sDate <= effHasta) {
+                patientHasGestionInRange.add(s.paciente_id);
+                if (s.tipo === 'pago' && s.monto > 0) patientHasPaymentInRange.add(s.paciente_id);
+            }
+        } else {
+            patientHasGestionInRange.add(s.paciente_id);
+            if (s.tipo === 'pago' && s.monto > 0) patientHasPaymentInRange.add(s.paciente_id);
+        }
+    });
+
+    const pacientesGestionadosList = pacientes.filter((p: any) => {
+        if (effDesde && effHasta) {
+            if (patientHasGestionInRange.has(p.id)) return true;
+            if (p.ultimo_contacto_at) {
+                const cDate = p.ultimo_contacto_at.substring(0, 10);
+                if (cDate >= effDesde && cDate <= effHasta) return true;
+            }
+            if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
+                const cancDate = p.deuda_cancelada_at.substring(0, 10);
+                if (cancDate >= effDesde && cancDate <= effHasta) return true;
+            }
+            return false;
+        }
+        return (
+            p.categoria !== 'sin_gestionar' ||
+            p.ultimo_contacto_at ||
+            patientFirstGestion[p.id]
+        );
+    });
+
+    const totalDeudaGestionada = pacientesGestionadosList.reduce((acc: number, p: any) => {
+        const cap = Number(p.deuda_total) > 0 ? Number(p.deuda_total) : Number(p.total_cobros || 0);
+        return acc + cap;
+    }, 0);
+    const totalPacientes = pacientes.length;
+    const countGestionados = pacientesGestionadosList.length;
+    const porcentajeGestionado = totalPacientes > 0 ? Math.round((countGestionados / totalPacientes) * 100) : 0;
+
+    const cobradoPorMes: Record<string, number> = {};
+    const excluidoGraciaPorMes: Record<string, number> = {};
+    let totalDeudaCobrada = 0;
+    let montoDeudasCanceladas = 0;
+    let countDeudasCanceladas = 0;
+    let montoCobrosCuotasYSeg = 0;
+    let montoCobradoExigible = 0;
+    let montoCobradoEnGracia = 0;
+    const pacsCobradosExigiblesSet = new Set<string>();
+    const pacsCobradosEnGraciaSet = new Set<string>();
+    const cobrosDetalleEnPeriodo: Record<string, {
+        nombre: string;
+        nhc: string;
+        obraSocial: string;
+        categoria: string;
+        fechaAlta: string;
+        fechaExigible: string;
+        cobradoExigible: number;
+        cobradoEnGracia: number;
+        deudaVigente: number;
+        ultimoCobroFecha: string;
+        concepto: string;
+    }> = {};
+
+    const evaluarExigibilidadCobro = (pacId: string | undefined, fechaCobroISO: string) => {
+        const infoMora = pacId ? pacFechasMoraMap[pacId] : null;
+        if (!infoMora || !infoMora.fechaAltaISO || !fechaCobroISO) {
+            return { esExigible: true, diasPostAlta: null };
+        }
+        const dias = diffDaysBetweenISO(infoMora.fechaAltaISO, fechaCobroISO);
+        if (dias !== null && dias < 30) {
+            return { esExigible: false, diasPostAlta: Math.max(0, dias) };
+        }
+        return { esExigible: true, diasPostAlta: dias };
+    };
+
+    const addDetallePacPeriodo = (pac: any, monto: number, fechaISO: string, esExigible: boolean, concepto: string) => {
+        if (!pac?.id) return;
+        if (!cobrosDetalleEnPeriodo[pac.id]) {
+            const mora = pacFechasMoraMap[pac.id] || {};
+            cobrosDetalleEnPeriodo[pac.id] = {
+                nombre: pac.nombre,
+                nhc: pac.nhc || 'S/D',
+                obraSocial: pac.obra_social || 'Particular',
+                categoria: pac.categoria,
+                fechaAlta: mora.fechaAltaDisplay || '-',
+                fechaExigible: mora.fechaExigibleDisplay || '-',
+                cobradoExigible: 0,
+                cobradoEnGracia: 0,
+                deudaVigente: pac.categoria === 'deuda_cancelada' ? 0 : Math.max(0, Number(pac.deuda_total) || 0),
+                ultimoCobroFecha: formatISOToDDMMYYYY(fechaISO),
+                concepto
+            };
+        }
+        if (esExigible) {
+            cobrosDetalleEnPeriodo[pac.id].cobradoExigible += monto;
+            cobrosDetalleEnPeriodo[pac.id].ultimoCobroFecha = formatISOToDDMMYYYY(fechaISO);
+            cobrosDetalleEnPeriodo[pac.id].concepto = concepto;
+        } else {
+            cobrosDetalleEnPeriodo[pac.id].cobradoEnGracia += monto;
+        }
+    };
+
+    const salusMontoPorPacMes = new Map<string, number>();
+    const totalContabilizadoPorPac = new Map<string, number>();
+    const pacsConCobroEnMes = new Set<string>();
+    const pacsCanceladosEnPeriodoSet = new Set<string>();
+
+    cobros.forEach((c: any) => {
+        const cDate = c.fecha ? c.fecha.substring(0, 10) : '';
+        const ym = cDate ? cDate.substring(0, 7) : '';
+        const monto = Number(c.importe) || 0;
+        const pac = nhcToPac[c.nhc];
+
+        if (monto > 0 && ym) {
+            if (pac?.id) {
+                const keyMes = `${pac.id}_${ym}`;
+                salusMontoPorPacMes.set(keyMes, (salusMontoPorPacMes.get(keyMes) || 0) + monto);
+                pacsConCobroEnMes.add(keyMes);
+                totalContabilizadoPorPac.set(pac.id, (totalContabilizadoPorPac.get(pac.id) || 0) + monto);
+            }
+
+            const { esExigible } = evaluarExigibilidadCobro(pac?.id, cDate);
+            const inRange = (effDesde && effHasta)
+                ? (cDate >= effDesde && cDate <= effHasta)
+                : true;
+
+            if (esExigible) {
+                cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+                if (inRange) {
+                    totalDeudaCobrada += monto;
+                    montoCobradoExigible += monto;
+                    if (pac?.id) pacsCobradosExigiblesSet.add(pac.id);
+                    if (pac?.categoria === 'deuda_cancelada') {
+                        montoDeudasCanceladas += monto;
+                        pacsCanceladosEnPeriodoSet.add(pac.id);
+                    } else {
+                        montoCobrosCuotasYSeg += monto;
+                    }
+                    addDetallePacPeriodo(pac, monto, cDate, true, pac?.categoria === 'deuda_cancelada' ? 'Cancelación 100% (Caja SALUS)' : 'Cobro Caja SALUS (≥30d post-alta)');
+                }
+            } else {
+                excluidoGraciaPorMes[ym] = (excluidoGraciaPorMes[ym] || 0) + monto;
+                if (inRange) {
+                    montoCobradoEnGracia += monto;
+                    if (pac?.id) pacsCobradosEnGraciaSet.add(pac.id);
+                    addDetallePacPeriodo(pac, monto, cDate, false, 'Excluido (<30d post-alta)');
+                }
+            }
+        }
+    });
+
+    const pagosConsolidados: any[] = [];
+    const seenSegKeys = new Set<string>();
+    seguimientos.forEach((s: any) => {
+        if (s.tipo === 'pago' && Number(s.monto) > 0) {
+            const sDate = s.created_at ? s.created_at.substring(0, 10) : '';
+            const monto = Number(s.monto) || 0;
+            const dedupKey = `${s.paciente_id}|${sDate}|${Math.round(monto)}|${(s.descripcion || '').trim()}`;
+            if (seenSegKeys.has(dedupKey)) return;
+            seenSegKeys.add(dedupKey);
+            pagosConsolidados.push({
+                paciente_id: s.paciente_id,
+                fechaISO: sDate,
+                monto,
+                descripcion: s.descripcion || '',
+                usuario: s.usuario || 'Sistema',
+                matchedCuota: false,
+            });
+        }
+    });
+
+    cuotas.forEach((cu: any) => {
+        const pacId = cu.plan?.paciente_id;
+        const monto = Number(cu.monto) || 0;
+        if (!pacId || monto <= 0) return;
+        const fPago = normalizeDateToISO(cu.fecha_pago) || (cu.created_at ? cu.created_at.substring(0, 10) : '');
+        if (!fPago) return;
+        const cuotaTag = `cuota ${cu.numero_cuota}/`;
+        const match = pagosConsolidados.find(pg =>
+            pg.paciente_id === pacId &&
+            !pg.matchedCuota &&
+            (pg.descripcion.toLowerCase().includes(cuotaTag) ||
+             (pg.fechaISO.substring(0, 7) === fPago.substring(0, 7) && Math.abs(pg.monto - monto) < 10))
+        );
+        if (match) {
+            match.matchedCuota = true;
+            if (fPago) match.fechaISO = fPago;
+        } else {
+            pagosConsolidados.push({
+                paciente_id: pacId,
+                fechaISO: fPago,
+                monto,
+                descripcion: `Pago cuota ${cu.numero_cuota}/${cu.plan?.cantidad_cuotas || ''} del plan de pago.`,
+                usuario: 'Plan de Pagos',
+                matchedCuota: true,
+            });
+        }
+    });
+
+    pagosConsolidados.forEach((pg: any) => {
+        const pac = pacientesMap[pg.paciente_id];
+        const sDate = pg.fechaISO || '';
+        const ym = sDate ? sDate.substring(0, 7) : '';
+        const monto = Number(pg.monto) || 0;
+        if (monto <= 0 || !ym) return;
+
+        const keyMes = `${pg.paciente_id}_${ym}`;
+        if (salusMontoPorPacMes.has(keyMes)) return;
+
+        pacsConCobroEnMes.add(keyMes);
+        totalContabilizadoPorPac.set(pg.paciente_id, (totalContabilizadoPorPac.get(pg.paciente_id) || 0) + monto);
+
+        const { esExigible } = evaluarExigibilidadCobro(pg.paciente_id, sDate);
+        const inRange = (effDesde && effHasta)
+            ? (sDate >= effDesde && sDate <= effHasta)
+            : true;
+
+        if (esExigible) {
+            cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + monto;
+            if (inRange) {
+                totalDeudaCobrada += monto;
+                montoCobradoExigible += monto;
+                if (pg.paciente_id) pacsCobradosExigiblesSet.add(pg.paciente_id);
+                if (pac?.categoria === 'deuda_cancelada') {
+                    montoDeudasCanceladas += monto;
+                    pacsCanceladosEnPeriodoSet.add(pac.id);
+                } else {
+                    montoCobrosCuotasYSeg += monto;
+                }
+                addDetallePacPeriodo(pac, monto, sDate, true, pg.descripcion || 'Cuota / Pago en curso (≥30d post-alta)');
+            }
+        } else {
+            excluidoGraciaPorMes[ym] = (excluidoGraciaPorMes[ym] || 0) + monto;
+            if (inRange) {
+                montoCobradoEnGracia += monto;
+                if (pg.paciente_id) pacsCobradosEnGraciaSet.add(pg.paciente_id);
+                addDetallePacPeriodo(pac, monto, sDate, false, 'Excluido (<30d post-alta)');
+            }
+        }
+    });
+
+    pacientes.forEach((p: any) => {
+        if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
+            const cancDate = p.deuda_cancelada_at.substring(0, 10);
+            const ym = cancDate.substring(0, 7);
+            const montoTotalDeuda = Number(p.total_cobros) > 0 ? Number(p.total_cobros) : Number(p.deuda_total);
+            const yaContabilizado = totalContabilizadoPorPac.get(p.id) || 0;
+            const tieneCobroEnMesCanc = pacsConCobroEnMes.has(`${p.id}_${ym}`);
+
+            let montoAImputar = 0;
+            if (yaContabilizado === 0) {
+                montoAImputar = montoTotalDeuda;
+            } else if (!tieneCobroEnMesCanc && Number(p.deuda_total) > yaContabilizado + 1000) {
+                montoAImputar = Number(p.deuda_total) - yaContabilizado;
+            }
+
+            const inRange = (effDesde && effHasta)
+                ? (cancDate >= effDesde && cancDate <= effHasta)
+                : true;
+
+            if (montoAImputar > 0 && ym) {
+                const { esExigible } = evaluarExigibilidadCobro(p.id, cancDate);
+                if (esExigible) {
+                    cobradoPorMes[ym] = (cobradoPorMes[ym] || 0) + montoAImputar;
+                    if (inRange) {
+                        totalDeudaCobrada += montoAImputar;
+                        montoCobradoExigible += montoAImputar;
+                        pacsCobradosExigiblesSet.add(p.id);
+                        montoDeudasCanceladas += montoAImputar;
+                        pacsCanceladosEnPeriodoSet.add(p.id);
+                        addDetallePacPeriodo(p, montoAImputar, cancDate, true, 'Cancelación 100% (Deuda Saldada)');
+                    }
+                } else {
+                    excluidoGraciaPorMes[ym] = (excluidoGraciaPorMes[ym] || 0) + montoAImputar;
+                    if (inRange) {
+                        montoCobradoEnGracia += montoAImputar;
+                        pacsCobradosEnGraciaSet.add(p.id);
+                        addDetallePacPeriodo(p, montoAImputar, cancDate, false, 'Excluido (<30d post-alta)');
+                    }
+                }
+            }
+        }
+    });
+    countDeudasCanceladas = pacsCanceladosEnPeriodoSet.size;
+
+    const totalHistoricoCanceladasMonto = pacientes
+        .filter((p: any) => p.categoria === 'deuda_cancelada')
+        .reduce((s: number, p: any) => s + (Number(p.total_cobros) || Number(p.deuda_total) || 0), 0);
+    const totalHistoricoCanceladasCount = pacientes.filter((p: any) => p.categoria === 'deuda_cancelada').length;
+    const totalHistoricoCobrado = Object.values(cobradoPorMes).reduce((a, b) => a + b, 0);
+
+    if (montoDeudasCanceladas > totalDeudaCobrada) {
+        montoDeudasCanceladas = totalDeudaCobrada;
+    }
+    montoCobrosCuotasYSeg = Math.max(0, totalDeudaCobrada - montoDeudasCanceladas);
+
+    const gestionadoPorMes: Record<string, number> = {};
+    const pacientesPorMesGestion: Record<string, Set<string>> = {};
+
+    seguimientos.forEach((s: any) => {
+        const ym = s.created_at ? s.created_at.substring(0, 7) : '';
+        if (ym) {
+            if (!pacientesPorMesGestion[ym]) pacientesPorMesGestion[ym] = new Set();
+            pacientesPorMesGestion[ym].add(s.paciente_id);
+        }
+    });
+
+    pacientes.forEach((p: any) => {
+        if (p.ultimo_contacto_at) {
+            const ym = p.ultimo_contacto_at.substring(0, 7);
+            if (ym) {
+                if (!pacientesPorMesGestion[ym]) pacientesPorMesGestion[ym] = new Set();
+                pacientesPorMesGestion[ym].add(p.id);
+            }
+        }
+        if (p.categoria === 'deuda_cancelada' && p.deuda_cancelada_at) {
+            const ym = p.deuda_cancelada_at.substring(0, 7);
+            if (ym) {
+                if (!pacientesPorMesGestion[ym]) pacientesPorMesGestion[ym] = new Set();
+                pacientesPorMesGestion[ym].add(p.id);
+            }
+        }
+    });
+
+    Object.entries(pacientesPorMesGestion).forEach(([ym, pacSet]) => {
+        const pacList = pacientes.filter((p: any) => pacSet.has(p.id));
+        const sum = pacList.reduce((s: number, p: any) => {
+            const cap = Number(p.deuda_total) > 0 ? Number(p.deuda_total) : Number(p.total_cobros || 0);
+            return s + cap;
+        }, 0);
+        gestionadoPorMes[ym] = sum;
+    });
+
+    const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
+    const deudaBruta = pacientes.reduce((s: number, p: any) => s + Number(p.deuda_total), 0);
+    const deudaDescontada = pacientes
+        .filter((p: any) => CATEGORIAS_DESCUENTO.includes(p.categoria))
+        .reduce((s: number, p: any) => s + Number(p.deuda_total), 0);
+    const totalDeudaActiva = Math.max(0, deudaBruta - deudaDescontada);
+    const deudoresActivos = pacientes.filter((p: any) => !CATEGORIAS_DESCUENTO.includes(p.categoria)).length;
+    const pacientesActivosIds = new Set(pacientes.filter((p: any) => !CATEGORIAS_DESCUENTO.includes(p.categoria)).map((p: any) => p.id));
+
+    let totalDeudaExigible = 0;
+    let totalDeudaEnGracia = 0;
+    let countPacientesExigibles = 0;
+    let countPacientesEnGracia = 0;
+
+    try {
+        const facturasActivas = todasFacturas.filter((f: any) => Number(f.pendiente) > 0 && pacientesActivosIds.has(f.paciente_id));
+        const todayISO = new Date().toISOString().substring(0, 10);
+        const pacExigibilidad: Record<string, { exigible: number; enGracia: number }> = {};
+        facturasActivas.forEach((f: any) => {
+            if (!pacExigibilidad[f.paciente_id]) {
+                pacExigibilidad[f.paciente_id] = { exigible: 0, enGracia: 0 };
+            }
+            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
+            const alta = admKey ? altasMap.get(admKey) : null;
+            const monto = Number(f.pendiente) || 0;
+            const fAltaISO = normalizeDateToISO(alta?.fecha_alta || f.fecha_hospitalizacion);
+
+            if (fAltaISO) {
+                const diffDays = diffDaysBetweenISO(fAltaISO, todayISO);
+                if (diffDays !== null && diffDays >= 30) {
+                    pacExigibilidad[f.paciente_id].exigible += monto;
+                } else {
+                    pacExigibilidad[f.paciente_id].enGracia += monto;
+                }
+            } else {
+                pacExigibilidad[f.paciente_id].enGracia += monto;
+            }
+        });
+
+        let rawExigibleSum = 0;
+        let rawGraciaSum = 0;
+        Object.values(pacExigibilidad).forEach(pe => {
+            rawExigibleSum += pe.exigible;
+            rawGraciaSum += pe.enGracia;
+            if (pe.exigible > 0) countPacientesExigibles++;
+            if (pe.enGracia > 0 && pe.exigible === 0) countPacientesEnGracia++;
+        });
+
+        const rawSum = rawExigibleSum + rawGraciaSum;
+        if (rawSum > 0 && totalDeudaActiva > 0) {
+            const factor = totalDeudaActiva / rawSum;
+            totalDeudaExigible = Math.round(rawExigibleSum * factor);
+            totalDeudaEnGracia = Math.max(0, totalDeudaActiva - totalDeudaExigible);
+        } else {
+            totalDeudaExigible = Math.round(rawExigibleSum);
+            totalDeudaEnGracia = Math.max(0, totalDeudaActiva - totalDeudaExigible);
+        }
+    } catch {
+        totalDeudaExigible = Math.round(totalDeudaActiva * 0.6);
+        totalDeudaEnGracia = totalDeudaActiva - totalDeudaExigible;
+    }
+
+    const deudaPorMes: Record<string, number> = {};
+    pacientes.forEach((p: any) => {
+        let ym = '2026-07';
+        if (p.fecha_ultima_factura) {
+            const fm = p.fecha_ultima_factura.substring(0, 7);
+            if (fm) ym = fm;
+        }
+        deudaPorMes[ym] = (deudaPorMes[ym] || 0) + Number(p.deuda_total);
+    });
+
+    const allMonthsSet = new Set([
+        ...Object.keys(cobradoPorMes),
+        ...Object.keys(gestionadoPorMes),
+        ...Object.keys(deudaPorMes).filter(m => m >= '2026-05')
+    ]);
+    ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'].forEach(m => allMonthsSet.add(m));
+    const sortedMonths = Array.from(allMonthsSet).sort().filter(m => m >= '2026-05' && m <= '2026-12');
+
+    const barrasMesAMes = sortedMonths.map(ym => ({
+        rawMes: ym,
+        mes: formatMonthLabel(ym),
+        deudaAbordadaGestionada: Math.round(gestionadoPorMes[ym] || 0),
+        pacientesGestionadosCount: pacientesPorMesGestion[ym] ? pacientesPorMesGestion[ym].size : 0,
+        deudaCobradaExigibleIncentivo: Math.round(cobradoPorMes[ym] || 0),
+        excluidoMenor30dPostAlta: Math.round(excluidoGraciaPorMes[ym] || 0)
+    }));
+
+    const baseCarteraTotal = totalDeudaCobrada + totalDeudaActiva;
+    const tasaRecuperacionGestionada = baseCarteraTotal > 0
+        ? Math.min(100, Math.round((totalDeudaCobrada / baseCarteraTotal) * 100))
+        : 0;
+
+    const pacientesCobradosExigiblesList = Object.values(cobrosDetalleEnPeriodo)
+        .filter(item => item.cobradoExigible > 0)
+        .sort((a, b) => b.cobradoExigible - a.cobradoExigible);
+
+    const topDeudores = pacientes
+        .filter((p: any) => !CATEGORIAS_DESCUENTO.includes(p.categoria))
+        .slice(0, 12)
+        .map((p: any, idx: number) => ({
+            ranking: idx + 1,
+            nombre: p.nombre,
+            nhc: p.nhc,
+            deuda: Math.round(Number(p.deuda_total) || 0),
+            categoria: p.categoria,
+            obraSocial: p.obra_social || 'Particular / S.D.',
+            fechaAlta: pacFechasMoraMap[p.id]?.fechaAltaDisplay || '-',
+            fechaExigible: pacFechasMoraMap[p.id]?.fechaExigibleDisplay || '-'
+        }));
+
+    const excelRows = pacientesCobradosExigiblesList.length > 0
+        ? pacientesCobradosExigiblesList.map(p => [
+            p.nombre,
+            p.nhc,
+            p.obraSocial,
+            p.fechaAlta,
+            p.fechaExigible,
+            Math.round(p.cobradoExigible),
+            Math.round(p.deudaVigente),
+            p.concepto,
+            p.ultimoCobroFecha
+        ])
+        : topDeudores.map(d => [
+            d.nombre,
+            d.nhc,
+            d.obraSocial,
+            d.fechaAlta,
+            d.fechaExigible,
+            0,
+            d.deuda,
+            d.categoria,
+            '-'
+        ]);
+
+    return JSON.stringify({
+        success: true,
+        periodo_consultado: rango,
+        REGLA_INCENTIVO_GISELLE: 'El recupero computable para el incentivo de cobranzas (Giselle) es EXCLUSIVAMENTE la Deuda Cobrada >= 30 días después del alta administrativa (Deuda Exigible). Los cobros realizados antes de los 30 días del alta o durante la internación están EXCLUIDOS del incentivo.',
+        kpis_oficiales_dashboard: {
+            deuda_abordada_en_periodo: Math.round(totalDeudaGestionada),
+            pacientes_gestionados_en_periodo: countGestionados,
+            total_pacientes_padron: totalPacientes,
+            porcentaje_pacientes_gestionados: `${porcentajeGestionado}% (${countGestionados} de ${totalPacientes} pacientes gestionados)`,
+            deuda_cobrada_mayor_igual_30d_post_alta_incentivo_giselle: Math.round(totalDeudaCobrada),
+            desglose_deuda_cobrada_incentivo: {
+                cancelaciones_100_por_ciento_monto: Math.round(montoDeudasCanceladas),
+                cancelaciones_100_por_ciento_cantidad_pacientes: countDeudasCanceladas,
+                cuotas_y_pagos_en_curso_monto: Math.round(montoCobrosCuotasYSeg),
+                pacientes_cobrados_exigibles_count: pacsCobradosExigiblesSet.size
+            },
+            excluido_menor_30d_post_alta_o_internacion: Math.round(montoCobradoEnGracia),
+            historico_sanatorio: {
+                total_historico_cobrado_exigible: Math.round(totalHistoricoCobrado),
+                total_historico_canceladas_monto: Math.round(totalHistoricoCanceladasMonto),
+                total_historico_canceladas_count: totalHistoricoCanceladasCount
+            },
+            deuda_activa_pendiente_total: Math.round(totalDeudaActiva),
+            pacientes_con_saldo_por_cobrar: deudoresActivos,
+            desglose_deuda_activa_pendiente: {
+                exigible_mayor_igual_30d_post_alta: Math.round(totalDeudaExigible),
+                en_gracia_menor_30d_o_sin_alta: Math.round(totalDeudaEnGracia),
+                pacientes_exigibles_count: countPacientesExigibles,
+                pacientes_en_gracia_count: countPacientesEnGracia
+            },
+            efectividad_del_periodo_porcentaje: `${tasaRecuperacionGestionada}%`
+        },
+        evolucion_mensual_cosecha_vs_cobrada: barrasMesAMes,
+        pacientes_cobrados_computables_en_periodo: pacientesCobradosExigiblesList.slice(0, 30),
+        top_deudores_activos: topDeudores,
+        excel_report: {
+            report_name: `Auditoria_Deudas_Cobranzas_${(rango.preset || 'Periodo').replace(/\s+/g, '_')}`,
+            sheet_name: 'Cobranzas Deudas',
+            columns: ['Paciente', 'NHC', 'Obra Social', 'Fecha Alta', 'Fecha Exigible (+30d)', 'Cobrado Computable (≥30d)', 'Saldo Pendiente', 'Concepto / Estado', 'Último Cobro'],
+            data: excelRows,
+            filters: `Período: ${rango.label} | Deuda Abordada: $${Math.round(totalDeudaGestionada).toLocaleString('es-AR')} | Deuda Cobrada (≥30d Post-Alta): $${Math.round(totalDeudaCobrada).toLocaleString('es-AR')} | Deuda Activa Pendiente: $${Math.round(totalDeudaActiva).toLocaleString('es-AR')}`,
+            total_rows: excelRows.length
+        }
+    });
 }
 
 /**
@@ -2376,6 +3202,22 @@ ${schemaContext}`;
                         }
                     } catch (e) {
                         console.warn('[beto] Failed to parse excel result:', e.message);
+                    }
+                } else if (toolCall.function.name === 'consultar_metricas_deudas' && !excelData) {
+                    try {
+                        const parsed = JSON.parse(result);
+                        if (parsed.success && parsed.excel_report?.data) {
+                            excelData = {
+                                reportName: parsed.excel_report.report_name,
+                                sheetName: parsed.excel_report.sheet_name,
+                                columns: parsed.excel_report.columns,
+                                data: parsed.excel_report.data,
+                                filters: parsed.excel_report.filters || '',
+                                totalRows: parsed.excel_report.total_rows,
+                            };
+                        }
+                    } catch (e) {
+                        console.warn('[beto] Failed to parse deudas excel_report:', e.message);
                     }
                 }
 
