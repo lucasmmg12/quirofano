@@ -443,14 +443,18 @@ export async function login(usuario, password) {
         // 2. Verificar Checkbox "Exigir que el usuario actualice su contraseña en su próximo ingreso"
         const mustChangePassword = user.must_change_password === true;
 
+        // 2.5. Verificar si el usuario ya confirmó su Email real y Celular WhatsApp de seguridad
+        const requiresContactConfirmation = user.datos_contacto_confirmados === false;
+
         // 3. Verificar Checkbox "Requerir Autenticación Multifactor 2FA"
         const requiresMfa = user.mfa_enabled === true && !Boolean(user.device_trusted);
 
-        // Si necesita cambiar contraseña o validar 2FA, no guardar sesión final todavía
-        if (mustChangePassword || requiresMfa) {
+        // Si necesita cambiar contraseña, confirmar datos de contacto o validar 2FA, no guardar sesión final todavía
+        if (mustChangePassword || requiresContactConfirmation || requiresMfa) {
             return {
                 success: true,
                 requiresPasswordChange: mustChangePassword,
+                requiresContactConfirmation,
                 requiresMfa,
                 pendingUser: user,
             };
@@ -951,9 +955,9 @@ export async function toggleUserActive(userId, activo) {
 }
 
 /**
- * Cambia la contraseña del usuario
+ * Cambia la contraseña del usuario y opcionalmente guarda Email real + WhatsApp de 10 dígitos
  */
-export async function changePassword(userId, oldPassword, newPassword) {
+export async function changePassword(userId, oldPassword, newPassword, email = null, telefonoWhatsapp = null) {
     if (!oldPassword || !newPassword) {
         return { success: false, error: 'Ambas contraseñas son requeridas' };
     }
@@ -964,11 +968,30 @@ export async function changePassword(userId, oldPassword, newPassword) {
         return { success: false, error: 'Por seguridad, no podés utilizar la contraseña por defecto "123456"' };
     }
 
+    let cleanPhone = null;
+    if (telefonoWhatsapp !== null && String(telefonoWhatsapp).trim() !== '') {
+        const phoneCheck = validateStrictCellphone(telefonoWhatsapp);
+        if (!phoneCheck.valid) {
+            return { success: false, error: phoneCheck.error };
+        }
+        cleanPhone = phoneCheck.clean;
+    }
+
+    let cleanEmail = null;
+    if (email !== null && String(email).trim() !== '') {
+        cleanEmail = String(email).trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+            return { success: false, error: 'Ingresá una dirección de correo electrónico válida (ej: nombre@gmail.com)' };
+        }
+    }
+
     try {
         const { data, error } = await supabase.rpc('change_password', {
             p_user_id: userId,
             p_old_password: oldPassword,
             p_new_password: newPassword,
+            p_email: cleanEmail,
+            p_telefono_whatsapp: cleanPhone,
         });
 
         if (error) {
@@ -980,9 +1003,229 @@ export async function changePassword(userId, oldPassword, newPassword) {
             return { success: false, error: 'La contraseña actual es incorrecta' };
         }
 
-        return { success: true };
+        return {
+            success: true,
+            email: cleanEmail,
+            telefono_whatsapp: cleanPhone,
+        };
     } catch (err) {
         return { success: false, error: 'Error: ' + err.message };
+    }
+}
+
+/**
+ * Confirma y registra el Email real y el Número de Celular WhatsApp (10 dígitos) del usuario
+ * como parte del fortalecimiento de ciberseguridad.
+ */
+export async function updateUserSecurityContact(userId, email, telefonoWhatsapp) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return { success: false, error: 'Ingresá una dirección de correo electrónico real y válida (ej: tu_correo@gmail.com).' };
+    }
+
+    const phoneCheck = validateStrictCellphone(telefonoWhatsapp);
+    if (!phoneCheck.valid) {
+        return { success: false, error: phoneCheck.error };
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('update_user_security_contact', {
+            p_user_id: userId,
+            p_email: cleanEmail,
+            p_telefono_whatsapp: phoneCheck.clean,
+        });
+
+        if (error) {
+            return { success: false, error: error.message || 'No se pudieron guardar los datos de contacto' };
+        }
+        if (!data?.success) {
+            return { success: false, error: data?.error || 'No se pudieron guardar los datos de contacto' };
+        }
+
+        return {
+            success: true,
+            email: data.email || cleanEmail,
+            telefono_whatsapp: data.telefono_whatsapp || phoneCheck.clean,
+        };
+    } catch (err) {
+        return { success: false, error: 'Error: ' + err.message };
+    }
+}
+
+/**
+ * Consulta las opciones de blanqueo/recuperación disponibles para un usuario (sin exponer datos sensibles)
+ */
+export async function getPasswordRecoveryOptions(usuarioInput) {
+    let normalizedUser = String(usuarioInput || '').trim().toLowerCase();
+    if (normalizedUser.includes('@')) {
+        normalizedUser = normalizedUser.split('@')[0];
+    }
+    if (!normalizedUser) {
+        return { found: false, error: 'Ingresá tu nombre de usuario' };
+    }
+
+    try {
+        const { data, error } = await supabase.rpc('get_password_recovery_options', {
+            p_usuario: normalizedUser,
+        });
+
+        if (error) {
+            return { found: false, error: error.message || 'Error al consultar el usuario' };
+        }
+
+        return data || { found: false, error: 'Usuario no encontrado' };
+    } catch (err) {
+        return { found: false, error: 'Error de conexión: ' + err.message };
+    }
+}
+
+/**
+ * Envía un código OTP de 6 dígitos para blanqueo de contraseña ESTRICTAMENTE al canal ya registrado
+ * (Opción 1: 'whatsapp', Opción 2: 'email')
+ */
+export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
+    try {
+        const { data, error } = await supabase.rpc('generate_recovery_otp', {
+            p_user_id: userId,
+            p_channel: channel,
+        });
+
+        if (error) {
+            return { success: false, error: error.message || 'No se pudo generar el código de recuperación' };
+        }
+
+        if (!data?.success) {
+            return { success: false, error: data?.error || 'No se pudo generar el código de recuperación' };
+        }
+
+        const code = data.code;
+        const nombre = data.nombre || 'Colaborador/a';
+        const usuario = data.usuario || '';
+
+        if (channel === 'whatsapp') {
+            const phone = data.telefono_whatsapp;
+            const msgContent =
+                `🔐 *SANATORIO ARGENTINO — Blanqueo de Contraseña*\n\n` +
+                `Hola *${nombre}* (@${usuario}), solicitaste blanquear y restablecer tu contraseña en ADM-QUI.\n\n` +
+                `Tu código de verificación de 6 dígitos es:\n\n` +
+                `👉 *${code}*\n\n` +
+                `⏱️ Válido por 10 minutos. Ingresalo en la pantalla del sistema para colocar tu nueva contraseña.`;
+
+            await sendWhatsAppMessage({
+                content: msgContent,
+                number: phone,
+            });
+
+            return {
+                success: true,
+                channel: 'whatsapp',
+                maskedDestination: data.masked_whatsapp,
+            };
+        } else if (channel === 'email') {
+            const targetEmail = data.email;
+            const { data: emailRes, error: fnErr } = await supabase.functions.invoke('send-security-email', {
+                body: {
+                    to: targetEmail,
+                    nombre,
+                    usuario,
+                    code,
+                },
+            });
+
+            if (fnErr || !emailRes?.success) {
+                return {
+                    success: false,
+                    error:
+                        emailRes?.error ||
+                        'No se pudo enviar el correo en este momento. Por favor utilizá la Opción 1 (WhatsApp o Código de Autenticación).',
+                };
+            }
+
+            return {
+                success: true,
+                channel: 'email',
+                maskedDestination: data.masked_email,
+            };
+        }
+
+        return { success: false, error: 'Canal no soportado' };
+    } catch (err) {
+        return {
+            success: false,
+            error: 'No se pudo enviar el código: ' + (err.message || 'Intente nuevamente'),
+        };
+    }
+}
+
+/**
+ * Ejecuta el blanqueo de contraseña olvidada verificando el código recibido por WhatsApp, Email o App Authenticator
+ */
+export async function resetForgottenPassword({ userId, method, code, newPassword, newEmail = null }) {
+    const cleanCode = String(code || '').replace(/\D/g, '');
+    if (cleanCode.length !== 6) {
+        return { success: false, error: 'Ingresá el código de verificación de 6 dígitos' };
+    }
+    if (!newPassword || newPassword.length < 6) {
+        return { success: false, error: 'La nueva contraseña debe tener al menos 6 caracteres' };
+    }
+    if (newPassword.trim() === '123456') {
+        return { success: false, error: 'Por seguridad no podés usar "123456". Elegí una contraseña personal.' };
+    }
+
+    let cleanEmail = null;
+    if (newEmail && String(newEmail).trim()) {
+        cleanEmail = String(newEmail).trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+            return { success: false, error: 'Ingresá un correo electrónico real y válido' };
+        }
+    }
+
+    try {
+        let totpVerified = false;
+        if (method === 'totp') {
+            const { data: totpData, error: totpErr } = await supabase.rpc('get_registered_totp_for_recovery', {
+                p_user_id: userId,
+            });
+            if (totpErr || !totpData?.success || !totpData?.totp_secret) {
+                return {
+                    success: false,
+                    error: totpData?.error || 'Esta cuenta no tiene un autenticador QR vinculado previamente. Usá WhatsApp o Email.',
+                };
+            }
+            const isValid = await verifyTotpCode(totpData.totp_secret, cleanCode);
+            if (!isValid) {
+                return {
+                    success: false,
+                    error: 'El código de 6 dígitos del autenticador es incorrecto o expiró.',
+                };
+            }
+            totpVerified = true;
+        }
+
+        const { data, error } = await supabase.rpc('reset_forgotten_password', {
+            p_user_id: userId,
+            p_method: method,
+            p_code: cleanCode,
+            p_new_password: newPassword.trim(),
+            p_totp_verified: totpVerified,
+            p_new_email: cleanEmail,
+        });
+
+        if (error) {
+            return { success: false, error: error.message || 'No se pudo restablecer la contraseña' };
+        }
+
+        if (!data?.success) {
+            return { success: false, error: data?.error || 'Código inválido o expirado' };
+        }
+
+        return {
+            success: true,
+            usuario: data.usuario,
+            nombre: data.nombre,
+        };
+    } catch (err) {
+        return { success: false, error: 'Error al restablecer contraseña: ' + err.message };
     }
 }
 

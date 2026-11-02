@@ -15,6 +15,10 @@ import { Link } from 'react-router-dom';
 import {
     login,
     changePassword,
+    updateUserSecurityContact,
+    getPasswordRecoveryOptions,
+    requestPasswordRecoveryOtp,
+    resetForgottenPassword,
     requestWhatsAppOtp,
     verifyWhatsAppOtp,
     generateTotpSecret,
@@ -26,6 +30,7 @@ import {
     submitUserAccessRequest,
     uploadAvatarFileOnly,
     validateStrictCellphone,
+    normalizeLegacyPhoneTo10Digits,
 } from '../services/authService';
 import { logAction } from '../services/auditService';
 
@@ -39,21 +44,35 @@ const REQUESTABLE_ROLES = [
 ];
 
 export default function LoginScreen({ onLogin }) {
-    // Steps: 'credentials' | 'change_password' | 'mfa' | 'concurrent_session' | 'request_account'
+    // Steps: 'credentials' | 'change_password' | 'confirm_contact' | 'mfa' | 'concurrent_session' | 'forgot_password' | 'request_account'
     const [step, setStep] = useState('credentials');
     const [pendingUser, setPendingUser] = useState(null);
     const [requiresMfaAfterPwd, setRequiresMfaAfterPwd] = useState(false);
     const [concurrentConflict, setConcurrentConflict] = useState(null);
+    const [failedPasswordPrompt, setFailedPasswordPrompt] = useState(false);
 
     // Step 1: Credentials
     const [usuario, setUsuario] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
 
-    // Step 2: Mandatory Password Change
+    // Step 2 & 2.5: Mandatory Password Change + Confirmación de Contacto Real (WhatsApp + Email real)
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showNewPassword, setShowNewPassword] = useState(false);
+    const [securityPhone, setSecurityPhone] = useState('');
+    const [securityEmail, setSecurityEmail] = useState('');
+
+    // Step Forgot Password: Blanqueo y Restablecimiento Autónomo de Contraseña
+    const [recoveryUsername, setRecoveryUsername] = useState('');
+    const [recoveryInfo, setRecoveryInfo] = useState(null);
+    const [recoveryMethod, setRecoveryMethod] = useState('whatsapp'); // 'whatsapp' | 'totp' | 'email'
+    const [recoveryOtpSent, setRecoveryOtpSent] = useState(false);
+    const [recoveryCode, setRecoveryCode] = useState('');
+    const [recoveryNewPassword, setRecoveryNewPassword] = useState('');
+    const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
+    const [recoveryRealEmail, setRecoveryRealEmail] = useState('');
+    const [showRecoveryPassword, setShowRecoveryPassword] = useState(false);
 
     // Step 3: Hybrid MFA (WhatsApp OTP or Authenticator QR)
     const [mfaMethod, setMfaMethod] = useState('whatsapp'); // 'whatsapp' | 'totp'
@@ -189,12 +208,16 @@ export default function LoginScreen({ onLogin }) {
         setLoading(true);
         setError('');
         setInfoMsg('');
+        setFailedPasswordPrompt(false);
 
         const result = await login(usuario, password);
         setLoading(false);
 
         if (!result.success) {
             setError(result.error);
+            if ((result.error || '').toLowerCase().includes('incorrectos')) {
+                setFailedPasswordPrompt(true);
+            }
             triggerShake();
             setPassword('');
             return;
@@ -212,11 +235,26 @@ export default function LoginScreen({ onLogin }) {
         }
 
         if (result.requiresPasswordChange) {
-            setPendingUser(result.pendingUser);
+            const pUser = result.pendingUser;
+            setPendingUser(pUser);
             setRequiresMfaAfterPwd(Boolean(result.requiresMfa));
             setNewPassword('');
             setConfirmPassword('');
+            setSecurityPhone(normalizeLegacyPhoneTo10Digits(pUser?.telefono_whatsapp || ''));
+            // Si aún no confirmó su contacto real, dejamos el mail vacío para que coloque su mail real nuevamente
+            setSecurityEmail(pUser?.datos_contacto_confirmados ? (pUser?.email || '') : '');
             setStep('change_password');
+            return;
+        }
+
+        if (result.requiresContactConfirmation) {
+            const pUser = result.pendingUser;
+            setPendingUser(pUser);
+            setRequiresMfaAfterPwd(Boolean(result.requiresMfa));
+            setSecurityPhone(normalizeLegacyPhoneTo10Digits(pUser?.telefono_whatsapp || ''));
+            // Pedimos que ingrese nuevamente su mail real ya que algunas cuentas tenían mails ficticios
+            setSecurityEmail('');
+            setStep('confirm_contact');
             return;
         }
 
@@ -237,7 +275,7 @@ export default function LoginScreen({ onLogin }) {
         onLogin(result.user);
     };
 
-    // === PASO 2: CAMBIO OBLIGATORIO DE CONTRASEÑA ===
+    // === PASO 2: CAMBIO OBLIGATORIO DE CONTRASEÑA + CONFIRMACIÓN DE WHATSAPP Y MAIL REAL ===
     const handlePasswordChangeSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -268,8 +306,22 @@ export default function LoginScreen({ onLogin }) {
             return;
         }
 
+        const phoneCheck = validateStrictCellphone(securityPhone);
+        if (!phoneCheck.valid) {
+            setError(phoneCheck.error);
+            triggerShake();
+            return;
+        }
+
+        const cleanEmail = String(securityEmail || '').trim().toLowerCase();
+        if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+            setError('Ingresá tu dirección de correo electrónico real y válida (ej: tu_correo@gmail.com)');
+            triggerShake();
+            return;
+        }
+
         setLoading(true);
-        const res = await changePassword(pendingUser.id, password, newPassword);
+        const res = await changePassword(pendingUser.id, password, newPassword, cleanEmail, phoneCheck.clean);
         setLoading(false);
 
         if (!res.success) {
@@ -278,14 +330,220 @@ export default function LoginScreen({ onLogin }) {
             return;
         }
 
-        await logAction('cambio_password_obligatorio', { usuario: pendingUser.usuario });
+        const updatedUser = {
+            ...pendingUser,
+            email: cleanEmail,
+            telefono_whatsapp: phoneCheck.clean,
+            datos_contacto_confirmados: true,
+        };
+        setPendingUser(updatedUser);
+
+        await logAction('cambio_password_obligatorio', {
+            usuario: pendingUser.usuario,
+            email_confirmado: cleanEmail,
+        });
         setPassword(newPassword);
 
         if (requiresMfaAfterPwd) {
-            prepareMfaStep(pendingUser);
+            prepareMfaStep(updatedUser);
         } else {
-            await completeLoginSuccess(pendingUser);
+            await completeLoginSuccess(updatedUser);
         }
+    };
+
+    // === PASO 2.5: CONFIRMACIÓN OBLIGATORIA DE MAIL REAL Y WHATSAPP DE SEGURIDAD ===
+    const handleConfirmContactSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        const phoneCheck = validateStrictCellphone(securityPhone);
+        if (!phoneCheck.valid) {
+            setError(phoneCheck.error);
+            triggerShake();
+            return;
+        }
+
+        const cleanEmail = String(securityEmail || '').trim().toLowerCase();
+        if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+            setError('Por favor colocá nuevamente tu correo electrónico real y válido.');
+            triggerShake();
+            return;
+        }
+
+        setLoading(true);
+        const res = await updateUserSecurityContact(pendingUser.id, cleanEmail, phoneCheck.clean);
+        setLoading(false);
+
+        if (!res.success) {
+            setError(res.error || 'No se pudieron actualizar tus datos de seguridad');
+            triggerShake();
+            return;
+        }
+
+        const updatedUser = {
+            ...pendingUser,
+            email: cleanEmail,
+            telefono_whatsapp: phoneCheck.clean,
+            datos_contacto_confirmados: true,
+        };
+        setPendingUser(updatedUser);
+
+        await logAction('confirmacion_contacto_seguridad', {
+            usuario: pendingUser.usuario,
+            email: cleanEmail,
+        });
+
+        if (requiresMfaAfterPwd) {
+            prepareMfaStep(updatedUser);
+        } else {
+            await completeLoginSuccess(updatedUser);
+        }
+    };
+
+    // === FLUJO: ¿OLVIDASTE TU CONTRASEÑA? BLANQUEAR Y RESTABLECER CLAVE ===
+    const openForgotPasswordFlow = () => {
+        setError('');
+        setInfoMsg('');
+        setFailedPasswordPrompt(false);
+        setRecoveryUsername(usuario.trim());
+        setRecoveryInfo(null);
+        setRecoveryMethod('whatsapp');
+        setRecoveryOtpSent(false);
+        setRecoveryCode('');
+        setRecoveryNewPassword('');
+        setRecoveryConfirmPassword('');
+        setRecoveryRealEmail('');
+        setStep('forgot_password');
+    };
+
+    const handleLookupRecoveryUser = async (e) => {
+        e.preventDefault();
+        setError('');
+        setInfoMsg('');
+
+        if (!recoveryUsername.trim()) {
+            setError('Ingresá tu nombre de usuario para iniciar el blanqueo de contraseña');
+            triggerShake();
+            return;
+        }
+
+        setLoading(true);
+        const info = await getPasswordRecoveryOptions(recoveryUsername);
+        setLoading(false);
+
+        if (!info.found) {
+            setError(info.error || 'No se encontró ningún usuario activo con ese nombre.');
+            triggerShake();
+            return;
+        }
+
+        setRecoveryInfo(info);
+        setRecoveryOtpSent(false);
+        setRecoveryCode('');
+        // Priorizar Opción 1 (WhatsApp o Authenticator) y dejar Email como 2da opción
+        if (info.has_whatsapp) {
+            setRecoveryMethod('whatsapp');
+        } else if (info.has_totp) {
+            setRecoveryMethod('totp');
+        } else {
+            setRecoveryMethod('email');
+        }
+    };
+
+    const handleSendRecoveryCode = async (channel) => {
+        if (!recoveryInfo?.user_id) return;
+        setError('');
+        setInfoMsg('');
+        setLoading(true);
+        const res = await requestPasswordRecoveryOtp(recoveryInfo.user_id, channel);
+        setLoading(false);
+
+        if (!res.success) {
+            setError(res.error || 'No se pudo enviar el código de verificación.');
+            triggerShake();
+            return;
+        }
+
+        setRecoveryOtpSent(true);
+        if (channel === 'whatsapp') {
+            setInfoMsg(`Código de 6 dígitos enviado por WhatsApp a tu celular registrado (${res.maskedDestination}).`);
+        } else {
+            setInfoMsg(`Código de 6 dígitos enviado a tu correo electrónico registrado (${res.maskedDestination}).`);
+        }
+    };
+
+    const handleResetForgottenPasswordSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setInfoMsg('');
+
+        if (!recoveryInfo?.user_id) return;
+
+        const cleanCode = recoveryCode.replace(/\D/g, '');
+        if (cleanCode.length !== 6) {
+            setError('Ingresá el código de verificación de 6 dígitos.');
+            triggerShake();
+            return;
+        }
+
+        if (!recoveryNewPassword || !recoveryConfirmPassword) {
+            setError('Escribí y confirmá tu nueva contraseña personal.');
+            triggerShake();
+            return;
+        }
+        if (recoveryNewPassword.length < 6) {
+            setError('La nueva contraseña debe tener al menos 6 caracteres.');
+            triggerShake();
+            return;
+        }
+        if (recoveryNewPassword.trim() === '123456') {
+            setError('Por seguridad no podés usar "123456". Elegí una clave personal.');
+            triggerShake();
+            return;
+        }
+        if (recoveryNewPassword !== recoveryConfirmPassword) {
+            setError('Las contraseñas ingresadas no coinciden.');
+            triggerShake();
+            return;
+        }
+
+        let emailToSave = null;
+        if (!recoveryInfo.datos_contacto_confirmados || recoveryRealEmail.trim()) {
+            const candidate = recoveryRealEmail.trim().toLowerCase();
+            if (!candidate || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+                setError('Por favor ingresá nuevamente tu correo electrónico real y válido para dejarlo actualizado en tu cuenta.');
+                triggerShake();
+                return;
+            }
+            emailToSave = candidate;
+        }
+
+        setLoading(true);
+        const res = await resetForgottenPassword({
+            userId: recoveryInfo.user_id,
+            method: recoveryMethod,
+            code: cleanCode,
+            newPassword: recoveryNewPassword,
+            newEmail: emailToSave,
+        });
+        setLoading(false);
+
+        if (!res.success) {
+            setError(res.error || 'No se pudo restablecer la contraseña.');
+            triggerShake();
+            return;
+        }
+
+        await logAction('blanqueo_recuperacion_password', {
+            usuario: recoveryInfo.usuario,
+            metodo: recoveryMethod,
+        });
+
+        setUsuario(recoveryInfo.usuario);
+        setPassword('');
+        setRecoveryInfo(null);
+        setStep('credentials');
+        setInfoMsg('¡Contraseña blanqueada y restablecida con éxito! Ingresá ahora con tu nueva contraseña.');
     };
 
     // === PASO 3A: ENVIAR CÓDIGO WHATSAPP OTP ===
@@ -453,7 +711,7 @@ export default function LoginScreen({ onLogin }) {
             <div style={{
                 position: 'relative',
                 width: '100%',
-                maxWidth: step === 'request_account' ? '540px' : step === 'mfa' ? '475px' : '440px',
+                maxWidth: step === 'request_account' ? '540px' : (step === 'mfa' || step === 'change_password' || step === 'confirm_contact' || step === 'forgot_password') ? '490px' : '440px',
                 margin: '0 20px',
                 animation: 'loginFadeIn 0.4s ease-out',
             }}>
@@ -490,6 +748,46 @@ export default function LoginScreen({ onLogin }) {
                         }}>
                             <AlertCircle size={16} style={{ color: '#DC2626', flexShrink: 0 }} />
                             <span style={{ fontSize: '0.8rem', color: '#DC2626', fontWeight: 500 }}>{error}</span>
+                        </div>
+                    )}
+
+                    {/* Aviso especial cuando fallan la contraseña: guiar al proceso de blanqueo */}
+                    {step === 'credentials' && failedPasswordPrompt && (
+                        <div style={{
+                            padding: '12px 14px',
+                            borderRadius: '12px',
+                            background: '#EFF6FF',
+                            border: '1.5px solid #93C5FD',
+                            marginBottom: '16px',
+                            animation: 'loginFadeIn 0.2s ease-out',
+                        }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1E3A8A', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <KeyRound size={15} /> ¿Te olvidaste tu contraseña?
+                            </div>
+                            <p style={{ margin: '0 0 10px', fontSize: '0.75rem', color: '#1E40AF', lineHeight: 1.4 }}>
+                                Debés <strong>volver a hacer el proceso de blanqueo de contraseña</strong>. Mediante un <strong>mensaje a tu WhatsApp</strong>, un <strong>código de autenticación</strong> (App Authenticator) o tu <strong>correo electrónico</strong> podés restablecerla y colocar una nueva.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={openForgotPasswordFlow}
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: '#1E4078',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                }}
+                            >
+                                <KeyRound size={14} /> Blanquear mi contraseña y colocar una nueva
+                            </button>
                         </div>
                     )}
 
@@ -587,18 +885,35 @@ export default function LoginScreen({ onLogin }) {
                             </div>
 
                             {/* CONTRASEÑA */}
-                            <div style={{ marginBottom: '26px' }}>
-                                <label style={{
-                                    display: 'block',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    color: '#374151',
-                                    marginBottom: '8px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.8px',
-                                }}>
-                                    Contraseña
-                                </label>
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <label style={{
+                                        display: 'block',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: '#374151',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.8px',
+                                    }}>
+                                        Contraseña
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={openForgotPasswordFlow}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            padding: 0,
+                                            color: '#1E4078',
+                                            fontSize: '0.73rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            textDecoration: 'underline',
+                                        }}
+                                    >
+                                        ¿Olvidaste tu contraseña? Blanquear clave
+                                    </button>
+                                </div>
                                 <div style={{ position: 'relative' }}>
                                     <Lock size={17} style={{
                                         position: 'absolute', left: '14px', top: '50%',
@@ -716,33 +1031,47 @@ export default function LoginScreen({ onLogin }) {
                     )}
 
                     {/* ========================================================= */}
-                    {/* PASO 2: ACTUALIZACIÓN OBLIGATORIA DE CONTRASEÑA           */}
+                    {/* PASO 2: ACTUALIZACIÓN OBLIGATORIA DE CONTRASEÑA Y CONTACTO*/}
                     {/* ========================================================= */}
                     {step === 'change_password' && pendingUser && (
                         <form onSubmit={handlePasswordChangeSubmit}>
-                            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            <div style={{ textAlign: 'center', marginBottom: '14px' }}>
                                 <div style={{
                                     display: 'inline-flex', alignItems: 'center', gap: '6px',
                                     padding: '4px 12px', borderRadius: '999px',
                                     background: '#EFF6FF', color: '#1D4ED8',
-                                    fontSize: '0.72rem', fontWeight: 700, marginBottom: '8px',
+                                    fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px',
                                 }}>
-                                    <KeyRound size={14} /> ACTUALIZACIÓN DE SEGURIDAD
+                                    <KeyRound size={14} /> ACTUALIZACIÓN DE CIBERSEGURIDAD
                                 </div>
-                                <h2 style={{ margin: '0 0 6px', fontSize: '1.25rem', fontWeight: 800, color: '#1E293B' }}>
+                                <h2 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 800, color: '#1E293B' }}>
                                     Hola, {pendingUser.nombre}
                                 </h2>
-                                <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B', lineHeight: 1.45 }}>
-                                    Por políticas de ciberseguridad del Sanatorio Argentino, configurá tu <strong>nueva contraseña personal</strong> (mínimo 6 caracteres, distinta de 123456).
-                                </p>
                             </div>
 
-                            <div style={{ marginBottom: '16px' }}>
+                            {/* Aviso Institucional de Ciberseguridad */}
+                            <div style={{
+                                padding: '11px 13px',
+                                borderRadius: '10px',
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                marginBottom: '16px',
+                                fontSize: '0.74rem',
+                                color: '#1E3A8A',
+                                lineHeight: 1.42,
+                            }}>
+                                <strong style={{ display: 'block', marginBottom: '3px', color: '#1E4078' }}>
+                                    🛡️ Estamos mejorando nuestra Ciberseguridad:
+                                </strong>
+                                Para proteger tu cuenta es necesario que configures tu <strong>contraseña personal</strong>, dejes registrado tu <strong>número de celular (WhatsApp)</strong> para poder comunicarnos siempre ahí, y <strong>coloques nuevamente tu correo electrónico real</strong> (ya que algunas cuentas tenían correos ficticios por defecto). Estos canales te permitirán blanquear tu clave si la olvidás.
+                            </div>
+
+                            <div style={{ marginBottom: '12px' }}>
                                 <label style={{
-                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
-                                    color: '#374151', marginBottom: '6px', textTransform: 'uppercase',
+                                    display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                    color: '#374151', marginBottom: '5px', textTransform: 'uppercase',
                                 }}>
-                                    Nueva Contraseña Personal
+                                    Nueva Contraseña Personal *
                                 </label>
                                 <div style={{ position: 'relative' }}>
                                     <Lock size={16} style={{
@@ -754,11 +1083,11 @@ export default function LoginScreen({ onLogin }) {
                                         type={showNewPassword ? 'text' : 'password'}
                                         value={newPassword}
                                         onChange={e => setNewPassword(e.target.value)}
-                                        placeholder="Mínimo 6 caracteres"
+                                        placeholder="Mínimo 6 caracteres (distinta de 123456)"
                                         style={{
-                                            width: '100%', padding: '12px 42px 12px 40px',
+                                            width: '100%', padding: '11px 42px 11px 40px',
                                             borderRadius: '10px', border: '1.5px solid #CBD5E1',
-                                            background: '#F8FAFC', fontSize: '0.9rem', boxSizing: 'border-box',
+                                            background: '#F8FAFC', fontSize: '0.88rem', boxSizing: 'border-box',
                                         }}
                                     />
                                     <button
@@ -775,12 +1104,12 @@ export default function LoginScreen({ onLogin }) {
                                 </div>
                             </div>
 
-                            <div style={{ marginBottom: '22px' }}>
+                            <div style={{ marginBottom: '14px' }}>
                                 <label style={{
-                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
-                                    color: '#374151', marginBottom: '6px', textTransform: 'uppercase',
+                                    display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                    color: '#374151', marginBottom: '5px', textTransform: 'uppercase',
                                 }}>
-                                    Repetir Nueva Contraseña
+                                    Repetir Nueva Contraseña *
                                 </label>
                                 <div style={{ position: 'relative' }}>
                                     <Lock size={16} style={{
@@ -793,17 +1122,75 @@ export default function LoginScreen({ onLogin }) {
                                         onChange={e => setConfirmPassword(e.target.value)}
                                         placeholder="Confirmá tu nueva contraseña"
                                         style={{
-                                            width: '100%', padding: '12px 14px 12px 40px',
+                                            width: '100%', padding: '11px 14px 11px 40px',
                                             borderRadius: '10px', border: '1.5px solid #CBD5E1',
-                                            background: '#F8FAFC', fontSize: '0.9rem', boxSizing: 'border-box',
+                                            background: '#F8FAFC', fontSize: '0.88rem', boxSizing: 'border-box',
                                         }}
                                     />
                                 </div>
                                 {newPassword && confirmPassword && newPassword === confirmPassword && newPassword.length >= 6 && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px', fontSize: '0.73rem', color: '#059669', fontWeight: 600 }}>
                                         <CheckCircle2 size={14} /> Las contraseñas coinciden y cumplen los requisitos
                                     </div>
                                 )}
+                            </div>
+
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{
+                                    display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                    color: '#374151', marginBottom: '5px', textTransform: 'uppercase',
+                                }}>
+                                    Tu Celular con WhatsApp (10 dígitos sin +549 ni 15) *
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <Smartphone size={16} style={{
+                                        position: 'absolute', left: '14px', top: '50%',
+                                        transform: 'translateY(-50%)', color: '#94A3B8',
+                                    }} />
+                                    <input
+                                        type="tel"
+                                        value={securityPhone}
+                                        onChange={e => setSecurityPhone(e.target.value)}
+                                        placeholder="2645438114"
+                                        style={{
+                                            width: '100%', padding: '11px 14px 11px 40px',
+                                            borderRadius: '10px', border: '1.5px solid #CBD5E1',
+                                            background: '#F8FAFC', fontSize: '0.88rem', fontWeight: 600, boxSizing: 'border-box',
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#0369A1', fontWeight: 600, marginTop: '3px' }}>
+                                    Formato obligatorio: <strong>2645438114</strong> (para recibir avisos y códigos de blanqueo).
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: '18px' }}>
+                                <label style={{
+                                    display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                    color: '#374151', marginBottom: '5px', textTransform: 'uppercase',
+                                }}>
+                                    Tu Correo Electrónico Real (colocar nuevamente) *
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <Mail size={16} style={{
+                                        position: 'absolute', left: '14px', top: '50%',
+                                        transform: 'translateY(-50%)', color: '#94A3B8',
+                                    }} />
+                                    <input
+                                        type="email"
+                                        value={securityEmail}
+                                        onChange={e => setSecurityEmail(e.target.value)}
+                                        placeholder="Ingresá tu mail real (ej: nombre@gmail.com)"
+                                        style={{
+                                            width: '100%', padding: '11px 14px 11px 40px',
+                                            borderRadius: '10px', border: '1.5px solid #CBD5E1',
+                                            background: '#F8FAFC', fontSize: '0.88rem', boxSizing: 'border-box',
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
+                                    Colocá tu mail real en uso (algunas cuentas tenían asignado <code>{pendingUser.email}</code> de forma ficticia).
+                                </div>
                             </div>
 
                             <button
@@ -820,13 +1207,516 @@ export default function LoginScreen({ onLogin }) {
                                 {loading ? (
                                     <>
                                         <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />
-                                        Guardando clave segura...
+                                        Guardando clave y datos de seguridad...
                                     </>
                                 ) : (
-                                    'Guardar Nueva Contraseña y Continuar'
+                                    'Guardar Contraseña, Contacto y Continuar'
                                 )}
                             </button>
                         </form>
+                    )}
+
+                    {/* ========================================================= */}
+                    {/* PASO 2.5: CONFIRMACIÓN DE CONTACTO DE CIBERSEGURIDAD      */}
+                    {/* (Para usuarios que ya cambiaron su clave pero aún no      */}
+                    {/*  confirmaron su WhatsApp y su Mail real)                  */}
+                    {/* ========================================================= */}
+                    {step === 'confirm_contact' && pendingUser && (
+                        <form onSubmit={handleConfirmContactSubmit}>
+                            <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+                                <div style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '4px 12px', borderRadius: '999px',
+                                    background: '#EFF6FF', color: '#1D4ED8',
+                                    fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px',
+                                }}>
+                                    <ShieldCheck size={14} /> FORTALECIMIENTO DE CIBERSEGURIDAD
+                                </div>
+                                <h2 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Actualización de Contacto Oficial
+                                </h2>
+                            </div>
+
+                            <div style={{
+                                padding: '12px 14px',
+                                borderRadius: '10px',
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                marginBottom: '16px',
+                                fontSize: '0.75rem',
+                                color: '#1E3A8A',
+                                lineHeight: 1.45,
+                            }}>
+                                <strong style={{ display: 'block', marginBottom: '4px', color: '#1E4078' }}>
+                                    🛡️ Estamos mejorando nuestra Ciberseguridad en Sanatorio Argentino
+                                </strong>
+                                Por este motivo es necesario que dejes registrado un <strong>número de celular con WhatsApp</strong> para poder comunicarnos siempre ahí y que <strong>coloques nuevamente tu correo electrónico real</strong> (ya que algunas cuentas estaban con mails ficticios). Con estos datos podrás blanquear y restablecer tu contraseña en caso de olvidarla.
+                            </div>
+
+                            <div style={{ marginBottom: '14px' }}>
+                                <label style={{
+                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                    color: '#374151', marginBottom: '6px', textTransform: 'uppercase',
+                                }}>
+                                    Tu Celular con WhatsApp (10 dígitos sin +549 ni 15) *
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <Smartphone size={16} style={{
+                                        position: 'absolute', left: '14px', top: '50%',
+                                        transform: 'translateY(-50%)', color: '#94A3B8',
+                                    }} />
+                                    <input
+                                        type="tel"
+                                        value={securityPhone}
+                                        onChange={e => setSecurityPhone(e.target.value)}
+                                        placeholder="2645438114"
+                                        style={{
+                                            width: '100%', padding: '12px 14px 12px 40px',
+                                            borderRadius: '10px', border: '1.5px solid #CBD5E1',
+                                            background: '#F8FAFC', fontSize: '0.9rem', fontWeight: 600, boxSizing: 'border-box',
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ fontSize: '0.69rem', color: '#0369A1', fontWeight: 600, marginTop: '4px' }}>
+                                    Formato obligatorio: <strong>2645438114</strong> (sin +549, sin 15 y sin espacios).
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{
+                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                    color: '#374151', marginBottom: '6px', textTransform: 'uppercase',
+                                }}>
+                                    Tu Correo Electrónico Real (colocar nuevamente) *
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <Mail size={16} style={{
+                                        position: 'absolute', left: '14px', top: '50%',
+                                        transform: 'translateY(-50%)', color: '#94A3B8',
+                                    }} />
+                                    <input
+                                        type="email"
+                                        value={securityEmail}
+                                        onChange={e => setSecurityEmail(e.target.value)}
+                                        placeholder="Ingresá tu correo electrónico real"
+                                        style={{
+                                            width: '100%', padding: '12px 14px 12px 40px',
+                                            borderRadius: '10px', border: '1.5px solid #CBD5E1',
+                                            background: '#F8FAFC', fontSize: '0.9rem', boxSizing: 'border-box',
+                                        }}
+                                    />
+                                </div>
+                                <div style={{ fontSize: '0.69rem', color: '#64748B', marginTop: '4px' }}>
+                                    Escribí tu correo real (anteriormente figuraba <code>{pendingUser.email}</code>).
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                style={{
+                                    width: '100%', padding: '13px', borderRadius: '10px', border: 'none',
+                                    background: '#1E4078', color: '#FFFFFF', fontSize: '0.92rem',
+                                    fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                    boxShadow: '0 4px 12px rgba(30,64,120,0.25)',
+                                }}
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />
+                                        Guardando datos de seguridad...
+                                    </>
+                                ) : (
+                                    'Confirmar Datos de Ciberseguridad y Continuar'
+                                )}
+                            </button>
+                        </form>
+                    )}
+
+                    {/* ========================================================= */}
+                    {/* PASO BLANQUEO: ¿OLVIDASTE TU CONTRASEÑA?                  */}
+                    {/* ========================================================= */}
+                    {step === 'forgot_password' && (
+                        <div>
+                            <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+                                <div style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '4px 12px', borderRadius: '999px',
+                                    background: '#EFF6FF', color: '#1E4078',
+                                    fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px',
+                                }}>
+                                    <KeyRound size={14} /> BLANQUEO Y RECUPERACIÓN DE CLAVE
+                                </div>
+                                <h2 style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 800, color: '#1E293B' }}>
+                                    Restablecer Contraseña
+                                </h2>
+                                <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748B', lineHeight: 1.4 }}>
+                                    Estamos mejorando nuestra ciberseguridad: si olvidaste tu contraseña debés volver a realizar el proceso de validación para blanquearla y colocar una nueva.
+                                </p>
+                            </div>
+
+                            {!recoveryInfo ? (
+                                <form onSubmit={handleLookupRecoveryUser}>
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <label style={{
+                                            display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                            color: '#374151', marginBottom: '6px', textTransform: 'uppercase',
+                                        }}>
+                                            Tu Nombre de Usuario *
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <User size={16} style={{
+                                                position: 'absolute', left: '14px', top: '50%',
+                                                transform: 'translateY(-50%)', color: '#94A3B8',
+                                            }} />
+                                            <input
+                                                type="text"
+                                                value={recoveryUsername}
+                                                onChange={e => setRecoveryUsername(e.target.value)}
+                                                placeholder="Ej: abenegas"
+                                                style={{
+                                                    width: '100%', padding: '12px 14px 12px 40px',
+                                                    borderRadius: '10px', border: '1.5px solid #CBD5E1',
+                                                    background: '#F8FAFC', fontSize: '0.9rem', boxSizing: 'border-box',
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        style={{
+                                            width: '100%', padding: '13px', borderRadius: '10px', border: 'none',
+                                            background: '#1E4078', color: '#FFFFFF', fontSize: '0.9rem',
+                                            fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                        }}
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />
+                                                Buscando cuenta...
+                                            </>
+                                        ) : (
+                                            'Continuar con el Blanqueo de Contraseña'
+                                        )}
+                                    </button>
+                                </form>
+                            ) : (
+                                <form onSubmit={handleResetForgottenPasswordSubmit}>
+                                    <div style={{
+                                        padding: '10px 12px', borderRadius: '10px',
+                                        background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                        marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    }}>
+                                        <div>
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                                {recoveryInfo.nombre} <span style={{ color: '#64748B', fontWeight: 600 }}>(@{recoveryInfo.usuario})</span>
+                                            </div>
+                                            <div style={{ fontSize: '0.69rem', color: '#64748B' }}>
+                                                Elegí cómo validar tu identidad para blanquear tu clave:
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setRecoveryInfo(null); setError(''); setInfoMsg(''); }}
+                                            style={{
+                                                background: 'none', border: 'none', color: '#1E4078',
+                                                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline',
+                                            }}
+                                        >
+                                            Cambiar usuario
+                                        </button>
+                                    </div>
+
+                                    {/* 1RA OPCIÓN PRINCIPAL: WHATSAPP O CÓDIGO DE AUTENTICACIÓN */}
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ fontSize: '0.69rem', fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                            1ra Opción (Recomendada): WhatsApp o Código de Autenticación
+                                        </div>
+                                        <div style={{
+                                            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px',
+                                            background: '#F1F5F9', padding: '4px', borderRadius: '10px',
+                                        }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setRecoveryMethod('whatsapp'); setError(''); setInfoMsg(''); }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                                                    padding: '9px 6px', borderRadius: '8px', border: 'none',
+                                                    background: recoveryMethod === 'whatsapp' ? '#FFFFFF' : 'transparent',
+                                                    color: recoveryMethod === 'whatsapp' ? '#047857' : '#64748B',
+                                                    boxShadow: recoveryMethod === 'whatsapp' ? '0 2px 5px rgba(0,0,0,0.06)' : 'none',
+                                                    fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                                                }}
+                                            >
+                                                <Smartphone size={14} /> Mensaje WhatsApp
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setRecoveryMethod('totp'); setError(''); setInfoMsg(''); }}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                                                    padding: '9px 6px', borderRadius: '8px', border: 'none',
+                                                    background: recoveryMethod === 'totp' ? '#FFFFFF' : 'transparent',
+                                                    color: recoveryMethod === 'totp' ? '#1E4078' : '#64748B',
+                                                    boxShadow: recoveryMethod === 'totp' ? '0 2px 5px rgba(0,0,0,0.06)' : 'none',
+                                                    fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                                                }}
+                                            >
+                                                <QrCode size={14} /> Código Autenticación
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 2DA OPCIÓN: CORREO ELECTRÓNICO */}
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setRecoveryMethod('email'); setError(''); setInfoMsg(''); }}
+                                            style={{
+                                                width: '100%', padding: '8px 10px', borderRadius: '9px',
+                                                border: recoveryMethod === 'email' ? '1.5px solid #1E4078' : '1px solid #CBD5E1',
+                                                background: recoveryMethod === 'email' ? '#EFF6FF' : '#FFFFFF',
+                                                color: recoveryMethod === 'email' ? '#1E4078' : '#475569',
+                                                fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                            }}
+                                        >
+                                            <Mail size={14} /> 2da Opción: Enviar código al Correo Electrónico ({recoveryInfo.masked_email || 'sin correo'})
+                                        </button>
+                                    </div>
+
+                                    {/* DETALLE DEL MÉTODO SELECCIONADO */}
+                                    {recoveryMethod === 'whatsapp' && (
+                                        <div style={{
+                                            background: '#F0FDF4', border: '1px solid #BBF7D0',
+                                            borderRadius: '10px', padding: '11px 12px', marginBottom: '12px',
+                                        }}>
+                                            {recoveryInfo.has_whatsapp ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <div style={{ fontSize: '0.74rem', color: '#065F46', lineHeight: 1.35 }}>
+                                                        Se enviará un código de 6 dígitos al WhatsApp registrado: <strong>{recoveryInfo.masked_whatsapp}</strong>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={loading}
+                                                        onClick={() => handleSendRecoveryCode('whatsapp')}
+                                                        style={{
+                                                            padding: '7px 12px', borderRadius: '8px', border: 'none',
+                                                            background: '#059669', color: '#FFFFFF',
+                                                            fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                        }}
+                                                    >
+                                                        <Smartphone size={13} /> {recoveryOtpSent ? 'Reenviar WhatsApp' : 'Enviar WhatsApp'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div style={{ fontSize: '0.73rem', color: '#991B1B', fontWeight: 600 }}>
+                                                    Tu cuenta aún no tiene un celular registrado. Probá con Código de Autenticación, la 2da Opción (Mail) o pedile el blanqueo al Administrador.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {recoveryMethod === 'totp' && (
+                                        <div style={{
+                                            background: '#EFF6FF', border: '1px solid #BFDBFE',
+                                            borderRadius: '10px', padding: '11px 12px', marginBottom: '12px',
+                                            fontSize: '0.74rem', color: '#1E3A8A', lineHeight: 1.4,
+                                        }}>
+                                            {recoveryInfo.has_totp ? (
+                                                <span>
+                                                    Abrí tu app <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong> vinculada a tu cuenta e ingresá abajo el código actual de 6 dígitos.
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: '#991B1B', fontWeight: 600 }}>
+                                                    Tu cuenta no tenía un autenticador vinculado previamente. Por seguridad usá la opción de <strong>Mensaje a WhatsApp</strong> o la <strong>2da Opción (Correo Electrónico)</strong>.
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {recoveryMethod === 'email' && (
+                                        <div style={{
+                                            background: '#F8FAFC', border: '1px solid #CBD5E1',
+                                            borderRadius: '10px', padding: '11px 12px', marginBottom: '12px',
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                                <div style={{ fontSize: '0.73rem', color: '#334155', lineHeight: 1.35 }}>
+                                                    Correo registrado: <strong>{recoveryInfo.masked_email}</strong>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    disabled={loading}
+                                                    onClick={() => handleSendRecoveryCode('email')}
+                                                    style={{
+                                                        padding: '7px 12px', borderRadius: '8px', border: 'none',
+                                                        background: '#1E4078', color: '#FFFFFF',
+                                                        fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                    }}
+                                                >
+                                                    <Mail size={13} /> Enviar código al Mail
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* CÓDIGO DE 6 DÍGITOS */}
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <label style={{
+                                            display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                            color: '#374151', marginBottom: '5px', textTransform: 'uppercase', textAlign: 'center',
+                                        }}>
+                                            Código de Verificación (6 dígitos) *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={6}
+                                            value={recoveryCode}
+                                            onChange={e => setRecoveryCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                            placeholder="000000"
+                                            style={{
+                                                width: '100%', padding: '10px', borderRadius: '10px',
+                                                border: '2px solid #CBD5E1', background: '#FFFFFF',
+                                                fontSize: '1.25rem', fontWeight: 800, color: '#1E293B',
+                                                textAlign: 'center', letterSpacing: '8px', boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* NUEVA CONTRASEÑA */}
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <label style={{
+                                            display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                            color: '#374151', marginBottom: '4px', textTransform: 'uppercase',
+                                        }}>
+                                            Colocar Nueva Contraseña Personal *
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <Lock size={15} style={{
+                                                position: 'absolute', left: '12px', top: '50%',
+                                                transform: 'translateY(-50%)', color: '#94A3B8',
+                                            }} />
+                                            <input
+                                                type={showRecoveryPassword ? 'text' : 'password'}
+                                                value={recoveryNewPassword}
+                                                onChange={e => setRecoveryNewPassword(e.target.value)}
+                                                placeholder="Mínimo 6 caracteres (distinta de 123456)"
+                                                style={{
+                                                    width: '100%', padding: '10px 38px 10px 36px',
+                                                    borderRadius: '9px', border: '1.5px solid #CBD5E1',
+                                                    background: '#F8FAFC', fontSize: '0.86rem', boxSizing: 'border-box',
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowRecoveryPassword(!showRecoveryPassword)}
+                                                style={{
+                                                    position: 'absolute', right: '10px', top: '50%',
+                                                    transform: 'translateY(-50%)', background: 'none', border: 'none',
+                                                    cursor: 'pointer', color: '#94A3B8',
+                                                }}
+                                            >
+                                                {showRecoveryPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <label style={{
+                                            display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                            color: '#374151', marginBottom: '4px', textTransform: 'uppercase',
+                                        }}>
+                                            Confirmar Nueva Contraseña *
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <Lock size={15} style={{
+                                                position: 'absolute', left: '12px', top: '50%',
+                                                transform: 'translateY(-50%)', color: '#94A3B8',
+                                            }} />
+                                            <input
+                                                type={showRecoveryPassword ? 'text' : 'password'}
+                                                value={recoveryConfirmPassword}
+                                                onChange={e => setRecoveryConfirmPassword(e.target.value)}
+                                                placeholder="Repetí tu nueva contraseña"
+                                                style={{
+                                                    width: '100%', padding: '10px 12px 10px 36px',
+                                                    borderRadius: '9px', border: '1.5px solid #CBD5E1',
+                                                    background: '#F8FAFC', fontSize: '0.86rem', boxSizing: 'border-box',
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {!recoveryInfo.datos_contacto_confirmados && (
+                                        <div style={{ marginBottom: '14px' }}>
+                                            <label style={{
+                                                display: 'block', fontSize: '0.71rem', fontWeight: 700,
+                                                color: '#374151', marginBottom: '4px', textTransform: 'uppercase',
+                                            }}>
+                                                Tu Correo Electrónico Real (colocar nuevamente) *
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={recoveryRealEmail}
+                                                onChange={e => setRecoveryRealEmail(e.target.value)}
+                                                placeholder="Ingresá tu correo electrónico real"
+                                                style={{
+                                                    width: '100%', padding: '10px 12px',
+                                                    borderRadius: '9px', border: '1.5px solid #CBD5E1',
+                                                    background: '#F8FAFC', fontSize: '0.86rem', boxSizing: 'border-box',
+                                                }}
+                                            />
+                                            <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
+                                                Estamos mejorando nuestra ciberseguridad: ingresá tu mail real ya que algunas cuentas tenían correos ficticios.
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        style={{
+                                            width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
+                                            background: '#1E4078', color: '#FFFFFF', fontSize: '0.9rem',
+                                            fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                            boxShadow: '0 4px 12px rgba(30,64,120,0.2)',
+                                        }}
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                                Restableciendo contraseña...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ShieldCheck size={16} /> Blanquear y Guardar Nueva Contraseña
+                                            </>
+                                        )}
+                                    </button>
+                                </form>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => { setStep('credentials'); setError(''); setInfoMsg(''); }}
+                                style={{
+                                    width: '100%', marginTop: '10px', padding: '8px',
+                                    background: 'none', border: 'none', color: '#64748B',
+                                    fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                                }}
+                            >
+                                <ArrowLeft size={14} /> Volver al inicio de sesión
+                            </button>
+                        </div>
                     )}
 
                     {/* ========================================================= */}
