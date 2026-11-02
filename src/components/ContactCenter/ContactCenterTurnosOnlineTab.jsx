@@ -347,131 +347,167 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             
             {/* ═══ HEADER DE AUDITORÍA Y FILTROS ═══ */}
             <div style={{
-                background: '#FFFFFF',
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
                 borderRadius: '20px',
-                padding: '20px 24px',
+                padding: '20px 28px 0 24px',
                 border: '1.5px solid #E2E8F0',
                 boxShadow: '0 2px 12px rgba(15, 23, 42, 0.04)',
                 marginBottom: '20px',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'stretch',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '16px'
+                gap: '16px',
+                position: 'relative',
+                overflow: 'hidden'
             }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                        <div style={{
-                            width: '38px', height: '38px', borderRadius: '10px',
-                            background: '#FEE2E2', color: '#DC2626',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                            <ShieldAlert size={22} />
+                <div style={{
+                    flex: '1 1 540px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    gap: '14px',
+                    paddingBottom: '20px',
+                    zIndex: 1
+                }}>
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                            <div style={{
+                                width: '38px', height: '38px', borderRadius: '10px',
+                                background: '#FEE2E2', color: '#DC2626',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <ShieldAlert size={22} />
+                            </div>
+                            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
+                                Auditoría de Turnos Online Duplicados
+                            </h2>
                         </div>
-                        <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
-                            Auditoría de Turnos Online Duplicados
-                        </h2>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>
+                            Detección automática de pacientes con múltiples turnos para el mismo prestador y gestión vía WhatsApp.
+                        </p>
                     </div>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>
-                        Detección automática de pacientes con múltiples turnos para el mismo prestador y gestión vía WhatsApp.
-                    </p>
-                </div>
 
-                {/* Filtros temporales y navegación */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    {onBackToConsole && (
+                    {/* Filtros temporales y navegación */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        {onBackToConsole && (
+                            <button
+                                onClick={onBackToConsole}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 14px',
+                                    borderRadius: '10px',
+                                    border: '1.5px solid #CBD5E1',
+                                    background: '#FFFFFF',
+                                    color: '#334155',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                }}
+                                title="Volver a la consola de chats de Contact Center"
+                            >
+                                <ArrowLeft size={15} />
+                                Volver a Chats
+                            </button>
+                        )}
+
                         <button
-                            onClick={onBackToConsole}
+                            type="button"
+                            onClick={() => setShowGuiaModal(true)}
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '6px',
                                 padding: '6px 14px',
                                 borderRadius: '10px',
-                                border: '1.5px solid #CBD5E1',
-                                background: '#FFFFFF',
-                                color: '#334155',
+                                border: '1.5px solid #BFDBFE',
+                                background: '#EFF6FF',
+                                color: '#1E40AF',
                                 fontSize: '0.8rem',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 transition: 'all 0.15s',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                boxShadow: '0 1px 3px rgba(37,99,235,0.08)'
                             }}
-                            title="Volver a la consola de chats de Contact Center"
+                            title="Ver guía operativa paso a paso para operadoras"
                         >
-                            <ArrowLeft size={15} />
-                            Volver a Chats
+                            <BookOpen size={15} />
+                            Ver Instructivo Completo
                         </button>
-                    )}
 
-                    <button
-                        type="button"
-                        onClick={() => setShowGuiaModal(true)}
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 14px',
+                        <div style={{
+                            display: 'flex',
+                            background: '#F1F5F9',
                             borderRadius: '10px',
-                            border: '1.5px solid #BFDBFE',
-                            background: '#EFF6FF',
-                            color: '#1E40AF',
-                            fontSize: '0.8rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                            boxShadow: '0 1px 3px rgba(37,99,235,0.08)'
-                        }}
-                        title="Ver guía operativa paso a paso para operadoras"
-                    >
-                        <BookOpen size={15} />
-                        Ver Instructivo Completo
-                    </button>
-
-                    <div style={{
-                        display: 'flex',
-                        background: '#F1F5F9',
-                        borderRadius: '10px',
-                        padding: '3px',
-                        border: '1px solid #CBD5E1'
-                    }}>
-                        <button
-                            onClick={() => { setFiltroDias(1); setFechaCustom(''); }}
-                            style={{
-                                padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                background: filtroDias === 1 && !fechaCustom ? '#0F2942' : 'transparent',
-                                color: filtroDias === 1 && !fechaCustom ? '#FFFFFF' : '#475569',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            Ayer (Día -1)
-                        </button>
-                        <button
-                            onClick={() => { setFiltroDias(2); setFechaCustom(''); }}
-                            style={{
-                                padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                background: filtroDias === 2 && !fechaCustom ? '#0F2942' : 'transparent',
-                                color: filtroDias === 2 && !fechaCustom ? '#FFFFFF' : '#475569',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            Últimas 48 hs
-                        </button>
-                        <button
-                            onClick={() => { setFiltroDias(7); setFechaCustom(''); }}
-                            style={{
-                                padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                                background: filtroDias === 7 && !fechaCustom ? '#0F2942' : 'transparent',
-                                color: filtroDias === 7 && !fechaCustom ? '#FFFFFF' : '#475569',
-                                transition: 'all 0.15s'
-                            }}
-                        >
-                            Últimos 7 días
-                        </button>
+                            padding: '3px',
+                            border: '1px solid #CBD5E1'
+                        }}>
+                            <button
+                                onClick={() => { setFiltroDias(1); setFechaCustom(''); }}
+                                style={{
+                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    background: filtroDias === 1 && !fechaCustom ? '#0F2942' : 'transparent',
+                                    color: filtroDias === 1 && !fechaCustom ? '#FFFFFF' : '#475569',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                Ayer (Día -1)
+                            </button>
+                            <button
+                                onClick={() => { setFiltroDias(2); setFechaCustom(''); }}
+                                style={{
+                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    background: filtroDias === 2 && !fechaCustom ? '#0F2942' : 'transparent',
+                                    color: filtroDias === 2 && !fechaCustom ? '#FFFFFF' : '#475569',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                Últimas 48 hs
+                            </button>
+                            <button
+                                onClick={() => { setFiltroDias(7); setFechaCustom(''); }}
+                                style={{
+                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
+                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    background: filtroDias === 7 && !fechaCustom ? '#0F2942' : 'transparent',
+                                    color: filtroDias === 7 && !fechaCustom ? '#FFFFFF' : '#475569',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                Últimos 7 días
+                            </button>
+                        </div>
                     </div>
+                </div>
+
+                {/* Ilustración Dr. Beto — Turnos Online (Sin Fondo) */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    marginTop: '-10px',
+                    marginRight: '8px',
+                    pointerEvents: 'none',
+                    userSelect: 'none'
+                }}>
+                    <img
+                        src="/turnos-online-beto.png"
+                        alt="Dr. Beto - Turnos Online"
+                        style={{
+                            height: '132px',
+                            width: 'auto',
+                            objectFit: 'contain',
+                            objectPosition: 'bottom center',
+                            display: 'block',
+                            filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                        }}
+                    />
                 </div>
             </div>
 
