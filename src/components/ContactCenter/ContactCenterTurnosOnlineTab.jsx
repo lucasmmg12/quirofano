@@ -3,7 +3,8 @@ import {
     AlertTriangle, Calendar, Clock, User, Phone, Mail, 
     Send, CheckCircle2, XCircle, Search, RefreshCw, ChevronDown, 
     ChevronUp, MessageSquare, ShieldAlert, FileText, Check,
-    ExternalLink, Sparkles, Filter, Info, ArrowLeft, HelpCircle, BookOpen
+    ExternalLink, Sparkles, Filter, Info, ArrowLeft, HelpCircle, BookOpen,
+    Copy, Columns, List
 } from 'lucide-react';
 import { 
     fetchTurnosOnlineDuplicados, 
@@ -39,6 +40,19 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     });
     const [casos, setCasos] = useState([]);
     const [expandedKey, setExpandedKey] = useState(null);
+    const [viewMode, setViewMode] = useState('split'); // 'split' (Master-Detail por defecto) | 'list' (Acordeón)
+    const [inlineVarsMap, setInlineVarsMap] = useState({}); // { [casoKey]: [v1, v2, v3] }
+    const [inlineSendingKey, setInlineSendingKey] = useState(null);
+    const [copiedText, setCopiedText] = useState(null);
+
+    const handleCopyQuick = (e, text, label = 'Copiado') => {
+        if (e) e.stopPropagation();
+        if (!text) return;
+        navigator.clipboard?.writeText(String(text));
+        setCopiedText(String(text));
+        if (addToast) addToast(`${label}: ${text}`, 'info');
+        setTimeout(() => setCopiedText(null), 1800);
+    };
 
     // Modal de Envío de WhatsApp
     const [modalData, setModalData] = useState(null); // { caso, plantilla, texto, sending }
@@ -118,6 +132,82 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             return true;
         });
     }, [casos, filtroEstado, searchTerm, ocultarPasados, todayStr]);
+
+    // Caso activo en Split View (mantiene selección o toma el primero de la lista filtrada)
+    const selectedCaso = useMemo(() => {
+        if (!casosFiltrados.length) return null;
+        if (expandedKey) {
+            const found = casosFiltrados.find(c => c.key === expandedKey);
+            if (found) return found;
+        }
+        return casosFiltrados[0];
+    }, [casosFiltrados, expandedKey]);
+
+    // Variables editables en el panel derecho del Split View para el caso seleccionado
+    const currentInlineVars = useMemo(() => {
+        if (!selectedCaso) return ['', '', ''];
+        return inlineVarsMap[selectedCaso.key] || buildVariablesTurnosMismoDia(selectedCaso);
+    }, [selectedCaso, inlineVarsMap]);
+
+    const handleSendInlineWhatsapp = async (casoTarget) => {
+        if (!casoTarget || inlineSendingKey) return;
+        const vars = inlineVarsMap[casoTarget.key] || buildVariablesTurnosMismoDia(casoTarget);
+        if (vars.some(v => !String(v || '').trim())) {
+            if (addToast) addToast('Completá las 3 variables de la plantilla antes de enviar.', 'error');
+            return;
+        }
+
+        setInlineSendingKey(casoTarget.key);
+        try {
+            const nowIso = new Date().toISOString();
+            const agentLabel = activeAgent?.fullName || activeAgent?.name || currentUser?.nombre || 'Agente';
+            const agentId = activeAgent?.id || 'daniela';
+
+            const res = await sendTemplateTurnosMismoDia({
+                caso: casoTarget,
+                variables: vars,
+                agente: activeAgent
+            });
+
+            setCasos(prev => prev.map(c => c.key === casoTarget.key
+                ? {
+                    ...c,
+                    gestion: {
+                        ...c.gestion,
+                        estado: 'contactado',
+                        agenteId: agentId,
+                        agenteNombre: agentLabel,
+                        fechaContacto: nowIso,
+                        updatedAt: nowIso
+                    }
+                }
+                : c));
+
+            setStats(prev => {
+                const prevEstado = casoTarget.gestion?.estado;
+                if (prevEstado === 'contactado') return prev;
+                return {
+                    ...prev,
+                    totalPendientes: Math.max(0, prev.totalPendientes - (prevEstado === 'pendiente' ? 1 : 0)),
+                    totalContactados: prev.totalContactados + 1
+                };
+            });
+
+            if (addToast) addToast(`Aviso enviado a ${casoTarget.nombre}. El chat quedó asociado a ${agentLabel} en Mis Chats.`, 'success');
+            if (onConversationStarted) {
+                onConversationStarted(res.phone, {
+                    caso: casoTarget,
+                    agente: activeAgent,
+                    displayContent: res.displayContent
+                });
+            }
+        } catch (err) {
+            console.error('Error enviando WhatsApp desde Split View:', err);
+            if (addToast) addToast(err.message || 'Error al enviar WhatsApp', 'error');
+        } finally {
+            setInlineSendingKey(null);
+        }
+    };
 
     // 3. Manejar cambio de estado de gestión
     const handleUpdateEstado = async (caso, nuevoEstado, notaText = null) => {
@@ -488,6 +578,60 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             {ocultarPasados ? 'Ocultando fechas pasadas' : 'Mostrando todas las fechas'}
                         </button>
                     )}
+
+                    {/* Selector de Vista: Split View (Master-Detail) vs Lista */}
+                    <div style={{
+                        display: 'flex',
+                        background: '#FFFFFF',
+                        borderRadius: '10px',
+                        padding: '3px',
+                        border: '1.5px solid #CBD5E1'
+                    }}>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('split')}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '5px 11px',
+                                borderRadius: '7px',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                background: viewMode === 'split' ? '#0F2942' : 'transparent',
+                                color: viewMode === 'split' ? '#FFFFFF' : '#64748B',
+                                transition: 'all 0.15s'
+                            }}
+                            title="Vista dividida (Lista a la izquierda + Detalle y envío a la derecha)"
+                        >
+                            <Columns size={14} />
+                            Split View
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('list')}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '5px 11px',
+                                borderRadius: '7px',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                background: viewMode === 'list' ? '#0F2942' : 'transparent',
+                                color: viewMode === 'list' ? '#FFFFFF' : '#64748B',
+                                transition: 'all 0.15s'
+                            }}
+                            title="Vista en lista desplegable"
+                        >
+                            <List size={14} />
+                            Lista
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -517,6 +661,445 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     <p style={{ margin: '4px 0 0', fontSize: '0.88rem', color: '#64748B' }}>
                         No se detectaron pacientes con turnos duplicados para los filtros seleccionados.
                     </p>
+                </div>
+            ) : viewMode === 'split' ? (
+                /* ═════════════════════════════════════════════════════════════════ */
+                /* MODO SPLIT VIEW (BANDEJA IZQUIERDA + CONSOLA DE AUDITORÍA DERECHA) */
+                /* ═════════════════════════════════════════════════════════════════ */
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(350px, 420px) minmax(0, 1fr)',
+                    gap: '16px',
+                    alignItems: 'start'
+                }}>
+                    {/* COLUMNA IZQUIERDA: LISTA DE PACIENTES EN CONFLICTO */}
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        maxHeight: 'calc(100vh - 220px)',
+                        overflowY: 'auto',
+                        paddingRight: '4px'
+                    }}>
+                        {casosFiltrados.map(caso => {
+                            const isSelected = selectedCaso?.key === caso.key;
+                            const isPendiente = caso.gestion.estado === 'pendiente';
+                            const isContactado = caso.gestion.estado === 'contactado';
+                            const isResuelto = caso.gestion.estado === 'resuelto';
+
+                            return (
+                                <div
+                                    key={caso.key}
+                                    onClick={() => setExpandedKey(caso.key)}
+                                    style={{
+                                        background: isSelected ? '#F0F9FF' : '#FFFFFF',
+                                        borderRadius: '14px',
+                                        border: isSelected ? '2px solid #0284C7' : '1px solid #E2E8F0',
+                                        borderLeft: caso.esMismoDia ? '4px solid #EF4444' : isResuelto ? '4px solid #10B981' : isContactado ? '4px solid #3B82F6' : '4px solid #F59E0B',
+                                        padding: '12px 14px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                        boxShadow: isSelected ? '0 6px 16px rgba(2, 132, 199, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.03)'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                            <div style={{
+                                                width: '34px', height: '34px', borderRadius: '9px',
+                                                background: isSelected ? '#0284C7' : isResuelto ? '#ECFDF5' : isContactado ? '#EFF6FF' : '#F1F5F9',
+                                                color: isSelected ? '#FFFFFF' : isResuelto ? '#059669' : isContactado ? '#1D4ED8' : '#334155',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontWeight: 800, fontSize: '0.88rem', flexShrink: 0
+                                            }}>
+                                                {caso.nombre[0] || 'P'}
+                                            </div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{
+                                                    fontSize: '0.88rem', fontWeight: 800, color: '#0F172A',
+                                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                                }}>
+                                                    {caso.nombre}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                                                    <span
+                                                        onClick={(e) => handleCopyQuick(e, caso.dni, 'DNI copiado')}
+                                                        title="Clic para copiar DNI"
+                                                        style={{
+                                                            fontSize: '0.68rem', fontWeight: 700,
+                                                            background: copiedText === String(caso.dni) ? '#DCFCE7' : '#F1F5F9',
+                                                            color: copiedText === String(caso.dni) ? '#15803D' : '#475569',
+                                                            padding: '1px 6px', borderRadius: '5px',
+                                                            border: '1px solid #E2E8F0', fontFamily: 'monospace',
+                                                            display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                                        }}
+                                                    >
+                                                        DNI {caso.dni}
+                                                        <Copy size={10} />
+                                                    </span>
+                                                    {caso.telefono && (
+                                                        <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                            📞 {caso.telefono}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Estado compacto */}
+                                        <span style={{
+                                            fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px',
+                                            background: isPendiente ? '#FFFBEB' : isContactado ? '#EFF6FF' : '#ECFDF5',
+                                            color: isPendiente ? '#92400E' : isContactado ? '#1E40AF' : '#065F46',
+                                            border: `1px solid ${isPendiente ? '#FDE68A' : isContactado ? '#BFDBFE' : '#A7F3D0'}`,
+                                            flexShrink: 0
+                                        }}>
+                                            {isPendiente ? 'Pendiente' : isContactado ? 'Contactado' : 'Auditado'}
+                                        </span>
+                                    </div>
+
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        marginTop: '8px', paddingTop: '7px', borderTop: '1px dashed #E2E8F0', gap: '6px'
+                                    }}>
+                                        <div style={{
+                                            fontSize: '0.74rem', fontWeight: 700, color: '#0F2942',
+                                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                        }}>
+                                            Dr/a. {caso.profesional}
+                                        </div>
+
+                                        <div style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                            padding: '2px 7px', borderRadius: '6px',
+                                            background: caso.esMismoDia ? '#FEF2F2' : '#F8FAFC',
+                                            border: `1px solid ${caso.esMismoDia ? '#FECACA' : '#E2E8F0'}`,
+                                            fontSize: '0.68rem', fontWeight: 800,
+                                            color: caso.esMismoDia ? '#991B1B' : '#334155', flexShrink: 0
+                                        }}>
+                                            <span>{caso.cantidadTurnos} turnos</span>
+                                            {caso.esMismoDia && (
+                                                <span style={{
+                                                    background: '#EF4444', color: '#FFFFFF',
+                                                    fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px',
+                                                    textTransform: 'uppercase'
+                                                }}>
+                                                    Mismo Día
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* COLUMNA DERECHA: PANEL DE DETALLE, COMPARADOR DE TURNOS Y DESPACHO WHATSAPP */}
+                    {selectedCaso && (() => {
+                        const isPendiente = selectedCaso.gestion.estado === 'pendiente';
+                        const isContactado = selectedCaso.gestion.estado === 'contactado';
+                        const isResuelto = selectedCaso.gestion.estado === 'resuelto';
+                        const isSendingInline = inlineSendingKey === selectedCaso.key;
+
+                        return (
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '18px',
+                                border: '1.5px solid #CBD5E1',
+                                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+                                padding: '20px 22px',
+                                position: 'sticky',
+                                top: '16px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '16px'
+                            }}>
+                                {/* 1. Cabecera del Caso Seleccionado + Botones de Estado */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                                    flexWrap: 'wrap', gap: '12px', paddingBottom: '14px', borderBottom: '1px solid #E2E8F0'
+                                }}>
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                            <h3 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 900, color: '#0F172A' }}>
+                                                {selectedCaso.nombre}
+                                            </h3>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleCopyQuick(e, selectedCaso.dni, 'DNI copiado para SALUS')}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                    fontSize: '0.78rem', fontWeight: 800, fontFamily: 'monospace',
+                                                    background: copiedText === String(selectedCaso.dni) ? '#DCFCE7' : '#EFF6FF',
+                                                    color: copiedText === String(selectedCaso.dni) ? '#15803D' : '#1D4ED8',
+                                                    border: '1px solid #BFDBFE', borderRadius: '7px', padding: '3px 9px',
+                                                    cursor: 'pointer'
+                                                }}
+                                                title="Copiar DNI para buscar en SALUS"
+                                            >
+                                                DNI {selectedCaso.dni}
+                                                <Copy size={12} />
+                                            </button>
+                                            {selectedCaso.esMismoDia && (
+                                                <span style={{
+                                                    background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA',
+                                                    fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px'
+                                                }}>
+                                                    ⚠️ {selectedCaso.cantidadTurnos} TURNOS EL MISMO DÍA
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: '0.84rem', color: '#334155', marginTop: '5px', fontWeight: 700 }}>
+                                            Dr/a. {selectedCaso.profesional} <span style={{ color: '#94A3B8', fontWeight: 500 }}>• Agenda: {selectedCaso.agenda}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap', fontSize: '0.8rem', color: '#475569' }}>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                <Phone size={14} color="#0284C7" />
+                                                <strong>Tel:</strong> {selectedCaso.telefono || 'Sin teléfono'}
+                                            </span>
+                                            {selectedCaso.email && (
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                    <Mail size={14} color="#0284C7" />
+                                                    <strong>Email:</strong> {selectedCaso.email}
+                                                </span>
+                                            )}
+                                            {selectedCaso.gestion.updatedAt && (
+                                                <span style={{ fontSize: '0.75rem', color: '#64748B', background: '#F8FAFC', padding: '2px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                                                    Última gestión: {new Date(selectedCaso.gestion.updatedAt).toLocaleString('es-AR')} por <strong>{selectedCaso.gestion.agenteNombre || 'Agente'}</strong>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Acciones de Estado SALUS */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <button
+                                            disabled={savingKey === selectedCaso.key}
+                                            onClick={() => handleUpdateEstado(selectedCaso, 'contactado')}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                padding: '6px 12px', borderRadius: '8px',
+                                                border: isContactado ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                                background: isContactado ? '#EFF6FF' : '#FFFFFF',
+                                                color: isContactado ? '#1D4ED8' : '#475569', fontSize: '0.76rem', fontWeight: 800,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <MessageSquare size={13} />
+                                            Contactado
+                                        </button>
+                                        <button
+                                            disabled={savingKey === selectedCaso.key}
+                                            onClick={() => handleUpdateEstado(selectedCaso, 'resuelto')}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                padding: '6px 12px', borderRadius: '8px',
+                                                border: isResuelto ? '1.5px solid #10B981' : '1px solid #CBD5E1',
+                                                background: isResuelto ? '#ECFDF5' : '#FFFFFF',
+                                                color: isResuelto ? '#047857' : '#475569', fontSize: '0.76rem', fontWeight: 800,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={13} />
+                                            Resuelto en SALUS
+                                        </button>
+                                        <button
+                                            disabled={savingKey === selectedCaso.key}
+                                            onClick={() => handleUpdateEstado(selectedCaso, 'descartado')}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '6px 10px', borderRadius: '8px',
+                                                border: '1px solid #E2E8F0',
+                                                background: '#FFFFFF', color: '#94A3B8',
+                                                fontSize: '0.76rem', fontWeight: 700,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <XCircle size={13} />
+                                            Descartar
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 2. Comparador de Turnos Reservados en Conflicto */}
+                                <div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A', marginBottom: '8px' }}>
+                                        📅 Turnos Reservados en Conflicto ({selectedCaso.turnos.length}):
+                                    </div>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                                        gap: '10px'
+                                    }}>
+                                        {selectedCaso.turnos.map((t, tIdx) => (
+                                            <div
+                                                key={t.idVisita}
+                                                style={{
+                                                    border: '1.5px solid #BFDBFE',
+                                                    borderRadius: '12px',
+                                                    padding: '11px 14px',
+                                                    background: '#F0F7FF'
+                                                }}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                                    <span
+                                                        onClick={(e) => handleCopyQuick(e, t.idVisita, 'ID SALUS copiado')}
+                                                        style={{
+                                                            fontSize: '0.7rem', fontWeight: 800,
+                                                            background: '#1565C0', color: '#FFFFFF',
+                                                            padding: '2px 8px', borderRadius: '6px', cursor: 'pointer',
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                                        }}
+                                                        title="Clic para copiar ID SALUS"
+                                                    >
+                                                        Turno #{tIdx + 1} · ID SALUS: {t.idVisita}
+                                                        <Copy size={10} />
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        Pedido: {new Date(t.fechaCreacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#0D3B66', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span>{t.fechaTurno} a las {t.horaInicio}</span>
+                                                    {t.fechaTurno && t.fechaTurno < todayStr && (
+                                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, background: '#FEE2E2', color: '#B91C1C', padding: '1px 5px', borderRadius: '4px' }}>
+                                                            Fecha pasada
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '0.76rem', color: '#475569' }}>
+                                                    Agenda: <strong>{t.agenda}</strong>
+                                                </div>
+                                                {t.tipoVisita && (
+                                                    <div style={{
+                                                        marginTop: '5px', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                        padding: '2px 8px', borderRadius: '5px', background: '#EFF6FF',
+                                                        border: '1px solid #BFDBFE', fontSize: '0.72rem', fontWeight: 700, color: '#1E40AF'
+                                                    }}>
+                                                        <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', color: '#2563EB' }}>Estudio:</span>
+                                                        <span>{t.tipoVisita}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* 3. Consola Integrada de Envío WhatsApp y Asociación al Agente */}
+                                <div style={{
+                                    background: '#F8FAFC',
+                                    borderRadius: '14px',
+                                    border: '1.5px solid #E2E8F0',
+                                    padding: '14px 16px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <MessageSquare size={16} color="#16A34A" />
+                                            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Aviso Oficial WhatsApp ({META_TEMPLATE_TURNOS_MISMO_DIA.name})
+                                            </span>
+                                            <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px', background: '#DCFCE7', color: '#15803D' }}>
+                                                Se asocia a {activeAgent?.fullName || activeAgent?.name || 'tu bandeja'}
+                                            </span>
+                                        </div>
+                                        {onOpenChatWithPhone && selectedCaso.telefono && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenChatWithPhone(selectedCaso.telefono, { name: selectedCaso.nombre, dni: selectedCaso.dni })}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                    padding: '5px 11px', borderRadius: '8px',
+                                                    background: '#EFF6FF', color: '#1E40AF',
+                                                    border: '1px solid #BFDBFE', cursor: 'pointer',
+                                                    fontSize: '0.76rem', fontWeight: 700
+                                                }}
+                                            >
+                                                <ExternalLink size={13} />
+                                                Abrir en Chat
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Variables editables en línea */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                        {META_VAR_LABELS.map((label, idx) => (
+                                            <div key={label} style={{ gridColumn: idx === 2 ? '1 / span 2' : 'auto' }}>
+                                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#475569', marginBottom: '3px' }}>
+                                                    {label}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={currentInlineVars[idx] || ''}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setInlineVarsMap(prev => {
+                                                            const base = prev[selectedCaso.key] || buildVariablesTurnosMismoDia(selectedCaso);
+                                                            const next = [...base];
+                                                            next[idx] = val;
+                                                            return { ...prev, [selectedCaso.key]: next };
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        width: '100%', padding: '6px 9px', borderRadius: '7px',
+                                                        border: '1px solid #CBD5E1', background: '#FFFFFF',
+                                                        fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box'
+                                                    }}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Vista previa compacta estilo burbuja WhatsApp */}
+                                    <div style={{ background: '#EFEAE2', borderRadius: '10px', padding: '10px 12px' }}>
+                                        <div style={{
+                                            background: '#FFFFFF', borderRadius: '8px', padding: '10px 12px',
+                                            fontSize: '0.78rem', lineHeight: 1.42, color: '#0F172A', whiteSpace: 'pre-wrap',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                        }}>
+                                            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '4px', fontSize: '0.8rem' }}>
+                                                {META_TEMPLATE_TURNOS_MISMO_DIA.header || 'Sanatorio Argentino Contact Center'}
+                                            </div>
+                                            {renderTemplateBody(META_TEMPLATE_TURNOS_MISMO_DIA.body, currentInlineVars.map(v => v || '—')).replace(/\*/g, '')}
+                                        </div>
+                                    </div>
+
+                                    {/* Botón de Despacho Directo */}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                            Al enviar, el paciente queda asignado a <strong>{activeAgent?.fullName || activeAgent?.name}</strong> en <strong>Mis Chats</strong>.
+                                        </span>
+                                        <button
+                                            type="button"
+                                            disabled={isSendingInline || !selectedCaso.telefono}
+                                            onClick={() => handleSendInlineWhatsapp(selectedCaso)}
+                                            style={{
+                                                padding: '9px 18px', borderRadius: '10px', border: 'none',
+                                                background: isSendingInline ? '#94A3B8' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                                color: '#FFFFFF', fontSize: '0.84rem', fontWeight: 800,
+                                                cursor: isSendingInline ? 'not-allowed' : 'pointer',
+                                                display: 'inline-flex', alignItems: 'center', gap: '7px',
+                                                boxShadow: '0 3px 10px rgba(16, 185, 129, 0.25)'
+                                            }}
+                                        >
+                                            {isSendingInline ? (
+                                                <>
+                                                    <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                                                    Enviando...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Send size={15} />
+                                                    Enviar Aviso WhatsApp
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
