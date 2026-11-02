@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { synthesizeSimonSpeech, ELEVENLABS_VOICES_CATALOG, DEFAULT_FEMALE_VOICE_ID, DEFAULT_TTS_MODEL_ID } from './sync-server/elevenlabsTts.mjs'
 
 function elevenLabsVitePlugin() {
+  // Middleware ElevenLabs TTS (incluye voces masculinas para Tótem y femeninas para Simón IA)
   return {
     name: 'elevenlabs-tts-middleware',
     configureServer(server) {

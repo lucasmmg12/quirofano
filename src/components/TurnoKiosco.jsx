@@ -23,8 +23,17 @@ const ICON_MAP = {
 
 const STEPS = { DNI: 'dni', TICKET: 'ticket' };
 
-// Voz masculina argentina en ElevenLabs: "Agustin - Conversational & Expressive" (es-AR)
+// Voces masculinas de ElevenLabs para Dr. Beto en el Tótem
+const TOTEM_MALE_VOICES = [
+    { id: 'ByVRQtaK1WDOvTmP1PKO', label: 'Agustín (Argentino · Plan Starter+)' },
+    { id: 'cjVigY5qzO86Huf0OWal', label: 'Eric (Masculino Cálido · Natural)' },
+    { id: 'bIHbv24MWmeRgasZH58o', label: 'Will (Masculino Joven · Amable)' },
+    { id: 'iP95p4xoKVk53GoZ742B', label: 'Chris (Masculino Cercano · Claro)' },
+    { id: 'JBFqnCBsd6RMkjVDRZzb', label: 'George (Masculino Sereno · Clínico)' },
+    { id: 'CwhRBWXzGAHq8TQ4Fs17', label: 'Roger (Masculino Profundo · Formal)' },
+];
 const AGUSTIN_VOICE_ID = 'ByVRQtaK1WDOvTmP1PKO';
+const FALLBACK_PREMADE_MALE_VOICE_ID = 'cjVigY5qzO86Huf0OWal'; // Eric (permitida en todos los planes de ElevenLabs)
 
 export default function TurnoKiosco() {
     const [step, setStep] = useState(STEPS.DNI);
@@ -39,10 +48,12 @@ export default function TurnoKiosco() {
     const [searchedDni, setSearchedDni] = useState('');
     const [showConfirmCard, setShowConfirmCard] = useState(false);
     const [manualEditMode, setManualEditMode] = useState(false);
+    const [totemVoiceId, setTotemVoiceId] = useState(() => localStorage.getItem('totem_elevenlabs_voice') || AGUSTIN_VOICE_ID);
 
     const ttsAudioRef = useRef(null);
     const ttsCacheRef = useRef(new Map());
     const ttsAbortRef = useRef(0);
+    const libraryVoiceBlockedRef = useRef(false);
 
     const saludoActual = useMemo(() => getSaludoPorHora(), []);
 
@@ -66,57 +77,85 @@ export default function TurnoKiosco() {
         } catch (_) {}
     }, []);
 
-    const speakGuidance = useCallback(async (text) => {
+    const speakGuidance = useCallback(async (text, overrideVoiceId = null) => {
         if (!text) return;
         stopGuidanceSpeech();
         const currentReqId = ttsAbortRef.current;
 
+        const requestedVoice = overrideVoiceId || totemVoiceId || AGUSTIN_VOICE_ID;
+        // Si la cuenta está en plan Free y ya sabemos que las voces de librería dan 402, ir directo a la voz masculina premade
+        const primaryVoice = (requestedVoice === AGUSTIN_VOICE_ID && libraryVoiceBlockedRef.current)
+            ? FALLBACK_PREMADE_MALE_VOICE_ID
+            : requestedVoice;
+
+        const requestElevenLabsAudio = async (vId) => {
+            const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+            const supabaseUrl = supabase.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+            const supabaseKey = supabase.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+            if (isLocalDev) {
+                const localRes = await fetch('/api/elevenlabs/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text,
+                        voiceId: vId,
+                        modelId: 'eleven_turbo_v2_5',
+                    }),
+                }).catch(() => null);
+                if (localRes && localRes.ok && (localRes.headers.get('content-type') || '').includes('audio')) {
+                    return localRes;
+                }
+            }
+
+            return fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseKey}`,
+                    'apikey': supabaseKey,
+                },
+                body: JSON.stringify({
+                    action: 'tts',
+                    text,
+                    voiceId: vId,
+                    modelId: 'eleven_turbo_v2_5',
+                }),
+            });
+        };
+
         try {
-            const cacheKey = `${AGUSTIN_VOICE_ID}::${text}`;
+            const cacheKey = `${primaryVoice}::${text}`;
             let audioUrl = ttsCacheRef.current.get(cacheKey);
 
             if (!audioUrl) {
-                const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-                let res = null;
+                let res = await requestElevenLabsAudio(primaryVoice);
 
-                if (isLocalDev) {
-                    res = await fetch('/api/elevenlabs/tts', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            text,
-                            voiceId: AGUSTIN_VOICE_ID,
-                            modelId: 'eleven_flash_v2_5',
-                        }),
-                    }).catch(() => null);
+                // Si Agustín (librería) devuelve 402/500 por restricción del plan gratuito de ElevenLabs,
+                // reintentar inmediatamente en el cliente con la voz masculina premade de ElevenLabs (Eric)
+                // para NUNCA caer en la voz robótica del navegador
+                if ((!res || !res.ok || !(res.headers.get('content-type') || '').includes('audio')) && primaryVoice === AGUSTIN_VOICE_ID) {
+                    libraryVoiceBlockedRef.current = true;
+                    const fallbackCacheKey = `${FALLBACK_PREMADE_MALE_VOICE_ID}::${text}`;
+                    audioUrl = ttsCacheRef.current.get(fallbackCacheKey);
+                    if (!audioUrl) {
+                        res = await requestElevenLabsAudio(FALLBACK_PREMADE_MALE_VOICE_ID);
+                        if (res && res.ok && (res.headers.get('content-type') || '').includes('audio')) {
+                            const blob = await res.blob();
+                            audioUrl = URL.createObjectURL(blob);
+                            ttsCacheRef.current.set(fallbackCacheKey, audioUrl);
+                            ttsCacheRef.current.set(cacheKey, audioUrl);
+                        }
+                    }
+                } else if (res && res.ok && (res.headers.get('content-type') || '').includes('audio')) {
+                    const blob = await res.blob();
+                    audioUrl = URL.createObjectURL(blob);
+                    ttsCacheRef.current.set(cacheKey, audioUrl);
                 }
 
-                if (!res || !res.ok || !(res.headers.get('content-type') || '').includes('audio')) {
-                    const supabaseUrl = supabase.supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
-                    const supabaseKey = supabase.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
-                    res = await fetch(`${supabaseUrl}/functions/v1/beto-assistant`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${supabaseKey}`,
-                            'apikey': supabaseKey,
-                        },
-                        body: JSON.stringify({
-                            action: 'tts',
-                            text,
-                            voiceId: AGUSTIN_VOICE_ID,
-                            modelId: 'eleven_flash_v2_5',
-                        }),
-                    });
+                if (!audioUrl) {
+                    throw new Error(`ElevenLabs HTTP ${res?.status || 'network_error'}`);
                 }
-
-                if (!res.ok) {
-                    throw new Error(`ElevenLabs HTTP ${res.status}`);
-                }
-
-                const blob = await res.blob();
-                audioUrl = URL.createObjectURL(blob);
-                ttsCacheRef.current.set(cacheKey, audioUrl);
             }
 
             if (ttsAbortRef.current !== currentReqId) return;
@@ -131,19 +170,9 @@ export default function TurnoKiosco() {
             };
             await audio.play();
         } catch (err) {
-            console.warn('[TurnoKiosco ElevenLabs TTS] Fallback a síntesis local:', err);
-            if (ttsAbortRef.current !== currentReqId) return;
-            try {
-                if ('speechSynthesis' in window) {
-                    window.speechSynthesis.cancel();
-                    const u = new SpeechSynthesisUtterance(text);
-                    u.lang = 'es-AR';
-                    u.rate = 0.96;
-                    window.speechSynthesis.speak(u);
-                }
-            } catch (_) {}
+            console.warn('[TurnoKiosco ElevenLabs TTS] Error reproduciendo voz neural:', err);
         }
-    }, [stopGuidanceSpeech]);
+    }, [stopGuidanceSpeech, totemVoiceId]);
 
     const checkBoxes = useCallback(() => {
         getBoxesDisponibles()
@@ -516,31 +545,62 @@ export default function TurnoKiosco() {
                                         </div>
                                     )}
                                     {showConfirmCard && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const msg = pacienteInfo?.displayName
-                                                    ? `¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`
-                                                    : `¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`;
-                                                speakGuidance(msg);
-                                            }}
-                                            title="Volver a escuchar a Dr. Beto"
-                                            style={{
-                                                width: '44px',
-                                                height: '44px',
-                                                borderRadius: '12px',
-                                                background: '#EFF6FF',
-                                                border: '1.5px solid #BFDBFE',
-                                                color: '#1565C0',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                cursor: 'pointer',
-                                                flexShrink: 0,
-                                            }}
-                                        >
-                                            <Volume2 size={22} />
-                                        </button>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                            <select
+                                                value={totemVoiceId}
+                                                onChange={(e) => {
+                                                    const nextVoice = e.target.value;
+                                                    setTotemVoiceId(nextVoice);
+                                                    localStorage.setItem('totem_elevenlabs_voice', nextVoice);
+                                                    const msg = pacienteInfo?.displayName
+                                                        ? `¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`
+                                                        : `¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`;
+                                                    speakGuidance(msg, nextVoice);
+                                                }}
+                                                title="Cambiar voz masculina de ElevenLabs"
+                                                style={{
+                                                    height: '44px',
+                                                    padding: '0 10px',
+                                                    borderRadius: '12px',
+                                                    background: '#F8FAFC',
+                                                    border: '1.5px solid #CBD5E1',
+                                                    color: '#0D3B66',
+                                                    fontSize: '0.82rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    maxWidth: '175px',
+                                                }}
+                                            >
+                                                {TOTEM_MALE_VOICES.map(v => (
+                                                    <option key={v.id} value={v.id}>{v.label}</option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const msg = pacienteInfo?.displayName
+                                                        ? `¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`
+                                                        : `¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`;
+                                                    speakGuidance(msg);
+                                                }}
+                                                title="Volver a escuchar a Dr. Beto"
+                                                style={{
+                                                    width: '44px',
+                                                    height: '44px',
+                                                    borderRadius: '12px',
+                                                    background: '#EFF6FF',
+                                                    border: '1.5px solid #BFDBFE',
+                                                    color: '#1565C0',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer',
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                <Volume2 size={22} />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
