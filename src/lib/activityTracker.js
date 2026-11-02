@@ -207,6 +207,12 @@ export async function requestAndRecordGeolocation() {
     _telemetryContext.geo_checking = true;
     _notifyTelemetryListeners();
 
+    const isFirefox = /Firefox\//i.test(navigator.userAgent || '');
+    let sessionGranted = false;
+    try {
+        sessionGranted = sessionStorage.getItem('admqui_geo_granted_session') === 'true';
+    } catch (_) {}
+
     // Consultar estado actual del permiso si la API Permissions está disponible
     let permState = 'prompt';
     let permStatusObj = null;
@@ -214,7 +220,7 @@ export async function requestAndRecordGeolocation() {
         if (navigator.permissions?.query) {
             permStatusObj = await navigator.permissions.query({ name: 'geolocation' });
             permState = permStatusObj.state;
-            if (permState === 'granted') {
+            if (permState === 'granted' || (sessionGranted && permState !== 'denied')) {
                 _telemetryContext.geo_permission = 'granted';
                 _telemetryContext.geo_os_blocked = false;
                 _telemetryContext.geo_checked = true;
@@ -225,6 +231,17 @@ export async function requestAndRecordGeolocation() {
             };
         }
     } catch (_) {}
+
+    // Si en esta sesión de Firefox ya dio Permitir y no está denegado, no volver a bloquear ni pedir popup doble
+    if (sessionGranted && permState !== 'denied' && _telemetryContext.latitud) {
+        _telemetryContext.geo_permission = 'granted';
+        _telemetryContext.geo_os_blocked = false;
+        _telemetryContext.geo_checked = true;
+        _telemetryContext.geo_checking = false;
+        _notifyTelemetryListeners();
+        await _syncTelemetryToSessionAndAudit();
+        return _telemetryContext;
+    }
 
     const getPositionOnce = (highAccuracy, timeoutMs, maxAgeMs) =>
         new Promise((resolve) => {
@@ -251,13 +268,19 @@ export async function requestAndRecordGeolocation() {
             );
         });
 
-    // Intento 1: Alta precisión (GPS / Wi-Fi) con lectura fresca
-    let gpsPos = await getPositionOnce(true, 8000, 0);
+    let gpsPos;
+    if (isFirefox) {
+        // En Mozilla Firefox, no hacer doble llamada (evita doble popup cuando "Recordar esta decisión" está destildado)
+        gpsPos = await getPositionOnce(false, 7000, 300000);
+    } else {
+        // Intento 1: Alta precisión (GPS / Wi-Fi) con lectura fresca
+        gpsPos = await getPositionOnce(true, 8000, 0);
 
-    // Intento 2: Si falló por timeout o sensor no disponible (ej. PC de escritorio por cable LAN),
-    // reintentar inmediatamente con precisión estándar de red del navegador
-    if (gpsPos?.error && gpsPos.error !== 'denied' && gpsPos.error !== 'unsupported') {
-        gpsPos = await getPositionOnce(false, 8000, 60000);
+        // Intento 2: Si falló por timeout o sensor no disponible (ej. PC de escritorio por cable LAN),
+        // reintentar inmediatamente con precisión estándar de red del navegador
+        if (gpsPos?.error && gpsPos.error !== 'denied' && gpsPos.error !== 'unsupported') {
+            gpsPos = await getPositionOnce(false, 8000, 60000);
+        }
     }
 
     // Re-evaluar el estado real del permiso tras la respuesta del usuario al popup del navegador
@@ -268,6 +291,7 @@ export async function requestAndRecordGeolocation() {
     } catch (_) {}
 
     if (gpsPos && typeof gpsPos.lat === 'number' && typeof gpsPos.lng === 'number') {
+        try { sessionStorage.setItem('admqui_geo_granted_session', 'true'); } catch (_) {}
         _telemetryContext.latitud = Number(gpsPos.lat.toFixed(6));
         _telemetryContext.longitud = Number(gpsPos.lng.toFixed(6));
         _telemetryContext.precision_metros = gpsPos.accuracy;
@@ -288,10 +312,18 @@ export async function requestAndRecordGeolocation() {
         }
     } else {
         if (gpsPos?.error === 'denied' || permState === 'denied') {
+            try { sessionStorage.removeItem('admqui_geo_granted_session'); } catch (_) {}
             _telemetryContext.geo_permission = 'denied';
             _telemetryContext.geo_os_blocked = (permState === 'granted' && gpsPos?.error === 'denied');
-        } else if (permState === 'granted') {
-            // El usuario sí otorgó el permiso en el navegador, pero el hardware de la PC no tiene chip GPS/Wi-Fi
+        } else if (
+            permState === 'granted' ||
+            gpsPos?.error === 'unavailable' ||
+            gpsPos?.error === 'unsupported' ||
+            (isFirefox && gpsPos?.error === 'timeout')
+        ) {
+            // El usuario sí dio "Permitir" (err.code !== 1), pero el navegador/PC (ej. Mozilla Firefox en PC de escritorio sin MLS/GPS)
+            // devolvió POSITION_UNAVAILABLE (code 2) o timeout tras aceptar. Se permite el acceso usando el respaldo de IP.
+            try { sessionStorage.setItem('admqui_geo_granted_session', 'true'); } catch (_) {}
             _telemetryContext.geo_permission = 'granted';
             _telemetryContext.geo_os_blocked = false;
         } else {
