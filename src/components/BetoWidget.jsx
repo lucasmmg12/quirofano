@@ -1062,30 +1062,6 @@ export default function BetoWidget({
                     )}
                 </div>
 
-                {/* BARRA HUD DE TELEMETRÍA Y SINCRONIZACIÓN 1:1 EN TIEMPO REAL */}
-                <div style={{
-                    background: t.hudBg || '#071E36',
-                    padding: '7px 16px',
-                    borderBottom: '1px solid rgba(13, 59, 102, 0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '8px',
-                    flexWrap: 'wrap',
-                    color: '#E0F2FE',
-                    fontSize: '0.68rem',
-                    flexShrink: 0
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
-                        <Activity size={12} color="#38BDF8" />
-                        <span style={{ color: '#7DD3FC' }}>SYNC 1:1:</span>
-                        <span style={{ color: '#FFFFFF', fontWeight: 800 }}>{activeSyncLabel}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#BAE6FD', fontWeight: 600 }}>
-                        <ShieldCheck size={12} color="#34D399" />
-                        <span>Voz · Imagen · Word · Excel · PDF</span>
-                    </div>
-                </div>
 
                 {/* OVERLAY DE COMPARTICIÓN */}
                 {shareUrl && (
