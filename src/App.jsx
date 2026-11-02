@@ -1025,14 +1025,14 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                         transition: 'transform 0.1s ease-in-out, border-color 0.2s',
                     }}>
                         <div style={{
-                            width: '138px', height: '158px', borderRadius: '16px', overflow: 'hidden',
-                            background: telemetryState.geo_permission === 'denied' ? '#FEF2F2' : '#EFF6FF',
-                            border: `2.5px solid ${telemetryState.geo_permission === 'denied' ? '#EF4444' : '#2563EB'}`, boxShadow: '0 10px 25px rgba(220, 38, 38, 0.22)',
+                            width: '155px', height: '175px', borderRadius: '0', overflow: 'visible',
+                            background: 'transparent',
+                            border: 'none', boxShadow: 'none',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             margin: '0 auto 14px',
                             color: telemetryState.geo_permission === 'denied' ? '#DC2626' : '#1E4078',
                         }}>
-                            <img src="/beto-enojado.jpg" alt="Dr. Beto - Activar Ubicación" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }} />
+                            <img src="/beto-enojado.png" alt="Dr. Beto - Activar Ubicación" style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', display: 'block' }} />
                         </div>
 
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.22rem', fontWeight: 800, color: '#0F172A' }}>
