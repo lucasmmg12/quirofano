@@ -1035,17 +1035,6 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                             <MapPin size={30} />
                         </div>
 
-                        <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '4px 12px', borderRadius: '999px',
-                            background: '#EFF6FF', color: '#1E4078',
-                            fontSize: '0.71rem', fontWeight: 800, marginBottom: '10px',
-                            textTransform: 'uppercase', letterSpacing: '0.4px',
-                            border: '1px solid #BFDBFE',
-                        }}>
-                            <ShieldCheck size={13} /> Ciberseguridad · Ubicación Obligatoria
-                        </div>
-
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.22rem', fontWeight: 800, color: '#0F172A' }}>
                             {telemetryState.geo_permission === 'denied'
                                 ? 'Ubicación del Navegador Desactivada'
