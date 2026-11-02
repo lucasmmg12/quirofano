@@ -519,10 +519,18 @@ export async function requestWhatsAppOtp(userId, telefonoInput = null) {
             `👉 *${code}*\n\n` +
             `⏱️ Válido por 10 minutos. Si no solicitaste este ingreso, comunicate con Innovación y Sistemas.`;
 
-        await sendWhatsAppMessage({
-            content: msgContent,
-            number: phone,
-        });
+        try {
+            await sendWhatsAppMessage({
+                content: msgContent,
+                number: phone,
+                lineId: 'line_c',
+            });
+        } catch {
+            await sendWhatsAppMessage({
+                content: msgContent,
+                number: phone,
+            });
+        }
 
         return {
             success: true,
@@ -1111,10 +1119,18 @@ export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
                 `👉 *${code}*\n\n` +
                 `⏱️ Válido por 10 minutos. Ingresalo en la pantalla del sistema para colocar tu nueva contraseña.`;
 
-            await sendWhatsAppMessage({
-                content: msgContent,
-                number: phone,
-            });
+            try {
+                await sendWhatsAppMessage({
+                    content: msgContent,
+                    number: phone,
+                    lineId: 'line_c',
+                });
+            } catch {
+                await sendWhatsAppMessage({
+                    content: msgContent,
+                    number: phone,
+                });
+            }
 
             return {
                 success: true,
