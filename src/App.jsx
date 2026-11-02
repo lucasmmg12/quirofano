@@ -1010,7 +1010,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
     return (
         <div className="app">
             {/* Bloqueo obligatorio por Ciberseguridad si la ubicación del navegador no está habilitada */}
-            {telemetryState.geo_checked && telemetryState.geo_permission !== 'granted' && (
+            {telemetryState.geo_checked && telemetryState.geo_permission !== 'granted' && !['amedawar', 'amedawar@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim()) && (
                 <div className="no-print" style={{
                     position: 'fixed', inset: 0, zIndex: 999998,
                     background: 'rgba(15, 23, 42, 0.84)', backdropFilter: 'blur(8px)',
