@@ -439,14 +439,24 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 usuario: empleadoNombre,
             });
             
-            // Si es un pago, descontar de la deuda general
+            // Si es un pago, actualizar el cobro virtual y el saldo pendiente real sin pisar la factura base de SALUS
             if (noteType === 'pago' && montoPago) {
                 const montoNum = Number(montoPago);
-                const deudaRestante = Math.max(0, Number(selectedDeudor.deuda_total) - montoNum);
-                await updateDeudor(selectedDeudor.id, { deuda_total: deudaRestante });
-                
-                setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
-                setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
+                const applyPagoLocal = (d) => {
+                    const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
+                    const nuevoCobrado = Math.round(((Number(d.cobrado_virtual) || 0) + montoNum) * 100) / 100;
+                    const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+                    const nuevoSaldo = isCanc ? 0 : Math.max(0, Math.round((deudaSalus - nuevoCobrado) * 100) / 100);
+                    return {
+                        ...d,
+                        deuda_salus: deudaSalus,
+                        cobrado_virtual: nuevoCobrado,
+                        saldo_pendiente: nuevoSaldo,
+                        monto_efectivo: isCanc ? deudaSalus : nuevoSaldo,
+                    };
+                };
+                setSelectedDeudor(prev => prev ? applyPagoLocal(prev) : prev);
+                setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? applyPagoLocal(d) : d));
             }
 
             setNewNote('');
@@ -490,10 +500,22 @@ export default function DeudasPanel({ addToast, currentUser }) {
         try {
             const cuotaPagada = await marcarCuotaPagada(cuotaId, { fechaPago: null, comprobante: null, usuario: empleadoNombre });
             if (cuotaPagada && Number(cuotaPagada.monto) > 0 && selectedDeudor) {
-                const deudaRestante = Math.max(0, Number(selectedDeudor.deuda_total) - Number(cuotaPagada.monto));
-                await updateDeudor(selectedDeudor.id, { deuda_total: deudaRestante });
-                setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
-                setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
+                const montoNum = Number(cuotaPagada.monto);
+                const applyPagoLocal = (d) => {
+                    const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
+                    const nuevoCobrado = Math.round(((Number(d.cobrado_virtual) || 0) + montoNum) * 100) / 100;
+                    const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+                    const nuevoSaldo = isCanc ? 0 : Math.max(0, Math.round((deudaSalus - nuevoCobrado) * 100) / 100);
+                    return {
+                        ...d,
+                        deuda_salus: deudaSalus,
+                        cobrado_virtual: nuevoCobrado,
+                        saldo_pendiente: nuevoSaldo,
+                        monto_efectivo: isCanc ? deudaSalus : nuevoSaldo,
+                    };
+                };
+                setSelectedDeudor(prev => prev ? applyPagoLocal(prev) : prev);
+                setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? applyPagoLocal(d) : d));
             }
             const planesData = await fetchPlanesPago(selectedDeudor.id);
             setPlanes(planesData);
@@ -527,12 +549,25 @@ export default function DeudasPanel({ addToast, currentUser }) {
                 fecha: modalPagoForm.fecha,
             });
 
-            // 1.5. Descontar de la deuda total y actualizar localmente
-            const deudaRestante = Math.max(0, Number(selectedDeudor.deuda_total) - montoNum);
-            await updateDeudor(selectedDeudor.id, { deuda_total: deudaRestante });
-            
-            setSelectedDeudor(prev => ({ ...prev, deuda_total: deudaRestante }));
-            setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? { ...d, deuda_total: deudaRestante } : d));
+            // 1.5. Actualizar cobro virtual y saldo pendiente real sin pisar deuda_total de SALUS
+            const deudaSalusBase = Number(selectedDeudor.deuda_salus ?? selectedDeudor.deuda_total) || 0;
+            const nuevoCobradoBase = Math.round(((Number(selectedDeudor.cobrado_virtual) || 0) + montoNum) * 100) / 100;
+            const deudaRestante = Math.max(0, Math.round((deudaSalusBase - nuevoCobradoBase) * 100) / 100);
+            const applyPagoLocal = (d) => {
+                const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
+                const nuevoCobrado = Math.round(((Number(d.cobrado_virtual) || 0) + montoNum) * 100) / 100;
+                const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+                const nuevoSaldo = isCanc ? 0 : Math.max(0, Math.round((deudaSalus - nuevoCobrado) * 100) / 100);
+                return {
+                    ...d,
+                    deuda_salus: deudaSalus,
+                    cobrado_virtual: nuevoCobrado,
+                    saldo_pendiente: nuevoSaldo,
+                    monto_efectivo: isCanc ? deudaSalus : nuevoSaldo,
+                };
+            };
+            setSelectedDeudor(prev => prev ? applyPagoLocal(prev) : prev);
+            setDeudores(prev => prev.map(d => d.id === selectedDeudor.id ? applyPagoLocal(d) : d));
 
             // 2. Si se seleccionó una cuota, marcarla pagada sin duplicar registro en seguimiento
             if (modalPagoForm.cuotaId) {
@@ -588,14 +623,34 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Exportación ───
     const exportToExcel = useCallback(() => {
         if (!deudores.length) return;
-        const headers = ['Paciente', 'NHC', 'Teléfono', 'Deuda Total', 'Cobros', 'Notas Crédito', 'Facturas', 'Categoría', 'Cobertura', 'Última Factura', 'Último Contacto'];
+        const headers = [
+            'Paciente',
+            'NHC',
+            'Teléfono',
+            'Deuda Facturada SALUS ($)',
+            'Pagos a Cuenta / Cuotas ($)',
+            'Saldo Pendiente Real ($)',
+            'Cobros Caja SALUS ($)',
+            'Notas Crédito ($)',
+            'Facturas',
+            'Categoría',
+            'Cobertura',
+            'Última Factura',
+            'Último Contacto'
+        ];
         const rows = deudores.map(d => {
             const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+            const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
+            const cobradoVirtual = Number(d.cobrado_virtual || 0);
+            const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+            const saldoPendiente = isCanc ? 0 : Number(d.saldo_pendiente ?? d.deuda_total) || 0;
             return [
                 d.nombre, 
                 d.nhc, 
                 d.telefono || '', 
-                Number(d.deuda_total),
+                deudaSalus,
+                cobradoVirtual,
+                saldoPendiente,
                 Number(d.total_cobros) || 0,
                 Number(d.total_notas_credito) || 0,
                 d.cantidad_facturas, 
@@ -619,9 +674,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
         const w = window.open('', '_blank');
         const rows = deudores.map(d => {
             const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
+            const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+            const saldoReal = isCanc ? 0 : Number(d.saldo_pendiente ?? d.deuda_total) || 0;
             return `<tr>
                 <td>${d.nombre}</td><td>${d.nhc}</td>
-                <td style="text-align:right;font-weight:700">$${Number(d.deuda_total).toLocaleString('es-AR')}</td>
+                <td style="text-align:right;font-weight:700">$${saldoReal.toLocaleString('es-AR')}</td>
                 <td>${d.cantidad_facturas}</td><td>${cat.label}</td>
                 <td>${d.obra_social || '—'}</td>
                 <td>${d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR') : '—'}</td>
@@ -1468,8 +1525,35 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     <td style={{ ...st.td, fontSize: '0.75rem', color: '#475569' }}>
                                         {d.fecha_ultima_factura ? new Date(d.fecha_ultima_factura).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                                     </td>
-                                    <td style={{ ...st.td, textAlign: 'right', fontWeight: 800, color: '#D97706', fontSize: '0.88rem' }}>
-                                        {formatMoney(d.deuda_total)}
+                                    <td style={{ ...st.td, textAlign: 'right' }}>
+                                        {(() => {
+                                            const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+                                            const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
+                                            const cobradoVirtual = Number(d.cobrado_virtual || 0);
+                                            const saldoPendiente = isCanc ? 0 : Number(d.saldo_pendiente ?? d.deuda_total) || 0;
+                                            if (isCanc) {
+                                                return (
+                                                    <div>
+                                                        <div style={{ fontWeight: 800, color: '#10B981', fontSize: '0.88rem' }}>{formatMoney(0)}</div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#6366F1', fontWeight: 600 }}>
+                                                            Saldada ({formatMoney(deudaSalus)})
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                            return (
+                                                <div>
+                                                    <div style={{ fontWeight: 800, color: saldoPendiente === 0 ? '#10B981' : '#D97706', fontSize: '0.88rem' }}>
+                                                        {formatMoney(saldoPendiente)}
+                                                    </div>
+                                                    {cobradoVirtual > 0 && (
+                                                        <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 600 }}>
+                                                            SALUS: {formatMoney(deudaSalus)} · A cta: -{formatMoney(cobradoVirtual)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </td>
                                     <td style={{ ...st.td, textAlign: 'center', fontSize: '0.82rem', color: '#475569' }}>{d.cantidad_facturas}</td>
                                     <td style={{ ...st.td, fontSize: '0.72rem', color: '#64748B' }}>
@@ -1656,8 +1740,37 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
                                     {/* Fila 2: Monto + Obra Social */}
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#D97706' }}>
-                                            {formatMoney(d.deuda_total)}
+                                        <div>
+                                            {(() => {
+                                                const isCanc = d.categoria === 'deuda_cancelada' || d.categoria === 'descuento_liquidacion';
+                                                const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
+                                                const cobradoVirtual = Number(d.cobrado_virtual || 0);
+                                                const saldoPendiente = isCanc ? 0 : Number(d.saldo_pendiente ?? d.deuda_total) || 0;
+                                                if (isCanc) {
+                                                    return (
+                                                        <>
+                                                            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#10B981' }}>
+                                                                {formatMoney(0)} <span style={{ fontSize: '0.68rem', color: '#6366F1', fontWeight: 700 }}>· Cancelada</span>
+                                                            </div>
+                                                            <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600 }}>
+                                                                Orig. SALUS: {formatMoney(deudaSalus)}
+                                                            </div>
+                                                        </>
+                                                    );
+                                                }
+                                                return (
+                                                    <>
+                                                        <div style={{ fontSize: '0.92rem', fontWeight: 800, color: saldoPendiente === 0 ? '#10B981' : '#D97706' }}>
+                                                            {formatMoney(saldoPendiente)}
+                                                        </div>
+                                                        {cobradoVirtual > 0 && (
+                                                            <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 600 }}>
+                                                                SALUS: {formatMoney(deudaSalus)} · Pagado: -{formatMoney(cobradoVirtual)}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                             <span style={{ fontSize: '0.68rem', color: '#64748B', background: '#F1F5F9', padding: '2px 6px', borderRadius: '6px' }}>
@@ -1756,14 +1869,46 @@ export default function DeudasPanel({ addToast, currentUser }) {
         if (!selectedDeudor) return null;
         const cat = CATEGORIAS_DEUDOR[selectedDeudor.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
 
-        // ─── Cálculos virtuales de cobro ───
-        const totalPagadoVirtual = seguimiento
-            .filter(s => s.tipo === 'pago' && s.monto)
-            .reduce((sum, s) => sum + Number(s.monto), 0);
+        // ─── Cálculos consolidados de cobro virtual y saldo pendiente real ───
+        const segPagosList = [];
+        const seenSegKeysDetail = new Set();
+        seguimiento.forEach(s => {
+            if (s.tipo === 'pago' && Number(s.monto) > 0) {
+                const sDate = (s.created_at || '').substring(0, 10);
+                const monto = Number(s.monto) || 0;
+                const key = `${sDate}|${Math.round(monto)}|${(s.descripcion || '').trim()}`;
+                if (seenSegKeysDetail.has(key)) return;
+                seenSegKeysDetail.add(key);
+                segPagosList.push({ monto, fechaISO: sDate, desc: s.descripcion || '', matched: false });
+            }
+        });
+        planes.forEach(pl => {
+            (pl.cuotas || []).forEach(cu => {
+                if (!cu.pagada) return;
+                const monto = Number(cu.monto) || 0;
+                if (monto <= 0) return;
+                const fPago = (cu.fecha_pago || cu.created_at || '').substring(0, 10);
+                const cuotaTag = `cuota ${cu.numero_cuota}/`;
+                const match = segPagosList.find(pg =>
+                    !pg.matched &&
+                    (pg.desc.toLowerCase().includes(cuotaTag) ||
+                     (pg.fechaISO.substring(0, 7) === fPago.substring(0, 7) && Math.abs(pg.monto - monto) < 15))
+                );
+                if (match) {
+                    match.matched = true;
+                } else {
+                    segPagosList.push({ monto, fechaISO: fPago, desc: `Cuota ${cu.numero_cuota}`, matched: true });
+                }
+            });
+        });
+        const sumSegYCuotas = segPagosList.reduce((acc, x) => acc + x.monto, 0);
+        const totalPagadoVirtual = Math.max(Number(selectedDeudor.cobrado_virtual || 0), sumSegYCuotas);
 
         const activePlan = planes.find(p => p.estado === 'activo');
-        const totalDeudaSalus = Number(selectedDeudor.deuda_total) || 0;
-        const saldoPendienteReal = Math.max(0, totalDeudaSalus - totalPagadoVirtual);
+        const totalDeudaSalus = Number(selectedDeudor.deuda_salus ?? selectedDeudor.deuda_total) || 0;
+        const todasFacturasSaldadas = !detailLoading && facturas.length > 0 && facturas.every(f => (Number(f.pendiente) || 0) <= 0);
+        const isDeudaCancelada = selectedDeudor.categoria === 'deuda_cancelada' || selectedDeudor.categoria === 'descuento_liquidacion' || todasFacturasSaldadas;
+        const saldoPendienteReal = isDeudaCancelada ? 0 : Math.max(0, Math.round((totalDeudaSalus - totalPagadoVirtual) * 100) / 100);
 
         return (
             <div style={{
@@ -1944,22 +2089,35 @@ export default function DeudasPanel({ addToast, currentUser }) {
                     </div>
 
                     <div style={{ textAlign: 'right', display: 'flex', gap: '16px', alignItems: 'center' }}>
-                        {totalPagadoVirtual > 0 && (
+                        {isDeudaCancelada ? (
+                            <div style={{ textAlign: 'right', paddingRight: '14px', borderRight: '1px solid #E2E8F0' }}>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>
+                                    {formatMoney(Math.max(totalDeudaSalus, totalPagadoVirtual))}
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 600 }}>
+                                    Total Saldado / Cancelado
+                                </div>
+                            </div>
+                        ) : totalPagadoVirtual > 0 ? (
                             <div style={{ textAlign: 'right', paddingRight: '14px', borderRight: '1px solid #E2E8F0' }}>
                                 <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>
                                     {formatMoney(totalPagadoVirtual)}
                                 </div>
                                 <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 600 }}>
-                                    Cobrado Virtual
+                                    Cobrado Virtual / A Cuenta
                                 </div>
                             </div>
-                        )}
+                        ) : null}
                         <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: '1.8rem', fontWeight: 900, color: saldoPendienteReal === 0 ? '#10B981' : '#D97706', letterSpacing: '-1px' }}>
                                 {formatMoney(saldoPendienteReal)}
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                                {totalPagadoVirtual > 0 ? `Saldo Pendiente (SALUS: ${formatMoney(totalDeudaSalus)})` : 'Deuda Total'}
+                            <div style={{ fontSize: '0.72rem', color: isDeudaCancelada ? '#059669' : '#94A3B8', fontWeight: isDeudaCancelada ? 700 : 500 }}>
+                                {isDeudaCancelada
+                                    ? `Deuda Cancelada (Orig. SALUS: ${formatMoney(totalDeudaSalus)})`
+                                    : totalPagadoVirtual > 0
+                                        ? `Saldo Pendiente (SALUS: ${formatMoney(totalDeudaSalus)})`
+                                        : 'Saldo Pendiente'}
                             </div>
                         </div>
                     </div>
@@ -2159,16 +2317,33 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         <div style={{ ...st.card, background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)' }}>
                             <h4 style={st.cardTitle}><DollarSign size={14} /> Resumen Financiero</h4>
                             <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginBottom: '10px', lineHeight: '1.5' }}>
-                                Datos basados en las facturas, cobros y notas de crédito registradas en SALUS para este paciente.
+                                Conciliación entre facturación SALUS, cobros en caja, cuotas/entregas virtuales y notas de crédito.
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                                 {(() => {
                                     const totalCobrosCalc = cobros.reduce((s, c) => s + (Number(c.importe) || 0), 0);
                                     const totalNCCalc = notasCredito.reduce((s, n) => s + (Number(n.importe_total) || 0), 0);
-                                    const deudaTotal = Number(selectedDeudor.deuda_total) || 0;
+                                    const cobrosMostrados = Math.max(totalCobrosCalc, totalPagadoVirtual);
+                                    const deudaDesc = isDeudaCancelada
+                                        ? `Saldada · Orig. SALUS: ${formatMoney(totalDeudaSalus)}`
+                                        : totalPagadoVirtual > 0
+                                            ? `SALUS: ${formatMoney(totalDeudaSalus)} · A cta: -${formatMoney(totalPagadoVirtual)}`
+                                            : 'Total facturado pendiente';
+                                    const cobrosDesc = totalPagadoVirtual > 0 && totalCobrosCalc > 0 && totalPagadoVirtual !== totalCobrosCalc
+                                        ? `Caja SALUS: ${formatMoney(totalCobrosCalc)} · Virtual: ${formatMoney(totalPagadoVirtual)}`
+                                        : totalPagadoVirtual > 0 && totalCobrosCalc === 0
+                                            ? 'Pagos a cuenta / cuotas registradas'
+                                            : 'Pagos realizados en SALUS';
                                     return [
-                                        { label: 'Deuda Total', desc: 'Total facturado pendiente', value: deudaTotal, color: '#EF4444', bg: '#FEF2F2', icon: '🔴' },
-                                        { label: 'Cobros', desc: 'Pagos realizados', value: totalCobrosCalc, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
+                                        {
+                                            label: isDeudaCancelada ? 'Saldo Pendiente' : (totalPagadoVirtual > 0 ? 'Saldo Pendiente' : 'Deuda Total'),
+                                            desc: deudaDesc,
+                                            value: saldoPendienteReal,
+                                            color: saldoPendienteReal === 0 ? '#16A34A' : '#EF4444',
+                                            bg: saldoPendienteReal === 0 ? '#F0FDF4' : '#FEF2F2',
+                                            icon: saldoPendienteReal === 0 ? '✅' : '🔴'
+                                        },
+                                        { label: 'Cobros', desc: cobrosDesc, value: cobrosMostrados, color: '#16A34A', bg: '#F0FDF4', icon: '🟢' },
                                         { label: 'Notas Crédito', desc: 'Ajustes a favor', value: totalNCCalc, color: '#3B82F6', bg: '#EFF6FF', icon: '🔵' },
                                     ];
                                 })().map((item, idx) => (

@@ -3,7 +3,7 @@
  * CRUD para pacientes deudores, facturas, seguimiento e importaciones
  */
 import { supabase } from '../lib/supabase';
-import { generarExcelCobranzas } from '../utils/deudaCobranzasExcelExporter';
+import { generarExcelCobranzas, generarExcelDeudaActiva } from '../utils/deudaCobranzasExcelExporter';
 
 // ─── Categorías de deudor ───
 export const CATEGORIAS_DEUDOR = {
@@ -17,6 +17,139 @@ export const CATEGORIAS_DEUDOR = {
 };
 
 export const MIN_DEUDA = 50000;
+
+/**
+ * Enriquece una lista de pacientes con el cálculo exacto de:
+ * - deuda_salus: monto facturado pendiente en SALUS (deudas_pacientes.deuda_total)
+ * - cobrado_virtual: suma deduplicada de cuotas pagadas (deudas_cuotas), pagos en seguimiento (deudas_seguimiento)
+ *   y entregas de planes en Caja SALUS posteriores a la factura que SALUS mantiene abiertas hasta fin del plan.
+ * - saldo_pendiente: 0 si está en deuda_cancelada / descuento_liquidacion, o Math.max(0, deuda_salus - cobrado_virtual)
+ * - monto_efectivo: deuda_salus para canceladas (valor histórico saldado) o saldo_pendiente para activas
+ */
+export async function enrichPacientesConSaldoReal(pacientes = [], preloaded = {}) {
+    if (!Array.isArray(pacientes) || pacientes.length === 0) return [];
+
+    const pacIds = pacientes.map(p => p.id).filter(Boolean);
+    const nhcs = [...new Set(pacientes.map(p => p.nhc).filter(Boolean))];
+
+    let segPagos = preloaded.seguimientos;
+    let cuotasPagadas = preloaded.cuotas;
+    let cobrosSalus = preloaded.cobros;
+
+    if (!segPagos || !cuotasPagadas || !cobrosSalus) {
+        const [segRes, cuotasRes, cobrosRes] = await Promise.all([
+            segPagos
+                ? Promise.resolve({ data: segPagos })
+                : supabase
+                    .from('deudas_seguimiento')
+                    .select('paciente_id, tipo, monto, descripcion, created_at')
+                    .eq('tipo', 'pago'),
+            cuotasPagadas
+                ? Promise.resolve({ data: cuotasPagadas })
+                : supabase
+                    .from('deudas_cuotas')
+                    .select('id, numero_cuota, monto, pagada, fecha_pago, created_at, plan:deudas_planes_pago(paciente_id, cantidad_cuotas)')
+                    .eq('pagada', true),
+            cobrosSalus
+                ? Promise.resolve({ data: cobrosSalus })
+                : (nhcs.length > 0
+                    ? supabase
+                        .from('deudas_cobros')
+                        .select('nhc, importe, fecha, comentario, descripcion')
+                        .in('nhc', nhcs)
+                    : Promise.resolve({ data: [] }))
+        ]);
+        segPagos = segRes.data || [];
+        cuotasPagadas = cuotasRes.data || [];
+        cobrosSalus = cobrosRes.data || [];
+    }
+
+    const pacIdsSet = new Set(pacIds);
+    const pagosPorPac = {};
+    const seenSeg = new Set();
+
+    segPagos.forEach(s => {
+        if (s.tipo && s.tipo !== 'pago') return;
+        const monto = Number(s.monto) || 0;
+        if (!s.paciente_id || !pacIdsSet.has(s.paciente_id) || monto <= 0) return;
+        const sDate = (s.created_at || '').substring(0, 10);
+        const key = `${s.paciente_id}|${sDate}|${Math.round(monto)}|${(s.descripcion || '').trim()}`;
+        if (seenSeg.has(key)) return;
+        seenSeg.add(key);
+        if (!pagosPorPac[s.paciente_id]) pagosPorPac[s.paciente_id] = [];
+        pagosPorPac[s.paciente_id].push({
+            monto,
+            fechaISO: sDate,
+            desc: s.descripcion || '',
+            matched: false,
+        });
+    });
+
+    cuotasPagadas.forEach(cu => {
+        if (cu.pagada === false) return;
+        const pacId = cu.plan?.paciente_id;
+        const monto = Number(cu.monto) || 0;
+        if (!pacId || !pacIdsSet.has(pacId) || monto <= 0) return;
+        const fPago = (cu.fecha_pago || cu.created_at || '').substring(0, 10);
+        if (!pagosPorPac[pacId]) pagosPorPac[pacId] = [];
+        const cuotaTag = `cuota ${cu.numero_cuota}/`;
+        const match = pagosPorPac[pacId].find(pg =>
+            !pg.matched &&
+            (pg.desc.toLowerCase().includes(cuotaTag) ||
+             (pg.fechaISO.substring(0, 7) === fPago.substring(0, 7) && Math.abs(pg.monto - monto) < 15))
+        );
+        if (match) {
+            match.matched = true;
+        } else {
+            pagosPorPac[pacId].push({
+                monto,
+                fechaISO: fPago,
+                desc: `Cuota ${cu.numero_cuota}`,
+                matched: true,
+            });
+        }
+    });
+
+    const cobrosPorNhc = {};
+    cobrosSalus.forEach(c => {
+        if (!c.nhc) return;
+        if (!cobrosPorNhc[c.nhc]) cobrosPorNhc[c.nhc] = [];
+        cobrosPorNhc[c.nhc].push(c);
+    });
+
+    return pacientes.map(p => {
+        const deuda_salus = Number(p.deuda_total) || 0;
+        const segAndCuotasSum = (pagosPorPac[p.id] || []).reduce((acc, x) => acc + x.monto, 0);
+
+        let salusPlanCobrosSum = 0;
+        if (segAndCuotasSum < 5000 && p.nhc && cobrosPorNhc[p.nhc]) {
+            const fFacturaISO = (p.fecha_ultima_factura || '').substring(0, 10);
+            cobrosPorNhc[p.nhc].forEach(c => {
+                const cFecha = (c.fecha || '').substring(0, 10);
+                const com = String(c.comentario || c.descripcion || '');
+                const isPostInvoice = fFacturaISO && cFecha > fFacturaISO;
+                const isPlanOrInstallment = /\b(cuota|plan de pago|a cuenta de deuda|entrega a cuenta)\b/i.test(com);
+                const alreadySubtractedInInvoice = /deuda total\s*\$?[\d.,]+\s*-\s*entrega/i.test(com) || /pendiente\s*\$?[\d.,]+/i.test(com);
+                if (isPostInvoice && isPlanOrInstallment && !alreadySubtractedInInvoice) {
+                    salusPlanCobrosSum += Number(c.importe) || 0;
+                }
+            });
+        }
+
+        const cobrado_virtual = Math.round((segAndCuotasSum >= 5000 ? segAndCuotasSum : (segAndCuotasSum + salusPlanCobrosSum)) * 100) / 100;
+        const isCancelada = p.categoria === 'deuda_cancelada' || p.categoria === 'descuento_liquidacion';
+        const saldo_pendiente = isCancelada ? 0 : Math.max(0, Math.round((deuda_salus - cobrado_virtual) * 100) / 100);
+        const monto_efectivo = isCancelada ? deuda_salus : saldo_pendiente;
+
+        return {
+            ...p,
+            deuda_salus,
+            cobrado_virtual,
+            saldo_pendiente,
+            monto_efectivo,
+        };
+    });
+}
 
 // ─── Pacientes Deudores ───
 
@@ -64,7 +197,14 @@ export async function fetchDeudores(filters = {}) {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+    const enriched = await enrichPacientesConSaldoReal(data || []);
+    if (sortBy === 'deuda_total') {
+        enriched.sort((a, b) => ascending
+            ? (a.monto_efectivo - b.monto_efectivo)
+            : (b.monto_efectivo - a.monto_efectivo)
+        );
+    }
+    return enriched;
 }
 
 export async function fetchDeudorByNhc(nhc) {
@@ -74,7 +214,9 @@ export async function fetchDeudorByNhc(nhc) {
         .eq('nhc', nhc)
         .maybeSingle();
     if (error) throw error;
-    return data;
+    if (!data) return null;
+    const [enriched] = await enrichPacientesConSaldoReal([data]);
+    return enriched;
 }
 
 export async function fetchDeudorById(id) {
@@ -84,7 +226,9 @@ export async function fetchDeudorById(id) {
         .eq('id', id)
         .single();
     if (error) throw error;
-    return data;
+    if (!data) return null;
+    const [enriched] = await enrichPacientesConSaldoReal([data]);
+    return enriched;
 }
 
 export async function updateDeudor(id, updates) {
@@ -592,7 +736,7 @@ export async function importarDeudas(registros, usuario, onProgress) {
 export async function fetchMetricasDeudas(filtros = {}) {
     let query = supabase
         .from('deudas_pacientes')
-        .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas, deuda_cancelada_at')
+        .select('id, nombre, nhc, deuda_total, categoria, telefono, telefono_invalido, ultimo_contacto_at, ultima_respuesta_at, cantidad_facturas, deuda_cancelada_at, fecha_ultima_factura')
         .or(`deuda_total.gte.${MIN_DEUDA},categoria.eq.deuda_cancelada`)
         .order('deuda_total', { ascending: false });
 
@@ -605,20 +749,19 @@ export async function fetchMetricasDeudas(filtros = {}) {
         query = query.lte(dateField, filtros.fechaHasta);
     }
 
-    const { data: pacientes } = await query;
-
-    const all = pacientes || [];
+    const { data: rawPacientes } = await query;
+    const all = await enrichPacientesConSaldoReal(rawPacientes || []);
     const total = all.length;
 
     // Categorías que descuentan de la deuda activa
     const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
 
-    const deudaBruta = all.reduce((s, p) => s + Number(p.deuda_total), 0);
-    const deudaDescontada = all
-        .filter(p => CATEGORIAS_DESCUENTO.includes(p.categoria))
-        .reduce((s, p) => s + Number(p.deuda_total), 0);
-    const deudaTotal = deudaBruta - deudaDescontada;
-    const deudoresActivos = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).length;
+    const deudaBruta = all.reduce((s, p) => s + Number(p.deuda_salus ?? p.deuda_total), 0);
+    const deudaTotal = all
+        .filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria))
+        .reduce((s, p) => s + Number(p.saldo_pendiente ?? p.deuda_total), 0);
+    const deudaDescontada = Math.max(0, deudaBruta - deudaTotal);
+    const deudoresActivos = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria) && (p.saldo_pendiente ?? p.deuda_total) > 0).length;
 
     const conTelefono = all.filter(p => p.telefono).length;
     const sinTelefono = total - conTelefono;
@@ -628,16 +771,19 @@ export async function fetchMetricasDeudas(filtros = {}) {
     all.forEach(p => {
         if (porCategoria[p.categoria]) {
             porCategoria[p.categoria].count++;
-            porCategoria[p.categoria].monto += Number(p.deuda_total);
+            porCategoria[p.categoria].monto += Number(p.monto_efectivo ?? p.deuda_total);
         }
     });
 
-    const top10 = all.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).slice(0, 10);
+    const top10 = all
+        .filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria) && (p.saldo_pendiente ?? p.deuda_total) > 0)
+        .sort((a, b) => (b.saldo_pendiente ?? b.deuda_total) - (a.saldo_pendiente ?? a.deuda_total))
+        .slice(0, 10);
 
     // ─── Deudas Canceladas (ingreso generado) ───
     const canceladas = all.filter(p => p.categoria === 'deuda_cancelada');
     const totalCanceladas = canceladas.length;
-    const montoCancelado = canceladas.reduce((s, p) => s + Number(p.deuda_total), 0);
+    const montoCancelado = canceladas.reduce((s, p) => s + Number(p.deuda_salus ?? p.deuda_total), 0);
 
     // ─── Contactados y Respondieron: cruzar con whatsapp_messages ───
     // Obtener teléfonos únicos de deudores que tienen teléfono
@@ -1203,21 +1349,31 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     });
 
     // 6. Obtener cobros de caja SALUS (deudas_cobros) para los pacientes de la cartera
-    const nhcs = [...new Set(pacientes.map(p => p.nhc).filter(Boolean))];
-    const nhcToPac = {};
-    pacientes.forEach(p => { if (p.nhc) nhcToPac[p.nhc] = p; });
-    const pacientesMap = {};
-    pacientes.forEach(p => { pacientesMap[p.id] = p; });
+    const rawPacientes = pacientes;
+    const nhcs = [...new Set(rawPacientes.map(p => p.nhc).filter(Boolean))];
 
     let cobros = [];
     if (nhcs.length > 0) {
         const { data: cobrosData } = await supabase
             .from('deudas_cobros')
-            .select('nhc, importe, fecha, forma_pago, descripcion')
+            .select('nhc, importe, fecha, forma_pago, descripcion, comentario')
             .in('nhc', nhcs)
             .order('fecha', { ascending: true });
         cobros = cobrosData || [];
     }
+
+    // Enriquecer pacientes con Saldo Pendiente Real (descontando cuotas/entregas virtuales de la factura SALUS y llevando deuda_cancelada a $0)
+    const pacientesEnriquecidos = await enrichPacientesConSaldoReal(rawPacientes, {
+        seguimientos,
+        cuotas,
+        cobros,
+    });
+    pacientes.splice(0, pacientes.length, ...pacientesEnriquecidos);
+
+    const nhcToPac = {};
+    pacientes.forEach(p => { if (p.nhc) nhcToPac[p.nhc] = p; });
+    const pacientesMap = {};
+    pacientes.forEach(p => { pacientesMap[p.id] = p; });
 
     // Helper nombre meses en español
     const monthNames = {
@@ -1553,67 +1709,40 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         gestionadoPorMes[ym] = sum;
     });
 
-    // ─── Métricas Globales de Cartera Activa ───
+    // ─── Métricas Globales de Cartera Activa (con Saldo Pendiente Real: SALUS - Cuotas/Pagos a cuenta) ───
     const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
-    const deudaBruta = pacientes.reduce((s, p) => s + Number(p.deuda_total), 0);
-    const deudaDescontada = pacientes
-        .filter(p => CATEGORIAS_DESCUENTO.includes(p.categoria))
-        .reduce((s, p) => s + Number(p.deuda_total), 0);
-    const totalDeudaActiva = Math.max(0, deudaBruta - deudaDescontada);
-    const deudoresActivos = pacientes.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).length;
-    const pacientesActivosIds = new Set(pacientes.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria)).map(p => p.id));
+    const pacientesActivos = pacientes.filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria) && (p.saldo_pendiente ?? p.deuda_total) > 0);
+    const totalDeudaBrutaSalus = pacientes
+        .filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria))
+        .reduce((s, p) => s + Number(p.deuda_salus ?? p.deuda_total), 0);
+    const totalDeudaActiva = Math.round(pacientesActivos.reduce((s, p) => s + Number(p.saldo_pendiente ?? p.deuda_total), 0));
+    const totalPagosACuentaActivos = Math.max(0, Math.round(totalDeudaBrutaSalus - totalDeudaActiva));
+    const deudoresActivos = pacientesActivos.length;
 
-    // ─── Análisis de Exigibilidad: Regla de 30 días post-alta (Sincronizado a Cartera Activa) ───
+    // ─── Análisis de Exigibilidad: Regla de 30 días post-alta (Sincronizado 1:1 con Cartera Activa y Excel) ───
     let totalDeudaExigible = 0;
     let totalDeudaEnGracia = 0;
     let countPacientesExigibles = 0;
     let countPacientesEnGracia = 0;
 
     try {
-        const facturasActivas = todasFacturas.filter(f => Number(f.pendiente) > 0 && pacientesActivosIds.has(f.paciente_id));
-
         const todayISO = new Date().toISOString().substring(0, 10);
-        const pacExigibilidad = {};
-        facturasActivas.forEach(f => {
-            if (!pacExigibilidad[f.paciente_id]) {
-                pacExigibilidad[f.paciente_id] = { exigible: 0, enGracia: 0 };
-            }
-            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
-            const alta = admKey ? altasMap.get(admKey) : null;
-            const monto = Number(f.pendiente) || 0;
-            const fAltaISO = normalizeToISO(alta?.fecha_alta || f.fecha_hospitalizacion);
-
-            if (fAltaISO) {
-                const diffDays = diffDaysISO(fAltaISO, todayISO);
-                if (diffDays !== null && diffDays >= 30) {
-                    pacExigibilidad[f.paciente_id].exigible += monto;
-                } else {
-                    pacExigibilidad[f.paciente_id].enGracia += monto;
-                }
+        pacientesActivos.forEach(p => {
+            const saldoPac = Number(p.saldo_pendiente ?? p.deuda_total) || 0;
+            if (saldoPac <= 0) return;
+            const moraInfo = pacFechasMoraMap[p.id];
+            const fAltaISO = moraInfo?.fechaAltaISO || null;
+            const diffDays = fAltaISO ? diffDaysISO(fAltaISO, todayISO) : null;
+            if (diffDays === null || diffDays >= 30) {
+                totalDeudaExigible += saldoPac;
+                countPacientesExigibles++;
             } else {
-                pacExigibilidad[f.paciente_id].enGracia += monto;
+                totalDeudaEnGracia += saldoPac;
+                countPacientesEnGracia++;
             }
         });
-
-        let rawExigibleSum = 0;
-        let rawGraciaSum = 0;
-        Object.values(pacExigibilidad).forEach(pe => {
-            rawExigibleSum += pe.exigible;
-            rawGraciaSum += pe.enGracia;
-            if (pe.exigible > 0) countPacientesExigibles++;
-            if (pe.enGracia > 0 && pe.exigible === 0) countPacientesEnGracia++;
-        });
-
-        // Escalar proporcionalmente para cuadrar 100% con totalDeudaActiva
-        const rawSum = rawExigibleSum + rawGraciaSum;
-        if (rawSum > 0 && totalDeudaActiva > 0) {
-            const factor = totalDeudaActiva / rawSum;
-            totalDeudaExigible = Math.round(rawExigibleSum * factor);
-            totalDeudaEnGracia = Math.max(0, totalDeudaActiva - totalDeudaExigible);
-        } else {
-            totalDeudaExigible = Math.round(rawExigibleSum);
-            totalDeudaEnGracia = Math.max(0, totalDeudaActiva - totalDeudaExigible);
-        }
+        totalDeudaExigible = Math.round(totalDeudaExigible);
+        totalDeudaEnGracia = Math.max(0, totalDeudaActiva - totalDeudaExigible);
     } catch (errExig) {
         console.warn('Error calculando exigibilidad 30d:', errExig);
         totalDeudaExigible = Math.round(totalDeudaActiva * 0.6);
@@ -1701,9 +1830,9 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         };
     });
 
-    // 3. Datos para Gráfico de Barras: Top Pacientes con Mayor Deuda
-    const topDeudores = pacientes
-        .filter(p => !CATEGORIAS_DESCUENTO.includes(p.categoria))
+    // 3. Datos para Gráfico de Barras: Top Pacientes con Mayor Deuda (según Saldo Pendiente Real)
+    const topDeudores = [...pacientesActivos]
+        .sort((a, b) => (b.saldo_pendiente ?? b.deuda_total) - (a.saldo_pendiente ?? a.deuda_total))
         .slice(0, 12)
         .map((p, index) => ({
             id: p.id,
@@ -1711,7 +1840,9 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
             nombre: p.nombre,
             nombreCorto: p.nombre.length > 22 ? p.nombre.slice(0, 20) + '…' : p.nombre,
             nhc: p.nhc,
-            deuda: Number(p.deuda_total),
+            deuda: Number(p.saldo_pendiente ?? p.deuda_total),
+            deudaSalus: Number(p.deuda_salus ?? p.deuda_total),
+            cobradoVirtual: Number(p.cobrado_virtual || 0),
             categoria: p.categoria,
             obraSocial: p.obra_social || 'Particular / S.D.',
             telefono: p.telefono,
@@ -1741,6 +1872,8 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
         countCobradoExigible: pacsCobradosExigiblesSet.size,
         countCobradoEnGracia: pacsCobradosEnGraciaSet.size,
         totalDeudaActiva,
+        totalDeudaBrutaSalus,
+        totalPagosACuentaActivos,
         deudoresActivos,
         tasaRecuperacionGestionada,
         totalHistoricoCobrado,
@@ -1869,11 +2002,31 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
     if (nhcs.length > 0) {
         const { data: cobrosData } = await supabase
             .from('deudas_cobros')
-            .select('nhc, importe, fecha, forma_pago, descripcion')
+            .select('nhc, importe, fecha, forma_pago, descripcion, comentario')
             .in('nhc', nhcs)
             .order('fecha', { ascending: true });
         cobrosSalus = cobrosData || [];
     }
+
+    // Enriquecer pacientes con Saldo Pendiente Real para que deudaVigente descuente cuotas pagadas / cobros virtuales
+    const todasCuotasPagadas = [];
+    planes.forEach(pl => {
+        (pl.cuotas || []).forEach(cu => {
+            if (cu.pagada) {
+                todasCuotasPagadas.push({ ...cu, plan: { paciente_id: pl.paciente_id, cantidad_cuotas: pl.cantidad_cuotas } });
+            }
+        });
+    });
+    const pacientesEnriquecidos = await enrichPacientesConSaldoReal(pacientes, {
+        seguimientos,
+        cuotas: todasCuotasPagadas,
+        cobros: cobrosSalus,
+    });
+    pacientes.splice(0, pacientes.length, ...pacientesEnriquecidos);
+    pacientes.forEach(p => {
+        pacientesMap[p.id] = p;
+        if (p.nhc) nhcToPacMap[p.nhc] = p;
+    });
 
     // 5. Identificar pagos con jerarquía de 3 niveles sin duplicación
     // REGLA DE ORO DEL INCENTIVO: Solo se incluyen y suman los pagos efectuados >= 30 días post-alta (esExigible === true).
@@ -2178,10 +2331,10 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         }
 
         // Cuadre contable exacto por paciente:
-        // Deuda Original = Total Cobrado Histórico + Deuda Vigente Pendiente
-        const deudaVigente = p.categoria === 'deuda_cancelada' ? 0 : Math.max(0, Number(p.deuda_total) || 0);
+        // Deuda Vigente = Saldo Pendiente Real (descontando cuotas/entregas virtuales ya abonadas)
+        const deudaVigente = p.categoria === 'deuda_cancelada' ? 0 : Math.max(0, Number(p.saldo_pendiente ?? p.deuda_total) || 0);
         const cobradoHistorico = Math.max(cobroInfo.totalPeriodo, cobroInfo.totalHistorico || 0);
-        const deudaOriginal = cobradoHistorico + deudaVigente;
+        const deudaOriginal = Math.max(Number(p.deuda_salus ?? p.deuda_total) || 0, cobradoHistorico + deudaVigente);
 
         const moraInfo = pacFechasMoraMap[p.id] || {};
         const evalUltimoCobro = evaluarExigibilidadCobro(p.id, cobroInfo.ultimoCobroFechaISO);
@@ -2260,5 +2413,203 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
         resumen
     });
 }
+
+/**
+ * Genera y descarga el Excel oficial de Cartera de Deuda Activa Pendiente del Sanatorio Argentino.
+ * Incluye el desglose entre Deuda Facturada SALUS, Pagos a Cuenta / Cuotas Pagadas y Saldo Pendiente Real,
+ * más clasificación por Regla de 30 días post-alta (Exigible ≥30d vs. En Gracia <30d).
+ */
+export async function descargarInformeDeudaActivaExcel(filtros = {}) {
+    const { preset = 'todos', fechaDesde = null, fechaHasta = null } = filtros;
+    const rango = getRangoFechasPreset(preset, fechaDesde, fechaHasta);
+    const { label: periodoLabel } = rango;
+
+    const [pacientesRes, seguimientosRes, planesRes, facturasRes] = await Promise.all([
+        supabase.from('deudas_pacientes').select('*'),
+        supabase.from('deudas_seguimiento').select('paciente_id, tipo, monto, descripcion, created_at').eq('tipo', 'pago'),
+        supabase.from('deudas_planes_pago').select('*, cuotas:deudas_cuotas(*)'),
+        supabase.from('deudas_facturas').select('paciente_id, n_admision, fecha_hospitalizacion, pendiente, cobrado, total')
+    ]);
+
+    const rawPacientes = pacientesRes.data || [];
+    const seguimientos = seguimientosRes.data || [];
+    const planes = planesRes.data || [];
+    const todasFacturas = facturasRes.data || [];
+
+    const nhcs = [...new Set(rawPacientes.map(p => p.nhc).filter(Boolean))];
+    let cobrosSalus = [];
+    if (nhcs.length > 0) {
+        const { data: cobrosData } = await supabase
+            .from('deudas_cobros')
+            .select('nhc, importe, fecha, forma_pago, descripcion, comentario')
+            .in('nhc', nhcs);
+        cobrosSalus = cobrosData || [];
+    }
+
+    const todasCuotasPagadas = [];
+    const planesPorPaciente = {};
+    planes.forEach(pl => {
+        if (!planesPorPaciente[pl.paciente_id]) planesPorPaciente[pl.paciente_id] = [];
+        planesPorPaciente[pl.paciente_id].push(pl);
+        (pl.cuotas || []).forEach(cu => {
+            if (cu.pagada) {
+                todasCuotasPagadas.push({ ...cu, plan: { paciente_id: pl.paciente_id, cantidad_cuotas: pl.cantidad_cuotas } });
+            }
+        });
+    });
+
+    const pacientes = await enrichPacientesConSaldoReal(rawPacientes, {
+        seguimientos,
+        cuotas: todasCuotasPagadas,
+        cobros: cobrosSalus,
+    });
+
+    // Cruzar con altas administrativas para obtener Fecha de Alta y Fecha Exigible (+30d)
+    const distinctAdms = [...new Set(todasFacturas.map(f => f.n_admision).filter(Boolean))];
+    let allAltas = [];
+    if (distinctAdms.length > 0) {
+        for (let i = 0; i < distinctAdms.length; i += 100) {
+            const chunk = distinctAdms.slice(i, i + 100);
+            const { data: chunkAltas } = await supabase
+                .from('altas_administrativas')
+                .select('numero_admision, fecha_alta, fecha_ingreso')
+                .in('numero_admision', chunk);
+            if (chunkAltas) allAltas.push(...chunkAltas);
+        }
+    }
+    const altasMap = new Map();
+    allAltas.forEach(a => altasMap.set(String(a.numero_admision).trim(), a));
+
+    const facturasPorPac = {};
+    todasFacturas.forEach(f => {
+        if (!facturasPorPac[f.paciente_id]) facturasPorPac[f.paciente_id] = [];
+        facturasPorPac[f.paciente_id].push(f);
+    });
+
+    const CATEGORIAS_DESCUENTO = ['descuento_liquidacion', 'deuda_cancelada'];
+    const todayISO = new Date().toISOString().substring(0, 10);
+
+    const pacientesActivosList = [];
+    let totalDeudaActiva = 0;
+    let totalDeudaBrutaSalus = 0;
+    let totalPagosACuentaActivos = 0;
+    let totalDeudaExigible = 0;
+    let totalDeudaEnGracia = 0;
+    let countPacientesExigibles = 0;
+    let countPacientesEnGracia = 0;
+
+    const catStats = {};
+    Object.entries(CATEGORIAS_DEUDOR).forEach(([key, cfg]) => {
+        if (!CATEGORIAS_DESCUENTO.includes(key)) {
+            catStats[key] = { key, label: cfg.label, count: 0, deudaSalus: 0, cobradoVirtual: 0, saldoPendiente: 0 };
+        }
+    });
+
+    pacientes.forEach(p => {
+        if (CATEGORIAS_DESCUENTO.includes(p.categoria)) return;
+        const deudaSalus = Number(p.deuda_salus ?? p.deuda_total) || 0;
+        const cobradoVirtual = Number(p.cobrado_virtual || 0);
+        const saldoPendiente = Number(p.saldo_pendiente ?? p.deuda_total) || 0;
+        if (saldoPendiente <= 0) return;
+
+        const pFacturas = facturasPorPac[p.id] || [];
+        let fAltaISO = null;
+        for (const f of pFacturas) {
+            const admKey = f.n_admision ? String(f.n_admision).trim() : null;
+            const alta = admKey ? altasMap.get(admKey) : null;
+            if (alta?.fecha_alta) {
+                const candidate = normalizeToISO(alta.fecha_alta);
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
+            } else if (f.fecha_hospitalizacion) {
+                const candidate = normalizeToISO(f.fecha_hospitalizacion);
+                if (candidate && (!fAltaISO || candidate < fAltaISO)) fAltaISO = candidate;
+            }
+        }
+        if (!fAltaISO && p.fecha_ultima_factura) {
+            fAltaISO = normalizeToISO(p.fecha_ultima_factura);
+        }
+
+        const fExigibleISO = fAltaISO ? addDaysISO(fAltaISO, 30) : null;
+        const diasPostAlta = fAltaISO ? diffDaysISO(fAltaISO, todayISO) : null;
+        const esExigible = diasPostAlta === null || diasPostAlta >= 30;
+        const condicionDeuda = esExigible
+            ? `Exigible (${diasPostAlta != null ? diasPostAlta + 'd' : '≥30d'} post-alta)`
+            : `En Gracia (${Math.max(0, diasPostAlta)}d post-alta)`;
+
+        const pacPlanes = planesPorPaciente[p.id] || [];
+        const planActivo = pacPlanes.find(pl => pl.estado === 'activo') || pacPlanes[0] || null;
+        let tienePlan = false;
+        let detallePlan = 'Sin plan activo';
+        if (planActivo) {
+            tienePlan = planActivo.estado === 'activo';
+            const cuotasTotales = planActivo.cuotas || [];
+            const cuotasPagadas = cuotasTotales.filter(c => c.pagada).length;
+            const cuotasPendientes = cuotasTotales.length - cuotasPagadas;
+            detallePlan = `Plan ${planActivo.estado.toUpperCase()}: ${cuotasTotales.length} cuotas ($${Math.round(planActivo.monto_cuota || 0)}) · ${cuotasPagadas} pagadas / ${cuotasPendientes} pendientes`;
+        }
+
+        totalDeudaActiva += saldoPendiente;
+        totalDeudaBrutaSalus += deudaSalus;
+        totalPagosACuentaActivos += Math.min(deudaSalus, cobradoVirtual);
+
+        if (esExigible) {
+            totalDeudaExigible += saldoPendiente;
+            countPacientesExigibles++;
+        } else {
+            totalDeudaEnGracia += saldoPendiente;
+            countPacientesEnGracia++;
+        }
+
+        if (catStats[p.categoria]) {
+            catStats[p.categoria].count++;
+            catStats[p.categoria].deudaSalus += deudaSalus;
+            catStats[p.categoria].cobradoVirtual += Math.min(deudaSalus, cobradoVirtual);
+            catStats[p.categoria].saldoPendiente += saldoPendiente;
+        }
+
+        pacientesActivosList.push({
+            id: p.id,
+            nombre: p.nombre,
+            nhc: p.nhc,
+            dni: p.dni || '-',
+            telefono: p.telefono || 'Sin registrar',
+            obraSocial: p.obra_social || 'Particular / S.D.',
+            categoria: p.categoria,
+            categoriaLabel: CATEGORIAS_DEUDOR[p.categoria]?.label || p.categoria,
+            fechaAlta: formatFechaDDMMYYYY(fAltaISO),
+            fechaExigible: formatFechaDDMMYYYY(fExigibleISO),
+            diasPostAlta: diasPostAlta != null ? Math.max(0, diasPostAlta) : null,
+            esExigible,
+            condicionDeuda,
+            deudaSalus,
+            cobradoVirtual: Math.min(deudaSalus, cobradoVirtual),
+            saldoPendiente,
+            tienePlan,
+            detallePlan,
+            cantidadFacturas: p.cantidad_facturas || pFacturas.length || 1,
+            ultimoContacto: formatFechaDDMMYYYY(p.ultimo_contacto_at)
+        });
+    });
+
+    pacientesActivosList.sort((a, b) => b.saldoPendiente - a.saldoPendiente);
+
+    const resumen = {
+        totalDeudaActiva: Math.round(totalDeudaActiva),
+        totalDeudaBrutaSalus: Math.round(totalDeudaBrutaSalus),
+        totalPagosACuentaActivos: Math.round(totalPagosACuentaActivos),
+        totalDeudaExigible: Math.round(totalDeudaExigible),
+        totalDeudaEnGracia: Math.round(totalDeudaEnGracia),
+        countPacientesExigibles,
+        countPacientesEnGracia,
+        porCategoria: Object.values(catStats).filter(c => c.count > 0).sort((a, b) => b.saldoPendiente - a.saldoPendiente),
+    };
+
+    return await generarExcelDeudaActiva({
+        periodoLabel,
+        pacientesActivos: pacientesActivosList,
+        resumen
+    });
+}
+
 
 

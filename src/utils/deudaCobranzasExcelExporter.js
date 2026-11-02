@@ -597,3 +597,372 @@ export async function generarExcelCobranzas({
 
     return fileName;
 }
+
+/**
+ * Genera el libro Excel oficial de Cartera de Deuda Activa Pendiente (conciliado SALUS - Pagos a Cuenta / Cuotas)
+ */
+export async function generarExcelDeudaActiva({
+    periodoLabel = 'Corte Actual',
+    pacientesActivos = [],
+    resumen = {}
+}) {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Innovación y Transformación Digital - Sanatorio Argentino';
+    wb.lastModifiedBy = 'Sector Innovación y Transformación Digital';
+    wb.created = new Date();
+    wb.modified = new Date();
+
+    const fmtMoneda = (val) => '$ ' + Number(val || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+    // ─────────────────────────────────────────────────────────────
+    // HOJA 1: 📊 RESUMEN DEUDA ACTIVA & CONCILIACIÓN SALUS
+    // ─────────────────────────────────────────────────────────────
+    const wsResumen = wb.addWorksheet('📊 Resumen Deuda Activa', {
+        views: [{ showGridLines: true }]
+    });
+
+    applyHeader(
+        wsResumen,
+        'Auditoría de Cartera de Deuda Activa Pendiente (Conciliación SALUS vs. Cobros Parciales)',
+        'Estado de Pasivo Vivo Exigible (≥30d post-alta) y en Período de Gracia (<30d post-alta)',
+        periodoLabel,
+        8
+    );
+
+    wsResumen.getColumn(1).width = 4;
+    wsResumen.getColumn(2).width = 26;
+    wsResumen.getColumn(3).width = 22;
+    wsResumen.getColumn(4).width = 4;
+    wsResumen.getColumn(5).width = 26;
+    wsResumen.getColumn(6).width = 22;
+    wsResumen.getColumn(7).width = 4;
+    wsResumen.getColumn(8).width = 26;
+
+    const createKpiCard = (ws, startRow, startCol, title, valueStr, subText, theme = 'amber') => {
+        const bgHeader = theme === 'amber' ? PALETTE.amberGold
+            : theme === 'green' ? PALETTE.greenEmerald
+            : theme === 'blue' ? PALETTE.blueBrand
+            : theme === 'purple' ? PALETTE.purpleIndigo
+            : PALETTE.navyHeader;
+
+        const bgBody = theme === 'amber' ? PALETTE.amberLight
+            : theme === 'green' ? PALETTE.greenLight
+            : theme === 'blue' ? PALETTE.blueLight
+            : theme === 'purple' ? PALETTE.purpleLight
+            : PALETTE.cardBg;
+
+        const textValColor = theme === 'amber' ? 'FFB45309'
+            : theme === 'green' ? PALETTE.greenText
+            : theme === 'blue' ? PALETTE.blueBrand
+            : theme === 'purple' ? PALETTE.purpleText
+            : PALETTE.navyDark;
+
+        ws.mergeCells(startRow, startCol, startRow, startCol + 1);
+        const cellHeader = ws.getCell(startRow, startCol);
+        cellHeader.value = title.toUpperCase();
+        cellHeader.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.white } };
+        cellHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgHeader } };
+        cellHeader.alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getRow(startRow).height = 22;
+
+        ws.mergeCells(startRow + 1, startCol, startRow + 1, startCol + 1);
+        const cellVal = ws.getCell(startRow + 1, startCol);
+        cellVal.value = valueStr;
+        cellVal.font = { name: 'Segoe UI', size: 16, bold: true, color: { argb: textValColor } };
+        cellVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgBody } };
+        cellVal.alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getRow(startRow + 1).height = 34;
+
+        ws.mergeCells(startRow + 2, startCol, startRow + 2, startCol + 1);
+        const cellSub = ws.getCell(startRow + 2, startCol);
+        cellSub.value = subText;
+        cellSub.font = { name: 'Segoe UI', size: 8.5, italic: true, color: { argb: PALETTE.textMuted } };
+        cellSub.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgBody } };
+        cellSub.alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getRow(startRow + 2).height = 18;
+
+        for (let r = startRow; r <= startRow + 2; r++) {
+            for (let c = startCol; c <= startCol + 1; c++) {
+                const cell = ws.getCell(r, c);
+                cell.border = {
+                    top: r === startRow ? { style: 'medium', color: { argb: bgHeader } } : undefined,
+                    bottom: r === startRow + 2 ? { style: 'medium', color: { argb: bgHeader } } : undefined,
+                    left: c === startCol ? { style: 'medium', color: { argb: bgHeader } } : undefined,
+                    right: c === startCol + 1 ? { style: 'medium', color: { argb: bgHeader } } : undefined,
+                };
+            }
+        }
+    };
+
+    createKpiCard(
+        wsResumen, 7, 2,
+        'Saldo Pendiente Activo Real',
+        fmtMoneda(resumen.totalDeudaActiva),
+        `${pacientesActivos.length} pacientes activos con saldo pendiente de cobro`,
+        'amber'
+    );
+
+    createKpiCard(
+        wsResumen, 7, 5,
+        'Deuda Exigible (≥30d Post-Alta)',
+        fmtMoneda(resumen.totalDeudaExigible),
+        `${resumen.countPacientesExigibles || 0} pacientes superaron los 30 días desde el alta`,
+        'purple'
+    );
+
+    createKpiCard(
+        wsResumen, 11, 2,
+        'En Período de Gracia (<30d Post-Alta)',
+        fmtMoneda(resumen.totalDeudaEnGracia),
+        `${resumen.countPacientesEnGracia || 0} pacientes dentro de los 30 días posteriores al alta`,
+        'blue'
+    );
+
+    createKpiCard(
+        wsResumen, 11, 5,
+        'Pagos a Cuenta / Cuotas Descontadas',
+        fmtMoneda(resumen.totalPagosACuentaActivos),
+        `Descontado de ${fmtMoneda(resumen.totalDeudaBrutaSalus)} facturado bruto en SALUS`,
+        'green'
+    );
+
+    wsResumen.getRow(14).height = 14;
+
+    const rowSecHeader = wsResumen.addRow(['', 'CONCILIACIÓN DE CARTERA ACTIVA (FACTURACIÓN SALUS VS. SALDO REAL PENDIENTE)', '', '', '', '', '', '']);
+    wsResumen.mergeCells(15, 2, 15, 6);
+    rowSecHeader.getCell(2).font = { name: 'Segoe UI', size: 10.5, bold: true, color: { argb: PALETTE.white } };
+    rowSecHeader.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.navyHeader } };
+    rowSecHeader.getCell(2).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    wsResumen.getRow(15).height = 24;
+
+    const addSummaryLine = (label, val, isMoney = false, note = '') => {
+        const row = wsResumen.addRow(['', label, '', '', val, note, '', '']);
+        const rIdx = row.number;
+        wsResumen.mergeCells(rIdx, 2, rIdx, 4);
+        wsResumen.mergeCells(rIdx, 5, rIdx, 5);
+        wsResumen.mergeCells(rIdx, 6, rIdx, 6);
+
+        row.getCell(2).font = { name: 'Segoe UI', size: 9.5, color: { argb: PALETTE.textDark } };
+        row.getCell(2).alignment = { vertical: 'middle', horizontal: 'left' };
+
+        row.getCell(5).font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: PALETTE.navyDark } };
+        row.getCell(5).alignment = { vertical: 'middle', horizontal: 'right' };
+        if (isMoney) {
+            row.getCell(5).numFmt = '$ #,##0.00;($ #,##0.00);"-"';
+        }
+
+        row.getCell(6).font = { name: 'Segoe UI', size: 8.5, italic: true, color: { argb: PALETTE.textMuted } };
+        row.getCell(6).alignment = { vertical: 'middle', horizontal: 'left' };
+        row.height = 20;
+
+        [2, 3, 4, 5, 6].forEach(col => {
+            row.getCell(col).border = {
+                bottom: { style: 'thin', color: { argb: PALETTE.borderLight } }
+            };
+        });
+        return row;
+    };
+
+    addSummaryLine('1. Deuda Facturada Bruta en SALUS (Pacientes Activos):', resumen.totalDeudaBrutaSalus || 0, true, 'Suma de facturas pendientes en SALUS antes de descontar entregas/cuotas');
+    addSummaryLine('2. Menos: Pagos Parciales / Cuotas Pagadas (Cobrado Virtual):', -(resumen.totalPagosACuentaActivos || 0), true, 'Cuotas y entregas a cuenta registradas que SALUS mantiene abiertas hasta fin del plan');
+    addSummaryLine('3. SALDO PENDIENTE ACTIVO REAL (1 - 2):', resumen.totalDeudaActiva || 0, true, 'Suma exacta de la Columna N en Hoja 2 ( coincide 100% con el KPI del Tablero )');
+    addSummaryLine('   • Deuda Exigible (≥ 30 días corridos desde el alta):', resumen.totalDeudaExigible || 0, true, `${resumen.countPacientesExigibles || 0} pacientes en mora exigible`);
+    addSummaryLine('   • Deuda en Período de Gracia (< 30 días desde el alta):', resumen.totalDeudaEnGracia || 0, true, `${resumen.countPacientesEnGracia || 0} pacientes dentro de los 30 días del alta`);
+
+    if (Array.isArray(resumen.porCategoria) && resumen.porCategoria.length > 0) {
+        wsResumen.addRow([]);
+        const rowCatHeader = wsResumen.addRow(['', 'DESGLOSE DE DEUDA ACTIVA POR CATEGORÍA DE GESTIÓN', '', '', '', '', '', '']);
+        const rCatIdx = rowCatHeader.number;
+        wsResumen.mergeCells(rCatIdx, 2, rCatIdx, 6);
+        rowCatHeader.getCell(2).font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: PALETTE.white } };
+        rowCatHeader.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.blueBrand } };
+        rowCatHeader.getCell(2).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+        wsResumen.getRow(rCatIdx).height = 22;
+
+        resumen.porCategoria.forEach(cat => {
+            addSummaryLine(
+                `Categoría: ${cat.label}`,
+                cat.saldoPendiente || 0,
+                true,
+                `${cat.count} pacientes · Facturado SALUS: ${fmtMoneda(cat.deudaSalus)} · A cuenta: ${fmtMoneda(cat.cobradoVirtual)}`
+            );
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // HOJA 2: 📋 NÓMINA DETALLADA DE DEUDA ACTIVA PENDIENTE
+    // ─────────────────────────────────────────────────────────────
+    const wsNomina = wb.addWorksheet('📋 Nómina Deuda Activa', {
+        views: [{ showGridLines: true, state: 'frozen', ySplit: 6 }]
+    });
+
+    const colsNomina = [
+        { header: 'N°', key: 'idx', width: 6 },
+        { header: 'Paciente', key: 'nombre', width: 32 },
+        { header: 'NHC', key: 'nhc', width: 12 },
+        { header: 'DNI', key: 'dni', width: 13 },
+        { header: 'Teléfono', key: 'telefono', width: 15 },
+        { header: 'Obra Social / Financiador', key: 'obraSocial', width: 22 },
+        { header: 'Categoría de Gestión', key: 'categoriaLabel', width: 18 },
+        { header: 'Fecha Alta / Origen (DD/MM/AAAA)', key: 'fechaAlta', width: 17 },
+        { header: 'Fecha Exigible +30d (DD/MM/AAAA)', key: 'fechaExigible', width: 18 },
+        { header: 'Días Post-Alta', key: 'diasPostAlta', width: 13 },
+        { header: 'Condición (Regla 30 Días)', key: 'condicionDeuda', width: 24 },
+        { header: 'Deuda Facturada SALUS ($)', key: 'deudaSalus', width: 20 },
+        { header: 'Pagos a Cuenta / Cuotas Pagadas ($)', key: 'cobradoVirtual', width: 22 },
+        { header: 'Saldo Pendiente Real ($)', key: 'saldoPendiente', width: 22 },
+        { header: 'Plan de Pago', key: 'tienePlan', width: 13 },
+        { header: 'Detalle Plan de Cuotas', key: 'detallePlan', width: 34 },
+        { header: 'Cant. Facturas', key: 'cantidadFacturas', width: 13 },
+        { header: 'Último Contacto', key: 'ultimoContacto', width: 17 }
+    ];
+
+    applyHeader(
+        wsNomina,
+        'Nómina Completa de Pacientes con Deuda Activa Pendiente',
+        'Incluye desglose por paciente entre Deuda Facturada SALUS, Pagos a Cuenta / Cuotas y Saldo Pendiente Real',
+        periodoLabel,
+        colsNomina.length
+    );
+
+    const headerRowNom = wsNomina.addRow(colsNomina.map(c => c.header));
+    headerRowNom.height = 30;
+    headerRowNom.eachCell((cell) => {
+        cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: PALETTE.white } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.navyHeader } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border = {
+            top: { style: 'thin', color: { argb: PALETTE.borderDark } },
+            left: { style: 'thin', color: { argb: PALETTE.borderDark } },
+            bottom: { style: 'medium', color: { argb: PALETTE.borderDark } },
+            right: { style: 'thin', color: { argb: PALETTE.borderDark } },
+        };
+    });
+
+    colsNomina.forEach((col, i) => {
+        wsNomina.getColumn(i + 1).width = col.width;
+    });
+
+    pacientesActivos.forEach((item, index) => {
+        const row = wsNomina.addRow([
+            index + 1,
+            item.nombre || 'Sin Nombre',
+            item.nhc || 'S/D',
+            item.dni || '-',
+            item.telefono || 'Sin registrar',
+            item.obraSocial || 'Particular / S.D.',
+            item.categoriaLabel || item.categoria || 'Sin gestionar',
+            item.fechaAlta || '-',
+            item.fechaExigible || '-',
+            item.diasPostAlta != null ? item.diasPostAlta : '-',
+            item.condicionDeuda || 'Exigible (≥30d post-alta)',
+            item.deudaSalus || 0,
+            item.cobradoVirtual || 0,
+            item.saldoPendiente || 0,
+            item.tienePlan ? 'SÍ' : 'NO',
+            item.detallePlan || 'Sin plan activo',
+            item.cantidadFacturas || 1,
+            item.ultimoContacto || '-'
+        ]);
+
+        row.height = 22;
+        const isEven = index % 2 === 0;
+
+        row.eachCell((cell, colNumber) => {
+            cell.font = { name: 'Segoe UI', size: 9, color: { argb: PALETTE.textDark } };
+            cell.border = {
+                top: { style: 'thin', color: { argb: PALETTE.borderLight } },
+                left: { style: 'thin', color: { argb: PALETTE.borderLight } },
+                bottom: { style: 'thin', color: { argb: PALETTE.borderLight } },
+                right: { style: 'thin', color: { argb: PALETTE.borderLight } },
+            };
+
+            if (isEven) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.zebraBg } };
+            }
+
+            if ([12, 13, 14].includes(colNumber)) {
+                cell.numFmt = '$ #,##0.00;($ #,##0.00);"-"';
+                cell.alignment = { vertical: 'middle', horizontal: 'right' };
+            } else if ([1, 3, 4, 5, 8, 9, 10, 11, 15, 17, 18].includes(colNumber)) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            } else {
+                cell.alignment = { vertical: 'middle', horizontal: 'left' };
+            }
+
+            if (colNumber === 11) {
+                if (item.esExigible) {
+                    cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: 'FFB45309' } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.amberLight } };
+                } else {
+                    cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.blueBrand } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.blueLight } };
+                }
+            }
+
+            if (colNumber === 13 && (item.cobradoVirtual || 0) > 0) {
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.greenText } };
+            }
+
+            if (colNumber === 14) {
+                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FFB45309' } };
+            }
+
+            if (colNumber === 15 && item.tienePlan) {
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.purpleText } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.purpleLight } };
+            }
+        });
+    });
+
+    // Fila de Totales Hoja Nómina
+    const totalRowIndex = wsNomina.rowCount + 1;
+    const lastDataRow = Math.max(7, totalRowIndex - 1);
+    const totalRowNom = wsNomina.addRow([
+        'TOTALES',
+        `${pacientesActivos.length} PACIENTES CON DEUDA ACTIVA PENDIENTE`,
+        '', '', '', '', '', '', '', '', '',
+        { formula: `SUM(L7:L${lastDataRow})` },
+        { formula: `SUM(M7:M${lastDataRow})` },
+        { formula: `SUM(N7:N${lastDataRow})` },
+        '', '',
+        { formula: `SUM(Q7:Q${lastDataRow})` },
+        ''
+    ]);
+    totalRowNom.height = 26;
+    totalRowNom.eachCell((cell, colNumber) => {
+        cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: PALETTE.white } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.navyDark } };
+        cell.border = {
+            top: { style: 'medium', color: { argb: PALETTE.borderDark } },
+            bottom: { style: 'double', color: { argb: PALETTE.borderDark } }
+        };
+        if ([12, 13, 14].includes(colNumber)) {
+            cell.numFmt = '$ #,##0.00;($ #,##0.00);"-"';
+            cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        } else {
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        }
+    });
+
+    const cleanPeriod = (periodoLabel || 'Corte_Actual')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_');
+    const fechaHoy = new Date().toISOString().split('T')[0];
+    const fileName = `Informe_Deuda_Activa_Pendiente_Sanatorio_Argentino_${cleanPeriod}_${fechaHoy}.xlsx`;
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.URL.revokeObjectURL(url);
+
+    return fileName;
+}

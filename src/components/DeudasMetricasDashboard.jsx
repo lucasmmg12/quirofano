@@ -14,7 +14,8 @@ import {
     fetchMetricasAvanzadasDeudas,
     getRangoFechasPreset,
     CATEGORIAS_DEUDOR,
-    descargarInformeCobranzasExcel
+    descargarInformeCobranzasExcel,
+    descargarInformeDeudaActivaExcel
 } from '../services/deudaService';
 
 export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
@@ -26,6 +27,7 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
     const [customFrom, setCustomFrom] = useState('');
     const [customTo, setCustomTo] = useState('');
     const [exportingExcel, setExportingExcel] = useState(false);
+    const [exportingDeudaActivaExcel, setExportingDeudaActivaExcel] = useState(false);
 
     const handleExportExcel = async () => {
         setExportingExcel(true);
@@ -43,6 +45,24 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
             addToast?.('Error al generar archivo Excel', 'error');
         } finally {
             setExportingExcel(false);
+        }
+    };
+
+    const handleExportDeudaActivaExcel = async () => {
+        setExportingDeudaActivaExcel(true);
+        try {
+            addToast?.('Generando informe Excel de Deuda Activa Pendiente...', 'info');
+            const fileName = await descargarInformeDeudaActivaExcel({
+                preset: periodoPreset,
+                fechaDesde: customFrom,
+                fechaHasta: customTo
+            });
+            addToast?.(`Excel de Deuda Activa generado: ${fileName}`, 'success');
+        } catch (err) {
+            console.error('Error al generar Excel de deuda activa:', err);
+            addToast?.('Error al generar Excel de Deuda Activa', 'error');
+        } finally {
+            setExportingDeudaActivaExcel(false);
         }
     };
 
@@ -453,9 +473,9 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                 </div>
                             </div>
                             <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '6px' }}>
-                                <span>{data.deudoresActivos} pacientes con saldo por cobrar</span>
+                                <span>{data.deudoresActivos} pacientes con saldo pendiente real</span>
                             </div>
-                            {/* Regla 30 días post-alta */}
+                            {/* Regla 30 días post-alta + Conciliación SALUS vs Pagos a cuenta */}
                             {data.totalDeudaExigible !== undefined && (
                                 <div style={{
                                     marginTop: '8px',
@@ -478,8 +498,46 @@ export default function DeudasMetricasDashboard({ onSelectPatient, addToast }) {
                                             {formatMoney(data.totalDeudaEnGracia)}
                                         </strong>
                                     </div>
+                                    {(data.totalPagosACuentaActivos || 0) > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '2px', borderTop: '1px dotted #fde68a' }}>
+                                            <span style={{ color: '#059669' }} title={`Facturado bruto SALUS: ${formatMoney(data.totalDeudaBrutaSalus)}`}>
+                                                💵 Cuotas/entregas descontadas:
+                                            </span>
+                                            <strong style={{ color: '#059669', fontFamily: 'monospace' }}>
+                                                -{formatMoney(data.totalPagosACuentaActivos)}
+                                            </strong>
+                                        </div>
+                                    )}
                                 </div>
                             )}
+
+                            {/* Botón directo de descarga Excel de Cartera Activa */}
+                            <div style={{ marginTop: '9px' }}>
+                                <button
+                                    type="button"
+                                    onClick={handleExportDeudaActivaExcel}
+                                    disabled={exportingDeudaActivaExcel}
+                                    style={{
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        border: '1px solid #fde68a',
+                                        background: exportingDeudaActivaExcel ? '#f8fafc' : '#fffbeb',
+                                        color: '#b45309',
+                                        cursor: exportingDeudaActivaExcel ? 'wait' : 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '5px',
+                                        width: '100%',
+                                        transition: 'all 0.15s'
+                                    }}
+                                >
+                                    <FileSpreadsheet size={12} color="#d97706" />
+                                    <span>{exportingDeudaActivaExcel ? 'Generando Excel...' : 'Descargar detalle en Excel (.xlsx)'}</span>
+                                </button>
+                            </div>
                         </div>
 
                         {/* 4. Efectividad de Cobranza sobre Gestión */}
