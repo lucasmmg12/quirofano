@@ -109,9 +109,6 @@ function KPICard({ icon: Icon, label, value, subtext, color, bg, onClick }) {
 }
 
 export default function HomePanel({ onNavigate, currentUser }) {
-    const [kpis, setKpis] = useState(null);
-    const [activity, setActivity] = useState([]);
-    const [urgent, setUrgent] = useState([]);
     const [copilot, setCopilot] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -136,15 +133,7 @@ export default function HomePanel({ onNavigate, currentUser }) {
         else setLoading(true);
 
         try {
-            const [k, a, u, cp] = await Promise.all([
-                fetchDashboardKPIs(),
-                fetchRecentActivity(),
-                fetchUrgentSurgeries(),
-                fetchUserPersonalCopilot(currentUser),
-            ]);
-            setKpis(k);
-            setActivity(a);
-            setUrgent(u);
+            const cp = await fetchUserPersonalCopilot(currentUser);
             setCopilot(cp);
         } catch (e) {
             console.error('[HomePanel] Error loading dashboard:', e);
@@ -160,15 +149,6 @@ export default function HomePanel({ onNavigate, currentUser }) {
     }, [currentUser?.usuario]);
 
     const currentQuote = FRASES_MOTIVADORAS[quoteIdx % FRASES_MOTIVADORAS.length];
-
-    const QUICK_LINKS = [
-        { id: 'cirugias', label: 'Cirugías', icon: Stethoscope, color: '#10B981', bg: '#ECFDF5' },
-        { id: 'mensajeria', label: 'Chat', icon: MessageCircle, color: '#3B82F6', bg: '#EFF6FF' },
-        { id: 'deudas', label: 'Deudas', icon: DollarSign, color: '#F59E0B', bg: '#FFFBEB' },
-        { id: 'altas', label: 'Altas', icon: ClipboardCheck, color: '#8B5CF6', bg: '#F5F3FF' },
-        { id: 'beto', label: 'Simon IA', icon: Brain, color: '#6366F1', bg: '#EEF2FF' },
-        { id: 'turnos', label: 'Turnos', icon: Users, color: '#EC4899', bg: '#FDF2F8' },
-    ];
 
     return (
         <div className="content no-print view-transition-enter" style={{ maxWidth: '1120px', margin: '0 auto' }}>
@@ -479,225 +459,6 @@ export default function HomePanel({ onNavigate, currentUser }) {
                     </div>
                 </div>
             )}
-
-            {/* ═══════ KPI GRID ═══════ */}
-            {loading ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-                    {Array.from({ length: 3 }).map((_, i) => <SkeletonKPI key={i} />)}
-                </div>
-            ) : kpis && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-                    <KPICard
-                        icon={Stethoscope} label="Cirugías hoy" value={kpis.cirugias_hoy}
-                        subtext={`${kpis.cirugias_semana} esta semana`}
-                        color="#10B981" bg="#ECFDF5"
-                        onClick={onNavigate ? () => onNavigate('cirugias') : undefined}
-                    />
-                    <KPICard
-                        icon={AlertTriangle} label="Sin confirmar" value={kpis.cirugias_sin_confirmar}
-                        subtext={kpis.cirugias_sin_confirmar > 0 ? 'Requieren atención' : 'Todo al día'}
-                        color={kpis.cirugias_sin_confirmar > 0 ? '#F59E0B' : '#10B981'}
-                        bg={kpis.cirugias_sin_confirmar > 0 ? '#FFFBEB' : '#ECFDF5'}
-                        onClick={onNavigate ? () => onNavigate('cirugias') : undefined}
-                    />
-                    <KPICard
-                        icon={DollarSign} label="Deuda activa" value={formatCurrency(kpis.deuda_total)}
-                        subtext={`${kpis.deudores_activos} deudores activos`}
-                        color="#F59E0B" bg="#FFFBEB"
-                        onClick={onNavigate ? () => onNavigate('deudas') : undefined}
-                    />
-                </div>
-            )}
-
-            {/* ═══════ CONTENT ROW: URGENT + ACTIVITY ═══════ */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px', marginTop: '4px' }}>
-
-                {/* Alertas urgentes */}
-                <div style={{
-                    background: 'var(--neutral-0)', borderRadius: '16px',
-                    border: '1px solid var(--neutral-200)', overflow: 'hidden',
-                    boxShadow: 'var(--shadow-sm)',
-                }}>
-                    <div style={{
-                        padding: '16px 20px', borderBottom: '1px solid var(--neutral-100)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{
-                                width: '28px', height: '28px', borderRadius: '8px',
-                                background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                                <AlertTriangle size={14} style={{ color: '#F59E0B' }} />
-                            </div>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--neutral-800)' }}>
-                                Cirugías sin confirmar
-                            </span>
-                        </div>
-                        <span style={{
-                            padding: '2px 10px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
-                            background: urgent.length > 0 ? '#FEF3C7' : '#ECFDF5',
-                            color: urgent.length > 0 ? '#D97706' : '#059669',
-                        }}>
-                            {urgent.length > 0 ? `${urgent.length} pendientes` : '✓ Al día'}
-                        </span>
-                    </div>
-
-                    {loading ? (
-                        <div style={{ padding: '20px' }}>
-                            <SkeletonCard height={120} />
-                        </div>
-                    ) : urgent.length === 0 ? (
-                        <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-                            <Shield size={32} style={{ color: 'var(--neutral-300)', marginBottom: '8px' }} />
-                            <p style={{ fontSize: '0.85rem', color: 'var(--neutral-400)', fontWeight: 500 }}>
-                                Todas las cirugías próximas están confirmadas
-                            </p>
-                        </div>
-                    ) : (
-                        <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                            {urgent.map(s => {
-                                const scfg = STATUS_LABELS[s.status] || { label: s.status, color: '#94A3B8' };
-                                return (
-                                    <div key={s.id} style={{
-                                        padding: '12px 20px', borderBottom: '1px solid var(--neutral-50)',
-                                        display: 'flex', alignItems: 'center', gap: '12px',
-                                        cursor: 'pointer', transition: 'background 0.1s',
-                                    }}
-                                        onMouseOver={e => e.currentTarget.style.background = 'var(--neutral-50)'}
-                                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                                        onClick={() => onNavigate?.('cirugias')}
-                                    >
-                                        <div style={{
-                                            width: '8px', height: '8px', borderRadius: '50%',
-                                            background: scfg.color, flexShrink: 0,
-                                        }} />
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--neutral-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {s.nombre}
-                                            </div>
-                                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', display: 'flex', gap: '8px' }}>
-                                                <span>{s.fecha_cirugia}</span>
-                                                <span>·</span>
-                                                <span>{s.medico || 'Sin médico'}</span>
-                                            </div>
-                                        </div>
-                                        <span style={{
-                                            padding: '2px 8px', borderRadius: '6px', fontSize: '0.68rem',
-                                            fontWeight: 600, background: scfg.color + '20', color: scfg.color,
-                                        }}>
-                                            {scfg.label}
-                                        </span>
-                                        {!s.telefono && (
-                                            <Phone size={12} style={{ color: '#EF4444' }} title="Sin teléfono" />
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                {/* Actividad reciente traducida */}
-                <div style={{
-                    background: 'var(--neutral-0)', borderRadius: '16px',
-                    border: '1px solid var(--neutral-200)', overflow: 'hidden',
-                    boxShadow: 'var(--shadow-sm)',
-                }}>
-                    <div style={{
-                        padding: '16px 20px', borderBottom: '1px solid var(--neutral-100)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{
-                                width: '28px', height: '28px', borderRadius: '8px',
-                                background: '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                                <Activity size={14} style={{ color: '#6366F1' }} />
-                            </div>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--neutral-800)' }}>
-                                Actividad reciente del equipo
-                            </span>
-                        </div>
-                        <CheckCircle2 size={15} color="#10B981" />
-                    </div>
-
-                    {loading ? (
-                        <div style={{ padding: '20px' }}>
-                            <SkeletonCard height={200} />
-                        </div>
-                    ) : activity.length === 0 ? (
-                        <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-                            <Clock size={32} style={{ color: 'var(--neutral-300)', marginBottom: '8px' }} />
-                            <p style={{ fontSize: '0.85rem', color: 'var(--neutral-400)', fontWeight: 500 }}>
-                                Sin actividad reciente
-                            </p>
-                        </div>
-                    ) : (
-                        <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                            {activity.map(evt => (
-                                <div
-                                    key={evt.id}
-                                    onClick={() => evt.module_id && onNavigate?.(evt.module_id)}
-                                    style={{
-                                        padding: '10px 20px', borderBottom: '1px solid var(--neutral-50)',
-                                        display: 'flex', alignItems: 'flex-start', gap: '10px',
-                                        cursor: evt.module_id ? 'pointer' : 'default',
-                                    }}
-                                >
-                                    <div style={{
-                                        width: '6px', height: '6px', borderRadius: '50%',
-                                        background: 'var(--primary-400)', flexShrink: 0, marginTop: '6px',
-                                    }} />
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: '0.78rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
-                                            <strong style={{ color: 'var(--neutral-800)' }}>{evt.user_name || 'Sistema'}</strong>
-                                            {' — '}{evt.description || 'Actualización'}
-                                        </div>
-                                        <div style={{ fontSize: '0.68rem', color: 'var(--neutral-400)', marginTop: '2px' }}>
-                                            {formatTimeAgo(evt.created_at)}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* ═══════ QUICK ACCESS ═══════ */}
-            <div>
-                <h3 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--neutral-800)', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Zap size={15} style={{ color: 'var(--primary-500)' }} /> Acceso rápido
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
-                    {QUICK_LINKS.map(link => (
-                        <button
-                            key={link.id}
-                            onClick={() => onNavigate?.(link.id)}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '10px',
-                                padding: '14px 16px', borderRadius: '12px',
-                                border: '1px solid var(--neutral-200)',
-                                background: 'var(--neutral-0)', cursor: 'pointer',
-                                transition: 'all 0.15s', textAlign: 'left',
-                            }}
-                            onMouseOver={e => { e.currentTarget.style.borderColor = link.color + '60'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
-                        >
-                            <div style={{
-                                width: '32px', height: '32px', borderRadius: '8px',
-                                background: link.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0,
-                            }}>
-                                <link.icon size={16} style={{ color: link.color }} />
-                            </div>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-700)' }}>
-                                {link.label}
-                            </span>
-                        </button>
-                    ))}
-                </div>
-            </div>
 
             {/* ═══════ KEYBOARD SHORTCUT ═══════ */}
             <div style={{
