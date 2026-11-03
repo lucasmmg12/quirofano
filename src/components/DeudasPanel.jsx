@@ -802,7 +802,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         userSelect: 'none',
                     }}>
                         <img
-                            src="/deudas-beto.png"
+                            src="/deudas-beto.png?v=2"
                             alt="Dr. Beto - Gestión de Deudas"
                             style={{
                                 height: '128px',
@@ -982,7 +982,7 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         userSelect: 'none',
                     }}>
                         <img
-                            src="/deudas-beto.png"
+                            src="/deudas-beto.png?v=2"
                             alt="Dr. Beto - Gestión de Deudas"
                             style={{
                                 height: '132px',
