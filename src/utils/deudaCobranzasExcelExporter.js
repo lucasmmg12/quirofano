@@ -814,7 +814,8 @@ export async function generarExcelDeudaActiva({
         { header: 'Plan de Pago', key: 'tienePlan', width: 13 },
         { header: 'Detalle Plan de Cuotas', key: 'detallePlan', width: 34 },
         { header: 'Cant. Facturas', key: 'cantidadFacturas', width: 13 },
-        { header: 'Último Contacto', key: 'ultimoContacto', width: 17 }
+        { header: 'Último Contacto', key: 'ultimoContacto', width: 17 },
+        { header: 'Verificación Depósitos Post-Factura (Fecha Dep. > Fecha Fact.)', key: 'verificacionDepositos', width: 52 }
     ];
 
     applyHeader(
@@ -862,7 +863,8 @@ export async function generarExcelDeudaActiva({
             item.tienePlan ? 'SÍ' : 'NO',
             item.detallePlan || 'Sin plan activo',
             item.cantidadFacturas || 1,
-            item.ultimoContacto || '-'
+            item.ultimoContacto || '-',
+            item.verificacionDepositos || '-'
         ]);
 
         row.height = 22;
@@ -912,6 +914,11 @@ export async function generarExcelDeudaActiva({
                 cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: PALETTE.purpleText } };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.purpleLight } };
             }
+
+            if (colNumber === 19 && item.verificacionDepositos && item.verificacionDepositos !== '-') {
+                cell.font = { name: 'Segoe UI', size: 8.5, bold: true, color: { argb: PALETTE.greenText } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALETTE.greenLight } };
+            }
         });
     });
 
@@ -927,7 +934,7 @@ export async function generarExcelDeudaActiva({
         { formula: `SUM(N7:N${lastDataRow})` },
         '', '',
         { formula: `SUM(Q7:Q${lastDataRow})` },
-        ''
+        '', ''
     ]);
     totalRowNom.height = 26;
     totalRowNom.eachCell((cell, colNumber) => {

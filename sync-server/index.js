@@ -1720,8 +1720,24 @@ async function syncCobros(db, fastSync = false) {
                CONVERT(VARCHAR(10), t.[fecha], 103) AS [fecha],
                t.[FechaCobro], t.[Entidad_telefono1], t.[Centro_Nombre],
                t.[Paciente], t.[Paciente_NHC], t.[FormaPago], t.[Caja],
-               t.[Clasificacion], t.[UsuarioCobro]
+               t.[Clasificacion], t.[UsuarioCobro],
+               v.[idTipoCobro],
+               ISNULL(u.[TotalUsado], 0) AS [TotalUsado],
+               ISNULL(reint.[TotalReintegrado], 0) AS [TotalReintegrado]
           FROM [SALUS].[dbo].[PR_COBROS_QRY] AS t
+          LEFT JOIN [SALUS].[dbo].[VLISE_Cobros] AS v ON v.[idCobro] = t.[IdCobro]
+          LEFT JOIN (
+              SELECT [idcobroOrigenaCuenta], SUM([ImporteCobro]) AS [TotalUsado]
+              FROM [SALUS].[dbo].[VLISE_Cobros]
+              WHERE [idTipoCobro] = 3 AND [idcobroOrigenaCuenta] IS NOT NULL
+              GROUP BY [idcobroOrigenaCuenta]
+          ) AS u ON u.[idcobroOrigenaCuenta] = t.[IdCobro]
+          LEFT JOIN (
+              SELECT [idcobroOrigenaCuenta], SUM(ABS([ImporteCobro])) AS [TotalReintegrado]
+              FROM [SALUS].[dbo].[VLISE_Cobros]
+              WHERE [idTipoCobro] = 2 AND [ImporteCobro] < 0 AND [idcobroOrigenaCuenta] IS NOT NULL
+              GROUP BY [idcobroOrigenaCuenta]
+          ) AS reint ON reint.[idcobroOrigenaCuenta] = t.[IdCobro]
           WHERE ${dateFilter}
           ORDER BY t.[fecha] DESC
     `);
@@ -1757,6 +1773,14 @@ async function syncCobros(db, fastSync = false) {
         porNhc[nhc].total += importe;
         porNhc[nhc].count++;
 
+        const isDepositoSinImputar = Number(r.idTipoCobro) === 2
+            && Number(r.TotalUsado || 0) === 0
+            && Number(r.TotalReintegrado || 0) === 0;
+        const baseClasif = (r.Clasificacion || 'DEPOSITO').trim();
+        const clasificacion = isDepositoSinImputar
+            ? `${baseClasif} [SIN_IMPUTAR]`
+            : (r.Clasificacion || null);
+
         rows.push({
             paciente_id: pacienteId, nhc, id_cobro: idCobro,
             nombre: r.nombre || null, nombre_fiscal: r.nombreFiscal || null,
@@ -1765,7 +1789,7 @@ async function syncCobros(db, fastSync = false) {
             fecha_cobro: r.FechaCobro || null, telefono: r.Entidad_telefono1 || null,
             centro: r.Centro_Nombre || null, paciente_nombre: r.Paciente || null,
             forma_pago: r.FormaPago || null, caja: r.Caja || null,
-            clasificacion: r.Clasificacion || null, usuario_cobro: r.UsuarioCobro || null,
+            clasificacion, usuario_cobro: r.UsuarioCobro || null,
             updated_at: now,
         });
     }

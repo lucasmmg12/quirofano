@@ -55,8 +55,9 @@ export async function enrichPacientesConSaldoReal(pacientes = [], preloaded = {}
                 : (nhcs.length > 0
                     ? supabase
                         .from('deudas_cobros')
-                        .select('nhc, importe, fecha, comentario, descripcion')
+                        .select('nhc, id_cobro, importe, fecha, forma_pago, clasificacion, comentario, descripcion')
                         .in('nhc', nhcs)
+                        .limit(5000)
                     : Promise.resolve({ data: [] }))
         ]);
         segPagos = segRes.data || [];
@@ -117,29 +118,65 @@ export async function enrichPacientesConSaldoReal(pacientes = [], preloaded = {}
         cobrosPorNhc[c.nhc].push(c);
     });
 
+    const fmtISOToDDMMYYYY = (iso) => {
+        if (!iso || iso.length < 10) return '-';
+        const [y, m, d] = iso.substring(0, 10).split('-');
+        return `${d}/${m}/${y}`;
+    };
+
     return pacientes.map(p => {
         const deuda_salus = Number(p.deuda_total) || 0;
         const segAndCuotasSum = (pagosPorPac[p.id] || []).reduce((acc, x) => acc + x.monto, 0);
+        const fFacturaISO = (p.fecha_ultima_factura || '').substring(0, 10);
+        const fFacturaDisplay = fmtISOToDDMMYYYY(fFacturaISO);
 
+        const depositos_salus_posteriores = [];
         let salusPlanCobrosSum = 0;
-        if (segAndCuotasSum < 5000 && p.nhc && cobrosPorNhc[p.nhc]) {
-            const fFacturaISO = (p.fecha_ultima_factura || '').substring(0, 10);
+
+        if (p.nhc && cobrosPorNhc[p.nhc] && fFacturaISO) {
             cobrosPorNhc[p.nhc].forEach(c => {
                 const cFecha = (c.fecha || '').substring(0, 10);
+                // Verificación estricta: el depósito en SALUS debe ser posterior a la fecha de la factura
+                const isPostInvoice = Boolean(fFacturaISO && cFecha && cFecha > fFacturaISO);
+                if (!isPostInvoice) return;
+
+                const clasif = String(c.clasificacion || '');
                 const com = String(c.comentario || c.descripcion || '');
-                const isPostInvoice = fFacturaISO && cFecha > fFacturaISO;
+                const isTaggedUnapplied = clasif.includes('[SIN_IMPUTAR]');
                 const isPlanOrInstallment = /\b(cuota|plan de pago|a cuenta de deuda|entrega a cuenta)\b/i.test(com);
                 const alreadySubtractedInInvoice = /deuda total\s*\$?[\d.,]+\s*-\s*entrega/i.test(com) || /pendiente\s*\$?[\d.,]+/i.test(com);
-                if (isPostInvoice && isPlanOrInstallment && !alreadySubtractedInInvoice) {
-                    salusPlanCobrosSum += Number(c.importe) || 0;
+
+                if (isTaggedUnapplied || (isPlanOrInstallment && !alreadySubtractedInInvoice)) {
+                    const imp = Number(c.importe) || 0;
+                    if (imp > 0) {
+                        salusPlanCobrosSum += imp;
+                        depositos_salus_posteriores.push({
+                            id_cobro: c.id_cobro || null,
+                            fecha: cFecha,
+                            fechaDisplay: fmtISOToDDMMYYYY(cFecha),
+                            fechaFacturaISO: fFacturaISO,
+                            fechaFacturaDisplay: fFacturaDisplay,
+                            importe: imp,
+                            forma_pago: c.forma_pago || c.descripcion || 'Caja SALUS',
+                            clasificacion: clasif,
+                            comentario: (c.comentario || '').replace(/\r?\n/g, ' ').trim(),
+                        });
+                    }
                 }
             });
+            depositos_salus_posteriores.sort((a, b) => a.fecha.localeCompare(b.fecha));
         }
 
-        const cobrado_virtual = Math.round((segAndCuotasSum >= 5000 ? segAndCuotasSum : (segAndCuotasSum + salusPlanCobrosSum)) * 100) / 100;
+        const cobrado_virtual = Math.round(Math.max(segAndCuotasSum, salusPlanCobrosSum) * 100) / 100;
         const isCancelada = p.categoria === 'deuda_cancelada' || p.categoria === 'descuento_liquidacion';
         const saldo_pendiente = isCancelada ? 0 : Math.max(0, Math.round((deuda_salus - cobrado_virtual) * 100) / 100);
         const monto_efectivo = isCancelada ? deuda_salus : saldo_pendiente;
+
+        const verificacion_depositos_texto = depositos_salus_posteriores.length > 0
+            ? `✓ Verificado Post-Factura (Fact. ${fFacturaDisplay}): ` + depositos_salus_posteriores
+                .map(d => `Dep. #${d.id_cobro || 'S/N'} del ${d.fechaDisplay} > Fact. ${fFacturaDisplay} ($${Math.round(d.importe).toLocaleString('es-AR')})`)
+                .join(' + ')
+            : '';
 
         return {
             ...p,
@@ -147,6 +184,10 @@ export async function enrichPacientesConSaldoReal(pacientes = [], preloaded = {}
             cobrado_virtual,
             saldo_pendiente,
             monto_efectivo,
+            fecha_factura_iso: fFacturaISO,
+            fecha_factura_display: fFacturaDisplay,
+            depositos_salus_posteriores,
+            verificacion_depositos_texto,
         };
     });
 }
@@ -1356,9 +1397,10 @@ export async function fetchMetricasAvanzadasDeudas(filtros = {}) {
     if (nhcs.length > 0) {
         const { data: cobrosData } = await supabase
             .from('deudas_cobros')
-            .select('nhc, importe, fecha, forma_pago, descripcion, comentario')
+            .select('nhc, id_cobro, importe, fecha, forma_pago, clasificacion, descripcion, comentario')
             .in('nhc', nhcs)
-            .order('fecha', { ascending: true });
+            .order('fecha', { ascending: true })
+            .limit(5000);
         cobros = cobrosData || [];
     }
 
@@ -2002,9 +2044,10 @@ export async function descargarInformeCobranzasExcel(filtros = {}) {
     if (nhcs.length > 0) {
         const { data: cobrosData } = await supabase
             .from('deudas_cobros')
-            .select('nhc, importe, fecha, forma_pago, descripcion, comentario')
+            .select('nhc, id_cobro, importe, fecha, forma_pago, clasificacion, descripcion, comentario')
             .in('nhc', nhcs)
-            .order('fecha', { ascending: true });
+            .order('fecha', { ascending: true })
+            .limit(5000);
         cobrosSalus = cobrosData || [];
     }
 
@@ -2441,8 +2484,9 @@ export async function descargarInformeDeudaActivaExcel(filtros = {}) {
     if (nhcs.length > 0) {
         const { data: cobrosData } = await supabase
             .from('deudas_cobros')
-            .select('nhc, importe, fecha, forma_pago, descripcion, comentario')
-            .in('nhc', nhcs);
+            .select('nhc, id_cobro, importe, fecha, forma_pago, clasificacion, descripcion, comentario')
+            .in('nhc', nhcs)
+            .limit(5000);
         cobrosSalus = cobrosData || [];
     }
 
@@ -2576,6 +2620,7 @@ export async function descargarInformeDeudaActivaExcel(filtros = {}) {
             obraSocial: p.obra_social || 'Particular / S.D.',
             categoria: p.categoria,
             categoriaLabel: CATEGORIAS_DEUDOR[p.categoria]?.label || p.categoria,
+            fechaFactura: p.fecha_factura_display || formatFechaDDMMYYYY(p.fecha_ultima_factura),
             fechaAlta: formatFechaDDMMYYYY(fAltaISO),
             fechaExigible: formatFechaDDMMYYYY(fExigibleISO),
             diasPostAlta: diasPostAlta != null ? Math.max(0, diasPostAlta) : null,
@@ -2583,6 +2628,8 @@ export async function descargarInformeDeudaActivaExcel(filtros = {}) {
             condicionDeuda,
             deudaSalus,
             cobradoVirtual: Math.min(deudaSalus, cobradoVirtual),
+            verificacionDepositos: p.verificacion_depositos_texto
+                || (cobradoVirtual > 0 ? `✓ Cuota/Pago ADM-QUI post-factura (Fact. ${p.fecha_factura_display || formatFechaDDMMYYYY(p.fecha_ultima_factura)})` : '-'),
             saldoPendiente,
             tienePlan,
             detallePlan,

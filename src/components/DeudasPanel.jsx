@@ -1615,6 +1615,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                             const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
                                             const cobradoVirtual = Number(d.cobrado_virtual || 0);
                                             const saldoPendiente = isCanc ? 0 : Number(d.saldo_pendiente ?? d.deuda_total) || 0;
+                                            const depsPost = d.depositos_salus_posteriores || [];
+                                            const ultimoDep = depsPost.length > 0 ? depsPost[depsPost.length - 1] : null;
                                             if (isCanc) {
                                                 return (
                                                     <div>
@@ -1622,6 +1624,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                         <div style={{ fontSize: '0.64rem', color: '#6366F1', fontWeight: 600 }}>
                                                             Saldada ({formatMoney(deudaSalus)})
                                                         </div>
+                                                        {ultimoDep && (
+                                                            <div style={{ fontSize: '0.6rem', color: '#059669', fontWeight: 700, marginTop: '1px' }} title={d.verificacion_depositos_texto}>
+                                                                ✓ Dep. {ultimoDep.fechaDisplay} &gt; Fact. {d.fecha_factura_display}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             }
@@ -1633,6 +1640,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                     {cobradoVirtual > 0 && (
                                                         <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 600 }}>
                                                             SALUS: {formatMoney(deudaSalus)} · A cta: -{formatMoney(cobradoVirtual)}
+                                                        </div>
+                                                    )}
+                                                    {ultimoDep && (
+                                                        <div style={{ fontSize: '0.6rem', color: '#047857', fontWeight: 700, marginTop: '1px' }} title={d.verificacion_depositos_texto}>
+                                                            ✓ Dep. SALUS ({ultimoDep.fechaDisplay} &gt; Fact. {d.fecha_factura_display})
                                                         </div>
                                                     )}
                                                 </div>
@@ -1830,6 +1842,8 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                 const deudaSalus = Number(d.deuda_salus ?? d.deuda_total) || 0;
                                                 const cobradoVirtual = Number(d.cobrado_virtual || 0);
                                                 const saldoPendiente = isCanc ? 0 : Number(d.saldo_pendiente ?? d.deuda_total) || 0;
+                                                const depsPost = d.depositos_salus_posteriores || [];
+                                                const ultimoDep = depsPost.length > 0 ? depsPost[depsPost.length - 1] : null;
                                                 if (isCanc) {
                                                     return (
                                                         <>
@@ -1839,6 +1853,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                             <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600 }}>
                                                                 Orig. SALUS: {formatMoney(deudaSalus)}
                                                             </div>
+                                                            {ultimoDep && (
+                                                                <div style={{ fontSize: '0.6rem', color: '#059669', fontWeight: 700, marginTop: '1px' }} title={d.verificacion_depositos_texto}>
+                                                                    ✓ Dep. {ultimoDep.fechaDisplay} &gt; Fact. {d.fecha_factura_display}
+                                                                </div>
+                                                            )}
                                                         </>
                                                     );
                                                 }
@@ -1850,6 +1869,11 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                                         {cobradoVirtual > 0 && (
                                                             <div style={{ fontSize: '0.64rem', color: '#059669', fontWeight: 600 }}>
                                                                 SALUS: {formatMoney(deudaSalus)} · Pagado: -{formatMoney(cobradoVirtual)}
+                                                            </div>
+                                                        )}
+                                                        {ultimoDep && (
+                                                            <div style={{ fontSize: '0.6rem', color: '#047857', fontWeight: 700, marginTop: '1px' }} title={d.verificacion_depositos_texto}>
+                                                                ✓ Dep. SALUS ({ultimoDep.fechaDisplay} &gt; Fact. {d.fecha_factura_display})
                                                             </div>
                                                         )}
                                                     </>
@@ -2447,6 +2471,35 @@ export default function DeudasPanel({ addToast, currentUser }) {
                                     </div>
                                 ))}
                             </div>
+                            {selectedDeudor.depositos_salus_posteriores?.length > 0 && (
+                                <div style={{
+                                    marginTop: '10px', padding: '10px 12px', borderRadius: '10px',
+                                    background: '#ECFDF5', border: '1px solid #A7F3D0',
+                                }}>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065F46', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                        <span>✅ Verificación Depósitos SALUS Post-Factura (Fecha Dep. &gt; Fecha Fact. {selectedDeudor.fecha_factura_display})</span>
+                                        <span style={{ background: '#D1FAE5', color: '#047857', padding: '2px 8px', borderRadius: '12px', fontSize: '0.66rem' }}>
+                                            {selectedDeudor.depositos_salus_posteriores.length} dep. verificado{selectedDeudor.depositos_salus_posteriores.length > 1 ? 's' : ''}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {selectedDeudor.depositos_salus_posteriores.map((dep, idx) => (
+                                            <div key={idx} style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                fontSize: '0.7rem', color: '#047857', background: '#FFFFFF',
+                                                padding: '4px 8px', borderRadius: '6px', border: '1px solid #D1FAE5'
+                                            }}>
+                                                <span>
+                                                    <strong>Depósito #{dep.id_cobro}</strong> · Fecha Dep.: <strong>{dep.fechaDisplay}</strong> &gt; Factura: <strong>{dep.fechaFacturaDisplay}</strong>
+                                                </span>
+                                                <span style={{ fontWeight: 800, color: '#059669' }}>
+                                                    -{formatMoney(dep.importe)}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Tabs Financieros */}
