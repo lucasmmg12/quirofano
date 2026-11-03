@@ -53,22 +53,48 @@ export default function NomencladorView({ onAddToCart }) {
     return (
         <div className="content no-print" style={{ gap: 'var(--space-4)' }}>
             {/* Header */}
-            <div className="patient-header" style={{ padding: 'var(--space-5) var(--space-6)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-                    <div style={{
-                        width: 40, height: 40, borderRadius: 'var(--radius-lg)',
-                        background: 'linear-gradient(135deg, var(--primary-500), var(--primary-700))',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff'
-                    }}>
-                        <BookOpen size={20} />
+            <div className="patient-header" style={{ padding: 'var(--space-5) var(--space-6)', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: 'var(--space-4)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                        <div style={{
+                            width: 40, height: 40, borderRadius: 'var(--radius-lg)',
+                            background: 'linear-gradient(135deg, var(--primary-500), var(--primary-700))',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff'
+                        }}>
+                            <BookOpen size={20} />
+                        </div>
+                        <div>
+                            <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--neutral-900)' }}>
+                                Nomenclador Completo
+                            </h2>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
+                                {PRACTICES.length} prácticas en {CATEGORIES.length - 1} categorías
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'var(--neutral-900)' }}>
-                            Nomenclador Completo
-                        </h2>
-                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
-                            {PRACTICES.length} prácticas en {CATEGORIES.length - 1} categorías
-                        </p>
+
+                    {/* Ilustración Dr. Beto (Pedidos) */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        justifyContent: 'center',
+                        marginTop: '-16px',
+                        marginBottom: '-10px',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                    }}>
+                        <img
+                            src="/pedidos-beto.png"
+                            alt="Dr. Beto - Pedidos"
+                            style={{
+                                height: '116px',
+                                width: 'auto',
+                                objectFit: 'contain',
+                                objectPosition: 'bottom center',
+                                display: 'block',
+                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                            }}
+                        />
                     </div>
                 </div>
 

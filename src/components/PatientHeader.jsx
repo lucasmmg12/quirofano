@@ -151,13 +151,13 @@ export default function PatientHeader({ patientData, setPatientData, hiddenField
 
     return (
         <div className="patient-header animate-fade-in">
-            <div className="patient-header__top" onClick={() => setCollapsed(!collapsed)}>
+            <div className="patient-header__top" onClick={() => setCollapsed(!collapsed)} style={{ paddingBottom: collapsed ? '0' : '4px', overflow: 'hidden', position: 'relative' }}>
                 <div className="patient-header__title-group">
                     <div className="patient-header__icon-badge">
                         <User size={20} />
                     </div>
                     <div>
-                        <h2 className="patient-header__title">Datos del Paciente</h2>
+                        <h2 className="patient-header__title">Datos del Paciente — Emisión de Pedidos</h2>
                         {collapsed && patientData.nombre && (
                             <p className="patient-header__summary">
                                 {patientData.nombre} — {patientData.obraSocial || 'Sin OS'} — {patientData.afiliado || 'Sin Afil.'}
@@ -165,7 +165,7 @@ export default function PatientHeader({ patientData, setPatientData, hiddenField
                         )}
                     </div>
                 </div>
-                <div className="patient-header__toggle-area">
+                <div className="patient-header__toggle-area" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {hasAnyData && (
                         <button
                             className="btn-clear-fields"
@@ -184,6 +184,24 @@ export default function PatientHeader({ patientData, setPatientData, hiddenField
                     <button className="patient-header__toggle" aria-label="Alternar formulario">
                         {collapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
                     </button>
+
+                    {/* Ilustración Dr. Beto (Pedidos) */}
+                    <img
+                        src="/pedidos-beto.png"
+                        alt="Dr. Beto - Pedidos"
+                        style={{
+                            height: '108px',
+                            width: 'auto',
+                            objectFit: 'contain',
+                            objectPosition: 'bottom center',
+                            display: 'block',
+                            marginTop: '-12px',
+                            marginBottom: '-14px',
+                            filter: 'drop-shadow(0 5px 12px rgba(15, 41, 66, 0.14))',
+                            pointerEvents: 'none',
+                            userSelect: 'none'
+                        }}
+                    />
                 </div>
             </div>
 

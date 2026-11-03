@@ -1466,11 +1466,34 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                 {activeView === 'historial' && (
                     <div className="content no-print">
                         <div className="cart animate-fade-in">
-                            <div className="cart__header">
-                                <div className="cart__title-group">
+                            <div className="cart__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', padding: '16px 24px 0 24px', overflow: 'hidden' }}>
+                                <div className="cart__title-group" style={{ paddingBottom: '16px' }}>
                                     <div className="cart__icon-badge"><Clock size={18} /></div>
                                     <h3 className="cart__title">Historial de Pedidos</h3>
                                     <span className="cart__badge">{orderHistory.length} pedido{orderHistory.length !== 1 ? 's' : ''}</span>
+                                </div>
+
+                                {/* Ilustración Dr. Beto (Pedidos) */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-end',
+                                    justifyContent: 'center',
+                                    marginTop: '-10px',
+                                    pointerEvents: 'none',
+                                    userSelect: 'none'
+                                }}>
+                                    <img
+                                        src="/pedidos-beto.png"
+                                        alt="Dr. Beto - Pedidos"
+                                        style={{
+                                            height: '112px',
+                                            width: 'auto',
+                                            objectFit: 'contain',
+                                            objectPosition: 'bottom center',
+                                            display: 'block',
+                                            filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                                        }}
+                                    />
                                 </div>
                             </div>
                             {historialLoading ? (
