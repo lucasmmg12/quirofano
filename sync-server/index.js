@@ -34,6 +34,7 @@ import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turno
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { getDxIAnalytics } from './sync_dxi.mjs';
 import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
+import { runDailySync } from './daily_sync_job.mjs';
 import { synthesizeSimonSpeech, ELEVENLABS_VOICES_CATALOG, DEFAULT_FEMALE_VOICE_ID, DEFAULT_TTS_MODEL_ID } from './elevenlabsTts.mjs';
 
 
@@ -3638,6 +3639,14 @@ async function performFullSync(fastSync = false) {
             results.censoCamas = { error: err.message };
         }
 
+        try {
+            console.log('🔄 [Gobernanza UCI / Guardia / Camas / VLISE] Sincronizando indicadores de Gobernanza con SALUS...');
+            results.gobernanza = await runDailySync({ skipDoctors: true });
+        } catch (err) {
+            console.error('❌ Error en sincronización de Gobernanza:', err.message);
+            results.gobernanza = { error: err.message };
+        }
+
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`\n–… ▬▬▬▬▬ SINCRONIZACIÓN COMPLETADA en ${elapsed}s ▬▬▬▬▬ \n`);
 
@@ -4271,6 +4280,18 @@ app.get('/api/salus/sync/dxi', async (req, res) => {
     }
 });
 
+app.get('/api/salus/sync/gobernanza', async (req, res) => {
+    try {
+        await updateServerTask('Sincronizando Gobernanza (UCI, Guardia, VLISE, Camas)');
+        const data = await runDailySync({ skipDoctors: true });
+        await updateServerTask('Inactivo');
+        res.json({ success: true, results: data });
+    } catch (err) {
+        await updateServerTask('Inactivo');
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ── Servidor ──
 
 // ── Heartbeat a Supabase (salus_sync_server_status) ──
@@ -4342,6 +4363,20 @@ async function processSyncRequestsQueue() {
                 syncResult = {
                     elapsed: `${((Date.now() - t0) / 1000).toFixed(1)}s`,
                     results: { altas: aRes }
+                };
+            } else if (reqItem.mode === 'gobernanza') {
+                await updateServerTask('Sincronizando Gobernanza (UCI, Guardia, VLISE, Camas)');
+                const t0 = Date.now();
+                syncInProgress = true;
+                let gRes;
+                try {
+                    gRes = await runDailySync({ skipDoctors: true });
+                } finally {
+                    syncInProgress = false;
+                }
+                syncResult = {
+                    elapsed: `${((Date.now() - t0) / 1000).toFixed(1)}s`,
+                    results: { gobernanza: gRes }
                 };
             } else {
                 syncResult = await performFullSync(reqItem.mode === 'fast');
@@ -4703,6 +4738,24 @@ app.listen(PORT, '0.0.0.0', () => {
         }
         setTimeout(runQueueAlertsCycle, 10000); // 10 segundos tras inicio
         setInterval(runQueueAlertsCycle, 2 * 60 * 1000); // cada 2 minutos
+
+        // 7. GOBERNANZA DE DATOS (UCI, Días Cama, Estudios VLISE, Guardia, Hospital de Día - Al inicio y cada 45 min)
+        let gobAutoRunning = false;
+        async function runGobernanzaAutoCycle(label) {
+            if (syncInProgress || gobAutoRunning) return;
+            gobAutoRunning = true;
+            try {
+                console.log(`⏰ [Gobernanza Auto] ${label}...`);
+                await runDailySync({ skipDoctors: true });
+                console.log(`⏰ [Gobernanza Auto] ✅ Ciclo completado exitosamente.`);
+            } catch (e) {
+                console.warn('⚠️ [Gobernanza Auto] Error en ciclo:', e.message);
+            } finally {
+                gobAutoRunning = false;
+            }
+        }
+        setTimeout(() => runGobernanzaAutoCycle('Sincronización inicial de Gobernanza'), 90000);
+        setInterval(() => runGobernanzaAutoCycle('Sincronización periódica de Gobernanza (cada 45 min)'), 45 * 60 * 1000);
     }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
 });
 

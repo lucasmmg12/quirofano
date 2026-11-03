@@ -94,26 +94,31 @@ export async function syncKinesiologiaUci(fromDate = '2026-06-01') {
             return { total: 0, upserted: 0 };
         }
 
-        // Mapear y sanear para Supabase
-        const recordsToUpsert = rows.map(r => ({
-            id_registro_salus: r.id_registro_salus,
-            nhc: String(r.nhc || '').trim(),
-            paciente: String(r.paciente || '').trim().toUpperCase(),
-            id_paciente_salus: r.id_paciente_salus,
-            id_visita: r.id_visita,
-            id_hospitalizacion: r.id_hospitalizacion,
-            fecha_hora: r.fecha_hora ? new Date(r.fecha_hora).toISOString() : null,
-            protocolo_id: r.protocolo_id,
-            protocolo_nombre: r.protocolo_nombre ? String(r.protocolo_nombre).trim() : 'Kinesiología',
-            grupo_nombre: r.grupo_nombre ? String(r.grupo_nombre).trim() : null,
-            parametro: r.parametro ? String(r.parametro).trim() : 'Parámetro',
-            valor_numerico: r.valor_numerico !== null && !isNaN(r.valor_numerico) ? Number(r.valor_numerico) : null,
-            valor_texto: r.valor_texto ? String(r.valor_texto).trim() : null,
-            valor_combo: r.valor_combo ? String(r.valor_combo).trim() : null,
-            unidades: r.unidades ? String(r.unidades).trim() : null,
-            profesional: r.profesional ? String(r.profesional).trim() : null,
-            updated_at: new Date().toISOString()
-        })).filter(r => r.id_registro_salus && r.fecha_hora);
+        // Mapear, sanear y deduplicar por id_registro_salus para Supabase
+        const dedupMap = new Map();
+        for (const r of rows) {
+            if (!r.id_registro_salus || !r.fecha_hora) continue;
+            dedupMap.set(String(r.id_registro_salus), {
+                id_registro_salus: r.id_registro_salus,
+                nhc: String(r.nhc || '').trim(),
+                paciente: String(r.paciente || '').trim().toUpperCase(),
+                id_paciente_salus: r.id_paciente_salus,
+                id_visita: r.id_visita,
+                id_hospitalizacion: r.id_hospitalizacion,
+                fecha_hora: r.fecha_hora ? new Date(r.fecha_hora).toISOString() : null,
+                protocolo_id: r.protocolo_id,
+                protocolo_nombre: r.protocolo_nombre ? String(r.protocolo_nombre).trim() : 'Kinesiología',
+                grupo_nombre: r.grupo_nombre ? String(r.grupo_nombre).trim() : null,
+                parametro: r.parametro ? String(r.parametro).trim() : 'Parámetro',
+                valor_numerico: r.valor_numerico !== null && !isNaN(r.valor_numerico) ? Number(r.valor_numerico) : null,
+                valor_texto: r.valor_texto ? String(r.valor_texto).trim() : null,
+                valor_combo: r.valor_combo ? String(r.valor_combo).trim() : null,
+                unidades: r.unidades ? String(r.unidades).trim() : null,
+                profesional: r.profesional ? String(r.profesional).trim() : null,
+                updated_at: new Date().toISOString()
+            });
+        }
+        const recordsToUpsert = Array.from(dedupMap.values());
 
         log(`Preparados ${recordsToUpsert.length} registros para upsert en Supabase.`);
 

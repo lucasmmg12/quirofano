@@ -81,18 +81,23 @@ function asignarRangoEspera(horas) {
     return '> 48 hs (Programación diferida)';
 }
 
-export async function syncCirugiasConversion(targetPeriodo = null) {
+export async function syncCirugiasConversion(targetPeriodo = null, { fastSync = false } = {}) {
     let pool;
     try {
         console.log(`[SYNC-CIRUGIAS] Iniciando sincronización de cirugías derivadas de Guardia Clínica...`);
         pool = await sql.connect(SQL_CONFIG);
 
+        const now = new Date();
+        const curYear = now.getFullYear();
+        const curMonth = now.getMonth() + 1;
+        const dynamicMonths = [];
+        for (let m = 1; m <= curMonth; m++) {
+            dynamicMonths.push(`${curYear}-${String(m).padStart(2, '0')}`);
+        }
+
         const periodos = targetPeriodo 
             ? [targetPeriodo] 
-            : [
-                '2026-01', '2026-02', '2026-03', '2026-04', 
-                '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'
-            ];
+            : (fastSync ? dynamicMonths.slice(-2) : dynamicMonths);
 
         for (const per of periodos) {
             const [y, m] = per.split('-').map(Number);

@@ -387,33 +387,54 @@ async function procesarPeriodo(pool, periodo, fechaDesde, fechaHasta) {
     return payload;
 }
 
-async function main() {
-    console.log('🚀 Iniciando sincronización de Indicadores de Guardia Clínica...');
-    const pool = await sql.connect(SQL_CONFIG);
+function buildDynamicMesesGuardia(fastSync = false) {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+    const allMonths = [];
 
-    const meses = [
-        { periodo: '2026-01', desde: '2026-01-01', hasta: '2026-01-31' },
-        { periodo: '2026-02', desde: '2026-02-01', hasta: '2026-02-28' },
-        { periodo: '2026-03', desde: '2026-03-01', hasta: '2026-03-31' },
-        { periodo: '2026-04', desde: '2026-04-01', hasta: '2026-04-30' },
-        { periodo: '2026-05', desde: '2026-05-01', hasta: '2026-05-31' },
-        { periodo: '2026-06', desde: '2026-06-01', hasta: '2026-06-30' },
-        { periodo: '2026-07', desde: '2026-07-01', hasta: '2026-07-31' },
-        { periodo: '2026-08', desde: '2026-08-01', hasta: '2026-08-31' },
-        { periodo: '2026-09', desde: '2026-09-01', hasta: '2026-09-30' },
-        { periodo: '2026-ANUAL', desde: '2026-01-01', hasta: '2026-09-30' },
-    ];
-
-    for (const m of meses) {
-        try {
-            await procesarPeriodo(pool, m.periodo, m.desde, m.hasta);
-        } catch (err) {
-            console.error(`❌ Error procesando ${m.periodo}:`, err);
-        }
+    for (let m = 1; m <= curMonth; m++) {
+        const mm = String(m).padStart(2, '0');
+        const lastDay = new Date(curYear, m, 0).getDate();
+        allMonths.push({
+            periodo: `${curYear}-${mm}`,
+            desde: `${curYear}-${mm}-01`,
+            hasta: `${curYear}-${mm}-${String(lastDay).padStart(2, '0')}`
+        });
     }
 
-    await pool.close();
-    console.log('\n🏁 Sincronización completa de Indicadores de Guardia Clínica.');
+    const selected = fastSync ? allMonths.slice(-2) : allMonths;
+    const lastDayCur = new Date(curYear, curMonth, 0).getDate();
+    selected.push({
+        periodo: `${curYear}-ANUAL`,
+        desde: `${curYear}-01-01`,
+        hasta: `${curYear}-${String(curMonth).padStart(2, '0')}-${String(lastDayCur).padStart(2, '0')}`
+    });
+    return selected;
 }
 
-main().catch(console.error);
+export async function syncGuardiaIndicadores({ fastSync = false } = {}) {
+    console.log(`🚀 Iniciando sincronización de Indicadores de Guardia Clínica (fastSync: ${fastSync})...`);
+    const pool = await sql.connect(SQL_CONFIG);
+    const meses = buildDynamicMesesGuardia(fastSync);
+    let processed = 0;
+
+    try {
+        for (const m of meses) {
+            try {
+                await procesarPeriodo(pool, m.periodo, m.desde, m.hasta);
+                processed++;
+            } catch (err) {
+                console.error(`❌ Error procesando ${m.periodo}:`, err.message);
+            }
+        }
+    } finally {
+        await pool.close();
+    }
+    console.log('\n🏁 Sincronización completa de Indicadores de Guardia Clínica.');
+    return { processed, periodos: meses.map(m => m.periodo) };
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+    syncGuardiaIndicadores({ fastSync: false }).catch(console.error);
+}

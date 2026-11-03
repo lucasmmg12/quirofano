@@ -458,53 +458,74 @@ export async function syncPeriodo(pool, periodo, desde, hasta, extremosAcumulado
         .upsert(segPayload, { onConflict: 'periodo' });
 }
 
-async function main() {
-    console.log('🚀 Iniciando Sincronización Integral SALUS (Reglas Dra. Paola García) -> Supabase...');
+function buildDynamicPeriodosFranjas(fastSync = false) {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+    const all = [];
+    for (let m = curMonth; m >= 1; m--) {
+        const mm = String(m).padStart(2, '0');
+        const lastDay = new Date(curYear, m, 0).getDate();
+        all.push({
+            p: `${curYear}-${mm}`,
+            d: `${curYear}-${mm}-01`,
+            h: `${curYear}-${mm}-${String(lastDay).padStart(2, '0')}`
+        });
+    }
+    return fastSync ? all.slice(0, 2) : all;
+}
+
+export async function syncGuardiaFranjasYAdmisiones({ fastSync = false } = {}) {
+    console.log(`🚀 Iniciando Sincronización Integral SALUS (Reglas Dra. Paola García, fastSync: ${fastSync}) -> Supabase...`);
     const pool = await sql.connect(SQL_CONFIG);
+    const periodos = buildDynamicPeriodosFranjas(fastSync);
 
-    const periodos = [
-        { p: '2026-10', d: '2026-10-01', h: '2026-10-31' },
-        { p: '2026-09', d: '2026-09-01', h: '2026-09-30' },
-        { p: '2026-08', d: '2026-08-01', h: '2026-08-31' },
-        { p: '2026-07', d: '2026-07-01', h: '2026-07-31' },
-        { p: '2026-06', d: '2026-06-01', h: '2026-06-30' },
-        { p: '2026-05', d: '2026-05-01', h: '2026-05-31' },
-        { p: '2026-04', d: '2026-04-01', h: '2026-04-30' },
-        { p: '2026-03', d: '2026-03-01', h: '2026-03-31' },
-        { p: '2026-02', d: '2026-02-01', h: '2026-02-28' },
-        { p: '2026-01', d: '2026-01-01', h: '2026-01-31' },
-    ];
+    let extremosAcumulados = {};
+    try {
+        const { data: existingCache } = await supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', 'guardia_extremos_franjas_cache')
+            .maybeSingle();
+        if (existingCache?.value) {
+            const parsed = typeof existingCache.value === 'string' ? JSON.parse(existingCache.value) : existingCache.value;
+            if (parsed?.periodos && typeof parsed.periodos === 'object') {
+                extremosAcumulados = { ...parsed.periodos };
+            }
+        }
+    } catch (_) {}
 
-    const extremosAcumulados = {};
+    try {
+        for (const item of periodos) {
+            await syncPeriodo(pool, item.p, item.d, item.h, extremosAcumulados);
+        }
 
-    for (const item of periodos) {
-        await syncPeriodo(pool, item.p, item.d, item.h, extremosAcumulados);
+        // Guardar caché de valores extremos y días de la semana en app_config
+        const { error: extError } = await supabase
+            .from('app_config')
+            .upsert({
+                key: 'guardia_extremos_franjas_cache',
+                value: {
+                    updated_at: new Date().toISOString(),
+                    periodos: extremosAcumulados
+                },
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+
+        if (extError) {
+            console.error('Error guardando guardia_extremos_franjas_cache:', extError.message);
+        } else {
+            console.log('   ⚡ Caché de Valores Extremos y Días de Semana guardado en app_config (guardia_extremos_franjas_cache).');
+        }
+    } finally {
+        await pool.close();
     }
-
-    // Guardar caché de valores extremos y días de la semana en app_config
-    const { error: extError } = await supabase
-        .from('app_config')
-        .upsert({
-            key: 'guardia_extremos_franjas_cache',
-            value: {
-                updated_at: new Date().toISOString(),
-                periodos: extremosAcumulados
-            },
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'key' });
-
-    if (extError) {
-        console.error('Error guardando guardia_extremos_franjas_cache:', extError.message);
-    } else {
-        console.log('   ⚡ Caché de Valores Extremos y Días de Semana guardado en app_config (guardia_extremos_franjas_cache).');
-    }
-
-    await pool.close();
-    console.log('\n✅ Sincronización completada exitosamente.');
+    console.log('\n✅ Sincronización de Franjas y Admisiones completada exitosamente.');
+    return { periodos: periodos.map(x => x.p) };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-    main().catch(err => {
+    syncGuardiaFranjasYAdmisiones({ fastSync: false }).catch(err => {
         console.error('❌ Error en sincronización:', err);
         process.exit(1);
     });

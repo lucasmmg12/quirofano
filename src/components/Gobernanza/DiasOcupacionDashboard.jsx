@@ -588,11 +588,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         try {
             setLoadingActualizacion(true);
             const queries = [
-                supabase.from('calidad_censo_camas_uci').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
                 supabase.from('calidad_admisiones_ocupacion').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
                 supabase.from('guardia_indicadores_resumen').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
-                supabase.from('surgeries').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1),
-                supabase.from('altas_administrativas').select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1)
             ];
 
             const results = await Promise.all(queries);
@@ -606,6 +603,26 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             }
         } catch (err) {
             console.warn('Error al obtener última actualización de SALUS:', err);
+        } finally {
+            setLoadingActualizacion(false);
+        }
+    };
+
+    const handleTriggerGobernanzaSync = async () => {
+        if (loadingActualizacion) return;
+        try {
+            setLoadingActualizacion(true);
+            addToast?.('Sincronizando indicadores de Gobernanza con SALUS...', 'info');
+            await supabase.from('salus_sync_requests').insert({
+                mode: 'gobernanza',
+                status: 'pending',
+                requested_by: currentUser?.usuario || 'gobernanza'
+            });
+            await fetchData();
+            await fetchUltimaActualizacion();
+            addToast?.('Datos de Gobernanza recargados y sincronización en curso', 'success');
+        } catch (err) {
+            console.warn('Error disparando sincronización de Gobernanza:', err);
         } finally {
             setLoadingActualizacion(false);
         }
@@ -2844,8 +2861,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     </span>
                                 )}
                                 <button
-                                    onClick={fetchUltimaActualizacion}
-                                    title="Consultar última actualización"
+                                    onClick={handleTriggerGobernanzaSync}
+                                    title="Sincronizar Gobernanza con SALUS y recargar datos"
                                     style={{
                                         background: 'transparent',
                                         border: 'none',

@@ -24,6 +24,9 @@ import { syncKinesiologiaUci } from './sync_kinesiologia_uci.mjs';
 import { syncDoctorParameters } from './sync_doctor_parameters.mjs';
 import { syncTurnosOnlineToSupabase } from './sync_turnos_online.mjs';
 import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
+import { syncGuardiaIndicadores } from './sync_guardia_indicadores.mjs';
+import { syncGuardiaFranjasYAdmisiones } from './sync_guardia_franjas_admisiones.mjs';
+import { syncCirugiasConversion } from './sync_guardia_cirugias_conversion.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -70,7 +73,7 @@ function log(msg) {
     console.log(`[${ts}] [DAILY-SYNC] ${msg}`);
 }
 
-async function runDailySync() {
+export async function runDailySync({ skipDoctors = false } = {}) {
     const t0 = Date.now();
     log('========================================================');
     log('🚀 Iniciando Job Diario de Sincronización SALUS ↔ Supabase');
@@ -454,20 +457,22 @@ async function runDailySync() {
     // ──────────────────────────────────────────────────────────
     // PASO 7: Parámetros de Médicos y Agendas (Contact Center & IA)
     // ──────────────────────────────────────────────────────────
-    log('PASO 7/8: Sincronizando Parámetros y Condiciones de Médicos desde SALUS...');
     let syncedDocs = 0;
-    try {
-        const docRes = await syncDoctorParameters();
-        syncedDocs = docRes?.total || 0;
-        log(`Paso 7 completado: ${syncedDocs} parámetros médicos actualizados.`);
-    } catch (eDoc) {
-        log(`⚠️ Error no bloqueante en Paso 7 (Parámetros Médicos): ${eDoc.message}`);
+    if (!skipDoctors) {
+        log('PASO 7/10: Sincronizando Parámetros y Condiciones de Médicos desde SALUS...');
+        try {
+            const docRes = await syncDoctorParameters();
+            syncedDocs = docRes?.total || 0;
+            log(`Paso 7 completado: ${syncedDocs} parámetros médicos actualizados.`);
+        } catch (eDoc) {
+            log(`⚠️ Error no bloqueante en Paso 7 (Parámetros Médicos): ${eDoc.message}`);
+        }
     }
 
     // ──────────────────────────────────────────────────────────
     // PASO 8: Turnos Online y Gestión de Inconsistencias (Contact Center)
     // ──────────────────────────────────────────────────────────
-    log('PASO 8/9: Sincronizando Turnos Online e Inconsistencias desde SALUS (últimos 7 días)...');
+    log('PASO 8/10: Sincronizando Turnos Online e Inconsistencias desde SALUS (últimos 7 días)...');
     let syncedTurnos = 0;
     try {
         pool = await sql.connect(SQL_CONFIG);
@@ -482,7 +487,7 @@ async function runDailySync() {
     // ──────────────────────────────────────────────────────────
     // PASO 9: Hospital de Día (Procedimientos vs Pases de Hierro)
     // ──────────────────────────────────────────────────────────
-    log('PASO 9/9: Sincronizando Actividad de Hospital de Día desde SALUS (últimos 60 días)...');
+    log('PASO 9/10: Sincronizando Actividad de Hospital de Día desde SALUS (últimos 60 días)...');
     let syncedHdD = 0;
     try {
         const d = new Date();
@@ -496,14 +501,39 @@ async function runDailySync() {
         log(`⚠️ Error no bloqueante en Paso 9 (Hospital de Día): ${eHdd.message}`);
     }
 
+    // ──────────────────────────────────────────────────────────
+    // PASO 10: Indicadores de Guardia Clínica, Franjas y Conversión QX
+    // ──────────────────────────────────────────────────────────
+    log('PASO 10/10: Sincronizando Indicadores de Guardia Clínica, Franjas y Conversión QX...');
+    try {
+        await syncGuardiaIndicadores({ fastSync: true });
+        await syncGuardiaFranjasYAdmisiones({ fastSync: true });
+        await syncCirugiasConversion(null, { fastSync: true });
+        log('Paso 10 completado: Indicadores de Guardia y Conversión QX actualizados.');
+    } catch (eGuardia) {
+        log(`⚠️ Error no bloqueante en Paso 10 (Guardia): ${eGuardia.message}`);
+    }
+
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     log('========================================================');
-    log(`✅ Sincronización Diaria completada con éxito en ${elapsed}s.`);
+    log(`✅ Sincronización Gobernanza completada con éxito en ${elapsed}s.`);
     log(`📊 Resumen: ${syncedOcup} ocupaciones, ${syncedLab} lab UCI, ${syncedImg} imágenes, ${syncedDiag} diagnósticos, ${syncedKine} kinesiología/ARM, ${syncedDocs} médicos, ${syncedTurnos} turnos online, ${syncedHdD} Hospital de Día.`);
     log('========================================================');
+
+    return {
+        elapsed: `${elapsed}s`,
+        syncedOcup,
+        syncedLab,
+        syncedImg,
+        syncedDiag,
+        syncedKine,
+        syncedHdD
+    };
 }
 
-runDailySync().catch(err => {
-    console.error('❌ Error crítico en daily_sync_job:', err);
-    process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+    runDailySync().catch(err => {
+        console.error('❌ Error crítico en daily_sync_job:', err);
+        process.exit(1);
+    });
+}
