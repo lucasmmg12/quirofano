@@ -401,11 +401,12 @@ export default function LoginScreen({ onLogin }) {
     };
 
     // === FLUJO: ¿OLVIDASTE TU CONTRASEÑA? BLANQUEAR Y RESTABLECER CLAVE ===
-    const openForgotPasswordFlow = () => {
+    const openForgotPasswordFlow = async () => {
         setError('');
         setInfoMsg('');
         setFailedPasswordPrompt(false);
-        setRecoveryUsername(usuario.trim());
+        const currentUsername = usuario.trim();
+        setRecoveryUsername(currentUsername);
         setRecoveryInfo(null);
         setRecoveryMethod('whatsapp');
         setRecoveryOtpSent(false);
@@ -414,6 +415,24 @@ export default function LoginScreen({ onLogin }) {
         setRecoveryConfirmPassword('');
         setRecoveryRealEmail('');
         setStep('forgot_password');
+
+        if (currentUsername) {
+            setLoading(true);
+            const info = await getPasswordRecoveryOptions(currentUsername);
+            setLoading(false);
+            if (info?.found) {
+                setRecoveryInfo(info);
+                if (info.has_whatsapp) {
+                    setRecoveryMethod('whatsapp');
+                    await handleSendRecoveryCode('whatsapp', info);
+                } else if (info.has_totp) {
+                    setRecoveryMethod('totp');
+                } else {
+                    setRecoveryMethod('email');
+                    await handleSendRecoveryCode('email', info);
+                }
+            }
+        }
     };
 
     const handleLookupRecoveryUser = async (e) => {
@@ -440,22 +459,25 @@ export default function LoginScreen({ onLogin }) {
         setRecoveryInfo(info);
         setRecoveryOtpSent(false);
         setRecoveryCode('');
-        // Priorizar Opción 1 (WhatsApp o Authenticator) y dejar Email como 2da opción
+        // Priorizar Opción 1 (WhatsApp y enviar código automáticamente de inmediato)
         if (info.has_whatsapp) {
             setRecoveryMethod('whatsapp');
+            await handleSendRecoveryCode('whatsapp', info);
         } else if (info.has_totp) {
             setRecoveryMethod('totp');
         } else {
             setRecoveryMethod('email');
+            await handleSendRecoveryCode('email', info);
         }
     };
 
-    const handleSendRecoveryCode = async (channel) => {
-        if (!recoveryInfo?.user_id) return;
+    const handleSendRecoveryCode = async (channel, infoOverride = null) => {
+        const targetInfo = infoOverride || recoveryInfo;
+        if (!targetInfo?.user_id) return;
         setError('');
         setInfoMsg('');
         setLoading(true);
-        const res = await requestPasswordRecoveryOtp(recoveryInfo.user_id, channel);
+        const res = await requestPasswordRecoveryOtp(targetInfo.user_id, channel);
         setLoading(false);
 
         if (!res.success) {
@@ -465,10 +487,12 @@ export default function LoginScreen({ onLogin }) {
         }
 
         setRecoveryOtpSent(true);
-        if (channel === 'whatsapp') {
-            setInfoMsg(`Código de 6 dígitos enviado por WhatsApp a tu celular registrado (${res.maskedDestination}).`);
+        if (res.channel === 'whatsapp_fallback') {
+            setInfoMsg(`Código de 6 dígitos enviado directamente a tu WhatsApp registrado (${res.maskedDestination}) como respaldo inmediato.`);
+        } else if (channel === 'whatsapp') {
+            setInfoMsg(`✅ Código de 6 dígitos enviado por WhatsApp a tu celular registrado (${res.maskedDestination}). Ingresalo abajo.`);
         } else {
-            setInfoMsg(`Código de 6 dígitos enviado a tu correo electrónico registrado (${res.maskedDestination}).`);
+            setInfoMsg(`✅ Código de 6 dígitos enviado a tu correo electrónico registrado (${res.maskedDestination}).`);
         }
     };
 
@@ -491,7 +515,7 @@ export default function LoginScreen({ onLogin }) {
             triggerShake();
             return;
         }
-        if (recoveryNewPassword.length < 6) {
+        if (recoveryNewPassword.trim().length < 6) {
             setError('La nueva contraseña debe tener al menos 6 caracteres.');
             triggerShake();
             return;
@@ -501,7 +525,7 @@ export default function LoginScreen({ onLogin }) {
             triggerShake();
             return;
         }
-        if (recoveryNewPassword !== recoveryConfirmPassword) {
+        if (recoveryNewPassword.trim() !== recoveryConfirmPassword.trim()) {
             setError('Las contraseñas ingresadas no coinciden.');
             triggerShake();
             return;
@@ -518,17 +542,20 @@ export default function LoginScreen({ onLogin }) {
             emailToSave = candidate;
         }
 
+        const cleanNewPwd = recoveryNewPassword.trim();
+
         setLoading(true);
         const res = await resetForgottenPassword({
             userId: recoveryInfo.user_id,
             method: recoveryMethod,
             code: cleanCode,
-            newPassword: recoveryNewPassword,
+            newPassword: cleanNewPwd,
             newEmail: emailToSave,
+            totpSecret: recoveryInfo.totp_secret || null,
         });
-        setLoading(false);
 
         if (!res.success) {
+            setLoading(false);
             setError(res.error || 'No se pudo restablecer la contraseña.');
             triggerShake();
             return;
@@ -539,11 +566,30 @@ export default function LoginScreen({ onLogin }) {
             metodo: recoveryMethod,
         });
 
-        setUsuario(recoveryInfo.usuario);
-        setPassword('');
+        const resolvedUsername = res.usuario || recoveryInfo.usuario;
+        const loginRes = await login(resolvedUsername, cleanNewPwd);
+        setLoading(false);
+
+        if (loginRes.success && loginRes.user) {
+            setRecoveryInfo(null);
+            await logAction('login', { usuario: loginRes.user.usuario, mfa: recoveryMethod, via: 'blanqueo_password' });
+            onLoginSuccess(loginRes.user);
+            return;
+        }
+
+        if (loginRes.success && loginRes.requiresSessionTakeover) {
+            setRecoveryInfo(null);
+            setPendingUser(loginRes.pendingUser);
+            setSessionConflict(loginRes.conflictInfo);
+            setStep('session_conflict');
+            return;
+        }
+
+        setUsuario(resolvedUsername);
+        setPassword(cleanNewPwd);
         setRecoveryInfo(null);
         setStep('credentials');
-        setInfoMsg('¡Contraseña blanqueada y restablecida con éxito! Ingresá ahora con tu nueva contraseña.');
+        setInfoMsg('¡Contraseña blanqueada y restablecida con éxito! Hacé clic en Ingresar.');
     };
 
     // === PASO 3A: ENVIAR CÓDIGO WHATSAPP OTP ===
@@ -1442,7 +1488,14 @@ export default function LoginScreen({ onLogin }) {
                                         }}>
                                             <button
                                                 type="button"
-                                                onClick={() => { setRecoveryMethod('whatsapp'); setError(''); setInfoMsg(''); }}
+                                                onClick={() => {
+                                                    setRecoveryMethod('whatsapp');
+                                                    setError('');
+                                                    setInfoMsg('');
+                                                    if (recoveryInfo?.has_whatsapp && !recoveryOtpSent) {
+                                                        handleSendRecoveryCode('whatsapp');
+                                                    }
+                                                }}
                                                 style={{
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                                                     padding: '9px 6px', borderRadius: '8px', border: 'none',
@@ -1475,7 +1528,12 @@ export default function LoginScreen({ onLogin }) {
                                     <div style={{ marginBottom: '12px' }}>
                                         <button
                                             type="button"
-                                            onClick={() => { setRecoveryMethod('email'); setError(''); setInfoMsg(''); }}
+                                            onClick={() => {
+                                                setRecoveryMethod('email');
+                                                setError('');
+                                                setInfoMsg('');
+                                                handleSendRecoveryCode('email');
+                                            }}
                                             style={{
                                                 width: '100%', padding: '8px 10px', borderRadius: '9px',
                                                 border: recoveryMethod === 'email' ? '1.5px solid #1E4078' : '1px solid #CBD5E1',
@@ -1498,7 +1556,9 @@ export default function LoginScreen({ onLogin }) {
                                             {recoveryInfo.has_whatsapp ? (
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                                                     <div style={{ fontSize: '0.74rem', color: '#065F46', lineHeight: 1.35 }}>
-                                                        Se enviará un código de 6 dígitos al WhatsApp registrado: <strong>{recoveryInfo.masked_whatsapp}</strong>
+                                                        {recoveryOtpSent
+                                                            ? <>Código de 6 dígitos enviado al WhatsApp: <strong>{recoveryInfo.masked_whatsapp}</strong></>
+                                                            : <>Se enviará un código de 6 dígitos al WhatsApp registrado: <strong>{recoveryInfo.masked_whatsapp}</strong></>}
                                                     </div>
                                                     <button
                                                         type="button"
@@ -1526,16 +1586,27 @@ export default function LoginScreen({ onLogin }) {
                                         <div style={{
                                             background: '#EFF6FF', border: '1px solid #BFDBFE',
                                             borderRadius: '10px', padding: '11px 12px', marginBottom: '12px',
-                                            fontSize: '0.74rem', color: '#1E3A8A', lineHeight: 1.4,
+                                            fontSize: '0.74rem', color: '#1E3A8A', lineHeight: 1.4, textAlign: 'center',
                                         }}>
-                                            {recoveryInfo.has_totp ? (
-                                                <span>
-                                                    Abrí tu app <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong> vinculada a tu cuenta e ingresá abajo el código actual de 6 dígitos.
-                                                </span>
-                                            ) : (
-                                                <span style={{ color: '#991B1B', fontWeight: 600 }}>
-                                                    Tu cuenta no tenía un autenticador vinculado previamente. Por seguridad usá la opción de <strong>Mensaje a WhatsApp</strong> o la <strong>2da Opción (Correo Electrónico)</strong>.
-                                                </span>
+                                            <div style={{ marginBottom: '6px' }}>
+                                                Abrí tu app <strong>Google Authenticator</strong> o <strong>Microsoft Authenticator</strong> e ingresá el código de 6 dígitos de <strong>Sanatorio Argentino ({recoveryInfo.usuario})</strong>.
+                                            </div>
+                                            {recoveryInfo.totp_secret && (
+                                                <div style={{ marginTop: '6px' }}>
+                                                    <div style={{
+                                                        display: 'inline-block', padding: '8px', background: '#FFFFFF',
+                                                        borderRadius: '10px', border: '1px solid #DBEAFE', marginBottom: '6px',
+                                                    }}>
+                                                        <img
+                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=6&data=${encodeURIComponent(buildOtpAuthUri(recoveryInfo.usuario, recoveryInfo.totp_secret))}`}
+                                                            alt="QR Authenticator"
+                                                            style={{ width: '135px', height: '135px', display: 'block' }}
+                                                        />
+                                                    </div>
+                                                    <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+                                                        Clave manual: <code style={{ background: '#DBEAFE', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: '#1E3A8A' }}>{recoveryInfo.totp_secret}</code>
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     )}
@@ -1560,7 +1631,7 @@ export default function LoginScreen({ onLogin }) {
                                                         display: 'inline-flex', alignItems: 'center', gap: '5px',
                                                     }}
                                                 >
-                                                    <Mail size={13} /> Enviar código al Mail
+                                                    <Mail size={13} /> {recoveryOtpSent ? 'Reenviar código' : 'Enviar código al Mail'}
                                                 </button>
                                             </div>
                                         </div>

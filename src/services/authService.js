@@ -519,10 +519,19 @@ export async function requestWhatsAppOtp(userId, telefonoInput = null) {
             `👉 *${code}*\n\n` +
             `⏱️ Válido por 10 minutos. Si no solicitaste este ingreso, comunicate con Innovación y Sistemas.`;
 
-        await sendWhatsAppMessage({
-            content: msgContent,
-            number: phone,
-        });
+        try {
+            await sendWhatsAppMessage({
+                content: msgContent,
+                number: phone,
+            });
+        } catch (primaryErr) {
+            console.warn('[AuthService] Reintentando envío OTP por línea alternativa:', primaryErr?.message);
+            await sendWhatsAppMessage({
+                content: msgContent,
+                number: phone,
+                lineId: 'line_c',
+            });
+        }
 
         return {
             success: true,
@@ -1057,9 +1066,6 @@ export async function updateUserSecurityContact(userId, email, telefonoWhatsapp)
  */
 export async function getPasswordRecoveryOptions(usuarioInput) {
     let normalizedUser = String(usuarioInput || '').trim().toLowerCase();
-    if (normalizedUser.includes('@')) {
-        normalizedUser = normalizedUser.split('@')[0];
-    }
     if (!normalizedUser) {
         return { found: false, error: 'Ingresá tu nombre de usuario' };
     }
@@ -1080,8 +1086,8 @@ export async function getPasswordRecoveryOptions(usuarioInput) {
 }
 
 /**
- * Envía un código OTP de 6 dígitos para blanqueo de contraseña ESTRICTAMENTE al canal ya registrado
- * (Opción 1: 'whatsapp', Opción 2: 'email')
+ * Envía un código OTP de 6 dígitos para blanqueo de contraseña al canal registrado
+ * (Opción 1: 'whatsapp', Opción 2: 'email' con respaldo automático por WhatsApp si el servidor SMTP no responde)
  */
 export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
     try {
@@ -1101,20 +1107,33 @@ export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
         const code = data.code;
         const nombre = data.nombre || 'Colaborador/a';
         const usuario = data.usuario || '';
+        const phone = data.telefono_whatsapp;
 
-        if (channel === 'whatsapp') {
-            const phone = data.telefono_whatsapp;
+        const sendRecoveryViaWhatsApp = async (targetPhone) => {
             const msgContent =
                 `🔐 *SANATORIO ARGENTINO — Blanqueo de Contraseña*\n\n` +
                 `Hola *${nombre}* (@${usuario}), solicitaste blanquear y restablecer tu contraseña en ADM-QUI.\n\n` +
                 `Tu código de verificación de 6 dígitos es:\n\n` +
                 `👉 *${code}*\n\n` +
-                `⏱️ Válido por 10 minutos. Ingresalo en la pantalla del sistema para colocar tu nueva contraseña.`;
+                `⏱️ Válido por 15 minutos. Ingresalo en la pantalla del sistema para colocar tu nueva contraseña.`;
 
-            await sendWhatsAppMessage({
-                content: msgContent,
-                number: phone,
-            });
+            try {
+                await sendWhatsAppMessage({
+                    content: msgContent,
+                    number: targetPhone,
+                });
+            } catch (primaryErr) {
+                console.warn('[AuthService] Reintentando WhatsApp recovery por línea alternativa:', primaryErr?.message);
+                await sendWhatsAppMessage({
+                    content: msgContent,
+                    number: targetPhone,
+                    lineId: 'line_c',
+                });
+            }
+        };
+
+        if (channel === 'whatsapp') {
+            await sendRecoveryViaWhatsApp(phone);
 
             return {
                 success: true,
@@ -1133,6 +1152,19 @@ export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
             });
 
             if (fnErr || !emailRes?.success) {
+                if (phone && String(phone).length >= 8) {
+                    try {
+                        await sendRecoveryViaWhatsApp(phone);
+                        return {
+                            success: true,
+                            channel: 'whatsapp_fallback',
+                            maskedDestination: data.masked_whatsapp || phone,
+                            fallbackUsed: true,
+                        };
+                    } catch (waErr) {
+                        console.error('[AuthService] Fallback WhatsApp también falló:', waErr);
+                    }
+                }
                 return {
                     success: false,
                     error:
@@ -1160,12 +1192,12 @@ export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
 /**
  * Ejecuta el blanqueo de contraseña olvidada verificando el código recibido por WhatsApp, Email o App Authenticator
  */
-export async function resetForgottenPassword({ userId, method, code, newPassword, newEmail = null }) {
+export async function resetForgottenPassword({ userId, method, code, newPassword, newEmail = null, totpSecret = null }) {
     const cleanCode = String(code || '').replace(/\D/g, '');
     if (cleanCode.length !== 6) {
         return { success: false, error: 'Ingresá el código de verificación de 6 dígitos' };
     }
-    if (!newPassword || newPassword.length < 6) {
+    if (!newPassword || newPassword.trim().length < 6) {
         return { success: false, error: 'La nueva contraseña debe tener al menos 6 caracteres' };
     }
     if (newPassword.trim() === '123456') {
@@ -1182,24 +1214,37 @@ export async function resetForgottenPassword({ userId, method, code, newPassword
 
     try {
         let totpVerified = false;
+        let secretToUse = totpSecret;
         if (method === 'totp') {
             const { data: totpData, error: totpErr } = await supabase.rpc('get_registered_totp_for_recovery', {
                 p_user_id: userId,
             });
-            if (totpErr || !totpData?.success || !totpData?.totp_secret) {
+            if (!totpErr && totpData?.success && totpData?.totp_secret) {
+                secretToUse = totpData.totp_secret;
+            }
+            if (!secretToUse) {
                 return {
                     success: false,
-                    error: totpData?.error || 'Esta cuenta no tiene un autenticador QR vinculado previamente. Usá WhatsApp o Email.',
+                    error: 'No se pudo validar el autenticador QR. Usá la opción de Mensaje WhatsApp.',
                 };
             }
-            const isValid = await verifyTotpCode(totpData.totp_secret, cleanCode);
-            if (!isValid) {
+            const isValid = await verifyTotpCode(secretToUse, cleanCode);
+            if (!isValid && totpSecret && totpSecret !== secretToUse) {
+                const isValidFallback = await verifyTotpCode(totpSecret, cleanCode);
+                if (isValidFallback) {
+                    secretToUse = totpSecret;
+                    totpVerified = true;
+                }
+            } else if (isValid) {
+                totpVerified = true;
+            }
+
+            if (!totpVerified) {
                 return {
                     success: false,
                     error: 'El código de 6 dígitos del autenticador es incorrecto o expiró.',
                 };
             }
-            totpVerified = true;
         }
 
         const { data, error } = await supabase.rpc('reset_forgotten_password', {
@@ -1217,6 +1262,17 @@ export async function resetForgottenPassword({ userId, method, code, newPassword
 
         if (!data?.success) {
             return { success: false, error: data?.error || 'Código inválido o expirado' };
+        }
+
+        // Registrar el dispositivo como confiable por 30 días ya que acaba de verificar su identidad con 2FA
+        if (secretToUse) {
+            supabase.rpc('complete_totp_verification', {
+                p_user_id: userId,
+                p_totp_secret: secretToUse,
+                p_trust_device: true,
+                p_device_token: getOrCreateDeviceToken(),
+                p_device_label: getDeviceLabel(),
+            }).then(() => {}).catch(() => {});
         }
 
         return {

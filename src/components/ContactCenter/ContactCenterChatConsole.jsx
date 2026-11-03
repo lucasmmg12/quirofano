@@ -9584,6 +9584,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 }}
                             >
                                 <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
+                                <option value="Turno Online Reprogramado">🔄 Turno Online Reprogramado</option>
                                 <option value="Estudio / Autorización Tramitada">📋 Autorización / Estudio Tramitado</option>
                                 <option value="Auto-gestión Bot Completa">🤖 Auto-gestión Bot Completa / Resuelta</option>
                                 <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
@@ -9723,6 +9724,7 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                 <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
                                 <option value="Paciente No Responde">⏳ Paciente No Responde</option>
                                 <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
+                                <option value="Turno Online Reprogramado">🔄 Turno Online Reprogramado</option>
                                 <option value="Estudio / Autorización Tramitada">📋 Autorización / Estudio Tramitado</option>
                                 <option value="Derivado a Guardia / Sector">🏥 Derivado a Guardia / Sector Específico</option>
                                 <option value="Cancelación / Reprogramación Confirmada">🗓️ Cancelación / Reprogramación Confirmada</option>

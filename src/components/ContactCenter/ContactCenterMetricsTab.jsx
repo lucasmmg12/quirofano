@@ -41,6 +41,7 @@ const COTIZACION_DOLAR_REF = 1380; // Cotización ARS referencial editable
 
 const MOTIVOS_FINALIZACION_CATALOGO = [
     { key: 'Turno Otorgado con Éxito', label: 'Turno Otorgado con Éxito', icon: CheckCircle2, color: '#059669', bg: '#ECFDF5' },
+    { key: 'Turno Online Reprogramado', label: 'Turno Online Reprogramado', icon: RefreshCw, color: '#0D9488', bg: '#F0FDFA' },
     { key: 'Cancelación / Reprogramación Confirmada', label: 'Cancelación / Reprogramación Confirmada', icon: CalendarCheck, color: '#0284C7', bg: '#F0F9FF' },
     { key: 'Estudio / Autorización Tramitada', label: 'Estudio / Autorización Tramitada', icon: FileCheck, color: '#8B5CF6', bg: '#F5F3FF' },
     { key: 'Información Brindada / Consulta Respondida', label: 'Información Brindada / Consulta Respondida', icon: HelpCircle, color: '#D97706', bg: '#FFFBEB' },
@@ -856,7 +857,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         const catKeyLow = cat.key.toLowerCase();
                         if (r.includes(catKeyLow) || catKeyLow.includes(r) ||
                             (cat.key === 'Inactividad (+24h sin respuesta)' && (r.includes('24h') || r.includes('inactividad') || r.includes('barrido') || r.includes('expir'))) ||
-                            (cat.key === 'Turno Otorgado con Éxito' && (r.includes('turno') || r.includes('coordinado') || r.includes('otorgado'))) ||
+                            (cat.key === 'Turno Online Reprogramado' && r.includes('turno online reprogramado')) ||
+                            (cat.key === 'Turno Otorgado con Éxito' && !r.includes('reprogram') && (r.includes('turno') || r.includes('coordinado') || r.includes('otorgado'))) ||
                             (cat.key === 'Estudio / Autorización Tramitada' && (r.includes('autoriz') || r.includes('estudio'))) ||
                             (cat.key === 'Información Brindada / Consulta Respondida' && (r.includes('informativa') || r.includes('información') || r.includes('resuelta'))) ||
                             (cat.key === 'Auto-gestión Bot Completa (Inactividad)' && (r.includes('auto-gestión') || r.includes('inactividad') || r.includes('bot'))) ||
