@@ -64,12 +64,9 @@ function drawPageHeader(doc, logoBase64, periodLabel, prevPeriodLabel, subtitleR
     const logoSize = 16.5;
     if (logoBase64) {
         try {
-            doc.setFillColor(255, 255, 255);
-            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1, 'F');
             doc.addImage(logoBase64, 'PNG', logoX, logoY, logoSize, logoSize);
         } catch {
-            doc.setFillColor(255, 255, 255);
-            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
+            // Fallback silencioso si falla la carga de imagen
         }
     }
 

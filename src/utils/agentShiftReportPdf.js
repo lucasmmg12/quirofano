@@ -98,21 +98,15 @@ export async function generateAgentShiftPdf(metrics, options = {}) {
     doc.setFillColor(...THEME.accent);
     doc.rect(0, 32, pageW, 2.2, 'F');
 
-    // Logo circular
+    // Logo oficial sin fondo
     const logoX = margin + 1;
     const logoY = 6;
     const logoSize = 18;
     if (logoBase64) {
         try {
-            doc.setFillColor(255, 255, 255);
-            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 + 1.2, 'F');
             doc.addImage(logoBase64, 'PNG', logoX, logoY, logoSize, logoSize);
         } catch {
-            doc.setFillColor(255, 255, 255);
-            doc.circle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 'F');
-            doc.setFontSize(8);
-            doc.setTextColor(...THEME.navy);
-            doc.text('SA', logoX + 5, logoY + logoSize / 2 + 2);
+            // Fallback silencioso
         }
     }
 
