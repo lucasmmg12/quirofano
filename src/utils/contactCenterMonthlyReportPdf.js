@@ -20,7 +20,7 @@ const THEME = {
     navy: [13, 59, 102],        // #0D3B66 — Azul Institucional Sanatorio Argentino
     navyDark: [15, 41, 66],     // #0F2942
     accent: [2, 132, 199],      // #0284C7 — Azul Mensajes / Meta
-    purple: [139, 92, 246],     // #8B5CF6 — Violeta Tokens IA
+    purple: [139, 92, 246],     // #5c78f6ff — Violeta Tokens IA
     emerald: [5, 150, 105],     // #059669 — Verde Éxito / Total
     darkText: [15, 23, 42],     // #0F172A
     bodyText: [51, 65, 85],     // #334155
