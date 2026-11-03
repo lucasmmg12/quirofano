@@ -323,7 +323,12 @@ export function calcularLiquidacionCompleta({
             totalVariable: Math.round(totalVariable * 100) / 100,
             totalALiquidar: Math.round(totalALiquidar * 100) / 100
         };
-    }).filter(ag => !(periodo >= '2026-10' && ag.id === 'macosta') && !(ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta')));
+    }).filter(ag => {
+        if (periodo <= '2026-08' && ag.id === 'eleal') return false;
+        if (periodo >= '2026-09' && ag.id === 'macosta') return false;
+        if (ag.fte === 0 && (ag.estado === 'BAJA' || ag.id === 'macosta')) return false;
+        return true;
+    });
 
     const totalGeneralLiquidacion = listaAgentes.reduce((acc, a) => acc + a.totalALiquidar, 0);
     const totalGeneralVariable = listaAgentes.reduce((acc, a) => acc + a.totalVariable, 0);
@@ -430,9 +435,9 @@ export async function fetchHistoricoComparativoIncentivos(periodo = '2026-10') {
         const agentesCurr = {};
         (curr.agentes || []).forEach(a => { agentesCurr[a.id] = a; });
 
-        const agentOrder = (periodo >= '2026-10')
+        const agentOrder = (periodo >= '2026-09')
             ? ['solivier', 'vjacques', 'daguilera', 'eleal']
-            : ['solivier', 'vjacques', 'daguilera', 'eleal', 'macosta'];
+            : ['solivier', 'vjacques', 'daguilera', 'macosta'];
         const agentNames = {
             solivier: 'Sofia Olivier',
             vjacques: 'Virginia Jacques',

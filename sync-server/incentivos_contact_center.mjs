@@ -189,24 +189,44 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
     // Fecha de lookback (3 meses atrás) para aprovechar índices cuando el turno se asignó sobre un hueco creado previamente
     const lookbackDateObj = new Date(year, month - 4, 1);
     const lookbackDate = `${lookbackDateObj.getFullYear()}${String(lookbackDateObj.getMonth() + 1).padStart(2, '0')}01`;
-    const citaMonthPattern = `%/${startMonthStr}/${year} %`;
+    const citaMonthPattern = `__/${startMonthStr}/${year} %`;
+    const isHistoricalMonth = periodoIso <= '2026-09';
 
     // 1. TURNOS CREADOS / ASIGNADOS EN EL PERÍODO DESGLOSADOS POR ESPECIALIDAD Y TIPO DE VISITA (Bolsa 2 Grupal + Individual + Análisis de Servicios)
-    // Contempla tanto [Usuario Creacion Nombre] como la traza nominal con fecha/hora en [UsuarioCita] (ej. 'APELLIDO, NOMBRE(DD/MM/YYYY HH:MM:SS)')
-    const turnosQuery = `
+    // En meses históricos (<= 2026-09) se contabiliza estrictamente por [Fecha Hora Creacion] y [Usuario Creacion Nombre]
+    // para evitar inflar turnos con modificaciones/recepciones posteriores en [UsuarioCita].
+    const turnosQuery = isHistoricalMonth ? `
+        SELECT 
+            ISNULL([Visita_Especialidad], 'SIN ESPECIALIDAD') AS Especialidad,
+            ISNULL([Tipo Visita], 'SIN TIPO VISITA') AS TipoVisita,
+            COUNT(DISTINCT CASE WHEN [Usuario Creacion Nombre] = 'OLIVIER ESQUIVEL, SOFIA FERNANDA' THEN [idVisita] END) AS solivier,
+            COUNT(DISTINCT CASE WHEN [Usuario Creacion Nombre] = 'JACQUES SORIA, VIRGINIA' THEN [idVisita] END) AS vjacques,
+            COUNT(DISTINCT CASE WHEN [Usuario Creacion Nombre] LIKE 'AGUILERA%DANIELA%' THEN [idVisita] END) AS daguilera,
+            COUNT(DISTINCT CASE WHEN [Usuario Creacion Nombre] LIKE 'LEAL,%ERICA%' THEN [idVisita] END) AS eleal,
+            COUNT(DISTINCT CASE WHEN [Usuario Creacion Nombre] = 'ACOSTA ESQUIVEL, MARIA ANTONELLA' THEN [idVisita] END) AS macosta
+        FROM [SALUS].[dbo].[VLISE_Visitas] WITH (NOLOCK)
+        WHERE [Fecha Hora Creacion] >= '${startDate}'
+          AND [Fecha Hora Creacion] < '${endDate}'
+          AND ([Paciente] IS NULL OR [Paciente] <> 'TURNOS ONLINE, PACIENTE')
+        GROUP BY [Visita_Especialidad], [Tipo Visita]
+    ` : `
         SELECT 
             ISNULL([Visita_Especialidad], 'SIN ESPECIALIDAD') AS Especialidad,
             ISNULL([Tipo Visita], 'SIN TIPO VISITA') AS TipoVisita,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'OLIVIER ESQUIVEL, SOFIA FERNANDA')
-                                  OR [UsuarioCita] LIKE '%OLIVIER ESQUIVEL, SOFIA%(${citaMonthPattern}' THEN [idVisita] END) AS solivier,
+                                  OR [UsuarioCita] LIKE '%OLIVIER ESQUIVEL, SOFIA FERNANDA(${citaMonthPattern}' THEN [idVisita] END) AS solivier,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'JACQUES SORIA, VIRGINIA')
-                                  OR [UsuarioCita] LIKE '%JACQUES SORIA, VIRGINIA%(${citaMonthPattern}' THEN [idVisita] END) AS vjacques,
+                                  OR [UsuarioCita] LIKE '%JACQUES SORIA, VIRGINIA(${citaMonthPattern}' THEN [idVisita] END) AS vjacques,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] LIKE 'AGUILERA%DANIELA%')
-                                  OR [UsuarioCita] LIKE '%AGUILERA%DANIELA%(${citaMonthPattern}' THEN [idVisita] END) AS daguilera,
+                                  OR [UsuarioCita] LIKE '%AGUILERA CARDOZO, DANIELA ROMINA(${citaMonthPattern}'
+                                  OR [UsuarioCita] LIKE '%AGUILERA, DANIELA(${citaMonthPattern}'
+                                  OR [UsuarioCita] LIKE '%AGUILERA CARDOZO, ANA DANIELA ROMINA(${citaMonthPattern}' THEN [idVisita] END) AS daguilera,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] LIKE 'LEAL,%ERICA%')
-                                  OR [UsuarioCita] LIKE '%LEAL,%ERICA%(${citaMonthPattern}' THEN [idVisita] END) AS eleal,
+                                  OR [UsuarioCita] LIKE '%LEAL, ERICA(${citaMonthPattern}'
+                                  OR [UsuarioCita] LIKE '%LEAL,ERICA(${citaMonthPattern}' THEN [idVisita] END) AS eleal,
             COUNT(DISTINCT CASE WHEN ([Fecha Hora Creacion] >= '${startDate}' AND [Fecha Hora Creacion] < '${endDate}' AND [Usuario Creacion Nombre] = 'ACOSTA ESQUIVEL, MARIA ANTONELLA')
-                                  OR [UsuarioCita] LIKE '%ACOSTA ESQUIVEL, MARIA ANTONELLA%(${citaMonthPattern}' THEN [idVisita] END) AS macosta
+                                  OR [UsuarioCita] LIKE '%ACOSTA ESQUIVEL, MARIA ANTONELLA(${citaMonthPattern}'
+                                  OR [UsuarioCita] LIKE '%ACOSTA, ANTONELLA(${citaMonthPattern}' THEN [idVisita] END) AS macosta
         FROM [SALUS].[dbo].[VLISE_Visitas] WITH (NOLOCK)
         WHERE ([Fecha Hora Creacion] >= '${lookbackDate}' OR [Fecha Visita] >= '${startDate}')
           AND ([Fecha Hora Creacion] IS NULL OR [Fecha Hora Creacion] < '${endDate}')
@@ -296,7 +316,14 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         otras_especialidades: initCatNode('otras_especialidades', 'Consultorios y Otras Especialidades')
     };
 
-    const activeAgentKeys = Object.keys(agentesMap).filter(agId => !(periodoIso >= '2026-10' && agId === 'macosta'));
+    // Dotación activa de 4 operadoras según el período:
+    // - Hasta Agosto 2026 (<= 2026-08): Sofía, Virginia, Daniela y Antonella (Érica estaba en Recepción, no en CC).
+    // - Desde Septiembre 2026 (>= 2026-09): Sofía, Virginia, Daniela y Érica (Antonella causa baja).
+    const activeAgentKeys = Object.keys(agentesMap).filter(agId => {
+        if (periodoIso <= '2026-08' && agId === 'eleal') return false;
+        if (periodoIso >= '2026-09' && agId === 'macosta') return false;
+        return true;
+    });
 
     // Agregar turnos creados / asignados desde filas agrupadas por (Especialidad, TipoVisita)
     for (const row of (turnosRes.recordset || [])) {
@@ -305,7 +332,9 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
 
         let rowTotalActive = 0;
         for (const agId of Object.keys(agentesMap)) {
-            const cnt = Number(row[agId] || 0);
+            const rawCnt = Number(row[agId] || 0);
+            // En Septiembre 2026 Érica estuvo 50% en Contact Center (curva de aprendizaje) y 50% en Recepción
+            const cnt = (periodoIso === '2026-09' && agId === 'eleal') ? Math.round(rawCnt * 0.5) : rawCnt;
             if (cnt > 0) {
                 agentesMap[agId].turnos += cnt;
                 agentesMap[agId].servicios[clasif.key] = (agentesMap[agId].servicios[clasif.key] || 0) + cnt;
@@ -332,7 +361,9 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             }
             catNode.subcategoriasMap[subName].total += rowTotalActive;
             for (const agId of activeAgentKeys) {
-                catNode.subcategoriasMap[subName][agId] += Number(row[agId] || 0);
+                const rawCnt = Number(row[agId] || 0);
+                const cnt = (periodoIso === '2026-09' && agId === 'eleal') ? Math.round(rawCnt * 0.5) : rawCnt;
+                catNode.subcategoriasMap[subName][agId] += cnt;
             }
         }
     }
@@ -420,7 +451,7 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
             fte,
             factorDemanda
         };
-    }).filter(ag => !(periodoIso >= '2026-10' && ag.id === 'macosta'));
+    }).filter(ag => activeAgentKeys.includes(ag.id));
 
     // Calcular total de turnos grupales de la dotación activa
     const totalTurnosActivos = listaAgentes.reduce((acc, a) => acc + a.turnos, 0);
