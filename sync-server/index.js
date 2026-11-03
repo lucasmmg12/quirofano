@@ -32,7 +32,7 @@ import { getIncentivosContactCenter, getTurnosDiariosContactCenter } from './inc
 import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
 import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turnos_contact_center.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
-import { getDxIAnalytics } from './sync_dxi.mjs';
+import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
 import { runDailySync } from './daily_sync_job.mjs';
 import { synthesizeSimonSpeech, ELEVENLABS_VOICES_CATALOG, DEFAULT_FEMALE_VOICE_ID, DEFAULT_TTS_MODEL_ID } from './elevenlabsTts.mjs';
@@ -4239,8 +4239,8 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
         const hasta = req.query.hasta || req.query.fechaHasta;
         const forceRefresh = req.query.refresh === 'true';
 
-        // Si no se pide refresh y no se pasa un rango específico, intentar leer de Supabase app_config para velocidad instantánea
-        if (!forceRefresh && !desde && !hasta) {
+        // Si no se fuerza refresh, priorizar siempre el resumen fijo precalculado en Supabase app_config
+        if (!forceRefresh) {
             const { data: cfg } = await supabase
                 .from('app_config')
                 .select('value, updated_at')
@@ -4250,13 +4250,16 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
             if (cfg?.value) {
                 try {
                     const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
-                    return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
+                    const cacheDesde = parsed?.rango?.fechaDesde || '2026-01-01';
+                    if (!desde || desde >= cacheDesde) {
+                        return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
+                    }
                 } catch (_) {}
             }
         }
 
         const data = await getDxIAnalytics({
-            fechaDesde: desde || '2022-01-01',
+            fechaDesde: desde || '2026-01-01',
             fechaHasta: hasta || new Date().toISOString().substring(0, 10)
         });
 
@@ -4267,11 +4270,34 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
     }
 });
 
+// ── Casos Nominales de Diagnóstico por Imágenes (Bajo Demanda — Capa 2) ──
+app.get('/api/salus/dxi-casos', async (req, res) => {
+    try {
+        const rows = await getDxICasosNominales({
+            fechaDesde: req.query.desde || req.query.fechaDesde,
+            fechaHasta: req.query.hasta || req.query.fechaHasta,
+            modalidad: req.query.modalidad || 'TODAS',
+            agenda: req.query.agenda || 'TODAS',
+            ambito: req.query.ambito || 'TODOS',
+            estadoAsistencia: req.query.estadoAsistencia || 'TODOS',
+            realizador: req.query.realizador || '',
+            solicitante: req.query.solicitante || '',
+            obraSocial: req.query.obraSocial || '',
+            search: req.query.search || '',
+            limit: req.query.limit || 400
+        });
+        res.json({ success: true, data: rows, total: rows.length });
+    } catch (err) {
+        console.error('Error en /api/salus/dxi-casos:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/salus/sync/dxi', async (req, res) => {
     try {
         const { desde, hasta } = req.query;
         const data = await getDxIAnalytics({
-            fechaDesde: desde || '2022-01-01',
+            fechaDesde: desde || '2026-01-01',
             fechaHasta: hasta || new Date().toISOString().substring(0, 10)
         });
         res.json({ success: true, results: data });

@@ -27,6 +27,7 @@ import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
 import { syncGuardiaIndicadores } from './sync_guardia_indicadores.mjs';
 import { syncGuardiaFranjasYAdmisiones } from './sync_guardia_franjas_admisiones.mjs';
 import { syncCirugiasConversion } from './sync_guardia_cirugias_conversion.mjs';
+import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -504,7 +505,7 @@ export async function runDailySync({ skipDoctors = false } = {}) {
     // ──────────────────────────────────────────────────────────
     // PASO 10: Indicadores de Guardia Clínica, Franjas y Conversión QX
     // ──────────────────────────────────────────────────────────
-    log('PASO 10/10: Sincronizando Indicadores de Guardia Clínica, Franjas y Conversión QX...');
+    log('PASO 10/11: Sincronizando Indicadores de Guardia Clínica, Franjas y Conversión QX...');
     try {
         await syncGuardiaIndicadores({ fastSync: true });
         await syncGuardiaFranjasYAdmisiones({ fastSync: true });
@@ -512,6 +513,22 @@ export async function runDailySync({ skipDoctors = false } = {}) {
         log('Paso 10 completado: Indicadores de Guardia y Conversión QX actualizados.');
     } catch (eGuardia) {
         log(`⚠️ Error no bloqueante en Paso 10 (Guardia): ${eGuardia.message}`);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // PASO 11: Resumen Fijo Precalculado de Diagnóstico por Imágenes (DxI)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 11/11: Actualizando Resumen Fijo Precalculado y Casos Recientes de Diagnóstico por Imágenes (DxI)...');
+    try {
+        const dHoy = new Date();
+        const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const fHoy = `${dHoy.getFullYear()}-${String(dHoy.getMonth() + 1).padStart(2, '0')}-${String(dHoy.getDate()).padStart(2, '0')}`;
+        const f30 = `${d30.getFullYear()}-${String(d30.getMonth() + 1).padStart(2, '0')}-${String(d30.getDate()).padStart(2, '0')}`;
+        await getDxIAnalytics({ fechaDesde: '2026-01-01', fechaHasta: fHoy });
+        await getDxICasosNominales({ fechaDesde: f30, fechaHasta: fHoy, limit: 600, saveDefaultCache: true });
+        log('Paso 11 completado: Caché fija y casos recientes de Diagnóstico por Imágenes actualizados.');
+    } catch (eDxi) {
+        log(`⚠️ Error no bloqueante en Paso 11 (DxI): ${eDxi.message}`);
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);

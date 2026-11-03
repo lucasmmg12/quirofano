@@ -118,26 +118,26 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
 
-            -- Set 1: Prestadores que la Realizan (con EstadoAsistencia y PeriodoMes)
-            SELECT PeriodoMes, Modalidad, Agenda, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 1: Prestadores que la Realizan (por PeriodoMes y Modalidad para resumen general ultrarrápido)
+            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Agenda, Responsable, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Responsable, EstadoAsistencia;
 
-            -- Set 2: Prestadores que la Solicitan (con EstadoAsistencia y PeriodoMes)
-            SELECT PeriodoMes, Modalidad, Agenda, Solicitante AS PrestadorSolicita, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 2: Prestadores que la Solicitan (por PeriodoMes y Modalidad)
+            SELECT PeriodoMes, Modalidad, Solicitante AS PrestadorSolicita, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Agenda, Solicitante, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Solicitante, EstadoAsistencia;
 
             -- Set 3: Prestadores que la Informan (solo estudios firmados/informados, con PeriodoMes)
-            SELECT PeriodoMes, Modalidad, Agenda, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
             FROM #TempDxI
             WHERE EstaInformado = 1
-            GROUP BY PeriodoMes, Modalidad, Agenda, Responsable;
+            GROUP BY PeriodoMes, Modalidad, Responsable;
 
-            -- Set 4: Obras Sociales (con EstadoAsistencia y PeriodoMes)
-            SELECT PeriodoMes, Modalidad, Agenda, ObraSocial, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 4: Obras Sociales (por PeriodoMes y Modalidad)
+            SELECT PeriodoMes, Modalidad, ObraSocial, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Agenda, ObraSocial, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, ObraSocial, EstadoAsistencia;
 
             -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia)
             SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, COUNT(*) AS Cantidad
@@ -146,9 +146,9 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             ORDER BY FechaDia ASC;
 
             -- Set 6: Desglose Agregado por Estado de Asistencia (con PeriodoMes)
-            SELECT PeriodoMes, Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Agenda, EstadoAsistencia, AsistenciaOriginal
+            GROUP BY PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal
             ORDER BY Cantidad DESC;
 
             DROP TABLE #TempDxI;
@@ -162,24 +162,80 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
         const elapsed = Date.now() - t0;
         console.log(`[getDxIAnalytics] Consulta completada en ${elapsed}ms. Resultsets: ${res.recordsets.length}`);
 
+        // Compactar colas largas (1-2 estudios) por (PeriodoMes, Modalidad, Agenda, EstadoAsistencia)
+        // preservando el 100% exacto de los totales y los Top 45 globales por mes/modalidad
+        const compactRankingSet = (rows, entityKey, fallbackLabel) => {
+            if (!Array.isArray(rows) || rows.length === 0) return [];
+            // 1. Identificar top entidades por (PeriodoMes, Modalidad) para no perder nunca a ningún profesional/OS relevante
+            const modTotals = new Map();
+            for (const r of rows) {
+                const mKey = `${r.PeriodoMes}|${r.Modalidad}`;
+                const name = r[entityKey] || fallbackLabel;
+                if (!modTotals.has(mKey)) modTotals.set(mKey, new Map());
+                const inner = modTotals.get(mKey);
+                inner.set(name, (inner.get(name) || 0) + (r.Cantidad || 0));
+            }
+            const topPerMod = new Map();
+            for (const [mKey, inner] of modTotals.entries()) {
+                const sorted = Array.from(inner.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 45)
+                    .map(e => e[0]);
+                topPerMod.set(mKey, new Set(sorted));
+            }
+
+            // 2. Agrupar respetando las entidades top o con Cantidad >= 5 en la agenda, y consolidando la cola menor en "OTROS"
+            // para mantener el 100% exacto de la suma nominal y reducir el peso JSON en >85%
+            const out = [];
+            const tailBuckets = new Map();
+
+            for (const r of rows) {
+                const mKey = `${r.PeriodoMes}|${r.Modalidad}`;
+                const name = r[entityKey] || fallbackLabel;
+                const isTop = topPerMod.get(mKey)?.has(name);
+                if (isTop || (r.Cantidad || 0) >= 5) {
+                    out.push(r);
+                } else {
+                    const bKey = `${r.PeriodoMes}|${r.Modalidad}|${r.Agenda || 'SIN AGENDA'}|${r.EstadoAsistencia || ''}`;
+                    if (!tailBuckets.has(bKey)) {
+                        const baseObj = {
+                            PeriodoMes: r.PeriodoMes,
+                            Modalidad: r.Modalidad,
+                            Agenda: r.Agenda,
+                            [entityKey]: fallbackLabel,
+                            Cantidad: 0
+                        };
+                        if (r.EstadoAsistencia !== undefined) baseObj.EstadoAsistencia = r.EstadoAsistencia;
+                        tailBuckets.set(bKey, baseObj);
+                    }
+                    tailBuckets.get(bKey).Cantidad += (r.Cantidad || 0);
+                }
+            }
+
+            for (const b of tailBuckets.values()) {
+                if (b.Cantidad > 0) out.push(b);
+            }
+            return out;
+        };
+
         const payload = {
             rango: { fechaDesde: desde, fechaHasta: hasta },
             elapsedMs: elapsed,
             agendas: res.recordsets[0] || [],
-            realizadores: res.recordsets[1] || [],
-            solicitantes: res.recordsets[2] || [],
-            informantes: res.recordsets[3] || [],
-            obrasSociales: res.recordsets[4] || [],
+            realizadores: compactRankingSet(res.recordsets[1] || [], 'PrestadorRealiza', 'OTROS PROFESIONALES (MENOR VOLUMEN)'),
+            solicitantes: compactRankingSet(res.recordsets[2] || [], 'PrestadorSolicita', 'OTROS SOLICITANTES (MENOR VOLUMEN)'),
+            informantes: compactRankingSet(res.recordsets[3] || [], 'PrestadorInforma', 'OTROS INFORMANTES (MENOR VOLUMEN)'),
+            obrasSociales: compactRankingSet(res.recordsets[4] || [], 'ObraSocial', 'OTRAS OBRAS SOCIALES (MENOR VOLUMEN)'),
             evolucion: res.recordsets[5] || [],
             asistencias: res.recordsets[6] || [],
             ultima_actualizacion: new Date().toISOString()
         };
 
-        // Cachear en Supabase app_config
+        // Cachear en Supabase app_config (Resumen Fijo Precalculado de Carga Instantánea)
         try {
             await supabase.from('app_config').upsert({
                 key: 'dxi_analytics_cache',
-                value: JSON.stringify(payload),
+                value: payload,
                 label: 'Caché de Analítica de Diagnóstico por Imágenes (DxI)',
                 category: 'gobernanza_dxi',
                 is_secret: false,
@@ -191,6 +247,154 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
         }
 
         return payload;
+    } finally {
+        await pool.close();
+    }
+}
+
+/**
+ * Obtiene el listado nominal de casos individuales de Diagnóstico por Imágenes (DxI) bajo demanda
+ * cuando el usuario desea auditar cada caso/paciente en particular (Capa 2 - Drill-Down Nominal).
+ */
+export async function getDxICasosNominales({
+    fechaDesde,
+    fechaHasta,
+    modalidad = 'TODAS',
+    agenda = 'TODAS',
+    ambito = 'TODOS',
+    estadoAsistencia = 'TODOS',
+    realizador = '',
+    solicitante = '',
+    obraSocial = '',
+    search = '',
+    limit = 400,
+    saveDefaultCache = false
+} = {}) {
+    const pool = await sql.connect(SQL_CONFIG);
+    try {
+        let hasta = (fechaHasta || '').toString().trim() || new Date().toISOString().substring(0, 10);
+        let desde = (fechaDesde || '').toString().trim() || '2026-10-01';
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 400, 50), 2000);
+
+        const req = pool.request()
+            .input('desde', sql.VarChar, `${desde} 00:00:00`)
+            .input('hasta', sql.VarChar, `${hasta} 23:59:59`)
+            .input('modalidad', sql.VarChar, modalidad || 'TODAS')
+            .input('agenda', sql.VarChar, agenda || 'TODAS')
+            .input('ambito', sql.VarChar, ambito || 'TODOS')
+            .input('estadoAsistencia', sql.VarChar, estadoAsistencia || 'TODOS')
+            .input('realizador', sql.VarChar, realizador ? `%${realizador}%` : '')
+            .input('solicitante', sql.VarChar, solicitante ? `%${solicitante}%` : '')
+            .input('obraSocial', sql.VarChar, obraSocial ? `%${obraSocial}%` : '')
+            .input('search', sql.VarChar, search ? `%${search}%` : '');
+
+        const query = `
+            WITH BaseCasos AS (
+                SELECT 
+                    IdPeticionDePrueba AS id_peticion,
+                    idVisita AS id_visita,
+                    CONVERT(VARCHAR(10), [Fecha Solicitud], 120) AS fecha_solicitud,
+                    CONVERT(VARCHAR(5), [Fecha Solicitud], 108) AS hora_solicitud,
+                    ISNULL(Paciente, 'SIN NOMBRE') AS paciente,
+                    ISNULL(NHC, '') AS nhc,
+                    ISNULL([Paciente NIF], '') AS dni,
+                    [Paciente Edad] AS edad,
+                    ISNULL(Sexo, '') AS sexo,
+                    CASE 
+                        WHEN [Tipo Visita] LIKE '(ECO)%' OR Prueba LIKE '%ECOGRAF%' OR Prueba LIKE '%DOPPLER%' THEN 'ECOGRAFIA'
+                        WHEN [Tipo Visita] LIKE '(RX) MA%' OR Prueba LIKE '%MAMOGRAF%' THEN 'MAMOGRAFIA'
+                        WHEN [Tipo Visita] LIKE '(RX) DE%' OR Prueba LIKE '%DENSITO%' THEN 'DENSITOMETRIA'
+                        WHEN [Tipo Visita] LIKE '(TC)%' OR Prueba LIKE '%TOMOGRAF%' OR Prueba LIKE '%TC %' OR Prueba LIKE '%TAC%' THEN 'TOMOGRAFIA'
+                        WHEN [Tipo Visita] LIKE '(RX)%' OR [Tipo Visita] LIKE '(CX) RA%' OR Prueba LIKE '%RADIOGRAF%' OR Prueba LIKE '%RAYOS%' THEN 'RADIOLOGIA'
+                        ELSE 'OTRAS'
+                    END AS modalidad,
+                    ISNULL([Tipo Visita], 'SIN AGENDA') AS agenda,
+                    ISNULL(Prueba, 'SIN ESPECIFICAR') AS estudio,
+                    ISNULL(VIS_Centro, 'SAN LUIS SUR') AS centro,
+                    ISNULL(Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS realizador,
+                    ISNULL(Solicitante, 'NO ESPECIFICADO / EXTERNO') AS solicitante,
+                    ISNULL(Cliente, 'PARTICULAR / SIN FINANCIADOR') AS obra_social,
+                    ISNULL(NULLIF(RTRIM(LTRIM(Asistencia)), ''), 'SIN REGISTRAR') AS asistencia_original,
+                    CASE 
+                        WHEN Asistencia = 'Presente' THEN 'Presente'
+                        WHEN Asistencia = 'INTERNADO' THEN 'Internado'
+                        WHEN Asistencia = 'URGENCIA' THEN 'Urgencia'
+                        WHEN Asistencia = 'SOBRETURNO' THEN 'Sobreturno'
+                        WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada') THEN 'Ausente'
+                        WHEN Asistencia LIKE '%SUSPENDIDA%' OR Asistencia LIKE '%Anulación%' OR Asistencia LIKE '%CANCEL%' THEN 'Cancelada'
+                        WHEN Asistencia IS NULL OR RTRIM(LTRIM(Asistencia)) = '' THEN 'Sin Registrar'
+                        ELSE Asistencia
+                    END AS estado_asistencia,
+                    CASE 
+                        WHEN Asistencia IN ('Presente', 'URGENCIA', 'SOBRETURNO') THEN 'Ambulatorio'
+                        WHEN Asistencia = 'INTERNADO' THEN 'Hospitalización'
+                        WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
+                        ELSE 'Ambulatorio'
+                    END AS ambito,
+                    CASE WHEN [Fecha Informado] IS NOT NULL THEN 1 ELSE 0 END AS informado,
+                    CONVERT(VARCHAR(16), [Fecha Informado], 120) AS fecha_informado,
+                    ISNULL(HOSP_Habitacion, '') AS habitacion,
+                    [Fecha Solicitud] AS raw_fecha
+                FROM VLIS_PeticionesPruebas_ARGENTINA WITH (NOLOCK)
+                WHERE [Fecha Solicitud] >= @desde AND [Fecha Solicitud] <= @hasta
+                  AND Prueba NOT LIKE '%*** PETICION RADIOLOGÍA%'
+                  AND (
+                      [Tipo Visita] LIKE '(ECO)%' 
+                      OR [Tipo Visita] LIKE '(RX)%' 
+                      OR [Tipo Visita] LIKE '(TC)%'
+                      OR [Tipo Visita] LIKE '(CX) RA%'
+                  )
+                  AND ([Tipo Visita] NOT LIKE '%(TC) MEDIO DE CONTRASTE%' OR [Tipo Visita] IS NULL)
+                  AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
+                  AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%'
+            )
+            SELECT TOP (${safeLimit}) *
+            FROM BaseCasos
+            WHERE (@modalidad = 'TODAS' OR modalidad = @modalidad)
+              AND (@agenda = 'TODAS' OR agenda = @agenda)
+              AND (@ambito = 'TODOS' OR ambito = @ambito)
+              AND (@estadoAsistencia = 'TODOS' OR estado_asistencia = @estadoAsistencia)
+              AND (@realizador = '' OR realizador LIKE @realizador)
+              AND (@solicitante = '' OR solicitante LIKE @solicitante)
+              AND (@obraSocial = '' OR obra_social LIKE @obraSocial)
+              AND (
+                  @search = '' 
+                  OR paciente LIKE @search 
+                  OR dni LIKE @search 
+                  OR nhc LIKE @search 
+                  OR estudio LIKE @search 
+                  OR agenda LIKE @search
+                  OR realizador LIKE @search
+                  OR solicitante LIKE @search
+                  OR obra_social LIKE @search
+              )
+            ORDER BY raw_fecha DESC;
+        `;
+
+        const res = await req.query(query);
+        const rows = res.recordset || [];
+
+        if (saveDefaultCache && rows.length > 0) {
+            try {
+                await supabase.from('app_config').upsert({
+                    key: 'dxi_casos_nominales_cache',
+                    value: {
+                        updated_at: new Date().toISOString(),
+                        rango: { fechaDesde: desde, fechaHasta: hasta },
+                        casos: rows.slice(0, 600)
+                    },
+                    label: 'Caché de Casos Nominales Recientes DxI',
+                    category: 'gobernanza_dxi',
+                    is_secret: false,
+                    updated_at: new Date().toISOString(),
+                    updated_by: 'sync_dxi.mjs'
+                }, { onConflict: 'key' });
+            } catch (e) {
+                console.warn('[getDxICasosNominales] Error guardando caché nominal:', e.message);
+            }
+        }
+
+        return rows;
     } finally {
         await pool.close();
     }

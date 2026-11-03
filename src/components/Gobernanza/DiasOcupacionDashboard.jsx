@@ -685,6 +685,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     // Modal de Documentación Técnica
     const [showDocModal, setShowDocModal] = useState(false);
     const [docModalTab, setDocModalTab] = useState('UCI');
+    const [peticionesFastCount, setPeticionesFastCount] = useState(0);
+    const [peticionesLoadedRange, setPeticionesLoadedRange] = useState('');
 
     // Manejador para cerrar el dropdown de especialidades al hacer click afuera
     useEffect(() => {
@@ -858,72 +860,57 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             });
             setEspecialidadesDisponibles(Array.from(especSet).sort());
 
-            // 2. Cargar Resumen Global por Origen (Query 2 Nominal) y Resumen Gobernanza Reclasificado
-            try {
-                const [resOrigen, resGob] = await Promise.all([
-                    supabase.from('calidad_peticiones_resumen_origen').select('*').order('cantidad_estudios', { ascending: false }),
-                    supabase.from('calidad_peticiones_resumen_gobernanza').select('*').order('cantidad_estudios', { ascending: false })
-                ]);
-                if (resOrigen.data && resOrigen.data.length > 0) {
-                    setPeticionesResumen(resOrigen.data);
-                }
-                if (resGob.data && resGob.data.length > 0) {
-                    setPeticionesResumenGobernanza(resGob.data);
-                }
-            } catch (errRes) {
-                console.warn('Advertencia cargando resúmenes de origen y gobernanza:', errRes);
+            // Liberar inmediatamente el Tablero General para visualización instantánea
+            setLoading(false);
+
+            // 2. Cargar en paralelo Resumen Fijo de Gobernanza + Conteo Rápido de Estudios UCI + Historial de Camas
+            const fastCountPromise = supabase
+                .from('calidad_peticiones_pruebas')
+                .select('id', { count: 'exact', head: true })
+                .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
+                .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
+                .or('habitacion.ilike.%BOX%,habitacion.ilike.%222%,habitacion.ilike.%223%,habitacion.ilike.%224%,habitacion.ilike.%226%,habitacion.ilike.%227%,habitacion.ilike.%228%,habitacion.ilike.%229%');
+
+            let qHist = supabase
+                .from('calidad_admisiones_camas_historial')
+                .select('*')
+                .or(`fecha_fin.gte.${fechaDesde}T00:00:00,fecha_fin.is.null`)
+                .lte('fecha_inicio', `${fechaHasta}T23:59:59`)
+                .order('fecha_inicio', { ascending: true });
+
+            if (sectorId === 'UCI') {
+                qHist = qHist.or('servicio.in.("UCI","TERAPIA INTERMEDIA"),habitacion.ilike.222%,habitacion.ilike.223%,habitacion.ilike.224%,habitacion.ilike.225%,habitacion.ilike.226%,habitacion.ilike.227%,habitacion.ilike.228%,habitacion.ilike.229%');
+            } else if (sectorId && sectorId !== 'TODOS') {
+                qHist = qHist.eq('servicio', sectorId);
             }
 
-            // 3. Cargar Estudios Clínicos de UCI (Laboratorio, RX Tórax, etc.)
-            try {
-                // Consultamos estudios asociados a boxes y unidades de UCI en páginas paralelas (hasta 10.000 estudios)
-                const pageSize = 1000;
-                const pages = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-                const promises = pages.map(p =>
-                    supabase
-                        .from('calidad_peticiones_pruebas')
-                        .select('id, id_peticion, fecha_solicitud, paciente, id_paciente, solicitante, paciente_edad, origen, tipo_visita, tipo_articulo, estudio, habitacion, cama, seccion, modalidad, origen_gobernanza')
-                        .gte('fecha_solicitud', fechaDesde + 'T00:00:00')
-                        .lte('fecha_solicitud', fechaHasta + 'T23:59:59')
-                        .or('habitacion.ilike.%BOX%,habitacion.ilike.%222%,habitacion.ilike.%223%,habitacion.ilike.%224%,habitacion.ilike.%226%,habitacion.ilike.%227%,habitacion.ilike.%228%,habitacion.ilike.%229%')
-                        .order('fecha_solicitud', { ascending: false })
-                        .range(p * pageSize, (p + 1) * pageSize - 1)
-                );
+            const [resOrigen, resGob, countRes, histRes] = await Promise.allSettled([
+                supabase.from('calidad_peticiones_resumen_origen').select('*').order('cantidad_estudios', { ascending: false }),
+                supabase.from('calidad_peticiones_resumen_gobernanza').select('*').order('cantidad_estudios', { ascending: false }),
+                fastCountPromise,
+                qHist
+            ]);
 
-                const results = await Promise.all(promises);
-                let allPeticiones = [];
-                results.forEach(res => {
-                    if (res.data && res.data.length > 0) {
-                        allPeticiones = allPeticiones.concat(res.data);
-                    }
-                });
-                setPeticionesEstudios(allPeticiones);
-            } catch (errPet) {
-                console.warn('Advertencia cargando estudios clínicos:', errPet);
+            if (resOrigen.status === 'fulfilled' && resOrigen.value.data?.length > 0) {
+                setPeticionesResumen(resOrigen.value.data);
+            }
+            if (resGob.status === 'fulfilled' && resGob.value.data?.length > 0) {
+                setPeticionesResumenGobernanza(resGob.value.data);
+            }
+            if (countRes.status === 'fulfilled' && typeof countRes.value.count === 'number') {
+                setPeticionesFastCount(countRes.value.count);
+            }
+            if (histRes.status === 'fulfilled' && histRes.value.data) {
+                setCamasHistorialRows(histRes.value.data);
             }
 
-            // 4. Cargar Historial Granular de Camas y Traslados de UCI
-            try {
-                let qHist = supabase
-                    .from('calidad_admisiones_camas_historial')
-                    .select('*')
-                    .or(`fecha_fin.gte.${fechaDesde}T00:00:00,fecha_fin.is.null`)
-                    .lte('fecha_inicio', `${fechaHasta}T23:59:59`)
-                    .order('fecha_inicio', { ascending: true });
-
-                if (sectorId === 'UCI') {
-                    qHist = qHist.or('servicio.in.("UCI","TERAPIA INTERMEDIA"),habitacion.ilike.222%,habitacion.ilike.223%,habitacion.ilike.224%,habitacion.ilike.225%,habitacion.ilike.226%,habitacion.ilike.227%,habitacion.ilike.228%,habitacion.ilike.229%');
-                } else if (sectorId && sectorId !== 'TODOS') {
-                    qHist = qHist.eq('servicio', sectorId);
-                }
-
-                const { data: histData, error: histErr } = await qHist;
-
-                if (!histErr && histData) {
-                    setCamasHistorialRows(histData);
-                }
-            } catch (errHist) {
-                console.warn('Advertencia cargando historial de camas:', errHist);
+            // Si el usuario ya está en la pestaña nominal de Soporte Diagnóstico, cargar los casos individuales
+            if (uciActiveTab === 'diagnostico') {
+                await loadNominalPeticionesUci(fechaDesde, fechaHasta);
+            } else {
+                setPeticionesEstudios([]);
+                setPeticionesLoadedRange('');
+                setLoadingPeticiones(false);
             }
 
         } catch (err) {
@@ -933,6 +920,46 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             setLoadingPeticiones(false);
         }
     };
+
+    // Capa 2 (Bajo Demanda): Cargar registros nominales de estudios clínicos solo cuando el usuario accede al detalle
+    const loadNominalPeticionesUci = async (desde = fechaDesde, hasta = fechaHasta) => {
+        const rangeKey = `${desde}_${hasta}`;
+        if (peticionesLoadedRange === rangeKey && peticionesEstudios.length > 0) return;
+        setLoadingPeticiones(true);
+        try {
+            const pageSize = 1000;
+            const pages = [0, 1, 2, 3, 4];
+            const promises = pages.map(p =>
+                supabase
+                    .from('calidad_peticiones_pruebas')
+                    .select('id, id_peticion, fecha_solicitud, paciente, id_paciente, solicitante, paciente_edad, origen, tipo_visita, tipo_articulo, estudio, habitacion, cama, seccion, modalidad, origen_gobernanza')
+                    .gte('fecha_solicitud', desde + 'T00:00:00')
+                    .lte('fecha_solicitud', hasta + 'T23:59:59')
+                    .or('habitacion.ilike.%BOX%,habitacion.ilike.%222%,habitacion.ilike.%223%,habitacion.ilike.%224%,habitacion.ilike.%226%,habitacion.ilike.%227%,habitacion.ilike.%228%,habitacion.ilike.%229%')
+                    .order('fecha_solicitud', { ascending: false })
+                    .range(p * pageSize, (p + 1) * pageSize - 1)
+            );
+            const results = await Promise.all(promises);
+            let allPeticiones = [];
+            results.forEach(res => {
+                if (res.data && res.data.length > 0) {
+                    allPeticiones = allPeticiones.concat(res.data);
+                }
+            });
+            setPeticionesEstudios(allPeticiones);
+            setPeticionesLoadedRange(rangeKey);
+        } catch (errPet) {
+            console.warn('Advertencia cargando estudios clínicos nominales:', errPet);
+        } finally {
+            setLoadingPeticiones(false);
+        }
+    };
+
+    useEffect(() => {
+        if (sectorId === 'UCI' && (uciActiveTab === 'diagnostico' || inspectDataIndicator === 'estudios_modalidades')) {
+            loadNominalPeticionesUci(fechaDesde, fechaHasta);
+        }
+    }, [uciActiveTab, inspectDataIndicator, fechaDesde, fechaHasta, sectorId]);
 
     // Normalización de Habitaciones y Detección de Modalidad Clínica
     const normalizeHab = (hab) => {
@@ -1380,7 +1407,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         });
 
         // 10. Intensidad Diagnóstica (Estudios / Días Camas Ocupados)
-        const totalEstudiosSector = peticionesFiltradas.length;
+        // Usa la tabla nominal si ya se cargó bajo demanda, o el conteo rápido fijo en la vista general
+        const totalEstudiosSector = peticionesFiltradas.length > 0 ? peticionesFiltradas.length : peticionesFastCount;
         const intensidadCamaDia = diasOcupados > 0 
             ? (totalEstudiosSector / diasOcupados).toFixed(2) 
             : '0.00';
@@ -1488,7 +1516,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             totalEstudiosPeriodo: totalEstudiosSector,
             admisionesUnicas
         };
-    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, peticionesEstudios, modalidadFiltro, boxFiltro, sectorId, uciSubNivel]);
+    }, [filteredRows, camasTotales, fechaDesde, fechaHasta, activeSectorConfig, peticionesEstudios, peticionesFastCount, modalidadFiltro, boxFiltro, sectorId, uciSubNivel]);
 
     // Generar lista de indicadores estructurados para el Centro de Exportación
     const activeIndicatorsList = useMemo(() => {

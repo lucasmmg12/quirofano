@@ -83,6 +83,22 @@ export default function DiagnosticoImagenesDashboard({
     const [lastUpdated, setLastUpdated] = useState(null);
     const [dataSource, setDataSource] = useState('cargando'); // 'salus_live' | 'supabase_cache'
 
+    // ─── CAPA 2: MODAL Y TABLA NOMINAL DE CASOS BAJO DEMANDA ───
+    const [casosModalOpen, setCasosModalOpen] = useState(false);
+    const [casosLoading, setCasosLoading] = useState(false);
+    const [casosList, setCasosList] = useState([]);
+    const [casosSource, setCasosSource] = useState('salus');
+    const [casosSearch, setCasosSearch] = useState('');
+    const [casosFilter, setCasosFilter] = useState({
+        modalidad: 'TODAS',
+        agenda: 'TODAS',
+        ambito: 'TODOS',
+        estadoAsistencia: 'TODOS',
+        realizador: '',
+        solicitante: '',
+        obraSocial: ''
+    });
+
     // Filtros de navegación
     const [selectedModalidad, setSelectedModalidad] = useState('TODAS');
     const [selectedAgenda, setSelectedAgenda] = useState('TODAS');
@@ -208,52 +224,24 @@ export default function DiagnosticoImagenesDashboard({
         }
     };
 
-    // ─── CARGA DE DATOS (CON CACHÉ Y SALUS DIRECTO) ───
+    // ─── CAPA 1: CARGA INSTANTÁNEA DESDE LUGAR FIJO EN SUPABASE (Y SALUS SOLO AL FORZAR SINCRONIZACIÓN) ───
     const loadDxIData = async (forceRefresh = false) => {
+        // Si no es refresh forzado y ya tenemos el resumen fijo cargado en memoria con desglose mensual,
+        // no volver a descargar nada: el filtrado por período ocurre en 0ms vía useMemo(scopedData)
+        if (!forceRefresh && data && Array.isArray(data.agendas) && data.agendas.length > 0) {
+            setLoading(false);
+            return;
+        }
+
         if (forceRefresh) setRefreshing(true);
         else setLoading(true);
 
         try {
             let loaded = false;
 
-            // 1. Intentar endpoints de SALUS Sync Server (relativo vía Vite proxy y directo localhost)
-            const qs = new URLSearchParams({
-                desde: effectiveDesde,
-                hasta: effectiveHasta,
-                ...(forceRefresh ? { refresh: 'true' } : {})
-            });
-            const candidates = [
-                `/api/salus/dxi-analytics?${qs.toString()}`,
-                `http://localhost:3456/api/salus/dxi-analytics?${qs.toString()}`,
-                `http://127.0.0.1:3456/api/salus/dxi-analytics?${qs.toString()}`
-            ];
-
-            for (const url of candidates) {
-                try {
-                    const res = await fetch(url, {
-                        signal: AbortSignal.timeout(forceRefresh ? 90000 : 15000)
-                    });
-                    if (res.ok) {
-                        const json = await res.json();
-                        if (json.success && json.data) {
-                            setData(json.data);
-                            setLastUpdated(json.updated_at || new Date().toISOString());
-                            setDataSource(json.fromCache ? 'supabase_cache' : 'salus_live');
-                            loaded = true;
-                            if (forceRefresh) {
-                                addToast?.('Datos de Diagnóstico por Imágenes sincronizados desde SALUS', 'success');
-                            }
-                            break;
-                        }
-                    }
-                } catch (_) {
-                    // Probar siguiente candidato
-                }
-            }
-
-            // 2. Fallback: Leer de Supabase app_config
-            if (!loaded) {
-                const { data: cfg, error } = await supabase
+            // 1. Si NO es refresh forzado, leer PRIMERO y DIRECTO del lugar fijo en Supabase (app_config) en <200ms
+            if (!forceRefresh) {
+                const { data: cfg } = await supabase
                     .from('app_config')
                     .select('value, updated_at')
                     .eq('key', 'dxi_analytics_cache')
@@ -262,12 +250,51 @@ export default function DiagnosticoImagenesDashboard({
                 if (cfg?.value) {
                     try {
                         const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
-                        setData(parsed);
-                        setLastUpdated(cfg.updated_at || new Date().toISOString());
-                        setDataSource('supabase_cache');
-                        loaded = true;
+                        if (parsed && Array.isArray(parsed.agendas)) {
+                            setData(parsed);
+                            setLastUpdated(cfg.updated_at || parsed.ultima_actualizacion || new Date().toISOString());
+                            setDataSource('supabase_cache');
+                            loaded = true;
+                        }
                     } catch (parseErr) {
-                        console.error('[DxI] Error al parsear cache de app_config:', parseErr);
+                        console.error('[DxI] Error al parsear cache fija de app_config:', parseErr);
+                    }
+                }
+            }
+
+            // 2. Solo consultar SALUS Sync Server si el usuario pidió Sincronizar SALUS (forceRefresh) o si no había caché fija
+            if (!loaded || forceRefresh) {
+                const qs = new URLSearchParams({
+                    desde: '2026-01-01',
+                    hasta: new Date().toISOString().substring(0, 10),
+                    ...(forceRefresh ? { refresh: 'true' } : {})
+                });
+                const candidates = [
+                    `/api/salus/dxi-analytics?${qs.toString()}`,
+                    `http://localhost:3456/api/salus/dxi-analytics?${qs.toString()}`,
+                    `http://127.0.0.1:3456/api/salus/dxi-analytics?${qs.toString()}`
+                ];
+
+                for (const url of candidates) {
+                    try {
+                        const res = await fetch(url, {
+                            signal: AbortSignal.timeout(forceRefresh ? 90000 : 8000)
+                        });
+                        if (res.ok) {
+                            const json = await res.json();
+                            if (json.success && json.data) {
+                                setData(json.data);
+                                setLastUpdated(json.updated_at || new Date().toISOString());
+                                setDataSource(json.fromCache ? 'supabase_cache' : 'salus_live');
+                                loaded = true;
+                                if (forceRefresh) {
+                                    addToast?.('Resumen fijo de Diagnóstico por Imágenes actualizado desde SALUS', 'success');
+                                }
+                                break;
+                            }
+                        }
+                    } catch (_) {
+                        // Probar siguiente candidato
                     }
                 }
             }
@@ -284,10 +311,198 @@ export default function DiagnosticoImagenesDashboard({
         }
     };
 
-    // Recargar cada vez que cambien las fechas del Telar arriba
+    // Cargar una sola vez al montar desde el resumen fijo en Supabase; los cambios de fecha filtran en memoria al instante
     useEffect(() => {
         loadDxIData(false);
-    }, [effectiveDesde, effectiveHasta]);
+    }, []);
+
+    // ─── CAPA 2: CONSULTA BAJO DEMANDA DE LA TABLA NOMINAL DE CASOS INDIVIDUALES ───
+    const fetchCasosNominales = async (customFilters = null) => {
+        const activeF = customFilters || casosFilter;
+        setCasosLoading(true);
+        try {
+            let loadedRows = null;
+            const qs = new URLSearchParams({
+                desde: effectiveDesde,
+                hasta: effectiveHasta,
+                modalidad: activeF.modalidad || 'TODAS',
+                agenda: activeF.agenda || 'TODAS',
+                ambito: activeF.ambito || 'TODOS',
+                estadoAsistencia: activeF.estadoAsistencia || 'TODOS',
+                realizador: activeF.realizador || '',
+                solicitante: activeF.solicitante || '',
+                obraSocial: activeF.obraSocial || '',
+                search: casosSearch || '',
+                limit: '500'
+            });
+
+            // 1. Intentar traer la tabla nominal en vivo desde SALUS Sync Server (<1.5s)
+            const urls = [
+                `/api/salus/dxi-casos?${qs.toString()}`,
+                `http://localhost:3456/api/salus/dxi-casos?${qs.toString()}`,
+                `http://127.0.0.1:3456/api/salus/dxi-casos?${qs.toString()}`
+            ];
+            for (const url of urls) {
+                try {
+                    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json.success && Array.isArray(json.data)) {
+                            loadedRows = json.data;
+                            setCasosSource('salus_live');
+                            break;
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            // 2. Fallback en la nube (Supabase): leer dxi_casos_nominales_cache + calidad_peticiones_pruebas
+            if (!loadedRows) {
+                const { data: cfg } = await supabase
+                    .from('app_config')
+                    .select('value')
+                    .eq('key', 'dxi_casos_nominales_cache')
+                    .maybeSingle();
+
+                let poolCasos = [];
+                if (cfg?.value) {
+                    const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
+                    if (Array.isArray(parsed?.casos)) {
+                        poolCasos = parsed.casos;
+                    }
+                }
+
+                // Complementar con calidad_peticiones_pruebas de Supabase si el período no está en el lote reciente
+                const { data: sbPruebas } = await supabase
+                    .from('calidad_peticiones_pruebas')
+                    .select('*')
+                    .gte('fecha_solicitud', `${effectiveDesde}T00:00:00`)
+                    .lte('fecha_solicitud', `${effectiveHasta}T23:59:59`)
+                    .order('fecha_solicitud', { ascending: false })
+                    .limit(400);
+
+                if (Array.isArray(sbPruebas) && sbPruebas.length > 0) {
+                    const existingIds = new Set(poolCasos.map(c => String(c.id_peticion)));
+                    sbPruebas.forEach(p => {
+                        if (existingIds.has(String(p.id_peticion))) return;
+                        const tv = (p.tipo_visita || '').toUpperCase();
+                        const est = (p.estudio || '').toUpperCase();
+                        let mod = 'OTRAS';
+                        if (tv.startsWith('(ECO)') || est.includes('ECOGRAF') || est.includes('DOPPLER')) mod = 'ECOGRAFIA';
+                        else if (tv.startsWith('(RX) MA') || est.includes('MAMOGRAF')) mod = 'MAMOGRAFIA';
+                        else if (tv.startsWith('(RX) DE') || est.includes('DENSITO')) mod = 'DENSITOMETRIA';
+                        else if (tv.startsWith('(TC)') || est.includes('TOMOGRAF') || est.includes('TAC')) mod = 'TOMOGRAFIA';
+                        else if (tv.startsWith('(RX)') || est.includes('RADIOGRAF') || est.includes('RAYOS')) mod = 'RADIOLOGIA';
+                        else return; // Excluir laboratorio puro
+
+                        poolCasos.push({
+                            id_peticion: p.id_peticion,
+                            fecha_solicitud: (p.fecha_solicitud || '').substring(0, 10),
+                            hora_solicitud: (p.fecha_solicitud || '').substring(11, 16),
+                            paciente: p.paciente || 'SIN NOMBRE',
+                            nhc: p.id_paciente ? String(p.id_paciente) : '',
+                            dni: '',
+                            edad: p.paciente_edad || '',
+                            modalidad: mod,
+                            agenda: p.tipo_visita || mod,
+                            estudio: p.estudio || 'SIN ESPECIFICAR',
+                            centro: 'SAN LUIS SUR',
+                            realizador: p.seccion || 'INSTITUCIONAL',
+                            solicitante: p.solicitante || 'NO ESPECIFICADO',
+                            obra_social: 'SEGÚN ADMISIÓN',
+                            estado_asistencia: p.origen === 'Hospitalización' ? 'Internado' : 'Presente',
+                            ambito: p.origen === 'Hospitalización' ? 'Hospitalización' : 'Ambulatorio',
+                            informado: 1,
+                            habitacion: p.habitacion || ''
+                        });
+                    });
+                }
+
+                // Aplicar filtros en memoria sobre el pool de Supabase
+                loadedRows = poolCasos.filter(c => {
+                    if (c.fecha_solicitud && (c.fecha_solicitud < effectiveDesde || c.fecha_solicitud > effectiveHasta)) return false;
+                    if (activeF.modalidad !== 'TODAS' && c.modalidad !== activeF.modalidad) return false;
+                    if (activeF.agenda !== 'TODAS' && c.agenda !== activeF.agenda) return false;
+                    if (activeF.ambito !== 'TODOS' && c.ambito !== activeF.ambito) return false;
+                    if (activeF.estadoAsistencia !== 'TODOS' && c.estado_asistencia !== activeF.estadoAsistencia) return false;
+                    if (activeF.realizador && !(c.realizador || '').toLowerCase().includes(activeF.realizador.toLowerCase())) return false;
+                    if (activeF.solicitante && !(c.solicitante || '').toLowerCase().includes(activeF.solicitante.toLowerCase())) return false;
+                    if (activeF.obraSocial && !(c.obra_social || '').toLowerCase().includes(activeF.obraSocial.toLowerCase())) return false;
+                    return true;
+                });
+                setCasosSource('supabase_cache');
+            }
+
+            setCasosList(loadedRows || []);
+        } catch (err) {
+            console.error('[DxI] Error cargando casos nominales:', err);
+            addToast?.('Error al cargar casos nominales: ' + err.message, 'error');
+        } finally {
+            setCasosLoading(false);
+        }
+    };
+
+    const openCasosNominalesModal = (overrides = {}) => {
+        const nextFilter = {
+            modalidad: overrides.modalidad !== undefined ? overrides.modalidad : selectedModalidad,
+            agenda: overrides.agenda !== undefined ? overrides.agenda : selectedAgenda,
+            ambito: overrides.ambito !== undefined ? overrides.ambito : filterAmbito,
+            estadoAsistencia: overrides.estadoAsistencia !== undefined ? overrides.estadoAsistencia : filterAsistencia,
+            realizador: overrides.realizador || '',
+            solicitante: overrides.solicitante || '',
+            obraSocial: overrides.obraSocial || ''
+        };
+        setCasosFilter(nextFilter);
+        setCasosModalOpen(true);
+        fetchCasosNominales(nextFilter);
+    };
+
+    const filteredCasosNominales = useMemo(() => {
+        if (!casosSearch.trim()) return casosList;
+        const q = casosSearch.toLowerCase().trim();
+        return casosList.filter(c =>
+            (c.paciente || '').toLowerCase().includes(q) ||
+            (c.dni || '').toLowerCase().includes(q) ||
+            (c.nhc || '').toLowerCase().includes(q) ||
+            (c.estudio || '').toLowerCase().includes(q) ||
+            (c.agenda || '').toLowerCase().includes(q) ||
+            (c.realizador || '').toLowerCase().includes(q) ||
+            (c.solicitante || '').toLowerCase().includes(q) ||
+            (c.obra_social || '').toLowerCase().includes(q)
+        );
+    }, [casosList, casosSearch]);
+
+    const handleExportCasosNominalesExcel = () => {
+        if (!filteredCasosNominales.length) {
+            addToast?.('No hay casos nominales para exportar', 'warning');
+            return;
+        }
+        const rows = filteredCasosNominales.map(c => ({
+            'ID Petición': c.id_peticion,
+            'Fecha Solicitud': c.fecha_solicitud,
+            'Hora': c.hora_solicitud || '',
+            'Paciente': c.paciente,
+            'DNI': c.dni || '',
+            'NHC': c.nhc || '',
+            'Edad': c.edad ?? '',
+            'Modalidad': c.modalidad,
+            'Agenda / Tipo Visita': c.agenda,
+            'Práctica / Estudio': c.estudio,
+            'Estado Asistencia': c.estado_asistencia,
+            'Ámbito': c.ambito,
+            'Profesional Realizador': c.realizador,
+            'Médico Solicitante': c.solicitante,
+            'Obra Social / Financiador': c.obra_social,
+            'Informado': c.informado ? 'Sí' : 'Pendiente',
+            'Fecha Informe': c.fecha_informado || '—',
+            'Centro': c.centro || 'SAN LUIS SUR'
+        }));
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Casos_Nominales_DxI');
+        XLSX.writeFile(wb, `DxI_Casos_Nominales_${effectiveDesde}_${effectiveHasta}.xlsx`);
+        addToast?.('Tabla nominal de casos exportada a Excel (.xlsx)', 'success');
+    };
 
     // ─── PROCESAMIENTO Y AGREGACIÓN DE DATOS FILTRADOS POR PERÍODO TELAR ───
 
@@ -632,7 +847,7 @@ export default function DiagnosticoImagenesDashboard({
         const map = new Map();
         scopedData.realizadores.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
 
             // Si hay filtro puntual de asistencia se respeta; si es TODOS, priorizar efectivamente realizados
             if (filterAsistencia !== 'TODOS') {
@@ -661,7 +876,7 @@ export default function DiagnosticoImagenesDashboard({
         const map = new Map();
         scopedData.solicitantes.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
 
             if (filterAsistencia !== 'TODOS') {
                 if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
@@ -689,7 +904,7 @@ export default function DiagnosticoImagenesDashboard({
         const map = new Map();
         scopedData.informantes.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
 
             const prest = r.PrestadorInforma || 'PROFESIONAL INFORMANTE';
             map.set(prest, (map.get(prest) || 0) + (r.Cantidad || 0));
@@ -711,7 +926,7 @@ export default function DiagnosticoImagenesDashboard({
         const map = new Map();
         scopedData.obrasSociales.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
 
             if (filterAsistencia !== 'TODOS') {
                 if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
@@ -757,11 +972,12 @@ export default function DiagnosticoImagenesDashboard({
 
     // 10. Desglose y Ranking por Estado de Asistencia
     const asistenciasRanking = useMemo(() => {
-        if (!scopedData?.asistencias) return [];
+        const sourceRows = (selectedAgenda !== 'TODAS' && scopedData?.agendas) ? scopedData.agendas : (scopedData?.asistencias || scopedData?.agendas);
+        if (!sourceRows) return [];
         const map = new Map();
-        scopedData.asistencias.forEach(r => {
+        sourceRows.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
             if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return false;
 
             const nombre = r.AsistenciaOriginal || r.EstadoAsistencia || 'Sin Registrar';
@@ -1299,10 +1515,65 @@ export default function DiagnosticoImagenesDashboard({
                                 Diagnóstico por Imágenes (DxI)
                             </h2>
                         </div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ fontSize: '0.85rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span>Período Telar: <strong style={{ color: '#1E293B' }}>{effectiveDesde}</strong> al <strong style={{ color: '#1E293B' }}>{effectiveHasta}</strong></span>
+                            <span style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                background: dataSource === 'salus_live' ? '#ECFDF5' : '#EFF6FF',
+                                color: dataSource === 'salus_live' ? '#047857' : '#1D4ED8',
+                                border: `1px solid ${dataSource === 'salus_live' ? '#A7F3D0' : '#BFDBFE'}`
+                            }}>
+                                ⚡ Resumen Fijo Precalculado ({dataSource === 'salus_live' ? 'SALUS Directo' : 'Supabase Instantáneo'})
+                            </span>
                         </div>
                     </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={() => openCasosNominalesModal()}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            background: '#2563EB',
+                            color: '#FFFFFF',
+                            border: '1px solid #1D4ED8',
+                            borderRadius: '10px',
+                            padding: '9px 14px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 6px rgba(37,99,235,0.22)'
+                        }}
+                    >
+                        <Users size={15} />
+                        Ver Tabla de Casos Nominales
+                    </button>
+                    <button
+                        onClick={() => loadDxIData(true)}
+                        disabled={refreshing}
+                        title="Actualizar el resumen fijo consultando SALUS en vivo"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: '#F8FAFC',
+                            color: '#334155',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '10px',
+                            padding: '9px 12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: refreshing ? 'wait' : 'pointer'
+                        }}
+                    >
+                        <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                        {refreshing ? 'Sincronizando...' : 'Actualizar Resumen'}
+                    </button>
                 </div>
             </div>
 
@@ -2490,16 +2761,37 @@ export default function DiagnosticoImagenesDashboard({
                                             </div>
                                         </div>
 
-                                        {/* Sedes involucradas */}
+                                        {/* Sedes involucradas y Acceso a Casos Nominales */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#64748B' }}>
                                             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <MapPin size={12} />
                                                 {Array.from(item.centros).slice(0, 3).join(', ') || 'Centro general'}
                                             </span>
-                                            <span style={{ color: COLOR_PRIMARY, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                                {isSelected ? 'Ocultar detalle' : 'Ver detalle'}
-                                                <ChevronRight size={13} />
-                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openCasosNominalesModal({ modalidad: item.modalidad, agenda: item.agenda });
+                                                    }}
+                                                    style={{
+                                                        border: '1px solid #BFDBFE',
+                                                        background: '#EFF6FF',
+                                                        color: '#1D4ED8',
+                                                        borderRadius: '6px',
+                                                        padding: '2px 8px',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📋 Ver casos ({item.realizados})
+                                                </button>
+                                                <span style={{ color: COLOR_PRIMARY, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                                    {isSelected ? 'Ocultar detalle' : 'Filtrar panel'}
+                                                    <ChevronRight size={13} />
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -2533,22 +2825,44 @@ export default function DiagnosticoImagenesDashboard({
                             </div>
                         </div>
 
-                        {selectedAgenda !== 'TODAS' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button
-                                onClick={() => setSelectedAgenda('TODAS')}
+                                type="button"
+                                onClick={() => openCasosNominalesModal()}
                                 style={{
-                                    border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF',
+                                    border: '1px solid #BFDBFE',
+                                    background: '#EFF6FF',
                                     borderRadius: '6px',
-                                    padding: '3px 8px',
+                                    padding: '4px 10px',
                                     fontSize: '0.72rem',
-                                    color: '#475569',
-                                    cursor: 'pointer'
+                                    fontWeight: 700,
+                                    color: '#1D4ED8',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
                                 }}
                             >
-                                Ver Todo
+                                <Users size={12} />
+                                Ver cada caso
                             </button>
-                        )}
+                            {selectedAgenda !== 'TODAS' && (
+                                <button
+                                    onClick={() => setSelectedAgenda('TODAS')}
+                                    style={{
+                                        border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF',
+                                        borderRadius: '6px',
+                                        padding: '3px 8px',
+                                        fontSize: '0.72rem',
+                                        color: '#475569',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Ver Todo
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Sub-Pestañas de Detalle */}
@@ -2950,6 +3264,284 @@ export default function DiagnosticoImagenesDashboard({
                 </div>
 
             </div>
+
+            {/* ─── CAPA 2: MODAL DE TABLA NOMINAL DE CASOS INDIVIDUALES (BAJO DEMANDA) ─── */}
+            {casosModalOpen && (
+                <div
+                    onClick={() => setCasosModalOpen(false)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(15, 23, 42, 0.55)',
+                        backdropFilter: 'blur(3px)',
+                        zIndex: 9999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '20px'
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF',
+                            borderRadius: '16px',
+                            border: '1px solid #CBD5E1',
+                            width: '100%',
+                            maxWidth: '1280px',
+                            maxHeight: '88vh',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxShadow: '0 24px 48px rgba(15, 23, 42, 0.25)',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        {/* Header del Modal Nominal */}
+                        <div style={{
+                            padding: '16px 22px',
+                            borderBottom: '1px solid #E2E8F0',
+                            background: '#F8FAFC',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
+                                        📋 Auditoría Nominal de Casos — Diagnóstico por Imágenes (DxI)
+                                    </h3>
+                                    <span style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        padding: '2px 9px',
+                                        borderRadius: '999px',
+                                        background: '#EFF6FF',
+                                        color: '#1D4ED8',
+                                        border: '1px solid #BFDBFE'
+                                    }}>
+                                        {filteredCasosNominales.length} casos listados
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '3px' }}>
+                                    Período: <strong>{effectiveDesde}</strong> al <strong>{effectiveHasta}</strong> • Modalidad: <strong>{casosFilter.modalidad}</strong> • Agenda: <strong>{casosFilter.agenda}</strong>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    onClick={handleExportCasosNominalesExcel}
+                                    disabled={casosLoading || !filteredCasosNominales.length}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: '#059669',
+                                        color: '#FFFFFF',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        padding: '8px 13px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <FileSpreadsheet size={15} />
+                                    Exportar Casos (.xlsx)
+                                </button>
+                                <button
+                                    onClick={() => setCasosModalOpen(false)}
+                                    style={{
+                                        background: '#FFFFFF',
+                                        border: '1px solid #CBD5E1',
+                                        borderRadius: '8px',
+                                        padding: '7px 12px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 700,
+                                        color: '#475569',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    ✕ Cerrar
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Barra de Filtros y Búsqueda Nominal */}
+                        <div style={{
+                            padding: '12px 22px',
+                            borderBottom: '1px solid #E2E8F0',
+                            background: '#FFFFFF',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}>
+                            <div style={{ position: 'relative', flex: '1 1 280px' }}>
+                                <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                                <input
+                                    type="text"
+                                    value={casosSearch}
+                                    onChange={e => setCasosSearch(e.target.value)}
+                                    placeholder="Buscar por paciente, DNI, NHC, práctica, médico realizador, solicitante u obra social..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '7px 12px 7px 32px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #CBD5E1',
+                                        fontSize: '0.8rem',
+                                        color: '#0F172A'
+                                    }}
+                                />
+                            </div>
+
+                            <select
+                                value={casosFilter.modalidad}
+                                onChange={e => {
+                                    const next = { ...casosFilter, modalidad: e.target.value, agenda: 'TODAS' };
+                                    setCasosFilter(next);
+                                    fetchCasosNominales(next);
+                                }}
+                                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 600 }}
+                            >
+                                <option value="TODAS">Todas las Modalidades</option>
+                                <option value="ECOGRAFIA">Ecografía (ECO)</option>
+                                <option value="RADIOLOGIA">Radiología (RX)</option>
+                                <option value="MAMOGRAFIA">Mamografía</option>
+                                <option value="TOMOGRAFIA">Tomografía (TC)</option>
+                                <option value="DENSITOMETRIA">Densitometría</option>
+                            </select>
+
+                            <select
+                                value={casosFilter.estadoAsistencia}
+                                onChange={e => {
+                                    const next = { ...casosFilter, estadoAsistencia: e.target.value };
+                                    setCasosFilter(next);
+                                    fetchCasosNominales(next);
+                                }}
+                                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 600 }}
+                            >
+                                <option value="TODOS">Todos los Estados</option>
+                                <option value="Presente">Presente</option>
+                                <option value="Internado">Internado / Hosp.</option>
+                                <option value="Urgencia">Urgencia</option>
+                                <option value="Sobreturno">Sobreturno</option>
+                                <option value="Ausente">Ausente (No-Show)</option>
+                                <option value="Sin Registrar">Sin Registrar</option>
+                            </select>
+
+                            <button
+                                onClick={() => fetchCasosNominales(casosFilter)}
+                                style={{
+                                    padding: '7px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #2563EB',
+                                    background: '#EFF6FF',
+                                    color: '#1D4ED8',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px'
+                                }}
+                            >
+                                <RefreshCw size={13} className={casosLoading ? 'animate-spin' : ''} />
+                                Actualizar Tabla
+                            </button>
+                        </div>
+
+                        {/* Cuerpo de la Tabla Nominal */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
+                            {casosLoading ? (
+                                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748B' }}>
+                                    <RefreshCw size={26} className="animate-spin" color="#2563EB" style={{ margin: '0 auto 10px auto' }} />
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0F172A' }}>Consultando tabla nominal de casos...</div>
+                                    <div style={{ fontSize: '0.78rem', marginTop: '4px' }}>Trayendo el detalle individual de pacientes y estudios para el filtro seleccionado</div>
+                                </div>
+                            ) : filteredCasosNominales.length === 0 ? (
+                                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94A3B8' }}>
+                                    <AlertCircle size={28} style={{ margin: '0 auto 8px auto' }} />
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>No se encontraron casos nominales con los filtros actuales</div>
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                                    <thead style={{ position: 'sticky', top: 0, background: '#F1F5F9', zIndex: 2, borderBottom: '1px solid #CBD5E1' }}>
+                                        <tr style={{ textAlign: 'left', color: '#334155', fontWeight: 700 }}>
+                                            <th style={{ padding: '10px 12px' }}>Fecha / Hora</th>
+                                            <th style={{ padding: '10px 12px' }}>Paciente</th>
+                                            <th style={{ padding: '10px 12px' }}>DNI / NHC</th>
+                                            <th style={{ padding: '10px 12px' }}>Modalidad / Agenda</th>
+                                            <th style={{ padding: '10px 12px' }}>Práctica / Estudio</th>
+                                            <th style={{ padding: '10px 12px' }}>Estado</th>
+                                            <th style={{ padding: '10px 12px' }}>Realizador</th>
+                                            <th style={{ padding: '10px 12px' }}>Solicitante</th>
+                                            <th style={{ padding: '10px 12px' }}>Obra Social</th>
+                                            <th style={{ padding: '10px 12px' }}>Informe</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredCasosNominales.map((c, idx) => {
+                                            const stCfg = ASISTENCIA_CONFIG[c.estado_asistencia] || ASISTENCIA_CONFIG['Sin Registrar'];
+                                            return (
+                                                <tr key={`${c.id_peticion}_${idx}`} style={{ borderBottom: '1px solid #F1F5F9', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontWeight: 600, color: '#0F172A' }}>
+                                                        <div>{c.fecha_solicitud}</div>
+                                                        {c.hora_solicitud && <div style={{ fontSize: '0.68rem', color: '#64748B' }}>{c.hora_solicitud} hs</div>}
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', fontWeight: 700, color: '#0F172A' }}>
+                                                        <div>{c.paciente}</div>
+                                                        {c.edad ? <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 500 }}>{c.edad} años</div> : null}
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', color: '#475569', whiteSpace: 'nowrap' }}>
+                                                        {c.dni && <div>DNI: <strong>{c.dni}</strong></div>}
+                                                        {c.nhc && <div style={{ fontSize: '0.68rem', color: '#64748B' }}>NHC: {c.nhc}</div>}
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px' }}>
+                                                        <div style={{ fontWeight: 700, color: '#1E40AF', fontSize: '0.72rem' }}>{c.modalidad}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: '#475569' }}>{c.agenda}</div>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1E293B', maxWidth: '220px' }}>
+                                                        {c.estudio}
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                                        <span style={{
+                                                            background: stCfg.bg,
+                                                            color: stCfg.text,
+                                                            border: `1px solid ${stCfg.border}`,
+                                                            padding: '2px 7px',
+                                                            borderRadius: '999px',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 700
+                                                        }}>
+                                                            {c.estado_asistencia}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', color: '#334155', fontSize: '0.72rem' }}>{c.realizador}</td>
+                                                    <td style={{ padding: '9px 12px', color: '#475569', fontSize: '0.72rem' }}>{c.solicitante}</td>
+                                                    <td style={{ padding: '9px 12px', color: '#334155', fontSize: '0.72rem', fontWeight: 600 }}>{c.obra_social}</td>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                                        {c.informado ? (
+                                                            <span style={{ color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '2px 6px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 700 }}>
+                                                                ✓ Firmado
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: '2px 6px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 600 }}>
+                                                                Pendiente
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );
