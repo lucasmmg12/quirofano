@@ -16,12 +16,11 @@ export default function ContactCenterPermisosTab({ allowedUsers = [], onToggleUs
             {/* Header del Panel de Seguridad */}
             <div style={{
                 background: 'linear-gradient(135deg, #0F2942 0%, #1E3A8A 100%)',
-                borderRadius: '16px', padding: '20px 28px 0 28px', color: '#FFFFFF',
+                borderRadius: '16px', padding: '24px 28px', color: '#FFFFFF',
                 boxShadow: '0 4px 15px rgba(15, 41, 66, 0.15)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '16px',
-                position: 'relative', overflow: 'hidden'
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingBottom: '20px', flex: '1 1 380px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <div style={{ width: 48, height: 48, borderRadius: '12px', background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <ShieldCheck size={28} color="#38BDF8" />
                     </div>
@@ -38,35 +37,8 @@ export default function ContactCenterPermisosTab({ allowedUsers = [], onToggleUs
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px' }}>
-                    <div style={{ paddingBottom: '20px' }}>
-                        <div style={{ background: 'rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '10px', fontSize: '0.78rem', color: '#E2E8F0', fontWeight: 600 }}>
-                            👑 Administrador Activo: <b>lmarinero</b>
-                        </div>
-                    </div>
-
-                    {/* Ilustración Dr. Beto (Contact Center) */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'flex-end',
-                        justifyContent: 'center',
-                        marginTop: '-10px',
-                        pointerEvents: 'none',
-                        userSelect: 'none'
-                    }}>
-                        <img
-                            src="/contact-center-beto.png"
-                            alt="Dr. Beto - Contact Center"
-                            style={{
-                                height: '122px',
-                                width: 'auto',
-                                objectFit: 'contain',
-                                objectPosition: 'bottom center',
-                                display: 'block',
-                                filter: 'drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28))'
-                            }}
-                        />
-                    </div>
+                <div style={{ background: 'rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '10px', fontSize: '0.78rem', color: '#E2E8F0', fontWeight: 600 }}>
+                    👑 Administrador Activo: <b>lmarinero</b>
                 </div>
             </div>
 

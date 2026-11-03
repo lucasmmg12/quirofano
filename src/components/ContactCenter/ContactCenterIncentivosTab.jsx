@@ -284,18 +284,16 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 background: '#FFFFFF',
                 borderRadius: '16px',
                 border: '1px solid #E2E8F0',
-                padding: '18px 24px 0 24px',
+                padding: '20px 24px',
                 marginBottom: '16px',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 display: 'flex',
-                alignItems: 'flex-end',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '16px',
-                position: 'relative',
-                overflow: 'hidden'
+                gap: '16px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{
                         width: '46px',
                         height: '46px',
@@ -329,149 +327,125 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
-                    {/* Controles de Período y Acciones Mes a Mes */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '18px' }}>
-                        {/* Navegador Mes a Mes */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            background: '#F8FAFC',
-                            border: '1px solid #CBD5E1',
-                            borderRadius: '10px',
-                            padding: '2px 4px'
-                        }}>
-                            <button
-                                onClick={() => navegarMes(-1)}
-                                title="Mes anterior"
+                {/* Controles de Período y Acciones Mes a Mes */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* Navegador Mes a Mes */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: '#F8FAFC',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: '10px',
+                        padding: '2px 4px'
+                    }}>
+                        <button
+                            onClick={() => navegarMes(-1)}
+                            title="Mes anterior"
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: '#475569',
+                                borderRadius: '6px'
+                            }}
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0 6px' }}>
+                            <Calendar size={14} color="#003B71" />
+                            <select
+                                value={periodo}
+                                onChange={(e) => setPeriodo(e.target.value)}
                                 style={{
-                                    background: 'transparent',
                                     border: 'none',
-                                    cursor: 'pointer',
-                                    padding: '4px 6px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: '#475569',
-                                    borderRadius: '6px'
+                                    background: 'transparent',
+                                    fontWeight: 800,
+                                    fontSize: '0.82rem',
+                                    color: '#003B71',
+                                    outline: 'none',
+                                    cursor: 'pointer'
                                 }}
                             >
-                                <ChevronLeft size={16} />
-                            </button>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0 6px' }}>
-                                <Calendar size={14} color="#003B71" />
-                                <select
-                                    value={periodo}
-                                    onChange={(e) => setPeriodo(e.target.value)}
-                                    style={{
-                                        border: 'none',
-                                        background: 'transparent',
-                                        fontWeight: 800,
-                                        fontSize: '0.82rem',
-                                        color: '#003B71',
-                                        outline: 'none',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <option value="2026-07">Julio 2026 (Histórico)</option>
-                                    <option value="2026-08">Agosto 2026 (Liquidación 1 - Curva Érica)</option>
-                                    <option value="2026-09">Septiembre 2026 (Liquidación 2 - Cese Antonella)</option>
-                                    <option value="2026-10">Octubre 2026 {currentMonthIso === '2026-10' ? '(Mes en Curso)' : ''}</option>
-                                    <option value="2026-11">Noviembre 2026 {currentMonthIso === '2026-11' ? '(Mes en Curso)' : '(Proyección)'}</option>
-                                    <option value="2026-12">Diciembre 2026 {currentMonthIso === '2026-12' ? '(Mes en Curso)' : ''}</option>
-                                </select>
-                            </div>
-
-                            <button
-                                onClick={() => navegarMes(1)}
-                                title="Mes siguiente"
-                                style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    padding: '4px 6px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: '#475569',
-                                    borderRadius: '6px'
-                                }}
-                            >
-                                <ChevronRight size={16} />
-                            </button>
+                                <option value="2026-07">Julio 2026 (Histórico)</option>
+                                <option value="2026-08">Agosto 2026 (Liquidación 1 - Curva Érica)</option>
+                                <option value="2026-09">Septiembre 2026 (Liquidación 2 - Cese Antonella)</option>
+                                <option value="2026-10">Octubre 2026 {currentMonthIso === '2026-10' ? '(Mes en Curso)' : ''}</option>
+                                <option value="2026-11">Noviembre 2026 {currentMonthIso === '2026-11' ? '(Mes en Curso)' : '(Proyección)'}</option>
+                                <option value="2026-12">Diciembre 2026 {currentMonthIso === '2026-12' ? '(Mes en Curso)' : ''}</option>
+                            </select>
                         </div>
 
                         <button
-                            type="button"
-                            onClick={() => cargarPeriodo(periodo, true)}
-                            disabled={loading}
-                            title="Sincronizar y actualizar métricas de SALUS y WhatsApp en tiempo real"
+                            onClick={() => navegarMes(1)}
+                            title="Mes siguiente"
                             style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: '#F8FAFC', border: '1px solid #CBD5E1',
-                                padding: '8px 12px', borderRadius: '10px',
-                                fontSize: '0.76rem', fontWeight: 700, color: '#003B71',
-                                cursor: loading ? 'not-allowed' : 'pointer',
-                                opacity: loading ? 0.7 : 1,
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <RefreshCw size={13} className={loading ? "animate-spin" : ""} color="#003B71" />
-                            Actualizar SALUS
-                        </button>
-
-                        <button
-                            onClick={() => setShowEscalonesModal(true)}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: '#F1F5F9', border: '1px solid #CBD5E1',
-                                padding: '8px 12px', borderRadius: '10px',
-                                fontSize: '0.76rem', fontWeight: 700, color: '#334155',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <HelpCircle size={14} color="#64748B" />
-                            Tabla de Escalones
-                        </button>
-
-                        <button
-                            onClick={() => setShowReporteModal(true)}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: '#003B71', border: 'none',
-                                color: '#FFFFFF', padding: '8px 16px', borderRadius: '10px',
-                                fontSize: '0.76rem', fontWeight: 800,
+                                background: 'transparent',
+                                border: 'none',
                                 cursor: 'pointer',
-                                boxShadow: '0 2px 6px rgba(0, 59, 113, 0.25)'
+                                padding: '4px 6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: '#475569',
+                                borderRadius: '6px'
                             }}
                         >
-                            <Printer size={14} />
-                            Reporte Formal RRHH
+                            <ChevronRight size={16} />
                         </button>
                     </div>
 
-                    {/* Ilustración Dr. Beto (Contact Center) */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'flex-end',
-                        justifyContent: 'center',
-                        marginTop: '-10px',
-                        marginRight: '4px',
-                        pointerEvents: 'none',
-                        userSelect: 'none'
-                    }}>
-                        <img
-                            src="/contact-center-beto.png"
-                            alt="Dr. Beto - Contact Center"
-                            style={{
-                                height: '124px',
-                                width: 'auto',
-                                objectFit: 'contain',
-                                objectPosition: 'bottom center',
-                                display: 'block',
-                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
-                            }}
-                        />
-                    </div>
+
+
+                    <button
+                        type="button"
+                        onClick={() => cargarPeriodo(periodo, true)}
+                        disabled={loading}
+                        title="Sincronizar y actualizar métricas de SALUS y WhatsApp en tiempo real"
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            background: '#F8FAFC', border: '1px solid #CBD5E1',
+                            padding: '8px 12px', borderRadius: '10px',
+                            fontSize: '0.76rem', fontWeight: 700, color: '#003B71',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            opacity: loading ? 0.7 : 1,
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <RefreshCw size={13} className={loading ? "animate-spin" : ""} color="#003B71" />
+                        Actualizar SALUS
+                    </button>
+
+                    <button
+                        onClick={() => setShowEscalonesModal(true)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            background: '#F1F5F9', border: '1px solid #CBD5E1',
+                            padding: '8px 12px', borderRadius: '10px',
+                            fontSize: '0.76rem', fontWeight: 700, color: '#334155',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <HelpCircle size={14} color="#64748B" />
+                        Tabla de Escalones
+                    </button>
+
+                    <button
+                        onClick={() => setShowReporteModal(true)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            background: '#003B71', border: 'none',
+                            color: '#FFFFFF', padding: '8px 16px', borderRadius: '10px',
+                            fontSize: '0.76rem', fontWeight: 800,
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 6px rgba(0, 59, 113, 0.25)'
+                        }}
+                    >
+                        <Printer size={14} />
+                        Reporte Formal RRHH
+                    </button>
                 </div>
             </div>
 

@@ -2900,17 +2900,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 background: '#FFFFFF',
                 borderRadius: '14px',
                 border: '1px solid #E2E8F0',
-                padding: '16px 24px 0 24px',
+                padding: '18px 24px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'flex-end',
+                alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: '16px',
-                position: 'relative',
-                overflow: 'hidden'
+                gap: '16px'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{
                         width: '44px', height: '44px', borderRadius: '12px',
                         background: 'linear-gradient(135deg, #0F2942 0%, #0284C7 100%)',
@@ -2955,204 +2953,179 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-                    {/* FILTROS TEMPORALES: ESTE MES, MES PASADO, PERSONALIZADO, HOY, SEMANA */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', paddingBottom: '16px' }}>
-                        <div style={{
-                            display: 'inline-flex',
-                            background: '#F1F5F9',
-                            padding: '3px',
-                            borderRadius: '10px',
-                            border: '1px solid #E2E8F0'
-                        }}>
-                            {[
-                                { key: 'this_month', label: 'Este Mes' },
-                                { key: 'last_month', label: 'Mes Pasado' },
-                                { key: 'today', label: 'Hoy' },
-                                { key: 'week', label: 'Últimos 7 días' },
-                                { key: 'custom', label: 'Personalizado' },
-                            ].map(t => (
-                                <button
-                                    key={t.key}
-                                    type="button"
-                                    onClick={() => setTimeRange(t.key)}
-                                    style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '7px',
-                                        fontSize: '0.74rem',
-                                        fontWeight: 700,
-                                        border: 'none',
-                                        background: timeRange === t.key ? '#FFFFFF' : 'transparent',
-                                        color: timeRange === t.key ? '#0284C7' : '#64748B',
-                                        cursor: 'pointer',
-                                        boxShadow: timeRange === t.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    {t.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* SELECTOR Y NAVEGACIÓN MES A MES (DISPONIBLE EN ESTE MES O AL REVISAR HISTÓRICO) */}
-                        {timeRange === 'this_month' && (
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                background: '#F8FAFC',
-                                padding: '3px 6px',
-                                borderRadius: '8px',
-                                border: '1px solid #CBD5E1'
-                            }}>
-                                <button
-                                    type="button"
-                                    onClick={handlePrevMonth}
-                                    title="Mes anterior"
-                                    style={{
-                                        background: '#FFFFFF',
-                                        border: '1px solid #E2E8F0',
-                                        borderRadius: '5px',
-                                        padding: '4px 6px',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        color: '#475569'
-                                    }}
-                                >
-                                    <ChevronLeft size={13} />
-                                </button>
-                                <select
-                                    value={selectedMonth}
-                                    onChange={(e) => setSelectedMonth(e.target.value)}
-                                    style={{
-                                        border: 'none',
-                                        background: 'transparent',
-                                        fontSize: '0.74rem',
-                                        fontWeight: 700,
-                                        color: '#0F2942',
-                                        outline: 'none',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    {monthOptions.map(m => (
-                                        <option key={m.key} value={m.key}>{m.label}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={handleNextMonth}
-                                    title="Mes siguiente"
-                                    style={{
-                                        background: '#FFFFFF',
-                                        border: '1px solid #E2E8F0',
-                                        borderRadius: '5px',
-                                        padding: '4px 6px',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        color: '#475569'
-                                    }}
-                                >
-                                    <ChevronRight size={13} />
-                                </button>
-                            </div>
-                        )}
-
-                        {/* SELECTORES DE FECHA PARA RANGO PERSONALIZADO */}
-                        {timeRange === 'custom' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F8FAFC', padding: '3px 8px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
-                                <Calendar size={13} color="#0284C7" />
-                                <input 
-                                    type="date"
-                                    value={customStartDate}
-                                    onChange={(e) => setCustomStartDate(e.target.value)}
-                                    style={{ border: 'none', background: 'transparent', fontSize: '0.74rem', color: '#1E293B', fontWeight: 600, outline: 'none' }}
-                                />
-                                <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>al</span>
-                                <input 
-                                    type="date"
-                                    value={customEndDate}
-                                    onChange={(e) => setCustomEndDate(e.target.value)}
-                                    style={{ border: 'none', background: 'transparent', fontSize: '0.74rem', color: '#1E293B', fontWeight: 600, outline: 'none' }}
-                                />
-                            </div>
-                        )}
-
-                        {/* BOTONES DE REPORTE MENSUAL Y DESCARGA DIRECTA PDF */}
-                        <button
-                            type="button"
-                            onClick={handleDownloadMonthlyPdf}
-                            disabled={downloadingPdf || loading}
-                            title="Descargar Informe Ejecutivo Mensual en PDF (Indicadores PA-11 + Costos Mensajes vs Tokens IA)"
-                            style={{
-                                padding: '8px 14px',
-                                borderRadius: '8px',
-                                border: '1px solid #059669',
-                                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                                color: '#FFFFFF',
-                                fontSize: '0.76rem',
-                                fontWeight: 800,
-                                cursor: downloadingPdf ? 'wait' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                boxShadow: '0 2px 6px rgba(5, 150, 105, 0.22)',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <FileDown size={14} />
-                            {downloadingPdf ? 'Generando PDF...' : `Descargar PDF (${periodLabel})`}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setShowMonthlyReportModal(true)}
-                            title="Ver vista previa completa e interactiva del Informe Mensual"
-                            style={{
-                                padding: '8px 14px',
-                                borderRadius: '8px',
-                                border: '1px solid #BAE6FD',
-                                background: '#F0F9FF',
-                                color: '#0284C7',
-                                fontSize: '0.76rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.08)',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <FileText size={13} />
-                            Vista Previa Informe
-                        </button>
-                    </div>
-
-                    {/* Ilustración Dr. Beto (Contact Center) */}
+                {/* FILTROS TEMPORALES: ESTE MES, MES PASADO, PERSONALIZADO, HOY, SEMANA */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <div style={{
-                        display: 'flex',
-                        alignItems: 'flex-end',
-                        justifyContent: 'center',
-                        marginTop: '-10px',
-                        marginRight: '4px',
-                        pointerEvents: 'none',
-                        userSelect: 'none'
+                        display: 'inline-flex',
+                        background: '#F1F5F9',
+                        padding: '3px',
+                        borderRadius: '10px',
+                        border: '1px solid #E2E8F0'
                     }}>
-                        <img
-                            src="/contact-center-beto.png"
-                            alt="Dr. Beto - Contact Center"
-                            style={{
-                                height: '120px',
-                                width: 'auto',
-                                objectFit: 'contain',
-                                objectPosition: 'bottom center',
-                                display: 'block',
-                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
-                            }}
-                        />
+                        {[
+                            { key: 'this_month', label: 'Este Mes' },
+                            { key: 'last_month', label: 'Mes Pasado' },
+                            { key: 'today', label: 'Hoy' },
+                            { key: 'week', label: 'Últimos 7 días' },
+                            { key: 'custom', label: 'Personalizado' },
+                        ].map(t => (
+                            <button
+                                key={t.key}
+                                type="button"
+                                onClick={() => setTimeRange(t.key)}
+                                style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '7px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    border: 'none',
+                                    background: timeRange === t.key ? '#FFFFFF' : 'transparent',
+                                    color: timeRange === t.key ? '#0284C7' : '#64748B',
+                                    cursor: 'pointer',
+                                    boxShadow: timeRange === t.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
                     </div>
+
+                    {/* SELECTOR Y NAVEGACIÓN MES A MES (DISPONIBLE EN ESTE MES O AL REVISAR HISTÓRICO) */}
+                    {timeRange === 'this_month' && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#F8FAFC',
+                            padding: '3px 6px',
+                            borderRadius: '8px',
+                            border: '1px solid #CBD5E1'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={handlePrevMonth}
+                                title="Mes anterior"
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '5px',
+                                    padding: '4px 6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: '#475569'
+                                }}
+                            >
+                                <ChevronLeft size={13} />
+                            </button>
+                            <select
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    color: '#0F2942',
+                                    outline: 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {monthOptions.map(m => (
+                                    <option key={m.key} value={m.key}>{m.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={handleNextMonth}
+                                title="Mes siguiente"
+                                style={{
+                                    background: '#FFFFFF',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: '5px',
+                                    padding: '4px 6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: '#475569'
+                                }}
+                            >
+                                <ChevronRight size={13} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* SELECTORES DE FECHA PARA RANGO PERSONALIZADO */}
+                    {timeRange === 'custom' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#F8FAFC', padding: '3px 8px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
+                            <Calendar size={13} color="#0284C7" />
+                            <input 
+                                type="date"
+                                value={customStartDate}
+                                onChange={(e) => setCustomStartDate(e.target.value)}
+                                style={{ border: 'none', background: 'transparent', fontSize: '0.74rem', color: '#1E293B', fontWeight: 600, outline: 'none' }}
+                            />
+                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>al</span>
+                            <input 
+                                type="date"
+                                value={customEndDate}
+                                onChange={(e) => setCustomEndDate(e.target.value)}
+                                style={{ border: 'none', background: 'transparent', fontSize: '0.74rem', color: '#1E293B', fontWeight: 600, outline: 'none' }}
+                            />
+                        </div>
+                    )}
+
+                    {/* BOTONES DE REPORTE MENSUAL Y DESCARGA DIRECTA PDF */}
+                    <button
+                        type="button"
+                        onClick={handleDownloadMonthlyPdf}
+                        disabled={downloadingPdf || loading}
+                        title="Descargar Informe Ejecutivo Mensual en PDF (Indicadores PA-11 + Costos Mensajes vs Tokens IA)"
+                        style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid #059669',
+                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                            color: '#FFFFFF',
+                            fontSize: '0.76rem',
+                            fontWeight: 800,
+                            cursor: downloadingPdf ? 'wait' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 6px rgba(5, 150, 105, 0.22)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <FileDown size={14} />
+                        {downloadingPdf ? 'Generando PDF...' : `Descargar PDF (${periodLabel})`}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setShowMonthlyReportModal(true)}
+                        title="Ver vista previa completa e interactiva del Informe Mensual"
+                        style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid #BAE6FD',
+                            background: '#F0F9FF',
+                            color: '#0284C7',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 1px 3px rgba(2, 132, 199, 0.08)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <FileText size={13} />
+                        Vista Previa Informe
+                    </button>
+
                 </div>
             </div>
 

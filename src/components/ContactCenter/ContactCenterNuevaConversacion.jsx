@@ -293,66 +293,26 @@ export default function ContactCenterNuevaConversacion({ activeAgent, onCreateCh
     return (
         <div style={{ maxWidth: '880px', margin: '0 auto', width: '100%' }}>
             {/* Encabezado AsisteClick */}
-            <div style={{
-                background: '#FFFFFF',
-                borderRadius: '16px',
-                padding: '20px 24px 0 24px',
-                border: '1px solid #E2E8F0',
-                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
-                marginBottom: '20px',
-                display: 'flex',
-                alignItems: 'flex-end',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '16px',
-                position: 'relative',
-                overflow: 'hidden'
-            }}>
-                <div style={{ flex: '1 1 420px', paddingBottom: '20px' }}>
-                    <div style={{ fontSize: '0.78rem', color: '#64748B', marginBottom: '6px' }}>
-                        Conversaciones / <span style={{ color: '#0284C7', fontWeight: 600 }}>Crear nueva conversación</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#0F172A' }}>
-                            Iniciar Conversación con Paciente
-                        </h1>
-                        <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            background: '#DCFCE7', color: '#15803D',
-                            padding: '4px 10px', borderRadius: '999px',
-                            fontSize: '0.75rem', fontWeight: 700
-                        }}>
-                            <ShieldCheck size={14} /> Exclusivo WhatsApp Business
-                        </span>
-                    </div>
-                    <p style={{ margin: '6px 0 0', fontSize: '0.86rem', color: '#64748B', lineHeight: 1.5 }}>
-                        Iniciá vos la conversación con un paciente exclusivamente por <b>WhatsApp Oficial</b>. Conforme a las políticas de Meta, todo primer contacto saliente debe enviarse obligatoriamente mediante una <b>Plantilla Aprobada (HSM)</b>.
-                    </p>
+            <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.78rem', color: '#64748B', marginBottom: '6px' }}>
+                    Conversaciones / <span style={{ color: '#0284C7', fontWeight: 600 }}>Crear nueva conversación</span>
                 </div>
-
-                {/* Ilustración Dr. Beto (Contact Center) */}
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'flex-end',
-                    justifyContent: 'center',
-                    marginTop: '-10px',
-                    marginRight: '4px',
-                    pointerEvents: 'none',
-                    userSelect: 'none'
-                }}>
-                    <img
-                        src="/contact-center-beto.png"
-                        alt="Dr. Beto - Contact Center"
-                        style={{
-                            height: '126px',
-                            width: 'auto',
-                            objectFit: 'contain',
-                            objectPosition: 'bottom center',
-                            display: 'block',
-                            filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
-                        }}
-                    />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#0F172A' }}>
+                        Iniciar Conversación con Paciente
+                    </h1>
+                    <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        background: '#DCFCE7', color: '#15803D',
+                        padding: '4px 10px', borderRadius: '999px',
+                        fontSize: '0.75rem', fontWeight: 700
+                    }}>
+                        <ShieldCheck size={14} /> Exclusivo WhatsApp Business
+                    </span>
                 </div>
+                <p style={{ margin: '6px 0 0', fontSize: '0.86rem', color: '#64748B', lineHeight: 1.5 }}>
+                    Iniciá vos la conversación con un paciente exclusivamente por <b>WhatsApp Oficial</b>. Conforme a las políticas de Meta, todo primer contacto saliente debe enviarse obligatoriamente mediante una <b>Plantilla Aprobada (HSM)</b>.
+                </p>
             </div>
 
             {/* Banner Informativo de Políticas de Meta WhatsApp */}
