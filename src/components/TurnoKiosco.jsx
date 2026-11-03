@@ -23,17 +23,9 @@ const ICON_MAP = {
 
 const STEPS = { DNI: 'dni', TICKET: 'ticket' };
 
-// Voces masculinas de ElevenLabs para Dr. Beto en el Tótem
-const TOTEM_MALE_VOICES = [
-    { id: 'ByVRQtaK1WDOvTmP1PKO', label: 'Agustín (Argentino · Plan Starter+)' },
-    { id: 'cjVigY5qzO86Huf0OWal', label: 'Eric (Masculino Cálido · Natural)' },
-    { id: 'bIHbv24MWmeRgasZH58o', label: 'Will (Masculino Joven · Amable)' },
-    { id: 'iP95p4xoKVk53GoZ742B', label: 'Chris (Masculino Cercano · Claro)' },
-    { id: 'JBFqnCBsd6RMkjVDRZzb', label: 'George (Masculino Sereno · Clínico)' },
-    { id: 'CwhRBWXzGAHq8TQ4Fs17', label: 'Roger (Masculino Profundo · Formal)' },
-];
+// Voz masculina argentina de ElevenLabs para Dr. Beto en el Tótem (Agustín)
 const AGUSTIN_VOICE_ID = 'ByVRQtaK1WDOvTmP1PKO';
-const FALLBACK_PREMADE_MALE_VOICE_ID = 'cjVigY5qzO86Huf0OWal'; // Eric (permitida en todos los planes de ElevenLabs)
+const FALLBACK_PREMADE_MALE_VOICE_ID = 'cjVigY5qzO86Huf0OWal'; // Eric (fallback si el plan bloquea voces de librería)
 
 export default function TurnoKiosco() {
     const [step, setStep] = useState(STEPS.DNI);
@@ -48,14 +40,31 @@ export default function TurnoKiosco() {
     const [searchedDni, setSearchedDni] = useState('');
     const [showConfirmCard, setShowConfirmCard] = useState(false);
     const [manualEditMode, setManualEditMode] = useState(false);
-    const [totemVoiceId, setTotemVoiceId] = useState(() => localStorage.getItem('totem_elevenlabs_voice') || AGUSTIN_VOICE_ID);
 
     const ttsAudioRef = useRef(null);
+    const ttsSourceNodeRef = useRef(null);
+    const audioCtxRef = useRef(null);
     const ttsCacheRef = useRef(new Map());
     const ttsAbortRef = useRef(0);
     const libraryVoiceBlockedRef = useRef(false);
 
     const saludoActual = useMemo(() => getSaludoPorHora(), []);
+
+    const ensureAudioContext = useCallback(() => {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return null;
+            if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+                audioCtxRef.current = new AudioCtx();
+            }
+            if (audioCtxRef.current.state === 'suspended') {
+                audioCtxRef.current.resume().catch(() => {});
+            }
+            return audioCtxRef.current;
+        } catch (_) {
+            return null;
+        }
+    }, []);
 
     const formatDniConPuntos = useCallback((rawDni) => {
         const clean = String(rawDni || '').replace(/\D/g, '');
@@ -65,6 +74,13 @@ export default function TurnoKiosco() {
 
     const stopGuidanceSpeech = useCallback(() => {
         ttsAbortRef.current += 1;
+        if (ttsSourceNodeRef.current) {
+            try {
+                ttsSourceNodeRef.current.stop(0);
+                ttsSourceNodeRef.current.disconnect();
+            } catch (_) {}
+            ttsSourceNodeRef.current = null;
+        }
         if (ttsAudioRef.current) {
             try {
                 ttsAudioRef.current.pause();
@@ -77,16 +93,14 @@ export default function TurnoKiosco() {
         } catch (_) {}
     }, []);
 
-    const speakGuidance = useCallback(async (text, overrideVoiceId = null) => {
+    const speakGuidance = useCallback(async (text) => {
         if (!text) return;
         stopGuidanceSpeech();
         const currentReqId = ttsAbortRef.current;
 
-        const requestedVoice = overrideVoiceId || totemVoiceId || AGUSTIN_VOICE_ID;
-        // Si la cuenta está en plan Free y ya sabemos que las voces de librería dan 402, ir directo a la voz masculina premade
-        const primaryVoice = (requestedVoice === AGUSTIN_VOICE_ID && libraryVoiceBlockedRef.current)
+        const primaryVoice = libraryVoiceBlockedRef.current
             ? FALLBACK_PREMADE_MALE_VOICE_ID
-            : requestedVoice;
+            : AGUSTIN_VOICE_ID;
 
         const requestElevenLabsAudio = async (vId) => {
             const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -126,41 +140,122 @@ export default function TurnoKiosco() {
 
         try {
             const cacheKey = `${primaryVoice}::${text}`;
-            let audioUrl = ttsCacheRef.current.get(cacheKey);
+            let cachedEntry = ttsCacheRef.current.get(cacheKey);
 
-            if (!audioUrl) {
+            if (!cachedEntry) {
                 let res = await requestElevenLabsAudio(primaryVoice);
 
-                // Si Agustín (librería) devuelve 402/500 por restricción del plan gratuito de ElevenLabs,
-                // reintentar inmediatamente en el cliente con la voz masculina premade de ElevenLabs (Eric)
-                // para NUNCA caer en la voz robótica del navegador
                 if ((!res || !res.ok || !(res.headers.get('content-type') || '').includes('audio')) && primaryVoice === AGUSTIN_VOICE_ID) {
                     libraryVoiceBlockedRef.current = true;
                     const fallbackCacheKey = `${FALLBACK_PREMADE_MALE_VOICE_ID}::${text}`;
-                    audioUrl = ttsCacheRef.current.get(fallbackCacheKey);
-                    if (!audioUrl) {
+                    cachedEntry = ttsCacheRef.current.get(fallbackCacheKey);
+                    if (!cachedEntry) {
                         res = await requestElevenLabsAudio(FALLBACK_PREMADE_MALE_VOICE_ID);
                         if (res && res.ok && (res.headers.get('content-type') || '').includes('audio')) {
-                            const blob = await res.blob();
-                            audioUrl = URL.createObjectURL(blob);
-                            ttsCacheRef.current.set(fallbackCacheKey, audioUrl);
-                            ttsCacheRef.current.set(cacheKey, audioUrl);
+                            const arrayBuffer = await res.arrayBuffer();
+                            const blobUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: 'audio/mpeg' }));
+                            cachedEntry = { arrayBuffer, blobUrl };
+                            ttsCacheRef.current.set(fallbackCacheKey, cachedEntry);
+                            ttsCacheRef.current.set(cacheKey, cachedEntry);
                         }
                     }
                 } else if (res && res.ok && (res.headers.get('content-type') || '').includes('audio')) {
-                    const blob = await res.blob();
-                    audioUrl = URL.createObjectURL(blob);
-                    ttsCacheRef.current.set(cacheKey, audioUrl);
+                    const arrayBuffer = await res.arrayBuffer();
+                    const blobUrl = URL.createObjectURL(new Blob([arrayBuffer], { type: 'audio/mpeg' }));
+                    cachedEntry = { arrayBuffer, blobUrl };
+                    ttsCacheRef.current.set(cacheKey, cachedEntry);
                 }
 
-                if (!audioUrl) {
+                if (!cachedEntry) {
                     throw new Error(`ElevenLabs HTTP ${res?.status || 'network_error'}`);
                 }
             }
 
             if (ttsAbortRef.current !== currentReqId) return;
 
-            const audio = new Audio(audioUrl);
+            // Amplificación de alta potencia por Web Audio API para que Agustín se escuche fuerte y claro en el tótem
+            const audioCtx = ensureAudioContext();
+            if (audioCtx && cachedEntry.arrayBuffer) {
+                try {
+                    if (audioCtx.state === 'suspended') {
+                        await audioCtx.resume();
+                    }
+                    const decodedBuffer = await audioCtx.decodeAudioData(cachedEntry.arrayBuffer.slice(0));
+                    if (ttsAbortRef.current !== currentReqId) return;
+
+                    // 1. Normalización de pico del buffer a 0.98 para eliminar el volumen bajo de origen
+                    for (let ch = 0; ch < decodedBuffer.numberOfChannels; ch++) {
+                        const data = decodedBuffer.getChannelData(ch);
+                        let maxPeak = 0;
+                        for (let i = 0; i < data.length; i++) {
+                            const abs = Math.abs(data[i]);
+                            if (abs > maxPeak) maxPeak = abs;
+                        }
+                        if (maxPeak > 0.001 && maxPeak < 0.95) {
+                            const normFactor = 0.98 / maxPeak;
+                            for (let i = 0; i < data.length; i++) {
+                                data[i] *= normFactor;
+                            }
+                        }
+                    }
+
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = decodedBuffer;
+
+                    // 2. Filtro pasa-altos suave (90 Hz) para limpiar graves y ganar potencia en parlantes de tablet
+                    const highpass = audioCtx.createBiquadFilter();
+                    highpass.type = 'highpass';
+                    highpass.frequency.value = 90;
+
+                    // 3. Realce de presencia vocal (2.8 kHz, +5 dB) para máxima claridad en sala de espera
+                    const presenceEq = audioCtx.createBiquadFilter();
+                    presenceEq.type = 'peaking';
+                    presenceEq.frequency.value = 2800;
+                    presenceEq.Q.value = 1.0;
+                    presenceEq.gain.value = 5.0;
+
+                    // 4. Compresor dinámico para levantar sílabas suaves
+                    const compressor = audioCtx.createDynamicsCompressor();
+                    compressor.threshold.value = -26;
+                    compressor.knee.value = 10;
+                    compressor.ratio.value = 6;
+                    compressor.attack.value = 0.003;
+                    compressor.release.value = 0.15;
+
+                    // 5. Ganancia de potencia (+3.4x) + Limitador final anti-saturación
+                    const makeupGain = audioCtx.createGain();
+                    makeupGain.gain.value = 3.4;
+
+                    const limiter = audioCtx.createDynamicsCompressor();
+                    limiter.threshold.value = -1.0;
+                    limiter.knee.value = 0;
+                    limiter.ratio.value = 20;
+                    limiter.attack.value = 0.001;
+                    limiter.release.value = 0.05;
+
+                    source.connect(highpass);
+                    highpass.connect(presenceEq);
+                    presenceEq.connect(compressor);
+                    compressor.connect(makeupGain);
+                    makeupGain.connect(limiter);
+                    limiter.connect(audioCtx.destination);
+
+                    ttsSourceNodeRef.current = source;
+                    source.onended = () => {
+                        if (ttsSourceNodeRef.current === source) {
+                            ttsSourceNodeRef.current = null;
+                        }
+                    };
+                    source.start(0);
+                    return;
+                } catch (webAudioErr) {
+                    console.warn('[TurnoKiosco] Fallback a HTMLAudioElement:', webAudioErr);
+                }
+            }
+
+            // Fallback HTML5 Audio al 100% de volumen
+            const audio = new Audio(cachedEntry.blobUrl);
+            audio.volume = 1.0;
             ttsAudioRef.current = audio;
             audio.onended = () => {
                 if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
@@ -172,7 +267,7 @@ export default function TurnoKiosco() {
         } catch (err) {
             console.warn('[TurnoKiosco ElevenLabs TTS] Error reproduciendo voz neural:', err);
         }
-    }, [stopGuidanceSpeech, totemVoiceId]);
+    }, [stopGuidanceSpeech, ensureAudioContext]);
 
     const checkBoxes = useCallback(() => {
         getBoxesDisponibles()
@@ -544,64 +639,6 @@ export default function TurnoKiosco() {
                                             </div>
                                         </div>
                                     )}
-                                    {showConfirmCard && (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                                            <select
-                                                value={totemVoiceId}
-                                                onChange={(e) => {
-                                                    const nextVoice = e.target.value;
-                                                    setTotemVoiceId(nextVoice);
-                                                    localStorage.setItem('totem_elevenlabs_voice', nextVoice);
-                                                    const msg = pacienteInfo?.displayName
-                                                        ? `¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`
-                                                        : `¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`;
-                                                    speakGuidance(msg, nextVoice);
-                                                }}
-                                                title="Cambiar voz masculina de ElevenLabs"
-                                                style={{
-                                                    height: '44px',
-                                                    padding: '0 10px',
-                                                    borderRadius: '12px',
-                                                    background: '#F8FAFC',
-                                                    border: '1.5px solid #CBD5E1',
-                                                    color: '#0D3B66',
-                                                    fontSize: '0.82rem',
-                                                    fontWeight: 700,
-                                                    cursor: 'pointer',
-                                                    maxWidth: '175px',
-                                                }}
-                                            >
-                                                {TOTEM_MALE_VOICES.map(v => (
-                                                    <option key={v.id} value={v.id}>{v.label}</option>
-                                                ))}
-                                            </select>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const msg = pacienteInfo?.displayName
-                                                        ? `¡${saludoActual}, ${pacienteInfo.displayName}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`
-                                                        : `¡${saludoActual}! Verificá tu documento y presioná el botón Obtener Turno para finalizar.`;
-                                                    speakGuidance(msg);
-                                                }}
-                                                title="Volver a escuchar a Dr. Beto"
-                                                style={{
-                                                    width: '44px',
-                                                    height: '44px',
-                                                    borderRadius: '12px',
-                                                    background: '#EFF6FF',
-                                                    border: '1.5px solid #BFDBFE',
-                                                    color: '#1565C0',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    cursor: 'pointer',
-                                                    flexShrink: 0,
-                                                }}
-                                            >
-                                                <Volume2 size={22} />
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
@@ -872,6 +909,7 @@ export default function TurnoKiosco() {
                                                 <button 
                                                     key={num} type="button" 
                                                     onClick={() => {
+                                                        ensureAudioContext();
                                                         setManualEditMode(false);
                                                         setDni(d => (d + num).slice(0, 8));
                                                     }}
@@ -883,6 +921,7 @@ export default function TurnoKiosco() {
                                             <button 
                                                 type="button" 
                                                 onClick={() => {
+                                                    ensureAudioContext();
                                                     setManualEditMode(false);
                                                     setShowConfirmCard(false);
                                                     setDni('');
@@ -894,6 +933,7 @@ export default function TurnoKiosco() {
                                             <button 
                                                 type="button" 
                                                 onClick={() => {
+                                                    ensureAudioContext();
                                                     setManualEditMode(false);
                                                     setDni(d => (d + '0').slice(0, 8));
                                                 }}
@@ -904,6 +944,7 @@ export default function TurnoKiosco() {
                                             <button 
                                                 type="button" 
                                                 onClick={() => {
+                                                    ensureAudioContext();
                                                     setManualEditMode(false);
                                                     setShowConfirmCard(false);
                                                     setDni(d => d.slice(0, -1));
