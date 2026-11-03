@@ -1415,7 +1415,14 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
                 {/* Content */}
                 {activeView === 'inicio' && (
-                    <HomePanel key={viewKey} onNavigate={setActiveView} currentUser={currentUser} />
+                    <HomePanel
+                        key={viewKey}
+                        onNavigate={setActiveView}
+                        currentUser={currentUser}
+                        selectedModules={selectedModules}
+                        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+                        onOpenProfile={() => setShowUserProfile(true)}
+                    />
                 )}
 
                 {activeView === 'mensajeria' && (
