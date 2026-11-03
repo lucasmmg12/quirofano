@@ -358,14 +358,14 @@ export async function generateContactCenterMonthlyReportPdf(reportPayload) {
             fontSize: 7.2
         },
         columnStyles: {
-            0: { cellWidth: 38, fontStyle: 'bold' },
-            1: { cellWidth: 14, halign: 'center' },
-            2: { cellWidth: 25, halign: 'left' },
-            3: { cellWidth: 20, halign: 'right' },
-            4: { cellWidth: 20, halign: 'right', fontStyle: 'bold' },
-            5: { cellWidth: 15, halign: 'right', fontStyle: 'bold' },
-            6: { cellWidth: 18, halign: 'left', fontStyle: 'bold' },
-            7: { cellWidth: 36, halign: 'left', fontSize: 6.7 }
+            0: { cellWidth: 35, fontStyle: 'bold' },
+            1: { cellWidth: 16, halign: 'center' },
+            2: { cellWidth: 23, halign: 'left' },
+            3: { cellWidth: 19, halign: 'right' },
+            4: { cellWidth: 19, halign: 'right', fontStyle: 'bold' },
+            5: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
+            6: { cellWidth: 17, halign: 'left', fontStyle: 'bold' },
+            7: { cellWidth: 40, halign: 'left', fontSize: 6.7 }
         },
         didParseCell: (data) => {
             if (data.section === 'body' && data.column.index === 6) {

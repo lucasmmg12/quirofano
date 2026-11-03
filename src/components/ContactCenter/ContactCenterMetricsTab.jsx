@@ -216,9 +216,20 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
     // Estado para el Análisis Estratégico de Turnos SALUS (DxI, Chequeo, Prevenir, Kinesiología)
     const [salusServiciosMap, setSalusServiciosMap] = useState({});
     const [aiSummariesMap, setAiSummariesMap] = useState({});
+    const [prevMonthMetrics, setPrevMonthMetrics] = useState({
+        hasData: false,
+        totalConversations: 0,
+        totalIncoming: 0,
+        uniquePatientsCount: 0,
+        agentFirstResponseAvgMin: 0,
+        under30m: 0,
+        over24h: 0,
+        turnosChat: 0,
+        noRespondeCount: 0,
+        noRespondePct: 0
+    });
     const [costChartViewMode, setCostChartViewMode] = useState('diario_acumulado'); // 'diario' | 'diario_acumulado' | 'mensual'
     const [costCurrencyMode, setCostCurrencyMode] = useState('USD'); // 'USD' | 'ARS'
-    const [indicatorDataSource, setIndicatorDataSource] = useState('consolidado'); // 'consolidado' | 'live'
     const [editingIndicators, setEditingIndicators] = useState(false);
     const [customIndicatorOverrides, setCustomIndicatorOverrides] = useState({});
     const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -1653,6 +1664,120 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             choicesTally.informes = inquiryTypesMap.informes || 0;
             choicesTally.otros = (inquiryTypesMap.otros || 0) + (inquiryTypesMap.asesora || 0);
 
+            // ── I. Cómputo de Telemetría Real del Mes Anterior (prevTargetMonthKey) para Comparativa Mes a Mes ──
+            try {
+                const [tyStr, tmStr] = (targetMonthKey || '2026-10').split('-');
+                const ty = parseInt(tyStr, 10) || 2026;
+                const tm = parseInt(tmStr, 10) || 10;
+                const prevDateStart = new Date(ty, tm - 2, 1, 0, 0, 0);
+                const prevDateEnd = new Date(ty, tm - 1, 0, 23, 59, 59);
+                const prevStartDayStr = prevDateStart.toLocaleDateString('en-CA');
+                const prevEndDayStr = prevDateEnd.toLocaleDateString('en-CA');
+
+                const { data: prevDailyRows } = await supabase
+                    .from('contact_center_daily_metrics')
+                    .select('entrantes, pacientes_unicos')
+                    .gte('fecha', prevStartDayStr)
+                    .lte('fecha', prevEndDayStr);
+
+                let prevTotalIn = 0;
+                let prevUniqueFromDaily = 0;
+                (prevDailyRows || []).forEach(r => {
+                    prevTotalIn += (r.entrantes || 0);
+                    prevUniqueFromDaily += (r.pacientes_unicos || 0);
+                });
+
+                const { data: prevFirstPage, count: prevTotalConvCount } = await supabase
+                    .from('contact_center_conversations')
+                    .select('phone, status, resolution_reason, closed_at, assigned_at, created_at', { count: 'exact' })
+                    .gte('created_at', prevDateStart.toISOString())
+                    .lte('created_at', prevDateEnd.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(0, pageSize - 1);
+
+                const prevConvs = [...(prevFirstPage || [])];
+                const prevRealTotal = prevTotalConvCount || prevConvs.length;
+                if (prevRealTotal > pageSize) {
+                    const prevPromises = [];
+                    for (let offset = pageSize; offset < prevRealTotal; offset += pageSize) {
+                        prevPromises.push(
+                            supabase
+                                .from('contact_center_conversations')
+                                .select('phone, status, resolution_reason, closed_at, assigned_at, created_at')
+                                .gte('created_at', prevDateStart.toISOString())
+                                .lte('created_at', prevDateEnd.toISOString())
+                                .order('created_at', { ascending: true })
+                                .range(offset, offset + pageSize - 1)
+                                .then(({ data }) => data || [])
+                        );
+                    }
+                    const prevChunks = await Promise.all(prevPromises);
+                    prevChunks.forEach(ch => prevConvs.push(...ch));
+                }
+
+                const prevPhones = new Set();
+                const prevWaitTimes = [];
+                let prevUnder30m = 0;
+                let prevOver24h = 0;
+                let prevTurnosChat = 0;
+                let prevNoRespCount = 0;
+
+                prevConvs.forEach(c => {
+                    if (c.phone) prevPhones.add(c.phone.trim());
+                    const rLow = (c.resolution_reason || '').toLowerCase();
+                    const isClosedPrev = isClosedOrArchived(c) || !!c.closed_at || !!c.resolution_reason;
+
+                    if (c.assigned_at && c.created_at) {
+                        const wMin = calcBusinessWaitMinutes(new Date(c.created_at), new Date(c.assigned_at));
+                        if (wMin >= 0 && wMin < 2880) {
+                            prevWaitTimes.push(Number(wMin.toFixed(1)));
+                        }
+                    }
+
+                    if (rLow.includes('turno') || rLow.includes('coordinado') || rLow.includes('otorgado')) {
+                        prevTurnosChat++;
+                    }
+                    if (rLow.includes('no responde') || rLow.includes('time-out')) {
+                        prevNoRespCount++;
+                    }
+
+                    if (isClosedPrev) {
+                        let resMin = null;
+                        if (c.created_at && c.closed_at) {
+                            resMin = Math.round(calcBusinessWaitMinutes(c.created_at, c.closed_at));
+                        }
+                        const isInact24 = rLow.includes('24h') || rLow.includes('inactividad') || rLow.includes('barrido') || rLow.includes('expir') || (resMin !== null && resMin >= 1440);
+                        if (isInact24) {
+                            prevOver24h++;
+                        } else if (resMin === null || (resMin >= 0 && resMin < 30)) {
+                            prevUnder30m++;
+                        }
+                    }
+                });
+
+                const prevWaitAvg = prevWaitTimes.length > 0
+                    ? Number((prevWaitTimes.reduce((a, b) => a + b, 0) / prevWaitTimes.length).toFixed(1))
+                    : 0;
+                const prevNoRespPct = prevConvs.length > 0
+                    ? Number(((prevNoRespCount / prevConvs.length) * 100).toFixed(1))
+                    : 0;
+
+                setPrevMonthMetrics({
+                    hasData: prevConvs.length > 0 || prevTotalIn > 0,
+                    totalConversations: prevConvs.length,
+                    totalIncoming: prevTotalIn,
+                    uniquePatientsCount: prevPhones.size > 0 ? prevPhones.size : prevUniqueFromDaily,
+                    agentFirstResponseAvgMin: prevWaitAvg,
+                    under30m: prevUnder30m,
+                    over24h: prevOver24h,
+                    turnosChat: prevTurnosChat,
+                    noRespondeCount: prevNoRespCount,
+                    noRespondePct: prevNoRespPct
+                });
+            } catch (prevErr) {
+                console.warn('[metrics] No se pudo calcular telemetría del mes anterior:', prevErr);
+            }
+
             setMetrics({
                 totalOutgoing: totalOut,
                 agentMessages: agentCount,
@@ -2009,149 +2134,173 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
         }));
     }, [metrics.dailyTrend]);
 
-    // ── MATRIZ OFICIAL DE LOS 7 INDICADORES EJECUTIVOS (REVISIÓN PA-11 + TELEMETRÍA EN VIVO) ──
+    // ── MATRIZ OFICIAL DE LOS 7 INDICADORES EJECUTIVOS (COMPLETADA 100% CON LA INFORMACIÓN REAL DEL MES) ──
     const executiveIndicators = useMemo(() => {
-        const srvCurr = salusServiciosMap[activeMonthKey] || salusServiciosMap['2026-10'] || null;
-        const srvPrev = salusServiciosMap[prevMonthKey] || salusServiciosMap['2026-09'] || null;
+        const srvCurr = salusServiciosMap[activeMonthKey] || null;
+        const srvPrev = salusServiciosMap[prevMonthKey] || null;
 
-        // Cálculo de Asistencia en SALUS (% asistidas sobre citas totales de las asesoras)
-        const calcSalusAttendancePct = (srvObj) => {
-            if (!srvObj || !Array.isArray(srvObj.agentes) || srvObj.agentes.length === 0) return null;
+        // Cálculo de Asistencia y Totales en SALUS (% asistidas sobre citas totales de las asesoras)
+        const calcSalusAttendanceStats = (srvObj) => {
+            if (!srvObj || !Array.isArray(srvObj.agentes) || srvObj.agentes.length === 0) {
+                return { pct: null, citas: 0, asistidas: 0, ausencias: 0 };
+            }
             let totCitas = 0;
             let totAsist = 0;
+            let totAus = 0;
             srvObj.agentes.forEach(a => {
                 totCitas += (Number(a.citasTotales) || 0);
                 totAsist += (Number(a.asistidas) || 0);
+                totAus += (Number(a.ausencias) || 0);
             });
-            return totCitas > 0 ? Number(((totAsist / totCitas) * 100).toFixed(1)) : null;
+            return {
+                pct: totCitas > 0 ? Number(((totAsist / totCitas) * 100).toFixed(1)) : null,
+                citas: totCitas,
+                asistidas: totAsist,
+                ausencias: totAus
+            };
         };
 
-        const salusAttPrev = calcSalusAttendancePct(srvPrev) ?? 62.8;
-        const salusAttCurr = calcSalusAttendancePct(srvCurr) ?? 61.0;
+        const salusStatsPrev = calcSalusAttendanceStats(srvPrev);
+        const salusStatsCurr = calcSalusAttendanceStats(srvCurr);
 
-        // Casos resueltos en < 30 minutos desde el histograma SLA (< 5 min + 5-30 min)
+        // Casos resueltos en < 30 minutos desde el histograma SLA real del mes (< 5 min + 5-30 min)
         const hist = metrics.patientQuality?.resolutionHistogram || [];
-        const liveUnder30m = hist
-            .filter(h => h.range === '< 5 min' || h.range === '5-30 min')
-            .reduce((acc, h) => acc + (Number(h.casos) || 0), 0);
+        const under5mCount = Number(hist.find(h => h.range === '< 5 min')?.casos || 0);
+        const de5a30mCount = Number(hist.find(h => h.range === '5-30 min')?.casos || 0);
+        const liveUnder30m = under5mCount + de5a30mCount;
+        const activeResolved = Math.max(1, Number(metrics.activeResolvedCount || 0));
+        const under30Pct = metrics.activeResolvedCount > 0
+            ? Number(((liveUnder30m / activeResolved) * 100).toFixed(1))
+            : 0;
 
-        const liveOver24h = Number(metrics.patientQuality?.archivedOver24hCount || metrics.archivedOver24hCount || 0);
-        const liveTurnos = Number(srvCurr?.totalTurnosAnalizados || metrics.byResolutionReason?.['Turno Otorgado con Éxito'] || 4426);
-        const prevTurnosSalus = Number(srvPrev?.totalTurnosAnalizados || 4124);
+        // Casos con demora > 1 día (cerrados por inactividad / expiración > 24hs en el mes)
+        const liveOver24h = Number(metrics.patientQuality?.archivedOver24hCount ?? metrics.archivedOver24hCount ?? 0);
 
-        // Tasa de abandono o no respuesta (Pacientes que no responden / time-out sobre conversaciones)
+        // Cantidad de Turnos reales del mes (SALUS auditados o cerrados en chat si aún no hay corte SALUS)
+        const turnosChatCurr = Number(metrics.byResolutionReason?.['Turno Otorgado con Éxito'] || 0);
+        const liveTurnos = Number(srvCurr?.totalTurnosAnalizados || turnosChatCurr || 0);
+        const prevTurnosSalus = srvPrev?.totalTurnosAnalizados !== undefined
+            ? Number(srvPrev.totalTurnosAnalizados)
+            : (prevMonthMetrics.hasData ? Number(prevMonthMetrics.turnosChat || 0) : null);
+
+        // Tasa de abandono o no respuesta real del mes
         const noRespondeCount = Number(metrics.byResolutionReason?.['Paciente No Responde'] || 0);
-        const totalConvs = Math.max(1, Number(metrics.totalConversations || 1));
-        const liveNoRespondePct = noRespondeCount > 0
+        const totalConvs = Number(metrics.totalConversations || 0);
+        const liveNoRespondePct = totalConvs > 0
             ? Number(((noRespondeCount / totalConvs) * 100).toFixed(1))
-            : Number((metrics.patientQuality?.abandonmentRate || 8.4).toFixed(1));
+            : Number((metrics.patientQuality?.abandonmentRate || 0).toFixed(1));
 
-        const isConsolidado = indicatorDataSource === 'consolidado';
+        const hasPrevWa = Boolean(prevMonthMetrics?.hasData);
 
-        // Definición base de las 7 filas requeridas por Dirección
+        // Definición de las 7 filas completadas estrictamente con la información real del mes seleccionado
         const rawRows = [
             {
                 id: 'ind_1',
                 indicador: 'Contactos recibidos por canal',
                 unidad: 'Cantidad',
                 meta: 'Seguimiento mensual',
-                prevVal: isConsolidado ? 15488 : (prevTurnosSalus * 3),
-                currVal: isConsolidado ? 16875 : (metrics.totalIncoming || 16875),
+                prevVal: hasPrevWa ? prevMonthMetrics.totalConversations : null,
+                currVal: totalConvs,
                 formatType: 'integer',
-                goalDirection: 'neutral_growth', // Crecimiento moderado o seguimiento = Estable
-                forceTendencia: isConsolidado ? 'Estable' : null,
-                comentario: `Separar teléfono, WhatsApp, web y otros. (WhatsApp: ${(metrics.totalConversations || 0).toLocaleString('es-AR')} convs / ${(metrics.totalIncoming || 0).toLocaleString('es-AR')} msgs)`
+                goalDirection: 'up_is_better',
+                fallbackTendencia: 'Estable',
+                comentario: `WhatsApp: ${totalConvs.toLocaleString('es-AR')} conversaciones (${(metrics.uniquePatientsCount || 0).toLocaleString('es-AR')} pacientes únicos · ${(metrics.totalIncoming || 0).toLocaleString('es-AR')} msgs entrantes). Autogestión Bot: ${metrics.botConversationAutomationPct || 0}% · Asesoras: ${metrics.humanConversationPct || 0}%.`
             },
             {
                 id: 'ind_2',
                 indicador: 'Tiempo promedio de primera respuesta',
                 unidad: 'Horas',
-                meta: 'Meta por canal',
-                prevVal: isConsolidado ? 480 : Math.max(1, metrics.agentFirstResponseAvgMin || 14),
-                currVal: isConsolidado ? 480 : Math.max(1, metrics.agentFirstResponseAvgMin || 13.4),
+                meta: 'Meta por canal (<= 15m)',
+                prevVal: hasPrevWa && prevMonthMetrics.agentFirstResponseAvgMin > 0 ? prevMonthMetrics.agentFirstResponseAvgMin : null,
+                currVal: Number(metrics.agentFirstResponseAvgMin || 0),
                 formatType: 'hhmmss_from_min',
                 goalDirection: 'down_is_better',
-                forceTendencia: isConsolidado ? 'Estable' : null,
-                comentario: `Indicador presentado en revisión. (WhatsApp Asesoras: ${metrics.agentFirstResponseAvgMin || 0} min · Bot Dora: < 5 seg)`
+                fallbackTendencia: Number(metrics.agentFirstResponseAvgMin || 0) <= 15 ? 'Mejora' : (Number(metrics.agentFirstResponseAvgMin || 0) <= 30 ? 'Estable' : 'Deterioro'),
+                comentario: `Asesoras WhatsApp: ${metrics.agentFirstResponseAvgMin || 0} min promedio (Mediana: ${metrics.patientQuality?.queueWaitMedianMin || 0} min · Cumplimiento SLA <= 15m: ${metrics.slaStats?.cumplimientoPct || 100}%) · Bot Dora: < 5 seg.`
             },
             {
                 id: 'ind_3',
                 indicador: 'Casos resueltos en menos de 30 minutos',
                 unidad: 'Cantidad',
                 meta: 'Tendencia creciente',
-                prevVal: 747,
-                currVal: isConsolidado ? 447 : (liveUnder30m || 447),
+                prevVal: hasPrevWa ? prevMonthMetrics.under30m : null,
+                currVal: liveUnder30m,
                 formatType: 'integer',
                 goalDirection: 'up_is_better',
-                forceTendencia: null,
-                comentario: 'Indicador presentado en revisión.'
+                fallbackTendencia: liveUnder30m > 0 ? 'Mejora' : 'Estable',
+                comentario: `${liveUnder30m.toLocaleString('es-AR')} casos resueltos en <= 30 min (< 5m: ${under5mCount.toLocaleString('es-AR')} · 5-30m: ${de5a30mCount.toLocaleString('es-AR')}) sobre ${(metrics.activeResolvedCount || 0).toLocaleString('es-AR')} casos activos cerrados (${under30Pct}%).`
             },
             {
                 id: 'ind_4',
                 indicador: 'Casos con demora mayor a 1 día',
                 unidad: 'Cantidad',
                 meta: 'Tendencia descendente',
-                prevVal: 1538,
-                currVal: isConsolidado ? 1412 : (liveOver24h || 1412),
+                prevVal: hasPrevWa ? prevMonthMetrics.over24h : null,
+                currVal: liveOver24h,
                 formatType: 'integer',
                 goalDirection: 'down_is_better',
-                forceTendencia: null,
-                comentario: 'Indicador presentado en revisión.'
+                fallbackTendencia: 'Estable',
+                comentario: `${liveOver24h.toLocaleString('es-AR')} conversaciones cerradas por expiración / inactividad > 24 hs (${metrics.patientQuality?.archivedOver24hPct || 0}% sobre ${(metrics.closedConversationsCount || 0).toLocaleString('es-AR')} cerradas en ${periodLabel}).`
             },
             {
                 id: 'ind_5',
                 indicador: 'Cantidad de Turnos',
                 unidad: 'Cantidad',
                 meta: 'Tendencia creciente',
-                prevVal: isConsolidado ? 4124 : prevTurnosSalus,
-                currVal: isConsolidado ? 4426 : liveTurnos,
+                prevVal: prevTurnosSalus,
+                currVal: liveTurnos,
                 formatType: 'integer',
                 goalDirection: 'up_is_better',
-                forceTendencia: null,
-                comentario: `Por canal y franja horaria. (SALUS auditados: ${(srvCurr?.totalTurnosAnalizados || 4199).toLocaleString('es-AR')} turnos · Pico: ${metrics.peakHourInfo?.hora || '10:00 hs'})`
+                fallbackTendencia: 'Estable',
+                comentario: `SALUS Contact Center: ${(srvCurr?.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos auditados · Chat WhatsApp: ${turnosChatCurr.toLocaleString('es-AR')} turnos confirmados · Hora pico: ${metrics.peakHourInfo?.hora || '10:00 hs'}.`
             },
             {
                 id: 'ind_6',
                 indicador: 'Tasa de abandono o no respuesta',
                 unidad: '%',
                 meta: 'Tendencia descendente',
-                prevVal: 11.4,
-                currVal: liveNoRespondePct > 0 ? liveNoRespondePct : 9.2,
+                prevVal: hasPrevWa ? prevMonthMetrics.noRespondePct : null,
+                currVal: liveNoRespondePct,
                 formatType: 'percent',
                 goalDirection: 'down_is_better',
-                forceTendencia: null,
-                comentario: `Por canal y franja horaria. (Pacientes sin respuesta / time-out en cola: ${liveNoRespondePct}%)`
+                fallbackTendencia: liveNoRespondePct <= 10 ? 'Mejora' : (liveNoRespondePct <= 15 ? 'Estable' : 'Deterioro'),
+                comentario: `${noRespondeCount.toLocaleString('es-AR')} casos sin respuesta del paciente sobre ${totalConvs.toLocaleString('es-AR')} conversaciones en ${periodLabel} (Resolución 1er contacto FCR: ${metrics.patientQuality?.fcrPct || 100}%).`
             },
             {
                 id: 'ind_7',
                 indicador: 'Asistencia al turno por canal de origen',
                 unidad: '%',
                 meta: 'Definir línea de base',
-                prevVal: isConsolidado ? 62.8 : salusAttPrev,
-                currVal: isConsolidado ? 61.0 : salusAttCurr,
+                prevVal: salusStatsPrev.pct,
+                currVal: salusStatsCurr.pct,
                 formatType: 'percent',
                 goalDirection: 'up_is_better',
-                forceTendencia: null,
-                comentario: 'Derivado de PA-11. (Cruce oficial de asistencia en agendas SALUS)'
+                fallbackTendencia: 'Estable',
+                comentario: salusStatsCurr.citas > 0
+                    ? `Cruce oficial SALUS (${periodLabel}): ${salusStatsCurr.asistidas.toLocaleString('es-AR')} turnos asistidos sobre ${salusStatsCurr.citas.toLocaleString('es-AR')} citas auditadas (${salusStatsCurr.ausencias.toLocaleString('es-AR')} ausencias).`
+                    : `Cruce de asistencia SALUS en curso para ${periodLabel} (${(srvCurr?.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos otorgados a la fecha).`
             }
         ];
 
         return rawRows.map(r => {
             const ov = customIndicatorOverrides[r.id] || {};
-            const prevVal = ov.prevVal !== undefined ? Number(ov.prevVal) : r.prevVal;
-            const currVal = ov.currVal !== undefined ? Number(ov.currVal) : r.currVal;
+            const hasPrev = ov.prevVal !== undefined ? (ov.prevVal !== '' && ov.prevVal !== null) : (r.prevVal !== null && r.prevVal !== undefined);
+            const hasCurr = ov.currVal !== undefined ? (ov.currVal !== '' && ov.currVal !== null) : (r.currVal !== null && r.currVal !== undefined);
+            const prevVal = hasPrev ? Number(ov.prevVal !== undefined ? ov.prevVal : r.prevVal) : null;
+            const currVal = hasCurr ? Number(ov.currVal !== undefined ? ov.currVal : r.currVal) : null;
             const comentario = ov.comentario !== undefined ? ov.comentario : r.comentario;
 
-            // Variación porcentual
-            let varPct = 0;
-            if (prevVal !== 0) {
+            // Variación porcentual (sólo cuando ambos meses tienen dato válido > 0)
+            let varPct = null;
+            let variacionFormatted = '—';
+            if (hasPrev && hasCurr && prevVal > 0) {
                 varPct = ((currVal - prevVal) / Math.abs(prevVal)) * 100;
+                variacionFormatted = `${varPct > 0 ? '+' : ''}${varPct.toFixed(1).replace('.', ',')}%`;
             }
-            const variacionFormatted = `${varPct >= 0 ? '' : ''}${varPct.toFixed(1).replace('.', ',')}%`;
 
             // Determinación automática de Tendencia (Mejora / Estable / Deterioro)
-            let tendencia = ov.tendencia || r.forceTendencia || 'Estable';
-            if (!ov.tendencia && !r.forceTendencia) {
+            let tendencia = ov.tendencia || r.fallbackTendencia || 'Estable';
+            if (!ov.tendencia && varPct !== null) {
                 if (Math.abs(varPct) < 1.0) {
                     tendencia = 'Estable';
                 } else if (r.goalDirection === 'up_is_better') {
@@ -2163,7 +2312,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             }
 
-            const formatValue = (v) => {
+            const formatValue = (v, isPresent) => {
+                if (!isPresent || v === null || v === undefined) return 'S/D';
                 if (r.formatType === 'hhmmss_from_min') {
                     if (ov.rawStr) return ov.rawStr;
                     return formatMinutesToHHMMSS(v);
@@ -2176,17 +2326,17 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
             return {
                 ...r,
-                prevVal,
-                currVal,
-                prevFormatted: ov.prevFormatted !== undefined ? ov.prevFormatted : formatValue(prevVal),
-                currFormatted: ov.currFormatted !== undefined ? ov.currFormatted : formatValue(currVal),
-                varPct,
+                prevVal: prevVal ?? '',
+                currVal: currVal ?? '',
+                prevFormatted: ov.prevFormatted !== undefined ? ov.prevFormatted : formatValue(prevVal, hasPrev),
+                currFormatted: ov.currFormatted !== undefined ? ov.currFormatted : formatValue(currVal, hasCurr),
+                varPct: varPct ?? 0,
                 variacionFormatted,
                 tendencia,
                 comentario
             };
         });
-    }, [salusServiciosMap, activeMonthKey, prevMonthKey, metrics, indicatorDataSource, customIndicatorOverrides]);
+    }, [salusServiciosMap, activeMonthKey, prevMonthKey, metrics, prevMonthMetrics, periodLabel, customIndicatorOverrides]);
 
     const handleIndicatorOverrideChange = (id, field, value) => {
         setCustomIndicatorOverrides(prev => ({
@@ -2342,44 +2492,17 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            {/* Selector de fuente de datos */}
-                            <div style={{
-                                display: 'inline-flex', background: '#F1F5F9', padding: '3px',
-                                borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.7rem'
+                            <span style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                padding: '5px 10px',
+                                borderRadius: '8px',
+                                background: '#ECFDF5',
+                                color: '#047857',
+                                border: '1px solid #A7F3D0'
                             }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setIndicatorDataSource('consolidado')}
-                                    style={{
-                                        border: 'none',
-                                        background: indicatorDataSource === 'consolidado' ? '#0B3566' : 'transparent',
-                                        color: indicatorDataSource === 'consolidado' ? '#FFFFFF' : '#475569',
-                                        fontWeight: 700,
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer'
-                                    }}
-                                    title="Combina la línea base auditada en Revisión de Dirección con la telemetría de WhatsApp y SALUS"
-                                >
-                                    Consolidado Revisión + Live
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIndicatorDataSource('live')}
-                                    style={{
-                                        border: 'none',
-                                        background: indicatorDataSource === 'live' ? '#0284C7' : 'transparent',
-                                        color: indicatorDataSource === 'live' ? '#FFFFFF' : '#475569',
-                                        fontWeight: 700,
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer'
-                                    }}
-                                    title="Calcula todos los indicadores exclusivamente desde los registros crudos de WhatsApp y SALUS"
-                                >
-                                    100% Telemetría Directa
-                                </button>
-                            </div>
+                                ● Datos reales calculados de {periodLabel}
+                            </span>
 
                             <button
                                 type="button"
