@@ -424,7 +424,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         if (typeof window !== 'undefined' && window.__merentielCountedThisLoad === rawUser) {
             return;
         }
-        const storageKey = `admqui_merentiel_boca_v4_count_${rawUser}`;
+        const storageKey = `admqui_merentiel_boca_v5_count_${rawUser}`;
         const prevCount = parseInt(localStorage.getItem(storageKey) || '0', 10) || 0;
         if (prevCount < 3) {
             const nextCount = prevCount + 1;
@@ -432,7 +432,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
             if (typeof window !== 'undefined') {
                 window.__merentielCountedThisLoad = rawUser;
             }
-            // Precargar el gif de Merentiel para transición instantánea al terminar los 5s del countdown
+            // Precargar el gif de Merentiel para transición instantánea al terminar los 4000ms del countdown
             const preloadImg = new window.Image();
             preloadImg.src = '/merentiel-cumbia.gif';
             setMerentielPopup({ open: true, stage: 'countdown', countdownLoaded: false, count: nextCount, max: 3, ts: Date.now() });
@@ -441,12 +441,12 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         }
     }, [currentUser?.usuario]);
 
-    // Transición automática de countdown.gif (5 segundos completos desde que carga el GIF) -> merentiel-cumbia.gif + estética Boca
+    // Transición automática de countdown.gif (4000ms desde que carga el GIF) -> merentiel-cumbia.gif + estética Boca
     useEffect(() => {
         if (!merentielPopup.open || merentielPopup.stage !== 'countdown' || !merentielPopup.countdownLoaded) return;
         const timer = setTimeout(() => {
             setMerentielPopup(prev => prev.open ? { ...prev, stage: 'merentiel', ts: Date.now() } : prev);
-        }, 5000);
+        }, 4000);
         return () => clearTimeout(timer);
     }, [merentielPopup.open, merentielPopup.stage, merentielPopup.countdownLoaded]);
     // Beto widget open state (controlled from sidebar avatar)
