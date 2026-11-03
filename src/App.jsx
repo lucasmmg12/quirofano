@@ -412,19 +412,19 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         return true;
     });
     // GIF temporal de Merentiel (solo para ctorres, frojo y lmarinero, máximo 3 apariciones)
-    const [merentielPopup, setMerentielPopup] = useState({ open: false, stage: 'countdown', count: 0, max: 3, ts: 0 });
+    const [merentielPopup, setMerentielPopup] = useState({ open: false, stage: 'countdown', countdownLoaded: false, count: 0, max: 3, ts: 0 });
 
     useEffect(() => {
         const rawUser = (currentUser?.usuario || '').toLowerCase().trim().split('@')[0];
         const targetUsers = ['ctorres', 'frojo', 'lmarinero'];
         if (!targetUsers.includes(rawUser)) {
-            setMerentielPopup({ open: false, stage: 'countdown', count: 0, max: 3, ts: 0 });
+            setMerentielPopup({ open: false, stage: 'countdown', countdownLoaded: false, count: 0, max: 3, ts: 0 });
             return;
         }
         if (typeof window !== 'undefined' && window.__merentielCountedThisLoad === rawUser) {
             return;
         }
-        const storageKey = `admqui_merentiel_boca_v3_count_${rawUser}`;
+        const storageKey = `admqui_merentiel_boca_v4_count_${rawUser}`;
         const prevCount = parseInt(localStorage.getItem(storageKey) || '0', 10) || 0;
         if (prevCount < 3) {
             const nextCount = prevCount + 1;
@@ -432,23 +432,23 @@ function App({ currentUser, onLogout, onUserUpdated }) {
             if (typeof window !== 'undefined') {
                 window.__merentielCountedThisLoad = rawUser;
             }
-            // Precargar el gif de Merentiel para transición instantánea al terminar el countdown
+            // Precargar el gif de Merentiel para transición instantánea al terminar los 5s del countdown
             const preloadImg = new window.Image();
             preloadImg.src = '/merentiel-cumbia.gif';
-            setMerentielPopup({ open: true, stage: 'countdown', count: nextCount, max: 3, ts: Date.now() });
+            setMerentielPopup({ open: true, stage: 'countdown', countdownLoaded: false, count: nextCount, max: 3, ts: Date.now() });
         } else {
-            setMerentielPopup({ open: false, stage: 'countdown', count: prevCount, max: 3, ts: 0 });
+            setMerentielPopup({ open: false, stage: 'countdown', countdownLoaded: false, count: prevCount, max: 3, ts: 0 });
         }
     }, [currentUser?.usuario]);
 
-    // Transición automática de countdown.gif (3.75s) -> merentiel-cumbia.gif + estética Boca
+    // Transición automática de countdown.gif (5 segundos completos desde que carga el GIF) -> merentiel-cumbia.gif + estética Boca
     useEffect(() => {
-        if (!merentielPopup.open || merentielPopup.stage !== 'countdown') return;
+        if (!merentielPopup.open || merentielPopup.stage !== 'countdown' || !merentielPopup.countdownLoaded) return;
         const timer = setTimeout(() => {
             setMerentielPopup(prev => prev.open ? { ...prev, stage: 'merentiel', ts: Date.now() } : prev);
-        }, 3750);
+        }, 5000);
         return () => clearTimeout(timer);
-    }, [merentielPopup.open, merentielPopup.stage]);
+    }, [merentielPopup.open, merentielPopup.stage, merentielPopup.countdownLoaded]);
     // Beto widget open state (controlled from sidebar avatar)
     const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
     // Router hooks
@@ -2067,6 +2067,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                                 <img
                                     src={`/countdown.gif?t=${merentielPopup.ts}`}
                                     alt="Cuenta regresiva"
+                                    onLoad={() => setMerentielPopup(prev => ({ ...prev, countdownLoaded: true }))}
                                     style={{
                                         width: 'auto',
                                         maxWidth: '100%',
