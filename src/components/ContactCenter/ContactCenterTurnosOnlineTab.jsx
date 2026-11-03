@@ -19,15 +19,122 @@ import {
 const META_OPTION_ID = 'meta_turnos_mismo_dia';
 const META_VAR_LABELS = ['{{1}} Nombre del paciente', '{{2}} Fecha de los turnos', '{{3}} Horarios y profesional'];
 
+const DIAS_SEMANA_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const DIAS_SEMANA_LARGOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function formatHumanDate(isoStr, short = false) {
+    if (!isoStr || typeof isoStr !== 'string') return isoStr || '';
+    const m = isoStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return isoStr;
+    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+    const dayName = short ? DIAS_SEMANA_CORTOS[dt.getDay()] : DIAS_SEMANA_LARGOS[dt.getDay()];
+    return short ? `${dayName} ${m[3]}/${m[2]}` : `${dayName} ${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function parseMinutesFromTimeStr(timeStr) {
+    if (!timeStr) return null;
+    const raw = String(timeStr).toLowerCase().trim();
+    const isPm = raw.includes('p') && !raw.includes('a');
+    const isAm = raw.includes('a') && !raw.includes('p');
+    const match = raw.match(/(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    let h = Number(match[1]);
+    const min = Number(match[2]);
+    if (isPm && h < 12) h += 12;
+    if (isAm && h === 12) h = 0;
+    return h * 60 + min;
+}
+
+function formatHumanTime24(timeStr) {
+    const mins = parseMinutesFromTimeStr(timeStr);
+    if (mins === null) return timeStr || '';
+    const h = String(Math.floor(mins / 60)).padStart(2, '0');
+    const m = String(mins % 60).padStart(2, '0');
+    return `${h}:${m} hs`;
+}
+
+function formatPhoneClean(phone) {
+    if (!phone) return '';
+    const digits = String(phone).replace(/\D/g, '');
+    const local10 = digits.startsWith('549') && digits.length === 13
+        ? digits.slice(3)
+        : digits.startsWith('54') && digits.length === 12
+            ? digits.slice(2)
+            : digits;
+    if (local10.length === 10) {
+        return `${local10.slice(0, 3)} ${local10.slice(3, 6)}-${local10.slice(6)}`;
+    }
+    return phone;
+}
+
+function getUrgencyBadge(isoDate, todayStr) {
+    if (!isoDate || !todayStr) return null;
+    if (isoDate < todayStr) {
+        return { label: 'Fecha pasada', bg: '#F1F5F9', color: '#64748B', border: '#CBD5E1' };
+    }
+    if (isoDate === todayStr) {
+        return { label: '🚨 Hoy', bg: '#FEE2E2', color: '#B91C1C', border: '#FECACA' };
+    }
+    const d1 = new Date(todayStr + 'T12:00:00');
+    const d2 = new Date(isoDate + 'T12:00:00');
+    const diffDays = Math.round((d2 - d1) / 86400000);
+    if (diffDays === 1) {
+        return { label: '⚡ Mañana', bg: '#FFEDD5', color: '#C2410C', border: '#FED7AA' };
+    }
+    if (diffDays <= 4) {
+        return { label: `⏳ En ${diffDays} días`, bg: '#FEF3C7', color: '#B45309', border: '#FDE68A' };
+    }
+    return { label: `En ${diffDays} días`, bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' };
+}
+
+function buildConflictDiagnosis(caso) {
+    const turnos = caso?.turnos || [];
+    if (turnos.length < 2) return null;
+    const t1 = turnos[0];
+    const t2 = turnos[turnos.length - 1];
+
+    if (caso.esMismoDia) {
+        const m1 = parseMinutesFromTimeStr(t1.horaInicio);
+        const m2 = parseMinutesFromTimeStr(t2.horaInicio);
+        const diffMin = m1 !== null && m2 !== null ? Math.abs(m2 - m1) : null;
+        const diffLabel = diffMin !== null
+            ? (diffMin === 0 ? 'en el mismo horario exacto' : `con ${diffMin} min de diferencia (${formatHumanTime24(t1.horaInicio)} y ${formatHumanTime24(t2.horaInicio)})`)
+            : `el mismo día (${formatHumanDate(t1.fechaTurno, true)})`;
+        return {
+            tone: 'danger',
+            bg: '#FEF2F2',
+            border: '#FECACA',
+            color: '#991B1B',
+            badge: 'DOBLE RESERVA MISMO DÍA',
+            text: `Reservó ${turnos.length} turnos para el ${formatHumanDate(t1.fechaTurno, false)} ${diffLabel}. Probable doble intento web.`,
+        };
+    }
+
+    const d1 = t1.fechaTurno ? new Date(t1.fechaTurno + 'T12:00:00') : null;
+    const d2 = t2.fechaTurno ? new Date(t2.fechaTurno + 'T12:00:00') : null;
+    const diffDays = d1 && d2 ? Math.abs(Math.round((d2 - d1) / 86400000)) : null;
+
+    return {
+        tone: 'warning',
+        bg: '#FFFBEB',
+        border: '#FDE68A',
+        color: '#92400E',
+        badge: 'TURNOS EN DISTINTOS DÍAS',
+        text: `Tiene ${turnos.length} turnos activos en fechas diferentes (${formatHumanDate(t1.fechaTurno, true)} y ${formatHumanDate(t2.fechaTurno, true)}${diffDays ? ` · ${diffDays} días de diferencia` : ''}). Probable reprogramación sin anular el turno anterior.`,
+    };
+}
+
 export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser, addToast, onOpenChatWithPhone, onConversationStarted, onBackToConsole }) {
     const [loading, setLoading] = useState(false);
     const [filtroDias, setFiltroDias] = useState(1); // 1 = ayer/hoy
     const [fechaCustom, setFechaCustom] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [filtroEstado, setFiltroEstado] = useState('pendiente'); // 'pendiente' por defecto para bandeja Inbox Zero
+    const [filtroGravedad, setFiltroGravedad] = useState('todos'); // 'todos' | 'mismo_dia' | 'distinto_dia'
     const [ocultarPasados, setOcultarPasados] = useState(true); // Ocultar automáticamente turnos con fechas transcurridas
     const [showGuiaModal, setShowGuiaModal] = useState(false);
     const [showQuickTips, setShowQuickTips] = useState(true);
+    const [inlineNoteDraft, setInlineNoteDraft] = useState('');
     const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     
     const [stats, setStats] = useState({
@@ -105,13 +212,17 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         return () => clearInterval(interval);
     }, [filtroDias, fechaCustom]);
 
-    // 2. Filtrado de casos
+    // 2. Filtrado y ordenamiento inteligente de casos (Urgentes / Mismo Día y fecha más próxima primero)
     const casosFiltrados = useMemo(() => {
-        return casos.filter(c => {
+        const list = casos.filter(c => {
             // Filtro de estado
             if (filtroEstado !== 'todos' && c.gestion.estado !== filtroEstado) {
                 return false;
             }
+
+            // Filtro de gravedad (Mismo Día vs Distinto Día)
+            if (filtroGravedad === 'mismo_dia' && !c.esMismoDia) return false;
+            if (filtroGravedad === 'distinto_dia' && c.esMismoDia) return false;
 
             // Ocultar turnos cuya fecha ya pasó (si está activo el toggle y no hay término de búsqueda manual)
             if (ocultarPasados && !searchTerm.trim() && filtroEstado === 'pendiente') {
@@ -131,7 +242,17 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             }
             return true;
         });
-    }, [casos, filtroEstado, searchTerm, ocultarPasados, todayStr]);
+
+        // Ordenar: 1) Mismo Día primero, 2) Fecha de turno más cercana primero
+        return [...list].sort((a, b) => {
+            if (Boolean(a.esMismoDia) !== Boolean(b.esMismoDia)) {
+                return a.esMismoDia ? -1 : 1;
+            }
+            const nextA = (a.turnos || []).map(t => t.fechaTurno).filter(Boolean).sort()[0] || '9999-99-99';
+            const nextB = (b.turnos || []).map(t => t.fechaTurno).filter(Boolean).sort()[0] || '9999-99-99';
+            return nextA.localeCompare(nextB);
+        });
+    }, [casos, filtroEstado, filtroGravedad, searchTerm, ocultarPasados, todayStr]);
 
     // Caso activo en Split View (mantiene selección o toma el primero de la lista filtrada)
     const selectedCaso = useMemo(() => {
@@ -142,6 +263,10 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         }
         return casosFiltrados[0];
     }, [casosFiltrados, expandedKey]);
+
+    useEffect(() => {
+        setInlineNoteDraft(selectedCaso?.gestion?.notas || '');
+    }, [selectedCaso?.key, selectedCaso?.gestion?.notas]);
 
     // Variables editables en el panel derecho del Split View para el caso seleccionado
     const currentInlineVars = useMemo(() => {
@@ -342,17 +467,26 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         }
     };
 
+    const totalCasosActivos = casos.length;
+    const totalMismoDia = useMemo(() => casos.filter(c => c.esMismoDia).length, [casos]);
+    const totalDistintoDia = useMemo(() => casos.filter(c => !c.esMismoDia).length, [casos]);
+    const progresoPct = useMemo(() => {
+        if (!totalCasosActivos) return 100;
+        const gestionados = (stats.totalContactados || 0) + (stats.totalResueltos || 0);
+        return Math.min(100, Math.round((gestionados / totalCasosActivos) * 100));
+    }, [totalCasosActivos, stats.totalContactados, stats.totalResueltos]);
+
     return (
-        <div style={{ padding: '20px 24px', maxWidth: '1440px', margin: '0 auto' }}>
+        <div style={{ padding: '16px 22px', maxWidth: '1460px', margin: '0 auto' }}>
             
-            {/* ═══ HEADER DE AUDITORÍA Y FILTROS ═══ */}
+            {/* ═══ HEADER DE AUDITORÍA, PROGRESO INBOX ZERO Y FILTROS ═══ */}
             <div style={{
                 background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
-                borderRadius: '20px',
-                padding: '20px 28px 0 24px',
+                borderRadius: '18px',
+                padding: '16px 24px 0 22px',
                 border: '1.5px solid #E2E8F0',
                 boxShadow: '0 2px 12px rgba(15, 23, 42, 0.04)',
-                marginBottom: '20px',
+                marginBottom: '14px',
                 display: 'flex',
                 alignItems: 'stretch',
                 justifyContent: 'space-between',
@@ -366,30 +500,68 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    gap: '14px',
-                    paddingBottom: '20px',
+                    gap: '12px',
+                    paddingBottom: '16px',
                     zIndex: 1
                 }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                            <div style={{
-                                width: '38px', height: '38px', borderRadius: '10px',
-                                background: '#FEE2E2', color: '#DC2626',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <ShieldAlert size={22} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '3px' }}>
+                                <div style={{
+                                    width: '36px', height: '36px', borderRadius: '10px',
+                                    background: '#FEE2E2', color: '#DC2626',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <ShieldAlert size={20} />
+                                </div>
+                                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Auditoría de Turnos Online Duplicados
+                                </h2>
                             </div>
-                            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
-                                Auditoría de Turnos Online Duplicados
-                            </h2>
+                            <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748B' }}>
+                                Detección automática de pacientes con múltiples turnos para el mismo prestador y gestión vía WhatsApp.
+                            </p>
                         </div>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B' }}>
-                            Detección automática de pacientes con múltiples turnos para el mismo prestador y gestión vía WhatsApp.
-                        </p>
+
+                        {/* Mini Panel de Progreso Inbox Zero */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            background: '#FFFFFF',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '12px',
+                            padding: '8px 14px',
+                            boxShadow: '0 1px 4px rgba(15, 23, 42, 0.03)'
+                        }}>
+                            <div style={{ minWidth: '135px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                    <span>Avance del período</span>
+                                    <span style={{ color: '#059669' }}>{progresoPct}%</span>
+                                </div>
+                                <div style={{ width: '100%', height: '6px', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
+                                    <div style={{
+                                        width: `${progresoPct}%`,
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, #3B82F6 0%, #10B981 100%)',
+                                        transition: 'width 0.3s ease'
+                                    }} />
+                                </div>
+                            </div>
+                            <div style={{ width: '1px', height: '26px', background: '#E2E8F0' }} />
+                            <div style={{ display: 'flex', gap: '10px', fontSize: '0.73rem', fontWeight: 700 }}>
+                                <span style={{ color: '#B91C1C', background: '#FEF2F2', padding: '3px 8px', borderRadius: '6px', border: '1px solid #FECACA' }}>
+                                    🔴 {totalMismoDia} Mismo día
+                                </span>
+                                <span style={{ color: '#B45309', background: '#FFFBEB', padding: '3px 8px', borderRadius: '6px', border: '1px solid #FDE68A' }}>
+                                    🗓️ {totalDistintoDia} Distinto día
+                                </span>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Filtros temporales y navegación */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {/* Filtros temporales, sincronización en vivo y navegación */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         {onBackToConsole && (
                             <button
                                 onClick={onBackToConsole}
@@ -397,20 +569,19 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '6px',
-                                    padding: '6px 14px',
-                                    borderRadius: '10px',
+                                    padding: '6px 12px',
+                                    borderRadius: '9px',
                                     border: '1.5px solid #CBD5E1',
                                     background: '#FFFFFF',
                                     color: '#334155',
-                                    fontSize: '0.8rem',
+                                    fontSize: '0.78rem',
                                     fontWeight: 700,
                                     cursor: 'pointer',
                                     transition: 'all 0.15s',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                                 }}
                                 title="Volver a la consola de chats de Contact Center"
                             >
-                                <ArrowLeft size={15} />
+                                <ArrowLeft size={14} />
                                 Volver a Chats
                             </button>
                         )}
@@ -422,20 +593,19 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                padding: '6px 14px',
-                                borderRadius: '10px',
+                                padding: '6px 12px',
+                                borderRadius: '9px',
                                 border: '1.5px solid #BFDBFE',
                                 background: '#EFF6FF',
                                 color: '#1E40AF',
-                                fontSize: '0.8rem',
+                                fontSize: '0.78rem',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 transition: 'all 0.15s',
-                                boxShadow: '0 1px 3px rgba(37,99,235,0.08)'
                             }}
                             title="Ver guía operativa paso a paso para operadoras"
                         >
-                            <BookOpen size={15} />
+                            <BookOpen size={14} />
                             Ver Instructivo Completo
                         </button>
 
@@ -449,8 +619,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             <button
                                 onClick={() => { setFiltroDias(1); setFechaCustom(''); }}
                                 style={{
-                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                                     background: filtroDias === 1 && !fechaCustom ? '#0F2942' : 'transparent',
                                     color: filtroDias === 1 && !fechaCustom ? '#FFFFFF' : '#475569',
                                     transition: 'all 0.15s'
@@ -461,8 +631,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             <button
                                 onClick={() => { setFiltroDias(2); setFechaCustom(''); }}
                                 style={{
-                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                                     background: filtroDias === 2 && !fechaCustom ? '#0F2942' : 'transparent',
                                     color: filtroDias === 2 && !fechaCustom ? '#FFFFFF' : '#475569',
                                     transition: 'all 0.15s'
@@ -473,8 +643,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             <button
                                 onClick={() => { setFiltroDias(7); setFechaCustom(''); }}
                                 style={{
-                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                                     background: filtroDias === 7 && !fechaCustom ? '#0F2942' : 'transparent',
                                     color: filtroDias === 7 && !fechaCustom ? '#FFFFFF' : '#475569',
                                     transition: 'all 0.15s'
@@ -483,6 +653,30 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 Últimos 7 días
                             </button>
                         </div>
+
+                        <button
+                            type="button"
+                            disabled={loading || syncStatus === 'syncing'}
+                            onClick={() => loadData(filtroDias, fechaCustom, true)}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 12px',
+                                borderRadius: '9px',
+                                border: '1.5px solid #A7F3D0',
+                                background: '#ECFDF5',
+                                color: '#047857',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                cursor: loading ? 'wait' : 'pointer',
+                                transition: 'all 0.15s',
+                            }}
+                            title="Volver a consultar la agenda SALUS en vivo para verificar si ya se anuló o reprogramó el turno"
+                        >
+                            <RefreshCw size={14} style={{ animation: (loading || syncStatus === 'syncing') ? 'spin 1s linear infinite' : 'none' }} />
+                            {syncStatus === 'syncing' ? 'Sincronizando SALUS...' : 'Sincronizar SALUS'}
+                        </button>
                     </div>
                 </div>
 
@@ -492,7 +686,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     alignItems: 'flex-end',
                     justifyContent: 'center',
                     marginTop: '-10px',
-                    marginRight: '8px',
+                    marginRight: '4px',
                     pointerEvents: 'none',
                     userSelect: 'none'
                 }}>
@@ -500,7 +694,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         src="/turnos-online-beto.png"
                         alt="Dr. Beto - Turnos Online"
                         style={{
-                            height: '132px',
+                            height: '118px',
                             width: 'auto',
                             objectFit: 'contain',
                             objectPosition: 'bottom center',
@@ -511,52 +705,84 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 </div>
             </div>
 
-            {/* ═══ BARRA DE BÚSQUEDA Y FILTRO DE ESTADO ═══ */}
+            {/* ═══ BARRA DE BÚSQUEDA, FILTRO DE GRAVEDAD Y FILTRO DE ESTADO ═══ */}
             <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '12px',
-                marginBottom: '16px'
+                gap: '10px',
+                marginBottom: '14px'
             }}>
-                {/* Input de Búsqueda */}
-                <div style={{
-                    position: 'relative',
-                    width: '360px',
-                    maxWidth: '100%'
-                }}>
-                    <Search size={18} style={{
-                        position: 'absolute',
-                        left: '12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        color: '#94A3B8'
-                    }} />
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        placeholder="Buscar por DNI, paciente o médico..."
-                        style={{
-                            width: '100%',
-                            padding: '10px 14px 10px 38px',
-                            borderRadius: '12px',
-                            border: '1.5px solid #CBD5E1',
-                            fontSize: '0.88rem',
-                            outline: 'none',
-                            background: '#FFFFFF',
-                            boxSizing: 'border-box'
-                        }}
-                    />
-                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* Input de Búsqueda */}
+                    <div style={{
+                        position: 'relative',
+                        width: '300px',
+                        maxWidth: '100%'
+                    }}>
+                        <Search size={16} style={{
+                            position: 'absolute',
+                            left: '11px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: '#94A3B8'
+                        }} />
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            placeholder="Buscar por DNI, paciente o médico..."
+                            style={{
+                                width: '100%',
+                                padding: '8px 12px 8px 34px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #CBD5E1',
+                                fontSize: '0.82rem',
+                                outline: 'none',
+                                background: '#FFFFFF',
+                                boxSizing: 'border-box'
+                            }}
+                        />
+                    </div>
 
-                {/* Filtro por estado y toggle de fechas pasadas */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {/* Filtro Rápido por Tipo de Conflicto (Mismo Día vs Distinto Día) */}
                     <div style={{
                         display: 'flex',
                         background: '#FFFFFF',
-                        borderRadius: '12px',
+                        borderRadius: '10px',
+                        padding: '3px',
+                        border: '1.5px solid #CBD5E1'
+                    }}>
+                        {[
+                            { id: 'todos', label: 'Todos los tipos' },
+                            { id: 'mismo_dia', label: '🔴 Mismo Día' },
+                            { id: 'distinto_dia', label: '🗓️ Distinto Día' },
+                        ].map(g => (
+                            <button
+                                key={g.id}
+                                type="button"
+                                onClick={() => setFiltroGravedad(g.id)}
+                                style={{
+                                    padding: '5px 10px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
+                                    background: filtroGravedad === g.id ? '#EFF6FF' : 'transparent',
+                                    color: filtroGravedad === g.id ? '#1D4ED8' : '#64748B',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                {g.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Filtro por estado y toggle de fechas pasadas */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{
+                        display: 'flex',
+                        background: '#FFFFFF',
+                        borderRadius: '10px',
                         padding: '3px',
                         border: '1.5px solid #CBD5E1'
                     }}>
@@ -570,8 +796,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 key={f.id}
                                 onClick={() => setFiltroEstado(f.id)}
                                 style={{
-                                    padding: '6px 14px', borderRadius: '8px', border: 'none',
-                                    fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                                     background: filtroEstado === f.id ? '#0F2942' : 'transparent',
                                     color: filtroEstado === f.id ? '#FFFFFF' : '#64748B',
                                     display: 'flex', alignItems: 'center', gap: '6px',
@@ -582,7 +808,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 <span style={{
                                     background: filtroEstado === f.id ? 'rgba(255,255,255,0.2)' : '#F1F5F9',
                                     color: filtroEstado === f.id ? '#FFFFFF' : '#64748B',
-                                    fontSize: '0.7rem', padding: '1px 6px', borderRadius: '8px'
+                                    fontSize: '0.68rem', padding: '1px 6px', borderRadius: '8px'
                                 }}>
                                     {f.count}
                                 </span>
@@ -597,20 +823,20 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                padding: '6px 12px',
-                                borderRadius: '10px',
+                                gap: '5px',
+                                padding: '6px 11px',
+                                borderRadius: '9px',
                                 border: '1px solid #CBD5E1',
                                 background: ocultarPasados ? '#EFF6FF' : '#FFFFFF',
                                 color: ocultarPasados ? '#1D4ED8' : '#64748B',
-                                fontSize: '0.78rem',
+                                fontSize: '0.75rem',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 transition: 'all 0.15s'
                             }}
                             title="Oculta o muestra casos donde todas las fechas de los turnos ya transcurrieron"
                         >
-                            <Calendar size={14} />
+                            <Calendar size={13} />
                             {ocultarPasados ? 'Ocultando fechas pasadas' : 'Mostrando todas las fechas'}
                         </button>
                     )}
@@ -619,7 +845,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     <div style={{
                         display: 'flex',
                         background: '#FFFFFF',
-                        borderRadius: '10px',
+                        borderRadius: '9px',
                         padding: '3px',
                         border: '1.5px solid #CBD5E1'
                     }}>
@@ -630,10 +856,10 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '5px',
-                                padding: '5px 11px',
-                                borderRadius: '7px',
+                                padding: '5px 10px',
+                                borderRadius: '6px',
                                 border: 'none',
-                                fontSize: '0.78rem',
+                                fontSize: '0.75rem',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 background: viewMode === 'split' ? '#0F2942' : 'transparent',
@@ -642,7 +868,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             }}
                             title="Vista dividida (Lista a la izquierda + Detalle y envío a la derecha)"
                         >
-                            <Columns size={14} />
+                            <Columns size={13} />
                             Split View
                         </button>
                         <button
@@ -652,10 +878,10 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '5px',
-                                padding: '5px 11px',
-                                borderRadius: '7px',
+                                padding: '5px 10px',
+                                borderRadius: '6px',
                                 border: 'none',
-                                fontSize: '0.78rem',
+                                fontSize: '0.75rem',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 background: viewMode === 'list' ? '#0F2942' : 'transparent',
@@ -664,7 +890,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             }}
                             title="Vista en lista desplegable"
                         >
-                            <List size={14} />
+                            <List size={13} />
                             Lista
                         </button>
                     </div>
@@ -704,7 +930,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 /* ═════════════════════════════════════════════════════════════════ */
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(350px, 420px) minmax(0, 1fr)',
+                    gridTemplateColumns: 'minmax(340px, 395px) minmax(0, 1fr)',
                     gap: '16px',
                     alignItems: 'start'
                 }}>
@@ -713,7 +939,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '8px',
-                        maxHeight: 'calc(100vh - 220px)',
+                        maxHeight: 'calc(100vh - 210px)',
                         overflowY: 'auto',
                         paddingRight: '4px'
                     }}>
@@ -722,6 +948,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             const isPendiente = caso.gestion.estado === 'pendiente';
                             const isContactado = caso.gestion.estado === 'contactado';
                             const isResuelto = caso.gestion.estado === 'resuelto';
+                            const proximoTurno = (caso.turnos || [])[0] || null;
+                            const urgencia = proximoTurno ? getUrgencyBadge(proximoTurno.fechaTurno, todayStr) : null;
 
                             return (
                                 <div
@@ -732,26 +960,26 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                         borderRadius: '14px',
                                         border: isSelected ? '2px solid #0284C7' : '1px solid #E2E8F0',
                                         borderLeft: caso.esMismoDia ? '4px solid #EF4444' : isResuelto ? '4px solid #10B981' : isContactado ? '4px solid #3B82F6' : '4px solid #F59E0B',
-                                        padding: '12px 14px',
+                                        padding: '11px 13px',
                                         cursor: 'pointer',
                                         transition: 'all 0.15s ease',
                                         boxShadow: isSelected ? '0 6px 16px rgba(2, 132, 199, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.03)'
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
                                             <div style={{
-                                                width: '34px', height: '34px', borderRadius: '9px',
+                                                width: '32px', height: '32px', borderRadius: '8px',
                                                 background: isSelected ? '#0284C7' : isResuelto ? '#ECFDF5' : isContactado ? '#EFF6FF' : '#F1F5F9',
                                                 color: isSelected ? '#FFFFFF' : isResuelto ? '#059669' : isContactado ? '#1D4ED8' : '#334155',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontWeight: 800, fontSize: '0.88rem', flexShrink: 0
+                                                fontWeight: 800, fontSize: '0.84rem', flexShrink: 0
                                             }}>
                                                 {caso.nombre[0] || 'P'}
                                             </div>
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{
-                                                    fontSize: '0.88rem', fontWeight: 800, color: '#0F172A',
+                                                    fontSize: '0.85rem', fontWeight: 800, color: '#0F172A',
                                                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                                                 }}>
                                                     {caso.nombre}
@@ -761,7 +989,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                         onClick={(e) => handleCopyQuick(e, caso.dni, 'DNI copiado')}
                                                         title="Clic para copiar DNI"
                                                         style={{
-                                                            fontSize: '0.68rem', fontWeight: 700,
+                                                            fontSize: '0.67rem', fontWeight: 700,
                                                             background: copiedText === String(caso.dni) ? '#DCFCE7' : '#F1F5F9',
                                                             color: copiedText === String(caso.dni) ? '#15803D' : '#475569',
                                                             padding: '1px 6px', borderRadius: '5px',
@@ -770,11 +998,15 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                         }}
                                                     >
                                                         DNI {caso.dni}
-                                                        <Copy size={10} />
+                                                        <Copy size={9} />
                                                     </span>
                                                     {caso.telefono && (
-                                                        <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                            📞 {caso.telefono}
+                                                        <span
+                                                            onClick={(e) => handleCopyQuick(e, caso.telefono, 'Teléfono copiado')}
+                                                            title="Clic para copiar teléfono"
+                                                            style={{ fontSize: '0.67rem', color: '#475569', fontWeight: 600 }}
+                                                        >
+                                                            📞 {formatPhoneClean(caso.telefono)}
                                                         </span>
                                                     )}
                                                 </div>
@@ -783,22 +1015,47 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
                                         {/* Estado compacto */}
                                         <span style={{
-                                            fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px',
+                                            fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px',
                                             background: isPendiente ? '#FFFBEB' : isContactado ? '#EFF6FF' : '#ECFDF5',
                                             color: isPendiente ? '#92400E' : isContactado ? '#1E40AF' : '#065F46',
                                             border: `1px solid ${isPendiente ? '#FDE68A' : isContactado ? '#BFDBFE' : '#A7F3D0'}`,
                                             flexShrink: 0
                                         }}>
-                                            {isPendiente ? 'Pendiente' : isContactado ? 'Contactado' : 'Auditado'}
+                                            {isPendiente ? 'Pendiente' : isContactado ? 'Contactado' : 'Resuelto'}
                                         </span>
                                     </div>
 
+                                    {/* Fila intermedia: Fecha del próximo turno y urgencia */}
+                                    {proximoTurno && (
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            marginTop: '7px', gap: '6px', flexWrap: 'wrap'
+                                        }}>
+                                            <span style={{
+                                                fontSize: '0.7rem', fontWeight: 700, color: '#1E3A8A',
+                                                background: '#EFF6FF', padding: '2px 7px', borderRadius: '5px',
+                                                border: '1px solid #DBEAFE', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                            }}>
+                                                📅 {formatHumanDate(proximoTurno.fechaTurno, true)} · {formatHumanTime24(proximoTurno.horaInicio)}
+                                            </span>
+                                            {urgencia && (
+                                                <span style={{
+                                                    fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px',
+                                                    borderRadius: '5px', background: urgencia.bg, color: urgencia.color,
+                                                    border: `1px solid ${urgencia.border}`
+                                                }}>
+                                                    {urgencia.label}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div style={{
                                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        marginTop: '8px', paddingTop: '7px', borderTop: '1px dashed #E2E8F0', gap: '6px'
+                                        marginTop: '7px', paddingTop: '6px', borderTop: '1px dashed #E2E8F0', gap: '6px'
                                     }}>
                                         <div style={{
-                                            fontSize: '0.74rem', fontWeight: 700, color: '#0F2942',
+                                            fontSize: '0.73rem', fontWeight: 700, color: '#0F2942',
                                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                                         }}>
                                             Dr/a. {caso.profesional}
@@ -809,17 +1066,25 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                             padding: '2px 7px', borderRadius: '6px',
                                             background: caso.esMismoDia ? '#FEF2F2' : '#F8FAFC',
                                             border: `1px solid ${caso.esMismoDia ? '#FECACA' : '#E2E8F0'}`,
-                                            fontSize: '0.68rem', fontWeight: 800,
+                                            fontSize: '0.67rem', fontWeight: 800,
                                             color: caso.esMismoDia ? '#991B1B' : '#334155', flexShrink: 0
                                         }}>
                                             <span>{caso.cantidadTurnos} turnos</span>
-                                            {caso.esMismoDia && (
+                                            {caso.esMismoDia ? (
                                                 <span style={{
                                                     background: '#EF4444', color: '#FFFFFF',
-                                                    fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px',
+                                                    fontSize: '0.57rem', padding: '1px 4px', borderRadius: '3px',
                                                     textTransform: 'uppercase'
                                                 }}>
                                                     Mismo Día
+                                                </span>
+                                            ) : (
+                                                <span style={{
+                                                    background: '#F59E0B', color: '#FFFFFF',
+                                                    fontSize: '0.57rem', padding: '1px 4px', borderRadius: '3px',
+                                                    textTransform: 'uppercase'
+                                                }}>
+                                                    Distinto Día
                                                 </span>
                                             )}
                                         </div>
@@ -829,12 +1094,13 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         })}
                     </div>
 
-                    {/* COLUMNA DERECHA: PANEL DE DETALLE, COMPARADOR DE TURNOS Y DESPACHO WHATSAPP */}
+                    {/* COLUMNA DERECHA: PANEL DE DETALLE, COMPARADOR DE TURNOS Y DESPACHO WHATSAPP EN 2 COLUMNAS */}
                     {selectedCaso && (() => {
                         const isPendiente = selectedCaso.gestion.estado === 'pendiente';
                         const isContactado = selectedCaso.gestion.estado === 'contactado';
                         const isResuelto = selectedCaso.gestion.estado === 'resuelto';
                         const isSendingInline = inlineSendingKey === selectedCaso.key;
+                        const diagnosis = buildConflictDiagnosis(selectedCaso);
 
                         return (
                             <div style={{
@@ -842,21 +1108,21 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                 borderRadius: '18px',
                                 border: '1.5px solid #CBD5E1',
                                 boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-                                padding: '20px 22px',
+                                padding: '18px 20px',
                                 position: 'sticky',
-                                top: '16px',
+                                top: '12px',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '16px'
+                                gap: '14px'
                             }}>
-                                {/* 1. Cabecera del Caso Seleccionado + Botones de Estado */}
+                                {/* 1. Cabecera del Caso Seleccionado + Stepper Guiado de 3 Pasos */}
                                 <div style={{
                                     display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-                                    flexWrap: 'wrap', gap: '12px', paddingBottom: '14px', borderBottom: '1px solid #E2E8F0'
+                                    flexWrap: 'wrap', gap: '12px', paddingBottom: '12px', borderBottom: '1px solid #E2E8F0'
                                 }}>
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                            <h3 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 900, color: '#0F172A' }}>
+                                    <div style={{ flex: '1 1 360px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <h3 style={{ margin: 0, fontSize: '1.14rem', fontWeight: 900, color: '#0F172A' }}>
                                                 {selectedCaso.nombre}
                                             </h3>
                                             <button
@@ -864,176 +1130,239 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                 onClick={(e) => handleCopyQuick(e, selectedCaso.dni, 'DNI copiado para SALUS')}
                                                 style={{
                                                     display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                    fontSize: '0.78rem', fontWeight: 800, fontFamily: 'monospace',
+                                                    fontSize: '0.76rem', fontWeight: 800, fontFamily: 'monospace',
                                                     background: copiedText === String(selectedCaso.dni) ? '#DCFCE7' : '#EFF6FF',
                                                     color: copiedText === String(selectedCaso.dni) ? '#15803D' : '#1D4ED8',
-                                                    border: '1px solid #BFDBFE', borderRadius: '7px', padding: '3px 9px',
+                                                    border: '1px solid #BFDBFE', borderRadius: '7px', padding: '2px 8px',
                                                     cursor: 'pointer'
                                                 }}
                                                 title="Copiar DNI para buscar en SALUS"
                                             >
                                                 DNI {selectedCaso.dni}
-                                                <Copy size={12} />
+                                                <Copy size={11} />
                                             </button>
-                                            {selectedCaso.esMismoDia && (
+                                            {selectedCaso.esMismoDia ? (
                                                 <span style={{
                                                     background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA',
-                                                    fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px'
+                                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px'
                                                 }}>
                                                     ⚠️ {selectedCaso.cantidadTurnos} TURNOS EL MISMO DÍA
                                                 </span>
+                                            ) : (
+                                                <span style={{
+                                                    background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A',
+                                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px'
+                                                }}>
+                                                    🗓️ {selectedCaso.cantidadTurnos} TURNOS EN DISTINTO DÍA
+                                                </span>
                                             )}
                                         </div>
-                                        <div style={{ fontSize: '0.84rem', color: '#334155', marginTop: '5px', fontWeight: 700 }}>
+                                        <div style={{ fontSize: '0.82rem', color: '#334155', marginTop: '4px', fontWeight: 700 }}>
                                             Dr/a. {selectedCaso.profesional} <span style={{ color: '#94A3B8', fontWeight: 500 }}>• Agenda: {selectedCaso.agenda}</span>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap', fontSize: '0.8rem', color: '#475569' }}>
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                                <Phone size={14} color="#0284C7" />
-                                                <strong>Tel:</strong> {selectedCaso.telefono || 'Sin teléfono'}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '5px', flexWrap: 'wrap', fontSize: '0.78rem', color: '#475569' }}>
+                                            <span
+                                                onClick={(e) => handleCopyQuick(e, selectedCaso.telefono, 'Teléfono copiado')}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontWeight: 700, color: '#0F172A' }}
+                                                title="Clic para copiar teléfono"
+                                            >
+                                                <Phone size={13} color="#0284C7" />
+                                                {formatPhoneClean(selectedCaso.telefono) || 'Sin teléfono'}
+                                                <Copy size={10} color="#64748B" />
                                             </span>
                                             {selectedCaso.email && (
-                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                                    <Mail size={14} color="#0284C7" />
-                                                    <strong>Email:</strong> {selectedCaso.email}
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Mail size={13} color="#0284C7" />
+                                                    {selectedCaso.email}
                                                 </span>
                                             )}
                                             {selectedCaso.gestion.updatedAt && (
-                                                <span style={{ fontSize: '0.75rem', color: '#64748B', background: '#F8FAFC', padding: '2px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
-                                                    Última gestión: {new Date(selectedCaso.gestion.updatedAt).toLocaleString('es-AR')} por <strong>{selectedCaso.gestion.agenteNombre || 'Agente'}</strong>
+                                                <span style={{ fontSize: '0.72rem', color: '#64748B', background: '#F8FAFC', padding: '2px 8px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                                                    Última gestión: {new Date(selectedCaso.gestion.updatedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} por <strong>{selectedCaso.gestion.agenteNombre || 'Agente'}</strong>
                                                 </span>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Acciones de Estado SALUS */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    {/* Stepper Guiado de Estado SALUS (1 -> 2 -> 3) */}
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap',
+                                        background: '#F8FAFC', padding: '4px', borderRadius: '10px', border: '1px solid #E2E8F0'
+                                    }}>
+                                        <button
+                                            disabled={savingKey === selectedCaso.key}
+                                            onClick={() => handleUpdateEstado(selectedCaso, 'pendiente')}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '5px 10px', borderRadius: '7px',
+                                                border: isPendiente ? '1.5px solid #F59E0B' : '1px solid transparent',
+                                                background: isPendiente ? '#FFFBEB' : 'transparent',
+                                                color: isPendiente ? '#B45309' : '#64748B', fontSize: '0.73rem', fontWeight: 800,
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            1. Pendiente
+                                        </button>
+                                        <span style={{ color: '#CBD5E1', fontSize: '0.7rem' }}>→</span>
                                         <button
                                             disabled={savingKey === selectedCaso.key}
                                             onClick={() => handleUpdateEstado(selectedCaso, 'contactado')}
                                             style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                padding: '6px 12px', borderRadius: '8px',
-                                                border: isContactado ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
-                                                background: isContactado ? '#EFF6FF' : '#FFFFFF',
-                                                color: isContactado ? '#1D4ED8' : '#475569', fontSize: '0.76rem', fontWeight: 800,
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '5px 10px', borderRadius: '7px',
+                                                border: isContactado ? '1.5px solid #2563EB' : '1px solid transparent',
+                                                background: isContactado ? '#EFF6FF' : 'transparent',
+                                                color: isContactado ? '#1D4ED8' : '#64748B', fontSize: '0.73rem', fontWeight: 800,
                                                 cursor: 'pointer'
                                             }}
                                         >
-                                            <MessageSquare size={13} />
-                                            Contactado
+                                            <MessageSquare size={12} />
+                                            2. Contactado
                                         </button>
+                                        <span style={{ color: '#CBD5E1', fontSize: '0.7rem' }}>→</span>
                                         <button
                                             disabled={savingKey === selectedCaso.key}
                                             onClick={() => handleUpdateEstado(selectedCaso, 'resuelto')}
                                             style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                padding: '6px 12px', borderRadius: '8px',
-                                                border: isResuelto ? '1.5px solid #10B981' : '1px solid #CBD5E1',
-                                                background: isResuelto ? '#ECFDF5' : '#FFFFFF',
-                                                color: isResuelto ? '#047857' : '#475569', fontSize: '0.76rem', fontWeight: 800,
+                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                padding: '5px 11px', borderRadius: '7px',
+                                                border: isResuelto ? '1.5px solid #059669' : '1px solid #A7F3D0',
+                                                background: isResuelto ? '#059669' : '#ECFDF5',
+                                                color: isResuelto ? '#FFFFFF' : '#047857', fontSize: '0.74rem', fontWeight: 800,
                                                 cursor: 'pointer'
                                             }}
                                         >
                                             <CheckCircle2 size={13} />
-                                            Resuelto en SALUS
+                                            3. Resuelto en SALUS
                                         </button>
                                         <button
                                             disabled={savingKey === selectedCaso.key}
                                             onClick={() => handleUpdateEstado(selectedCaso, 'descartado')}
+                                            title="Descartar si el paciente confirmó que asistirá a ambos turnos válidamente"
                                             style={{
-                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                padding: '6px 10px', borderRadius: '8px',
-                                                border: '1px solid #E2E8F0',
-                                                background: '#FFFFFF', color: '#94A3B8',
-                                                fontSize: '0.76rem', fontWeight: 700,
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                padding: '5px 8px', borderRadius: '7px',
+                                                border: '1px solid transparent',
+                                                background: 'transparent', color: '#94A3B8',
+                                                fontSize: '0.71rem', fontWeight: 700,
                                                 cursor: 'pointer'
                                             }}
                                         >
-                                            <XCircle size={13} />
+                                            <XCircle size={12} />
                                             Descartar
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* 2. Comparador de Turnos Reservados en Conflicto */}
+                                {/* 2. Diagnóstico Inteligente + Comparador de Turnos Reservados en Conflicto */}
                                 <div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A', marginBottom: '8px' }}>
-                                        📅 Turnos Reservados en Conflicto ({selectedCaso.turnos.length}):
-                                    </div>
+                                    {diagnosis && (
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            gap: '10px', flexWrap: 'wrap',
+                                            background: diagnosis.bg, border: `1px solid ${diagnosis.border}`,
+                                            borderRadius: '10px', padding: '7px 12px', marginBottom: '9px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.76rem', color: diagnosis.color, fontWeight: 700 }}>
+                                                <span style={{
+                                                    fontSize: '0.64rem', fontWeight: 900, padding: '2px 6px',
+                                                    borderRadius: '4px', background: '#FFFFFF', border: `1px solid ${diagnosis.border}`
+                                                }}>
+                                                    {diagnosis.badge}
+                                                </span>
+                                                <span>{diagnosis.text}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div style={{
                                         display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
                                         gap: '10px'
                                     }}>
-                                        {selectedCaso.turnos.map((t, tIdx) => (
-                                            <div
-                                                key={t.idVisita}
-                                                style={{
-                                                    border: '1.5px solid #BFDBFE',
-                                                    borderRadius: '12px',
-                                                    padding: '11px 14px',
-                                                    background: '#F0F7FF'
-                                                }}
-                                            >
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
-                                                    <span
-                                                        onClick={(e) => handleCopyQuick(e, t.idVisita, 'ID SALUS copiado')}
-                                                        style={{
-                                                            fontSize: '0.7rem', fontWeight: 800,
-                                                            background: '#1565C0', color: '#FFFFFF',
-                                                            padding: '2px 8px', borderRadius: '6px', cursor: 'pointer',
-                                                            display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                                        }}
-                                                        title="Clic para copiar ID SALUS"
-                                                    >
-                                                        Turno #{tIdx + 1} · ID SALUS: {t.idVisita}
-                                                        <Copy size={10} />
-                                                    </span>
-                                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                        Pedido: {new Date(t.fechaCreacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
-                                                </div>
-                                                <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#0D3B66', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span>{t.fechaTurno} a las {t.horaInicio}</span>
-                                                    {t.fechaTurno && t.fechaTurno < todayStr && (
-                                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, background: '#FEE2E2', color: '#B91C1C', padding: '1px 5px', borderRadius: '4px' }}>
-                                                            Fecha pasada
+                                        {selectedCaso.turnos.map((t, tIdx) => {
+                                            const urg = getUrgencyBadge(t.fechaTurno, todayStr);
+                                            return (
+                                                <div
+                                                    key={t.idVisita}
+                                                    style={{
+                                                        border: '1.5px solid #BFDBFE',
+                                                        borderRadius: '12px',
+                                                        padding: '10px 13px',
+                                                        background: '#F8FBFF',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                        <span
+                                                            onClick={(e) => handleCopyQuick(e, t.idVisita, 'ID SALUS copiado')}
+                                                            style={{
+                                                                fontSize: '0.68rem', fontWeight: 800,
+                                                                background: '#1565C0', color: '#FFFFFF',
+                                                                padding: '2px 8px', borderRadius: '6px', cursor: 'pointer',
+                                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                                            }}
+                                                            title="Clic para copiar ID SALUS"
+                                                        >
+                                                            Turno #{tIdx + 1} · ID SALUS: {t.idVisita}
+                                                            <Copy size={10} />
                                                         </span>
-                                                    )}
-                                                </div>
-                                                <div style={{ fontSize: '0.76rem', color: '#475569' }}>
-                                                    Agenda: <strong>{t.agenda}</strong>
-                                                </div>
-                                                {t.tipoVisita && (
-                                                    <div style={{
-                                                        marginTop: '5px', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                        padding: '2px 8px', borderRadius: '5px', background: '#EFF6FF',
-                                                        border: '1px solid #BFDBFE', fontSize: '0.72rem', fontWeight: 700, color: '#1E40AF'
-                                                    }}>
-                                                        <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', color: '#2563EB' }}>Estudio:</span>
-                                                        <span>{t.tipoVisita}</span>
+                                                        <span style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 600 }}>
+                                                            Reservado: {new Date(t.fechaCreacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        ))}
+
+                                                    <div style={{
+                                                        fontSize: '0.96rem', fontWeight: 900, color: '#0D3B66',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap', marginTop: '2px'
+                                                    }}>
+                                                        <span>📅 {formatHumanDate(t.fechaTurno, false)} · {formatHumanTime24(t.horaInicio)}</span>
+                                                        {urg && (
+                                                            <span style={{
+                                                                fontSize: '0.64rem', fontWeight: 800, background: urg.bg,
+                                                                color: urg.color, border: `1px solid ${urg.border}`,
+                                                                padding: '1px 6px', borderRadius: '5px'
+                                                            }}>
+                                                                {urg.label}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap' }}>
+                                                        <span style={{ fontSize: '0.73rem', color: '#475569' }}>
+                                                            Agenda: <strong>{t.agenda}</strong>
+                                                        </span>
+                                                        {t.tipoVisita && (
+                                                            <span style={{
+                                                                padding: '1px 7px', borderRadius: '5px', background: '#EFF6FF',
+                                                                border: '1px solid #BFDBFE', fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF'
+                                                            }}>
+                                                                {t.tipoVisita}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 
-                                {/* 3. Consola Integrada de Envío WhatsApp y Asociación al Agente */}
+                                {/* 3. Consola Integrada de Envío WhatsApp en 2 Columnas (Variables + Nota a la izquierda | Burbuja + Botón Enviar a la derecha) */}
                                 <div style={{
                                     background: '#F8FAFC',
                                     borderRadius: '14px',
                                     border: '1.5px solid #E2E8F0',
-                                    padding: '14px 16px',
+                                    padding: '13px 15px',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '10px'
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <MessageSquare size={16} color="#16A34A" />
-                                            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <MessageSquare size={15} color="#16A34A" />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
                                                 Aviso Oficial WhatsApp ({META_TEMPLATE_TURNOS_MISMO_DIA.name})
                                             </span>
                                             <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px', background: '#DCFCE7', color: '#15803D' }}>
@@ -1046,91 +1375,139 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                 onClick={() => onOpenChatWithPhone(selectedCaso.telefono, { name: selectedCaso.nombre, dni: selectedCaso.dni })}
                                                 style={{
                                                     display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                    padding: '5px 11px', borderRadius: '8px',
+                                                    padding: '4px 10px', borderRadius: '7px',
                                                     background: '#EFF6FF', color: '#1E40AF',
                                                     border: '1px solid #BFDBFE', cursor: 'pointer',
-                                                    fontSize: '0.76rem', fontWeight: 700
+                                                    fontSize: '0.74rem', fontWeight: 700
                                                 }}
                                             >
-                                                <ExternalLink size={13} />
+                                                <ExternalLink size={12} />
                                                 Abrir en Chat
                                             </button>
                                         )}
                                     </div>
 
-                                    {/* Variables editables en línea */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                        {META_VAR_LABELS.map((label, idx) => (
-                                            <div key={label} style={{ gridColumn: idx === 2 ? '1 / span 2' : 'auto' }}>
-                                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#475569', marginBottom: '3px' }}>
-                                                    {label}
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                                        gap: '12px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {/* Mitad Izquierda: Variables editables + Nota interna rápida */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', justifyContent: 'space-between' }}>
+                                            {META_VAR_LABELS.map((label, idx) => (
+                                                <div key={label}>
+                                                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#475569', marginBottom: '2px' }}>
+                                                        {label}
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={currentInlineVars[idx] || ''}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            setInlineVarsMap(prev => {
+                                                                const base = prev[selectedCaso.key] || buildVariablesTurnosMismoDia(selectedCaso);
+                                                                const next = [...base];
+                                                                next[idx] = val;
+                                                                return { ...prev, [selectedCaso.key]: next };
+                                                            });
+                                                        }}
+                                                        style={{
+                                                            width: '100%', padding: '5px 9px', borderRadius: '7px',
+                                                            border: '1px solid #CBD5E1', background: '#FFFFFF',
+                                                            fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box'
+                                                        }}
+                                                    />
+                                                </div>
+                                            ))}
+
+                                            {/* Nota interna rápida de auditoría */}
+                                            <div style={{ marginTop: '2px' }}>
+                                                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#475569', marginBottom: '2px' }}>
+                                                    📝 Nota interna de auditoría (opcional)
                                                 </label>
-                                                <input
-                                                    type="text"
-                                                    value={currentInlineVars[idx] || ''}
-                                                    onChange={e => {
-                                                        const val = e.target.value;
-                                                        setInlineVarsMap(prev => {
-                                                            const base = prev[selectedCaso.key] || buildVariablesTurnosMismoDia(selectedCaso);
-                                                            const next = [...base];
-                                                            next[idx] = val;
-                                                            return { ...prev, [selectedCaso.key]: next };
-                                                        });
-                                                    }}
-                                                    style={{
-                                                        width: '100%', padding: '6px 9px', borderRadius: '7px',
-                                                        border: '1px solid #CBD5E1', background: '#FFFFFF',
-                                                        fontSize: '0.8rem', outline: 'none', boxSizing: 'border-box'
-                                                    }}
-                                                />
+                                                <div style={{ display: 'flex', gap: '5px' }}>
+                                                    <input
+                                                        type="text"
+                                                        value={inlineNoteDraft}
+                                                        onChange={e => setInlineNoteDraft(e.target.value)}
+                                                        placeholder="Ej: Anulé el de las 14:00 hs en SALUS / Paciente reprogramó..."
+                                                        style={{
+                                                            flex: 1, padding: '5px 9px', borderRadius: '7px',
+                                                            border: '1px solid #CBD5E1', background: '#FFFFFF',
+                                                            fontSize: '0.76rem', outline: 'none'
+                                                        }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        disabled={savingKey === selectedCaso.key}
+                                                        onClick={() => handleUpdateEstado(selectedCaso, selectedCaso.gestion.estado, inlineNoteDraft)}
+                                                        style={{
+                                                            padding: '5px 10px', borderRadius: '7px',
+                                                            border: '1px solid #CBD5E1', background: '#FFFFFF',
+                                                            color: '#0F2942', fontSize: '0.72rem', fontWeight: 800,
+                                                            cursor: 'pointer', whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        Guardar nota
+                                                    </button>
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
-
-                                    {/* Vista previa compacta estilo burbuja WhatsApp */}
-                                    <div style={{ background: '#EFEAE2', borderRadius: '10px', padding: '10px 12px' }}>
-                                        <div style={{
-                                            background: '#FFFFFF', borderRadius: '8px', padding: '10px 12px',
-                                            fontSize: '0.78rem', lineHeight: 1.42, color: '#0F172A', whiteSpace: 'pre-wrap',
-                                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                                        }}>
-                                            <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '4px', fontSize: '0.8rem' }}>
-                                                {META_TEMPLATE_TURNOS_MISMO_DIA.header || 'Sanatorio Argentino Contact Center'}
-                                            </div>
-                                            {renderTemplateBody(META_TEMPLATE_TURNOS_MISMO_DIA.body, currentInlineVars.map(v => v || '—')).replace(/\*/g, '')}
                                         </div>
-                                    </div>
 
-                                    {/* Botón de Despacho Directo */}
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                            Al enviar, el paciente queda asignado a <strong>{activeAgent?.fullName || activeAgent?.name}</strong> en <strong>Mis Chats</strong>.
-                                        </span>
-                                        <button
-                                            type="button"
-                                            disabled={isSendingInline || !selectedCaso.telefono}
-                                            onClick={() => handleSendInlineWhatsapp(selectedCaso)}
-                                            style={{
-                                                padding: '9px 18px', borderRadius: '10px', border: 'none',
-                                                background: isSendingInline ? '#94A3B8' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                                                color: '#FFFFFF', fontSize: '0.84rem', fontWeight: 800,
-                                                cursor: isSendingInline ? 'not-allowed' : 'pointer',
-                                                display: 'inline-flex', alignItems: 'center', gap: '7px',
-                                                boxShadow: '0 3px 10px rgba(16, 185, 129, 0.25)'
-                                            }}
-                                        >
-                                            {isSendingInline ? (
-                                                <>
-                                                    <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                                                    Enviando...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Send size={15} />
-                                                    Enviar Aviso WhatsApp
-                                                </>
-                                            )}
-                                        </button>
+                                        {/* Mitad Derecha: Vista Previa WhatsApp + Botón Enviar Directo siempre visible */}
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            justifyContent: 'space-between',
+                                            gap: '8px',
+                                            background: '#EFEAE2',
+                                            borderRadius: '11px',
+                                            padding: '10px 12px',
+                                            border: '1px solid #E2E8F0'
+                                        }}>
+                                            <div style={{
+                                                background: '#FFFFFF', borderRadius: '8px', padding: '9px 11px',
+                                                fontSize: '0.75rem', lineHeight: 1.38, color: '#0F172A', whiteSpace: 'pre-wrap',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
+                                            }}>
+                                                <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: '3px', fontSize: '0.77rem' }}>
+                                                    {META_TEMPLATE_TURNOS_MISMO_DIA.header || 'Sanatorio Argentino Contact Center'}
+                                                </div>
+                                                {renderTemplateBody(META_TEMPLATE_TURNOS_MISMO_DIA.body, currentInlineVars.map(v => v || '—')).replace(/\*/g, '')}
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 600 }}>
+                                                    👉 Queda en <strong>Mis Chats ({activeAgent?.fullName || activeAgent?.name})</strong>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    disabled={isSendingInline || !selectedCaso.telefono}
+                                                    onClick={() => handleSendInlineWhatsapp(selectedCaso)}
+                                                    style={{
+                                                        padding: '8px 16px', borderRadius: '9px', border: 'none',
+                                                        background: isSendingInline ? '#94A3B8' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                                                        color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 800,
+                                                        cursor: isSendingInline ? 'not-allowed' : 'pointer',
+                                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                        boxShadow: '0 3px 10px rgba(16, 185, 129, 0.28)'
+                                                    }}
+                                                >
+                                                    {isSendingInline ? (
+                                                        <>
+                                                            <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                                                            Enviando...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Send size={14} />
+                                                            Enviar Aviso WhatsApp
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1412,8 +1789,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                                                                 Pedido: {new Date(t.fechaCreacion).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                             </span>
                                                         </div>
-                                                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0D3B66', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span>{t.fechaTurno} a las {t.horaInicio}</span>
+                                                        <div style={{ fontSize: '1.02rem', fontWeight: 900, color: '#0D3B66', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                            <span>📅 {formatHumanDate(t.fechaTurno)} · {formatHumanTime24(t.horaInicio)}</span>
                                                             {t.fechaTurno && t.fechaTurno < todayStr && (
                                                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#FEE2E2', color: '#B91C1C', padding: '2px 6px', borderRadius: '4px' }}>
                                                                     Fecha pasada
