@@ -111,6 +111,9 @@ export default function AppRoot() {
     const [reclaimingSession, setReclaimingSession] = useState(false);
 
     const handleLogin = useCallback((user) => {
+        if (typeof window !== 'undefined') {
+            window.__merentielCountedThisLoad = false;
+        }
         setDisplacedConflict(null);
         setCurrentUser(user);
         // Start activity tracking session
@@ -408,6 +411,32 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         if (Date.now() > new Date('2026-07-25T00:00:00-03:00').getTime()) return false;
         return true;
     });
+    // GIF temporal de Merentiel (solo para ctorres, frojo y lmarinero, máximo 3 apariciones)
+    const [merentielPopup, setMerentielPopup] = useState({ open: false, count: 0, max: 3 });
+
+    useEffect(() => {
+        const rawUser = (currentUser?.usuario || '').toLowerCase().trim().split('@')[0];
+        const targetUsers = ['ctorres', 'frojo', 'lmarinero'];
+        if (!targetUsers.includes(rawUser)) {
+            setMerentielPopup({ open: false, count: 0, max: 3 });
+            return;
+        }
+        if (typeof window !== 'undefined' && window.__merentielCountedThisLoad === rawUser) {
+            return;
+        }
+        const storageKey = `admqui_merentiel_boca_count_${rawUser}`;
+        const prevCount = parseInt(localStorage.getItem(storageKey) || '0', 10) || 0;
+        if (prevCount < 3) {
+            const nextCount = prevCount + 1;
+            localStorage.setItem(storageKey, String(nextCount));
+            if (typeof window !== 'undefined') {
+                window.__merentielCountedThisLoad = rawUser;
+            }
+            setMerentielPopup({ open: true, count: nextCount, max: 3 });
+        } else {
+            setMerentielPopup({ open: false, count: prevCount, max: 3 });
+        }
+    }, [currentUser?.usuario]);
     // Beto widget open state (controlled from sidebar avatar)
     const [betoWidgetOpen, setBetoWidgetOpen] = useState(false);
     // Router hooks
@@ -1973,6 +2002,172 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
             {showFrojoCelebration && (
                 <FrojoCelebration onClose={() => setShowFrojoCelebration(false)} />
+            )}
+
+            {merentielPopup.open && (
+                <div
+                    className="no-print"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 9999999,
+                        background: 'rgba(6, 17, 46, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '20px',
+                        fontFamily: "'Inter', -apple-system, sans-serif",
+                    }}
+                >
+                    <div
+                        style={{
+                            position: 'relative',
+                            background: 'linear-gradient(180deg, #002B7F 0%, #001A52 100%)',
+                            border: '4px solid #FACC15',
+                            borderRadius: '20px',
+                            padding: '26px 28px 24px',
+                            maxWidth: '460px',
+                            width: '100%',
+                            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.55), 0 0 40px rgba(250, 204, 21, 0.28)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            textAlign: 'center',
+                        }}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setMerentielPopup(prev => ({ ...prev, open: false }))}
+                            title="Cerrar"
+                            style={{
+                                position: 'absolute',
+                                top: '12px',
+                                right: '12px',
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                border: '1.5px solid rgba(250, 204, 21, 0.5)',
+                                background: 'rgba(0, 0, 0, 0.35)',
+                                color: '#FACC15',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <X size={16} />
+                        </button>
+
+                        {/* Contador de apariciones (1/3, 2/3, 3/3) */}
+                        <div
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '5px 14px',
+                                borderRadius: '999px',
+                                background: 'rgba(250, 204, 21, 0.16)',
+                                border: '1.5px solid #FACC15',
+                                color: '#FACC15',
+                                fontSize: '0.76rem',
+                                fontWeight: 800,
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                                marginBottom: '16px',
+                            }}
+                        >
+                            <span>Aparición {merentielPopup.count} de {merentielPopup.max}</span>
+                            <span style={{ display: 'inline-flex', gap: '4px', marginLeft: '2px' }}>
+                                {[1, 2, 3].map((step) => (
+                                    <span
+                                        key={step}
+                                        style={{
+                                            width: '8px',
+                                            height: '8px',
+                                            borderRadius: '50%',
+                                            background: step <= merentielPopup.count ? '#FACC15' : 'rgba(255, 255, 255, 0.25)',
+                                            border: '1px solid #FACC15',
+                                        }}
+                                    />
+                                ))}
+                            </span>
+                        </div>
+
+                        {/* GIF de Merentiel */}
+                        <div
+                            style={{
+                                width: '100%',
+                                borderRadius: '14px',
+                                overflow: 'hidden',
+                                border: '3px solid #FACC15',
+                                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.45)',
+                                background: '#000',
+                            }}
+                        >
+                            <img
+                                src="/merentiel-cumbia.gif"
+                                alt="Merentiel - Boca boca boca"
+                                style={{
+                                    width: '100%',
+                                    maxHeight: '340px',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                }}
+                            />
+                        </div>
+
+                        {/* Título debajo del GIF */}
+                        <h2
+                            style={{
+                                margin: '18px 0 6px',
+                                fontSize: '2rem',
+                                fontWeight: 900,
+                                color: '#FACC15',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em',
+                                textShadow: '0 3px 12px rgba(0, 0, 0, 0.5)',
+                            }}
+                        >
+                            Boca boca boca
+                        </h2>
+
+                        <p
+                            style={{
+                                margin: '0 0 18px',
+                                fontSize: '0.78rem',
+                                color: '#DBEAFE',
+                                fontWeight: 600,
+                            }}
+                        >
+                            {merentielPopup.count >= merentielPopup.max
+                                ? 'Última aparición (3/3) — luego de cerrar ya no volverá a mostrarse'
+                                : `Te quedan ${merentielPopup.max - merentielPopup.count} aparición(es) más al iniciar sesión`}
+                        </p>
+
+                        <button
+                            type="button"
+                            onClick={() => setMerentielPopup(prev => ({ ...prev, open: false }))}
+                            style={{
+                                width: '100%',
+                                padding: '12px 24px',
+                                borderRadius: '12px',
+                                border: 'none',
+                                background: '#FACC15',
+                                color: '#001A52',
+                                fontSize: '0.95rem',
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                                boxShadow: '0 6px 16px rgba(250, 204, 21, 0.35)',
+                                transition: 'transform 0.15s ease',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.02)'; }}
+                            onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        >
+                            Continuar al sistema
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
