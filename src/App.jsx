@@ -424,7 +424,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         if (typeof window !== 'undefined' && window.__merentielCountedThisLoad === rawUser) {
             return;
         }
-        const storageKey = `admqui_merentiel_boca_count_${rawUser}`;
+        const storageKey = `admqui_merentiel_boca_v2_count_${rawUser}`;
         const prevCount = parseInt(localStorage.getItem(storageKey) || '0', 10) || 0;
         if (prevCount < 3) {
             const nextCount = prevCount + 1;
@@ -2026,8 +2026,9 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                             background: 'linear-gradient(180deg, #002B7F 0%, #001A52 100%)',
                             border: '4px solid #FACC15',
                             borderRadius: '20px',
-                            padding: '26px 28px 24px',
-                            maxWidth: '460px',
+                            padding: '20px 24px 20px',
+                            maxWidth: '480px',
+                            maxHeight: '94vh',
                             width: '100%',
                             boxShadow: '0 25px 60px rgba(0, 0, 0, 0.55), 0 0 40px rgba(250, 204, 21, 0.28)',
                             display: 'flex',
@@ -2074,7 +2075,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                                 fontWeight: 800,
                                 letterSpacing: '0.04em',
                                 textTransform: 'uppercase',
-                                marginBottom: '16px',
+                                marginBottom: '12px',
                             }}
                         >
                             <span>Aparición {merentielPopup.count} de {merentielPopup.max}</span>
@@ -2094,24 +2095,28 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                             </span>
                         </div>
 
-                        {/* GIF de Merentiel */}
+                        {/* GIF de Merentiel completo sin recortar */}
                         <div
                             style={{
-                                width: '100%',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                maxWidth: '100%',
                                 borderRadius: '14px',
                                 overflow: 'hidden',
                                 border: '3px solid #FACC15',
                                 boxShadow: '0 10px 25px rgba(0, 0, 0, 0.45)',
-                                background: '#000',
+                                background: '#000d29',
                             }}
                         >
                             <img
                                 src="/merentiel-cumbia.gif"
                                 alt="Merentiel - Boca boca boca"
                                 style={{
-                                    width: '100%',
-                                    maxHeight: '340px',
-                                    objectFit: 'cover',
+                                    width: 'auto',
+                                    maxWidth: '100%',
+                                    maxHeight: '62vh',
+                                    objectFit: 'contain',
                                     display: 'block',
                                 }}
                             />
@@ -2120,8 +2125,8 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                         {/* Título debajo del GIF */}
                         <h2
                             style={{
-                                margin: '18px 0 6px',
-                                fontSize: '2rem',
+                                margin: '14px 0 4px',
+                                fontSize: '1.9rem',
                                 fontWeight: 900,
                                 color: '#FACC15',
                                 textTransform: 'uppercase',
