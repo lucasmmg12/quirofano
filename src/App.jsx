@@ -143,7 +143,31 @@ export default function AppRoot() {
         }
     }, [currentUser, handleLogout]);
 
-    // Verificación continua en vivo del estado de la cuenta y bloqueo de sesiones simultáneas
+    // Sincronización multi-ventana en la MISMA PC (localStorage 'admqui_session')
+    useEffect(() => {
+        const handleStorageSync = (e) => {
+            if (e.key !== 'admqui_session') return;
+            if (!e.newValue) {
+                setDisplacedConflict(null);
+                setCurrentUser(null);
+                return;
+            }
+            try {
+                const syncedUser = JSON.parse(e.newValue);
+                if (syncedUser?.id && syncedUser?.usuario) {
+                    sessionStorage.setItem('admqui_session', e.newValue);
+                    setDisplacedConflict(null);
+                    setCurrentUser(syncedUser);
+                }
+            } catch {
+                // ignore malformed storage payload
+            }
+        };
+        window.addEventListener('storage', handleStorageSync);
+        return () => window.removeEventListener('storage', handleStorageSync);
+    }, []);
+
+    // Verificación continua en vivo del estado de la cuenta y bloqueo de sesiones simultáneas en distinta PC
     useEffect(() => {
         if (!currentUser?.id) return;
         let cancelled = false;
@@ -163,12 +187,15 @@ export default function AppRoot() {
 
             if (status.status === 'displaced') {
                 setDisplacedConflict({
-                    otherDeviceLabel: status.otherDeviceLabel || 'Otro dispositivo / navegador',
+                    otherDeviceLabel: status.otherDeviceLabel || 'Otra PC / Dispositivo',
                     otherStartedAt: status.otherStartedAt,
                     otherLastHeartbeat: status.otherLastHeartbeat,
                 });
             } else if (status.status === 'ok') {
                 setDisplacedConflict(null);
+                if (status.sessionToken && status.sessionToken !== currentUser.sessionToken) {
+                    setCurrentUser(prev => prev ? { ...prev, sessionToken: status.sessionToken } : prev);
+                }
             }
         };
 
@@ -218,11 +245,11 @@ export default function AppRoot() {
                         </div>
 
                         <h2 style={{ margin: '0 0 8px', fontSize: '1.22rem', fontWeight: 800, color: '#0F172A' }}>
-                            Tenés Abierta una Sesión en Otro Dispositivo
+                            Tenés Abierta una Sesión en Otra PC
                         </h2>
 
                         <p style={{ margin: '0 0 16px', fontSize: '0.84rem', color: '#475569', lineHeight: 1.5 }}>
-                            Se detectó que el usuario <strong>@{currentUser.usuario}</strong> inició o mantiene activa una sesión en otro dispositivo. Por seguridad no pueden permanecer 2 usuarios conectados en simultáneo.
+                            Se detectó que el usuario <strong>@{currentUser.usuario}</strong> inició o mantiene activa una sesión en <strong>otra PC diferente</strong>. Podés abrir varias ventanas en la misma PC, pero por seguridad no se permite el uso simultáneo en 2 equipos distintos.
                         </p>
 
                         <div style={{

@@ -142,6 +142,7 @@ export default function LoginScreen({ onLogin }) {
         if (LAB_USERS.includes(loginUser)) {
             setError('Esta cuenta es exclusiva del portal de laboratorio. Acceda desde su enlace dedicado.');
             triggerShake();
+            localStorage.removeItem('admqui_session');
             sessionStorage.removeItem('admqui_session');
             setStep('credentials');
             return;
@@ -162,7 +163,7 @@ export default function LoginScreen({ onLogin }) {
         if (sessionCheck.status === 'conflict' && !forceTakeover) {
             setPendingUser({ ...userObj, sessionToken: tokenToUse });
             setConcurrentConflict({
-                otherDeviceLabel: sessionCheck.otherDeviceLabel || 'Otro dispositivo / navegador',
+                otherDeviceLabel: sessionCheck.otherDeviceLabel || 'Otra PC / Dispositivo',
                 otherStartedAt: sessionCheck.otherStartedAt,
                 otherLastHeartbeat: sessionCheck.otherLastHeartbeat,
             });
@@ -172,7 +173,7 @@ export default function LoginScreen({ onLogin }) {
             return;
         }
 
-        const session = finalizeSession({ ...userObj, sessionToken: tokenToUse });
+        const session = finalizeSession({ ...userObj, sessionToken: sessionCheck.sessionToken || tokenToUse });
         await logAction('login', {
             usuario: session.usuario,
             mfa: Boolean(userObj.mfa_enabled),
@@ -230,6 +231,7 @@ export default function LoginScreen({ onLogin }) {
             setError('Esta cuenta es exclusiva del portal de laboratorio. Acceda desde su enlace dedicado.');
             triggerShake();
             setPassword('');
+            localStorage.removeItem('admqui_session');
             sessionStorage.removeItem('admqui_session');
             return;
         }

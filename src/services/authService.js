@@ -179,14 +179,18 @@ export function generateSessionToken() {
 
 export function getCurrentUser() {
     try {
-        const raw = sessionStorage.getItem(SESSION_KEY);
+        const rawLocal = localStorage.getItem(SESSION_KEY);
+        const rawSession = sessionStorage.getItem(SESSION_KEY);
+        const raw = rawLocal || rawSession;
         if (!raw) return null;
         const session = JSON.parse(raw);
         if (!session?.id || !session?.usuario) return null;
         if (!session.sessionToken) {
             session.sessionToken = generateSessionToken();
-            sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
         }
+        const serialized = JSON.stringify(session);
+        if (rawLocal !== serialized) localStorage.setItem(SESSION_KEY, serialized);
+        if (rawSession !== serialized) sessionStorage.setItem(SESSION_KEY, serialized);
         return session;
     } catch {
         return null;
@@ -201,7 +205,7 @@ export function isAuthenticated() {
 }
 
 /**
- * Persiste la sesión definitiva una vez superados el cambio de clave, 2FA y control de sesión única
+ * Persiste la sesión definitiva una vez superados el cambio de clave, 2FA y control de sesión única (compartida entre ventanas de la misma PC)
  */
 export function finalizeSession(user) {
     const session = {
@@ -219,19 +223,23 @@ export function finalizeSession(user) {
         sessionToken: user.sessionToken || generateSessionToken(),
         loginAt: new Date().toISOString(),
     };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    const serialized = JSON.stringify(session);
+    localStorage.setItem(SESSION_KEY, serialized);
+    sessionStorage.setItem(SESSION_KEY, serialized);
     trackLogin(supabase, user.usuario);
     return session;
 }
 
 /**
- * Actualiza los datos del usuario en sessionStorage tras editar su perfil
+ * Actualiza los datos del usuario en localStorage/sessionStorage tras editar su perfil o reclamar sesión
  */
 export function updateCurrentUserSession(partialUser) {
     const current = getCurrentUser();
     if (!current) return null;
     const updated = { ...current, ...partialUser };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+    const serialized = JSON.stringify(updated);
+    localStorage.setItem(SESSION_KEY, serialized);
+    sessionStorage.setItem(SESSION_KEY, serialized);
     return updated;
 }
 
@@ -317,10 +325,11 @@ export async function checkOrClaimUserSession(userId, sessionToken, forceTakeove
             return { status: 'ok', sessionToken: tokenToUse };
         }
 
+        const effectiveToken = data?.session_token || tokenToUse;
         return {
             status: data?.status || 'ok',
-            sessionToken: tokenToUse,
-            otherDeviceLabel: data?.other_device_label || 'Otro dispositivo / navegador',
+            sessionToken: effectiveToken,
+            otherDeviceLabel: data?.other_device_label || 'Otra PC / Dispositivo',
             otherStartedAt: data?.other_started_at || null,
             otherLastHeartbeat: data?.other_last_heartbeat || null,
             error: data?.error || null,
@@ -341,14 +350,15 @@ export async function reclaimCurrentUserSession(currentUser) {
     if (res.status === 'account_disabled') {
         throw new Error(res.error || 'La cuenta se encuentra deshabilitada');
     }
-    const updated = updateCurrentUserSession({ sessionToken: newSessionToken });
-    return updated || { ...currentUser, sessionToken: newSessionToken };
+    const finalToken = res.sessionToken || newSessionToken;
+    const updated = updateCurrentUserSession({ sessionToken: finalToken });
+    return updated || { ...currentUser, sessionToken: finalToken };
 }
 
 /**
  * Verifica en tiempo real:
  * 1) Si la cuenta del usuario logueado sigue activa (activo === true)
- * 2) Si otro dispositivo abrió o tomó la sesión en simultáneo (status === 'displaced')
+ * 2) Si otra PC abrió o tomó la sesión en simultáneo (status === 'displaced')
  */
 export async function verifyActiveUserSession(userId, sessionToken = null) {
     if (!userId) return { active: false };
@@ -367,10 +377,15 @@ export async function verifyActiveUserSession(userId, sessionToken = null) {
             return { active: true, status: 'ok' }; // No desconectar por falla transitoria de red
         }
 
+        if (data.status === 'ok' && data.session_token && current && current.sessionToken !== data.session_token) {
+            updateCurrentUserSession({ sessionToken: data.session_token });
+        }
+
         return {
             active: Boolean(data.active),
             status: data.status || 'ok',
-            otherDeviceLabel: data.other_device_label || 'Otro dispositivo / navegador',
+            sessionToken: data.session_token || tokenToCheck,
+            otherDeviceLabel: data.other_device_label || 'Otra PC / Dispositivo',
             otherStartedAt: data.other_started_at || null,
             otherLastHeartbeat: data.other_last_heartbeat || null,
             rol: data.rol,
@@ -476,7 +491,7 @@ export async function login(usuario, password) {
             };
         }
 
-        const session = finalizeSession({ ...user, sessionToken: newSessionToken });
+        const session = finalizeSession({ ...user, sessionToken: sessionCheck.sessionToken || newSessionToken });
         return { success: true, user: session };
     } catch (err) {
         console.error('[AuthService] Login error:', err);
@@ -613,6 +628,7 @@ export function logout() {
             p_session_token: user.sessionToken || null,
         }).then(() => {}).catch(() => {});
     }
+    localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
 }
 
