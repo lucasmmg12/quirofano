@@ -115,8 +115,6 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         { id: 'facturacion', label: '3. Facturación', icon: Receipt },
         { id: 'txt_provincia', label: 'Txt Provincia', icon: FileText },
         { id: 'asignaciones', label: 'Asignaciones', icon: Users },
-        { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileSpreadsheet },
-        { id: 'auditoria_pdf', label: 'Auditoría HC PDF', icon: FileCheck },
     ].filter(i => isModuleVisible(i.id));
 
     // Sub-items dentro de "Emisión de Pedidos"

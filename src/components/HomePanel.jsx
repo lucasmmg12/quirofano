@@ -76,7 +76,6 @@ const WORKSPACE_CATALOG = [
             { id: 'altas', label: '2. Control de Altas', icon: ClipboardCheck },
             { id: 'facturacion', label: '3. Facturación', icon: Receipt },
             { id: 'txt_provincia', label: 'Txt Provincia (OSP)', icon: FileSpreadsheet },
-            { id: 'auditoria_historias', label: 'Auditoría H.C.', icon: FileCheck },
         ],
     },
     {
