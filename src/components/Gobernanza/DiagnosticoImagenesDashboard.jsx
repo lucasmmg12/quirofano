@@ -526,40 +526,14 @@ export default function DiagnosticoImagenesDashboard({
 
         const reqStartMonth = (effectiveDesde || '2026-10-01').substring(0, 7);
         const reqEndMonth = (effectiveHasta || '2026-10-31').substring(0, 7);
-        const cacheStart = data.rango?.fechaDesde || '2026-10-01';
+        const cacheStart = data.rango?.fechaDesde || '2026-01-01';
         const cacheEnd = data.rango?.fechaHasta || '2026-10-31';
 
-        // Caso A: El rango del payload coincide exactamente con el período solicitado
-        if (cacheStart === effectiveDesde && cacheEnd === effectiveHasta) {
-            return data;
-        }
+        const dStart = new Date(`${effectiveDesde}T00:00:00`);
+        const dEnd = new Date(`${effectiveHasta}T23:59:59`);
+        const daysSelected = Math.max(1, Math.round((dEnd - dStart) / (1000 * 60 * 60 * 24)));
 
-        // Caso B: El payload contiene PeriodoMes y cubre los meses solicitados
-        const agendasHaveMonth = Array.isArray(data.agendas) && data.agendas.some(r => Boolean(r.PeriodoMes));
-        if (agendasHaveMonth) {
-            const matchingAgendas = data.agendas.filter(r => !r.PeriodoMes || (r.PeriodoMes >= reqStartMonth && r.PeriodoMes <= reqEndMonth));
-            if (matchingAgendas.length > 0 && (cacheStart.substring(0, 7) <= reqStartMonth && cacheEnd.substring(0, 7) >= reqEndMonth)) {
-                const filterByMonth = (arr) => (arr || []).filter(r => !r.PeriodoMes || (r.PeriodoMes >= reqStartMonth && r.PeriodoMes <= reqEndMonth));
-                const filterEvol = (arr) => (arr || []).filter(r => {
-                    if (r.FechaDia) return r.FechaDia >= effectiveDesde && r.FechaDia <= effectiveHasta;
-                    if (r.PeriodoMes) return r.PeriodoMes >= reqStartMonth && r.PeriodoMes <= reqEndMonth;
-                    return true;
-                });
-                return {
-                    ...data,
-                    agendas: matchingAgendas,
-                    realizadores: filterByMonth(data.realizadores),
-                    solicitantes: filterByMonth(data.solicitantes),
-                    informantes: filterByMonth(data.informantes),
-                    obrasSociales: filterByMonth(data.obrasSociales),
-                    asistencias: filterByMonth(data.asistencias),
-                    evolucion: filterEvol(data.evolucion)
-                };
-            }
-        }
-
-        // Caso C: El payload en caché es una foto base (ej. Octubre 2026) y el usuario seleccionó otro mes o rango en la barra del Telar.
-        // Calculamos la lista de meses en [reqStartMonth .. reqEndMonth] y escalamos proporcionalmente con variación determinística por ítem.
+        // Construir lista cronológica de meses solicitados [reqStartMonth .. reqEndMonth]
         const monthsInRange = [];
         const [y1, m1] = reqStartMonth.split('-').map(Number);
         const [y2, m2] = reqEndMonth.split('-').map(Number);
@@ -577,129 +551,256 @@ export default function DiagnosticoImagenesDashboard({
             monthsInRange.push({ key: reqStartMonth, year: 2026, month: 10, mm: '10' });
         }
 
-        // Factor acumulado según los meses seleccionados y leve ajuste interanual
-        const baseFactor = monthsInRange.reduce((sum, mObj) => {
-            const w = MONTH_SEASONAL_WEIGHTS[mObj.mm] || 0.95;
-            const yearFactor = mObj.year === 2026 ? 1.0 : mObj.year === 2025 ? 0.94 : mObj.year === 2024 ? 0.89 : 0.85;
-            return sum + (w * yearFactor);
-        }, 0);
+        // Identificar qué meses existen realmente en el caché y cuáles están completos
+        const monthTotalsMap = new Map();
+        (data.evolucion || []).forEach(r => {
+            const m = r.PeriodoMes || (r.FechaDia ? r.FechaDia.substring(0, 7) : null);
+            if (m) monthTotalsMap.set(m, (monthTotalsMap.get(m) || 0) + (r.Cantidad || 0));
+        });
+        if (monthTotalsMap.size === 0) {
+            (data.agendas || []).forEach(r => {
+                if (r.PeriodoMes) monthTotalsMap.set(r.PeriodoMes, (monthTotalsMap.get(r.PeriodoMes) || 0) + (r.Cantidad || 0));
+            });
+        }
 
-        // Si es un rango parcial dentro de un mes (ej. 15 días), ajustar por proporción de días
-        const dStart = new Date(`${effectiveDesde}T00:00:00`);
-        const dEnd = new Date(`${effectiveHasta}T23:59:59`);
-        const daysSelected = Math.max(1, Math.round((dEnd - dStart) / (1000 * 60 * 60 * 24)));
-        const approxDaysInMonths = monthsInRange.length * 30.4;
-        const partialRatio = monthsInRange.length === 1 && daysSelected < 27
-            ? Math.max(0.1, daysSelected / 30)
-            : (daysSelected / approxDaysInMonths > 0.85 && daysSelected / approxDaysInMonths < 1.15 ? 1 : Math.max(0.15, daysSelected / approxDaysInMonths));
+        const availableMonthsSet = new Set(monthTotalsMap.keys());
+        const maxMonthVol = Math.max(1, ...Array.from(monthTotalsMap.values()));
+        // Un mes del caché se considera mes completo si supera el 35% del volumen mensual pico (excluye meses en curso con pocos días)
+        const fullAvailableMonthsSet = new Set(
+            Array.from(monthTotalsMap.entries())
+                .filter(([, vol]) => vol >= maxMonthVol * 0.35)
+                .map(([m]) => m)
+        );
+        if (fullAvailableMonthsSet.size === 0 && availableMonthsSet.size > 0) {
+            availableMonthsSet.forEach(m => fullAvailableMonthsSet.add(m));
+        }
 
-        const totalScale = baseFactor * partialRatio;
+        const sortedFullMonths = Array.from(fullAvailableMonthsSet).sort();
+        const referenceMonth = fullAvailableMonthsSet.has('2026-10')
+            ? '2026-10'
+            : (sortedFullMonths[sortedFullMonths.length - 1] || '2026-10');
 
-        // Hash determinístico para que cada agenda/profesional tenga variación realista entre meses distintos
-        const itemJitter = (labelStr = '') => {
+        const fullMonthByMM = new Map();
+        sortedFullMonths.forEach(m => {
+            fullMonthByMM.set(m.substring(5, 7), m);
+        });
+
+        const baseMonthsCount = Math.max(1, fullAvailableMonthsSet.size || 1);
+
+        // Hash determinístico suave para proyecciones fuera del rango SALUS en caché
+        const itemJitter = (seedStr = '') => {
             let h = 0;
-            const seedStr = `${reqStartMonth}_${reqEndMonth}_${labelStr}`;
             for (let i = 0; i < seedStr.length; i++) {
                 h = ((h << 5) - h) + seedStr.charCodeAt(i);
                 h |= 0;
             }
-            const norm = ((Math.abs(h) % 100) - 50) / 1000; // -0.05 a +0.049
-            return Math.max(0.75, 1 + norm);
+            const norm = ((Math.abs(h) % 90) - 45) / 1000; // -0.045 a +0.044
+            return Math.max(0.8, 1 + norm);
         };
 
-        const scaleCount = (val, keyStr) => {
-            if (!val || val <= 0) return 0;
-            return Math.max(1, Math.round(val * totalScale * itemJitter(keyStr)));
-        };
+        // Caso 1: Todos los meses solicitados están disponibles como datos reales en el caché
+        const allRequestedMonthsInCache = monthsInRange.every(m =>
+            fullAvailableMonthsSet.has(m.key) || (availableMonthsSet.has(m.key) && m.key === cacheEnd.substring(0, 7) && effectiveHasta <= cacheEnd)
+        );
 
-        const scaledAgendas = (data.agendas || []).map(r => {
-            const k = `${r.Modalidad}_${r.Agenda}_${r.EstadoAsistencia}`;
-            const newCant = scaleCount(r.Cantidad, k);
-            const infRatio = (r.Cantidad > 0 && r.Informados !== undefined) ? (r.Informados / r.Cantidad) : 0.92;
-            const newInf = Math.min(newCant, Math.round(newCant * infRatio));
-            return {
-                ...r,
-                Cantidad: newCant,
-                Informados: newInf,
-                PendientesInforme: Math.max(0, newCant - newInf)
-            };
-        });
-
-        const scaleSimpleList = (arr, nameField) => (arr || []).map(r => ({
-            ...r,
-            Cantidad: scaleCount(r.Cantidad, `${r.Modalidad}_${r.Agenda}_${r[nameField] || ''}_${r.EstadoAsistencia || ''}`)
-        }));
-
-        // Reconstruir serie de evolución temporal adaptada al período seleccionado
-        let scaledEvolucion = [];
-        if (monthsInRange.length <= 2 && daysSelected <= 65) {
-            // Serie diaria para el rango [effectiveDesde .. effectiveHasta]
-            const baseDaily = data.evolucion || [];
-            const byDayIndex = new Map();
-            baseDaily.forEach(e => {
-                const dayNum = e.FechaDia ? parseInt(e.FechaDia.substring(8, 10), 10) : 1;
-                if (!byDayIndex.has(dayNum)) byDayIndex.set(dayNum, []);
-                byDayIndex.get(dayNum).push(e);
+        if (allRequestedMonthsInCache && availableMonthsSet.size > 0) {
+            const filteredEvol = (data.evolucion || []).filter(r => {
+                if (r.FechaDia) return r.FechaDia >= effectiveDesde && r.FechaDia <= effectiveHasta;
+                if (r.PeriodoMes) return r.PeriodoMes >= reqStartMonth && r.PeriodoMes <= reqEndMonth;
+                return true;
             });
 
-            const cur = new Date(dStart);
-            while (cur <= dEnd) {
-                const yyyy = cur.getFullYear();
-                const mm = String(cur.getMonth() + 1).padStart(2, '0');
-                const dd = String(cur.getDate()).padStart(2, '0');
-                const dayKey = `${yyyy}-${mm}-${dd}`;
-                const mKey = `${yyyy}-${mm}`;
-                const dayNum = cur.getDate();
-                const templateRows = byDayIndex.get(dayNum) || byDayIndex.get((dayNum % 28) + 1) || [];
-                const mWeight = (MONTH_SEASONAL_WEIGHTS[mm] || 0.96) * (yyyy === 2026 ? 1.0 : 0.93);
-
-                templateRows.forEach(t => {
-                    scaledEvolucion.push({
-                        ...t,
-                        FechaDia: dayKey,
-                        PeriodoMes: mKey,
-                        Cantidad: Math.max(1, Math.round((t.Cantidad || 0) * mWeight * itemJitter(`${dayKey}_${t.Modalidad}`)))
-                    });
-                });
-                cur.setDate(cur.getDate() + 1);
+            // Si el usuario eligió un sub-rango de días dentro de un mes (< 27 días), calcular proporción exacta según evolución diaria real
+            let subMonthRatio = 1;
+            if (monthsInRange.length === 1 && daysSelected < 27) {
+                const fullMonthEvolSum = (data.evolucion || [])
+                    .filter(r => (r.PeriodoMes || r.FechaDia?.substring(0, 7)) === reqStartMonth)
+                    .reduce((acc, r) => acc + (r.Cantidad || 0), 0);
+                const subRangeEvolSum = filteredEvol.reduce((acc, r) => acc + (r.Cantidad || 0), 0);
+                subMonthRatio = fullMonthEvolSum > 0
+                    ? Math.max(0.05, subRangeEvolSum / fullMonthEvolSum)
+                    : Math.max(0.05, daysSelected / 30);
             }
-        } else {
-            // Serie mensual para rangos de varios meses (ej. Trimestre, Últimos 3 meses, Este Año, Histórico)
-            const baseByModAmbito = [];
-            const modMap = new Map();
-            (data.evolucion || []).forEach(e => {
-                const k = `${e.Modalidad}|${e.Ambito}|${e.EstadoAsistencia}`;
-                if (!modMap.has(k)) {
-                    modMap.set(k, { Modalidad: e.Modalidad, Ambito: e.Ambito, EstadoAsistencia: e.EstadoAsistencia, Cantidad: 0 });
-                }
-                modMap.get(k).Cantidad += (e.Cantidad || 0);
-            });
-            modMap.forEach(v => baseByModAmbito.push(v));
 
+            const filterAndScaleByMonth = (arr, isAgenda = false) => {
+                const rows = (arr || []).filter(r => !r.PeriodoMes || (r.PeriodoMes >= reqStartMonth && r.PeriodoMes <= reqEndMonth));
+                if (subMonthRatio >= 0.99) return rows;
+                return rows.map(r => {
+                    const newCant = Math.max(0, Math.round((r.Cantidad || 0) * subMonthRatio));
+                    if (!isAgenda) return { ...r, Cantidad: newCant };
+                    const infRatio = (r.Cantidad > 0 && r.Informados !== undefined) ? (r.Informados / r.Cantidad) : 0.92;
+                    const newInf = Math.min(newCant, Math.round(newCant * infRatio));
+                    return {
+                        ...r,
+                        Cantidad: newCant,
+                        Informados: newInf,
+                        PendientesInforme: Math.max(0, newCant - newInf)
+                    };
+                }).filter(r => r.Cantidad > 0);
+            };
+
+            return {
+                ...data,
+                rango: { fechaDesde: effectiveDesde, fechaHasta: effectiveHasta },
+                agendas: filterAndScaleByMonth(data.agendas, true),
+                realizadores: filterAndScaleByMonth(data.realizadores),
+                solicitantes: filterAndScaleByMonth(data.solicitantes),
+                informantes: filterAndScaleByMonth(data.informantes),
+                obrasSociales: filterAndScaleByMonth(data.obrasSociales),
+                asistencias: filterAndScaleByMonth(data.asistencias),
+                evolucion: filteredEvol
+            };
+        }
+
+        // Caso 2: El rango incluye meses fuera del caché (ej. Histórico 2022-2026 o meses previos a 2026-01).
+        // Para los meses que SÍ existen completos en el caché se usa el dato 100% real de SALUS;
+        // para los meses fuera del caché se proyecta tomando UN SOLO MES plantilla (nunca la suma de todos los meses).
+        const getTemplateMonthFor = (mObj) => {
+            if (fullMonthByMM.has(mObj.mm)) return fullMonthByMM.get(mObj.mm);
+            return referenceMonth;
+        };
+
+        const getMonthProjectionFactor = (mObj, tplMonth) => {
+            const tplMM = tplMonth.substring(5, 7);
+            const wTarget = MONTH_SEASONAL_WEIGHTS[mObj.mm] || 0.96;
+            const wTpl = MONTH_SEASONAL_WEIGHTS[tplMM] || 1.0;
+            const seasonalRatio = mObj.mm === tplMM ? 1.0 : (wTarget / wTpl);
+            const yearFactor = mObj.year === 2026 ? 1.0 : mObj.year === 2025 ? 0.94 : mObj.year === 2024 ? 0.89 : 0.85;
+            return seasonalRatio * yearFactor;
+        };
+
+        // Agrupar colecciones por PeriodoMes para acceso O(1) por mes
+        const groupByMonth = (arr) => {
+            const map = new Map();
+            (arr || []).forEach(r => {
+                const m = r.PeriodoMes || (r.FechaDia ? r.FechaDia.substring(0, 7) : referenceMonth);
+                if (!map.has(m)) map.set(m, []);
+                map.get(m).push(r);
+            });
+            return map;
+        };
+
+        const agendasByMonth = groupByMonth(data.agendas);
+        const realizadoresByMonth = groupByMonth(data.realizadores);
+        const solicitantesByMonth = groupByMonth(data.solicitantes);
+        const informantesByMonth = groupByMonth(data.informantes);
+        const obrasSocialesByMonth = groupByMonth(data.obrasSociales);
+        const asistenciasByMonth = groupByMonth(data.asistencias);
+        const evolucionByMonth = groupByMonth(data.evolucion);
+
+        const buildCollectionForMonths = (byMonthMap, fallbackArr, keyFn, isAgenda = false) => {
+            const result = [];
             monthsInRange.forEach(mObj => {
-                const mWeight = (MONTH_SEASONAL_WEIGHTS[mObj.mm] || 0.96) * (mObj.year === 2026 ? 1.0 : mObj.year === 2025 ? 0.94 : 0.88);
-                baseByModAmbito.forEach(tpl => {
+                // Si el mes existe completo en el caché, usar sus registros reales directos
+                if (fullAvailableMonthsSet.has(mObj.key) && byMonthMap.has(mObj.key)) {
+                    byMonthMap.get(mObj.key).forEach(r => result.push(r));
+                    return;
+                }
+                // Si no existe en caché, usar UN SOLO MES plantilla (1 mes = ~8.500-9.500 estudios)
+                const tplMonth = getTemplateMonthFor(mObj);
+                const tplRows = byMonthMap.get(tplMonth) || (fallbackArr || []);
+                const normDivisor = byMonthMap.has(tplMonth) ? 1 : baseMonthsCount;
+                const factor = getMonthProjectionFactor(mObj, tplMonth) / normDivisor;
+
+                tplRows.forEach(r => {
+                    const jitter = itemJitter(`${mObj.key}_${keyFn(r)}`);
+                    const newCant = Math.max(1, Math.round((r.Cantidad || 0) * factor * jitter));
+                    if (isAgenda) {
+                        const infRatio = (r.Cantidad > 0 && r.Informados !== undefined) ? (r.Informados / r.Cantidad) : 0.92;
+                        const newInf = Math.min(newCant, Math.round(newCant * infRatio));
+                        result.push({
+                            ...r,
+                            PeriodoMes: mObj.key,
+                            Cantidad: newCant,
+                            Informados: newInf,
+                            PendientesInforme: Math.max(0, newCant - newInf)
+                        });
+                    } else {
+                        result.push({
+                            ...r,
+                            PeriodoMes: mObj.key,
+                            Cantidad: newCant
+                        });
+                    }
+                });
+            });
+            return result;
+        };
+
+        // Reconstruir serie de evolución temporal (diaria o mensual) usando datos reales para meses en caché y plantilla de 1 mes para el resto
+        const scaledEvolucion = [];
+        const isDailyRange = monthsInRange.length <= 2 && daysSelected <= 65;
+
+        monthsInRange.forEach(mObj => {
+            if (fullAvailableMonthsSet.has(mObj.key) && evolucionByMonth.has(mObj.key)) {
+                evolucionByMonth.get(mObj.key).forEach(e => {
+                    if (!e.FechaDia || (e.FechaDia >= effectiveDesde && e.FechaDia <= effectiveHasta)) {
+                        scaledEvolucion.push(e);
+                    }
+                });
+                return;
+            }
+
+            const tplMonth = getTemplateMonthFor(mObj);
+            const tplEvolRows = evolucionByMonth.get(tplMonth) || (data.evolucion || []);
+            const normDivisor = evolucionByMonth.has(tplMonth) ? 1 : baseMonthsCount;
+            const factor = getMonthProjectionFactor(mObj, tplMonth) / normDivisor;
+
+            if (isDailyRange) {
+                const byDayIndex = new Map();
+                tplEvolRows.forEach(e => {
+                    const dayNum = e.FechaDia ? parseInt(e.FechaDia.substring(8, 10), 10) : 1;
+                    if (!byDayIndex.has(dayNum)) byDayIndex.set(dayNum, []);
+                    byDayIndex.get(dayNum).push(e);
+                });
+
+                const daysInTargetMonth = new Date(mObj.year, mObj.month, 0).getDate();
+                for (let d = 1; d <= daysInTargetMonth; d++) {
+                    const dd = String(d).padStart(2, '0');
+                    const dayKey = `${mObj.key}-${dd}`;
+                    if (dayKey < effectiveDesde || dayKey > effectiveHasta) continue;
+                    const templateRows = byDayIndex.get(d) || byDayIndex.get((d % 28) + 1) || [];
+                    templateRows.forEach(t => {
+                        scaledEvolucion.push({
+                            ...t,
+                            FechaDia: dayKey,
+                            PeriodoMes: mObj.key,
+                            Cantidad: Math.max(1, Math.round((t.Cantidad || 0) * factor * itemJitter(`${dayKey}_${t.Modalidad}`)))
+                        });
+                    });
+                }
+            } else {
+                const modMap = new Map();
+                tplEvolRows.forEach(e => {
+                    const k = `${e.Modalidad}|${e.Ambito}|${e.EstadoAsistencia}`;
+                    if (!modMap.has(k)) {
+                        modMap.set(k, { Modalidad: e.Modalidad, Ambito: e.Ambito, EstadoAsistencia: e.EstadoAsistencia, Cantidad: 0 });
+                    }
+                    modMap.get(k).Cantidad += (e.Cantidad || 0);
+                });
+
+                modMap.forEach(tpl => {
                     scaledEvolucion.push({
                         FechaDia: `${mObj.key}-01`,
                         PeriodoMes: mObj.key,
                         Modalidad: tpl.Modalidad,
                         Ambito: tpl.Ambito,
                         EstadoAsistencia: tpl.EstadoAsistencia,
-                        Cantidad: Math.max(1, Math.round(tpl.Cantidad * mWeight * itemJitter(`${mObj.key}_${tpl.Modalidad}`)))
+                        Cantidad: Math.max(1, Math.round(tpl.Cantidad * factor * itemJitter(`${mObj.key}_${tpl.Modalidad}`)))
                     });
                 });
-            });
-        }
+            }
+        });
 
         return {
             ...data,
             rango: { fechaDesde: effectiveDesde, fechaHasta: effectiveHasta },
-            agendas: scaledAgendas,
-            realizadores: scaleSimpleList(data.realizadores, 'PrestadorRealiza'),
-            solicitantes: scaleSimpleList(data.solicitantes, 'PrestadorSolicita'),
-            informantes: scaleSimpleList(data.informantes, 'PrestadorInforma'),
-            obrasSociales: scaleSimpleList(data.obrasSociales, 'ObraSocial'),
-            asistencias: scaleSimpleList(data.asistencias, 'AsistenciaOriginal'),
+            agendas: buildCollectionForMonths(agendasByMonth, data.agendas, r => `${r.Modalidad}_${r.Agenda}_${r.EstadoAsistencia}`, true),
+            realizadores: buildCollectionForMonths(realizadoresByMonth, data.realizadores, r => `${r.Modalidad}_${r.PrestadorRealiza}_${r.EstadoAsistencia}`),
+            solicitantes: buildCollectionForMonths(solicitantesByMonth, data.solicitantes, r => `${r.Modalidad}_${r.PrestadorSolicita}_${r.EstadoAsistencia}`),
+            informantes: buildCollectionForMonths(informantesByMonth, data.informantes, r => `${r.Modalidad}_${r.PrestadorInforma}`),
+            obrasSociales: buildCollectionForMonths(obrasSocialesByMonth, data.obrasSociales, r => `${r.Modalidad}_${r.ObraSocial}_${r.EstadoAsistencia}`),
+            asistencias: buildCollectionForMonths(asistenciasByMonth, data.asistencias, r => `${r.Modalidad}_${r.AsistenciaOriginal}_${r.EstadoAsistencia}`),
             evolucion: scaledEvolucion
         };
     }, [data, effectiveDesde, effectiveHasta, MONTH_SEASONAL_WEIGHTS]);
