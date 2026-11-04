@@ -1334,23 +1334,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                             <Download size={14} />
                             PDF
                         </button>
-                        <button
-                            onClick={loadData}
-                            disabled={loading}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '10px',
-                                background: '#fff', color: 'var(--neutral-600)',
-                                border: '1px solid var(--neutral-200)',
-                                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                                transition: 'all 0.2s',
-                            }}
-                            onMouseOver={e => { e.currentTarget.style.borderColor = '#6366F1'; e.currentTarget.style.color = '#6366F1'; }}
-                            onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--neutral-200)'; e.currentTarget.style.color = 'var(--neutral-600)'; }}
-                        >
-                            <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-                            Actualizar
-                        </button>
                     </div>
 
                     {/* Ilustración Dr. Beto (Administración) */}
