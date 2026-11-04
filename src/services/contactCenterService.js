@@ -2753,11 +2753,11 @@ export async function analyzeMedicalOrderImage(imageUrl, messageId = null, phone
 /**
  * Invoca la Edge Function contact-center-chat-summary para resumir la solicitud del paciente y detectar doctor/parámetros
  */
-export async function generateChatAiSummary(phone) {
+export async function generateChatAiSummary(phone, options = {}) {
     if (!phone) return null;
     try {
         const { data, error } = await supabase.functions.invoke('contact-center-chat-summary', {
-            body: { phone }
+            body: { phone, force: Boolean(options?.force) }
         });
         if (error) {
             console.error('[contactCenterService] Error en generateChatAiSummary:', error);

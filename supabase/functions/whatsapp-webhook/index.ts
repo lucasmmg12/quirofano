@@ -1216,17 +1216,23 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                 );
                 console.log(`[webhook] ✅ handleChatbotTriage completado para ${phone}:`, JSON.stringify(triageResult));
 
-                // Actualizar automáticamente el Resumen IA de la Consulta para la pantalla del operador (asíncrono no crítico)
-                fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-                    },
-                    body: JSON.stringify({ phone })
-                }).catch((aiErr: any) => {
-                    console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr);
-                });
+                // AHORRO CRÍTICO DE TOKENS IA:
+                // NO llamar a contact-center-chat-summary por cada mensaje intermedio del paciente en el bot.
+                // Solo disparar cuando el paciente TERMINA de escribir todos sus datos y pasa a cola de agente ('esperando_agente').
+                // Si ya está hablando con un agente humano, el frontend (o el debounce de inactividad) genera el resumen recién cuando deja de escribir.
+                if (triageResult?.nextStage === 'esperando_agente') {
+                    console.log(`[webhook] 🎯 Paciente ${phone} completó el flujo y pasó a 'esperando_agente'. Generando Resumen IA único...`);
+                    fetch(`${SUPABASE_URL}/functions/v1/contact-center-chat-summary`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                        },
+                        body: JSON.stringify({ phone })
+                    }).catch((aiErr: any) => {
+                        console.warn('[webhook] Background chat summary error:', aiErr?.message || aiErr);
+                    });
+                }
 
             } catch (triageError: any) {
                 console.error('[webhook] Error en handleChatbotTriage:', triageError?.message || triageError, triageError?.stack);
@@ -3398,8 +3404,20 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         intent = 'info';
     }
 
-    // Si aún no se determinó la intención y hay historial conversacional, usar OpenAI con contexto
-    if (intent === 'general' && context?.history && context.history.length > 0) {
+    // Etapas guiadas donde el bot ya sabe qué dato le está pidiendo al paciente (NO gastar tokens de IA clasificando intención libre)
+    const GUIDED_DATA_STAGES = new Set([
+        'esperando_datos_turno', 'esperando_datos_nuevo', 'esperando_decision_espera_turno',
+        'esperando_dni_turno', 'esperando_dni_nuevo', 'esperando_dni_estudio_orden',
+        'esperando_dni_gestion', 'esperando_seleccion_turno_gestion', 'esperando_confirmacion_cancelacion',
+        'esperando_preferencia_reprogramacion', 'esperando_profesional_reprogramacion',
+        'esperando_seleccion_medico', 'esperando_foto_autorizacion', 'esperando_orden_foto',
+        'esperando_confirmacion_turno'
+    ]);
+    const isGuidedStage = Boolean(context?.botStage && GUIDED_DATA_STAGES.has(context.botStage));
+    const isWorthAiIntent = clean.length >= 6 && !/^[0-9\s.,-]+$/.test(clean);
+
+    // Si aún no se determinó la intención, NO estamos en una etapa guiada de carga de datos, y el texto amerita análisis contextual
+    if (intent === 'general' && !isGuidedStage && isWorthAiIntent && context?.history && context.history.length > 0) {
         const openAiKey = Deno.env.get('OPENAI_API_KEY');
         if (openAiKey) {
             try {
@@ -7951,7 +7969,7 @@ async function handleNewPatientIntake(
     whatsappName?: string | null
 ): Promise<{ nextStage: string; replyText: string }> {
     const supabaseClient = (globalThis as any)._lastSupabaseClient || (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null);
-    const extracted = await extractPatientVariables(cleanText, candidateDni, supabaseClient, phone);
+    const extracted = await extractPatientVariables(cleanText, candidateDni, supabaseClient, phone, true);
 
     // Prioridad DNI: Si la conversación ya tiene un DNI válido confirmado, se PRESERVA obligatoriamente.
     // Solo si no existe DNI previo se acepta candidateDni o extracted.dni (siempre que sean DNI válidos argentinos).
@@ -8238,7 +8256,8 @@ async function extractPatientVariables(
     text: string, 
     fallbackDni: string | null,
     supabaseClient?: any,
-    phone?: string | null
+    phone?: string | null,
+    allowAiFallback: boolean = false
 ) {
     const vars: Record<string, any> = {};
 
@@ -8356,14 +8375,15 @@ async function extractPatientVariables(
         vars.parentesco = (thirdPartyMatch[1] || thirdPartyMatch[2] || thirdPartyMatch[3] || 'familiar').toLowerCase();
     }
 
-    // 2. Extracción enriquecida con OpenAI si está disponible
+    // 2. Extracción enriquecida con OpenAI SOLO cuando se habilita explícitamente (en el paso final de toma de datos)
+    // En pasos intermedios (selección de médico, consulta de arancel, etc.) allowAiFallback es false (0 tokens consumidos).
     const openAiKey = Deno.env.get('OPENAI_API_KEY');
-    if (openAiKey) {
-        // Optimización de costos y tokens: Si ya extrajimos DNI y Obra Social y el texto es corto, no gastar llamada LLM
+    if (openAiKey && allowAiFallback) {
+        // Optimización de costos y tokens: Si por Regex ya extrajimos Obra Social (o DNI + Obra Social), no gastar llamada LLM
         const hasDni = Boolean(vars.dni);
         const hasOs = Boolean(vars.obra_social);
-        const isShortSimple = text.trim().length < 30;
-        if (hasDni && hasOs && isShortSimple) {
+        const hasDeptOrBirth = Boolean(vars.departamento || vars.fecha_nacimiento || vars.edad);
+        if ((hasOs && hasDni) || (hasOs && hasDeptOrBirth) || text.trim().length < 8) {
             return vars;
         }
 

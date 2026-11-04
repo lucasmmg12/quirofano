@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
     try {
         const body = await req.json();
-        const { phone } = body;
+        const { phone, force = false } = body;
 
         if (!phone) {
             return new Response(JSON.stringify({ error: 'phone is required' }), {
@@ -52,6 +52,22 @@ Deno.serve(async (req) => {
             .select('*')
             .eq('phone', phone)
             .maybeSingle();
+
+        // GUARDA DE AHORRO DE TOKENS #1:
+        // Si la llamada es automática (!force) y el paciente todavía está interactuando con el Bot (aún no terminó de pedir ni pasó a Sin Asignar),
+        // NO gastar tokens de OpenAI en cada paso intermedio del menú.
+        if (!force && conv && (conv.status === 'bot' || (conv.bot_active === true && conv.bot_stage !== 'esperando_agente' && !conv.assigned_agent_id))) {
+            console.log(`[chat-summary] ⏭️ Omitiendo resumen automático para ${phone}: paciente aún escribiendo en flujo del bot (stage: ${conv.bot_stage}).`);
+            return new Response(
+                JSON.stringify({
+                    ok: true,
+                    skipped: true,
+                    reason: 'still_in_bot_flow',
+                    summary: conv.ai_summary || null,
+                }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
 
         // 1.1 Consultar si el paciente tiene turnos online agendados por DNI
         let turnosOnlineInfo = 'Sin turnos online agendados.';
@@ -117,6 +133,30 @@ Deno.serve(async (req) => {
                 status: 404,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
+        }
+
+        // GUARDA DE AHORRO DE TOKENS #2 (IDEMPOTENCIA Y ANTI-DUPLICADOS):
+        // Identificar el último mensaje entrante del paciente. Si ya fue resumido en conv.ai_summary.last_summarized_msg_id
+        // y no es una ejecución manual forzada (force=true), devolver el resumen en caché con 0 tokens consumidos.
+        const incomingMessages = messages.filter((m: any) => m.direction === 'incoming');
+        const latestIncomingMsg = incomingMessages.length > 0 ? incomingMessages[incomingMessages.length - 1] : null;
+        const latestIncomingMsgId = latestIncomingMsg?.id ? String(latestIncomingMsg.id) : null;
+
+        if (
+            !force &&
+            conv?.ai_summary?.resumen_solicitud &&
+            latestIncomingMsgId &&
+            String(conv.ai_summary.last_summarized_msg_id || '') === latestIncomingMsgId
+        ) {
+            console.log(`[chat-summary] ⚡ Resumen ya actualizado para ${phone} (msg_id: ${latestIncomingMsgId}). Retornando caché (0 tokens).`);
+            return new Response(
+                JSON.stringify({
+                    ok: true,
+                    cached: true,
+                    summary: conv.ai_summary,
+                }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
 
         // Formatear transcripción para OpenAI
@@ -600,6 +640,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
             ...(conv?.ai_summary || {}),
             ...parsed,
             prestador_matched: matchedDoctor || null,
+            last_summarized_msg_id: latestIncomingMsgId,
             generated_at: new Date().toISOString(),
         };
 

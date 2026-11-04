@@ -1970,7 +1970,7 @@ export default function ContactCenterChatConsole({
                 setTimeout(() => reject(new Error('Tiempo de espera agotado al generar resumen IA')), 12000)
             );
             const summary = await Promise.race([
-                generateChatAiSummary(phone),
+                generateChatAiSummary(phone, { force: !isAuto }),
                 timeoutPromise
             ]);
             if (summary) {
@@ -2012,32 +2012,48 @@ export default function ContactCenterChatConsole({
     useEffect(() => {
         if (!selectedChat?.phone || !lastMsgInChat) return;
 
-        // Si el último mensaje es del paciente, actualizar el análisis IA automáticamente con cooldown estricto (3 min)
-        // Si la conversación ya tiene resumen generado, no sobrecargar el servidor
+        // 1. NUNCA disparar resumen automático mientras el paciente está interactuando con el Bot o si el chat está cerrado
+        const isChatInBot = selectedChat.status === 'bot' || (selectedChat.botActive && !selectedChat.assignedTo && selectedChat.status !== 'sin_asignar');
+        if (isChatInBot || isClosedOrArchived(selectedChat)) return;
+
+        // 2. Solo cuando el último mensaje es del paciente y contiene información real (no un simple "hola", "gracias" o número de menú)
         if (lastMsgSender === 'patient') {
+            const msgText = String(lastMsgInChat.text || lastMsgInChat.content || '').trim();
+            const isTrivialMsg = msgText.length < 4 || /^(hola+|buen\s*d[ií]a|buenas(\s+tardes|\s+noches)?|gracias|muchas\s+gracias|ok+|dale|s[ií]+|no+|[1-9])[!.,\s]*$/i.test(msgText);
+            if (isTrivialMsg) return;
+
             const phone = selectedChat.phone;
             const lastRun = lastAiSummaryTimeRef.current[phone] || 0;
             const cooldownPassed = (Date.now() - lastRun) > 180000;
-            
+
             const existingSummary = aiSummaryData || selectedChat.aiSummary;
+            const alreadySummarizedMsgId = existingSummary?.last_summarized_msg_id;
+            const currentRealId = lastMsgInChat.realId ? String(lastMsgInChat.realId) : null;
+            if (alreadySummarizedMsgId && currentRealId && String(alreadySummarizedMsgId) === currentRealId) {
+                return;
+            }
+
             const summaryTs = existingSummary?.generated_at ? new Date(existingSummary.generated_at).getTime() : 0;
-            const lastMsgTs = new Date(lastMsgInChat.timestamp || lastMsgInChat.created_at || Date.now()).getTime();
-            const summaryIsStale = !existingSummary || (summaryTs && lastMsgTs > summaryTs);
-            
+            const lastMsgTs = new Date(lastMsgInChat.created_at || Date.now()).getTime();
+            const summaryIsStale = !existingSummary?.resumen_solicitud || (summaryTs && lastMsgTs > summaryTs);
+
             if (!cooldownPassed || !summaryIsStale) {
                 return;
             }
 
-            // Marcar tiempo inmediatamente para prevenir carreras concurrentes
-            lastAiSummaryTimeRef.current[phone] = Date.now();
-
+            // DEBOUNCE DE FIN DE ESCRITURA (15 SEGUNDOS):
+            // Si el paciente envía varios mensajes seguidos, cada nuevo mensaje limpia el timer anterior
+            // y reinicia la espera. Recién cuando el paciente deja de escribir por 15 segundos continuos,
+            // se ejecuta una única llamada a la IA con todo el pedido completo.
+            const IDLE_TYPING_DEBOUNCE_MS = 15000;
             const timer = setTimeout(() => {
-                console.log('[auto-ai-summary] ⚡ Mensaje entrante del paciente detectado. Ejecutando análisis IA...');
+                lastAiSummaryTimeRef.current[phone] = Date.now();
+                console.log('[auto-ai-summary] 🎯 Paciente dejó de escribir (15s de silencio). Ejecutando Resumen IA consolidado...');
                 handleRunAiSummary(true);
-            }, 2000);
+            }, IDLE_TYPING_DEBOUNCE_MS);
             return () => clearTimeout(timer);
         }
-    }, [lastMsgId, lastMsgSender, selectedChat?.phone]);
+    }, [lastMsgId, lastMsgSender, selectedChat?.phone, selectedChat?.status, selectedChat?.botActive]);
 
     const handleConfirmTransfer = async () => {
         if (!confirmTransferAgent || !selectedChat?.id) return;
