@@ -671,26 +671,6 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                         ))}
                     </div>
                 </div>
-
-                {/* Pestañas de Grupo */}
-                <div style={s.filterGroup}>
-                    <span style={s.filterLabel}>Grupo:</span>
-                    <div style={s.filterBtns}>
-                        <button onClick={() => setTipoFilter(null)}
-                            style={{ ...s.filterBtn, ...(tipoFilter === null ? s.filterBtnActive : {}) }}>
-                            Todos
-                        </button>
-                        {filterTabs.map(tab => (
-                            <button key={tab.id} onClick={() => setTipoFilter(tab.id)}
-                                style={{
-                                    ...s.filterBtn,
-                                    ...(tipoFilter === tab.id ? { ...s.filterBtnActive, background: tab.color + '18', borderColor: tab.color + '40', color: tab.color } : {}),
-                                }}>
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
             </div>
 
             {/* ═══ MÉTRICAS EXPANDIDAS (PRO MAX 3D) ═══ */}
