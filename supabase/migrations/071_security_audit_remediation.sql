@@ -57,7 +57,10 @@ BEGIN
         v_cur_block := v_i / 32;
         IF v_cur_block <> v_block_idx THEN
             v_block_idx := v_cur_block;
-            v_key_stream := extensions.digest(v_salt || ':admqui_sa_2026_key:' || v_block_idx::text, 'sha256');
+            v_key_stream := extensions.digest(
+                convert_to(v_salt || ':SA_ADMQUI_TRANSPORT_2026:' || v_block_idx::text, 'UTF8'),
+                'sha256'
+            );
         END IF;
         v_out_bytes := set_byte(
             v_out_bytes,
@@ -1184,3 +1187,4 @@ BEGIN
     END LOOP;
 END;
 $$;
+
