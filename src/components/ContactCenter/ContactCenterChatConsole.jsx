@@ -2157,6 +2157,24 @@ export default function ContactCenterChatConsole({
         });
     }, []);
 
+    // Posicionar instantáneamente el scroll en el último mensaje (abajo del todo)
+    const scrollToBottomInstant = useCallback(() => {
+        const scrollNow = () => {
+            const el = messagesContainerRef.current;
+            if (el) {
+                el.scrollTop = el.scrollHeight;
+            } else {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+            }
+        };
+        scrollNow();
+        if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+            window.requestAnimationFrame(scrollNow);
+        }
+        setTimeout(scrollNow, 50);
+        setTimeout(scrollNow, 160);
+    }, []);
+
     // Carga AUTOMÁTICA del historial completo del chat seleccionado al abrirlo
     // Siempre consulta los últimos 150 mensajes del teléfono si aún no se cargó su historial completo,
     // evitando que el lote global de 1000 mensajes trunque conversaciones con >= 10 mensajes hoy.
@@ -2166,6 +2184,7 @@ export default function ContactCenterChatConsole({
 
         if (fullHistoryLoadedPhonesRef.current.has(normPhone)) {
             setNoMoreOlder(Boolean(noMoreOlderByPhoneRef.current.get(normPhone)));
+            scrollToBottomInstant();
             return;
         }
 
@@ -2189,6 +2208,8 @@ export default function ContactCenterChatConsole({
                     noMoreOlderByPhoneRef.current.set(normPhone, reachedEnd);
                     setNoMoreOlder(reachedEnd);
                     setForceUpdate(n => n + 1);
+                    // Al terminar de inyectar el historial inicial, forzar posición abajo en el último mensaje
+                    scrollToBottomInstant();
                 } else if (Array.isArray(msgs) && msgs.length === 0) {
                     if (!selectedChat.messages || selectedChat.messages.length === 0) {
                         selectedChat.messages = [];
@@ -2196,6 +2217,7 @@ export default function ContactCenterChatConsole({
                     fullHistoryLoadedPhonesRef.current.add(normPhone);
                     noMoreOlderByPhoneRef.current.set(normPhone, true);
                     setNoMoreOlder(true);
+                    scrollToBottomInstant();
                 }
             })
             .catch(err => {
@@ -2204,13 +2226,14 @@ export default function ContactCenterChatConsole({
             .finally(() => {
                 if (!isCancelled) {
                     setLoadingChatMessages(false);
+                    scrollToBottomInstant();
                 }
             });
 
         return () => {
             isCancelled = true;
         };
-    }, [selectedChat?.id, selectedChat?.phone, mergeAndSortMessages]);
+    }, [selectedChat?.id, selectedChat?.phone, mergeAndSortMessages, scrollToBottomInstant]);
 
     const handleLoadOlderMessages = async () => {
         if (!selectedChat?.phone || loadingOlder) return;
@@ -2219,6 +2242,10 @@ export default function ContactCenterChatConsole({
         const oldest = msgs[0];
         const beforeIso = oldest?.created_at || null;
         const PAGE_LIMIT = 100;
+        const containerEl = messagesContainerRef.current;
+        const prevScrollHeight = containerEl ? containerEl.scrollHeight : 0;
+        const prevScrollTop = containerEl ? containerEl.scrollTop : 0;
+
         setLoadingOlder(true);
         try {
             const older = await fetchOlderMessagesForPhone(selectedChat.phone, beforeIso, PAGE_LIMIT);
@@ -2238,6 +2265,13 @@ export default function ContactCenterChatConsole({
                         setNoMoreOlder(true);
                     }
                     setForceUpdate(n => n + 1);
+                    // Mantener la posición visual exacta al hacer scroll hacia arriba
+                    setTimeout(() => {
+                        const el = messagesContainerRef.current;
+                        if (el && prevScrollHeight > 0) {
+                            el.scrollTop = Math.max(0, el.scrollHeight - prevScrollHeight + prevScrollTop);
+                        }
+                    }, 20);
                 }
             } else if (Array.isArray(older) && older.length === 0) {
                 noMoreOlderByPhoneRef.current.set(normPhone, true);
@@ -2250,14 +2284,10 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Control de desplazamiento: solo desplazar al final cuando cambia el chat activo o llega un mensaje nuevo al final
-    // (NUNCA desplazar al fondo cuando el agente carga mensajes antiguos hacia arriba)
+    // Control de desplazamiento: siempre posicionar en el último mensaje al abrir un chat o recibir/enviar un mensaje nuevo
     useEffect(() => {
-        const timer = setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [selectedChat?.id, lastMsgId]);
+        scrollToBottomInstant();
+    }, [selectedChat?.id, lastMsgId, scrollToBottomInstant]);
 
     // =========================================================================
     // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA
@@ -6116,7 +6146,18 @@ export default function ContactCenterChatConsole({
                                     <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                         <button
                                             type="button"
-                                            onClick={() => setVisibleMessageCount(c => c + 100)}
+                                            onClick={() => {
+                                                const containerEl = messagesContainerRef.current;
+                                                const prevScrollHeight = containerEl ? containerEl.scrollHeight : 0;
+                                                const prevScrollTop = containerEl ? containerEl.scrollTop : 0;
+                                                setVisibleMessageCount(c => c + 100);
+                                                setTimeout(() => {
+                                                    const el = messagesContainerRef.current;
+                                                    if (el && prevScrollHeight > 0) {
+                                                        el.scrollTop = Math.max(0, el.scrollHeight - prevScrollHeight + prevScrollTop);
+                                                    }
+                                                }, 20);
+                                            }}
                                             style={{
                                                 background: '#F8FAFC',
                                                 border: '1px solid #CBD5E1',
