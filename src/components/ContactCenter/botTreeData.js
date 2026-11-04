@@ -118,24 +118,74 @@ ${FOOTER}`,
         childrenIds: ['nodo_turno_derivado']
     },
 
-    // 2.A.1 DATOS COMPLETOS -> DERIVACIÓN PARA AGENDAR
+    // 2.A.1 DATOS COMPLETOS -> CONSULTA SI ESPERA AGENTE O AUTOGESTIONA EN WEB
     {
         id: 'nodo_turno_derivado',
         parentId: 'nodo_camino_1_registrado',
         level: 4,
         order: 1,
         category: 'turnos',
-        title: '2.A.1 Datos Completos → Agente agenda en SALUS',
+        title: '2.A.1 Datos Completos → ¿Esperar Agente o Autogestionar en Web?',
         patientTrigger: 'Paciente completa especialidad/profesional, preferencia horaria y cobertura',
         patientExamples: ['Para mí, con la Dra. Gómez, a la tarde, OSDE 210'],
-        systemAction: 'El bot NO ofrece horarios: registra datos y preferencias, arma el resumen de triage y deriva a la cola de agentes (sin_asignar). El agente agenda el turno en SALUS y confirma por el chat.',
+        systemAction: 'Antes de pasar a Sin Asignar, mantiene la conversación en estado Bot (esperando_decision_espera_turno) y le consulta al paciente si desea esperar a un agente o autogestionar su turno en la web oficial.',
         nodeType: 'bot_response',
-        botResponse: `¡Muchas gracias {nombre}! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno.
+        botResponse: `¡Muchas gracias {nombre}! 🏥 Registramos tus datos y preferencias para coordinar tu turno.
 
-Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.
+⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras.
 
-[Aviso de derivación según cola / horario]`,
+📲 *Gestión de Turnos Online 24 hs:*
+Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo las 24 hs desde la página oficial del Sanatorio:
+👉 https://www.sanatorioargentino.com.ar/turnos-online.html
+
+*¿Cómo preferís continuar?*
+1️⃣ *Esperar a un agente* _(quedar en fila de atención por orden de llegada)_
+2️⃣ *Autogestionar en la web* _(sacar mi turno online ahora sin esperar)_
+
+_Respondé con *1* o *2* (o escribí *"Esperar"* / *"Web"*)._`,
         availableTags: ['{nombre}', '{cobertura}'],
+        childrenIds: ['nodo_turno_esperar_agente', 'nodo_turno_autogestion_web']
+    },
+
+    // 2.A.1.1 OPCIÓN 1: ESPERAR A UN AGENTE -> PASA A SIN ASIGNAR
+    {
+        id: 'nodo_turno_esperar_agente',
+        parentId: 'nodo_turno_derivado',
+        level: 5,
+        order: 1,
+        category: 'derivacion',
+        title: 'Opción 1: Esperar a un Agente → Pasa a Sin Asignar',
+        patientTrigger: 'Paciente responde "1", "Esperar" o "Agente"',
+        patientExamples: ['1', 'Esperar', 'Prefiero esperar a un agente'],
+        systemAction: 'Recién en este paso transfiere la conversación a la cola de agentes (status = sin_asignar, bot_active = false).',
+        nodeType: 'bot_response',
+        botResponse: `¡Perfecto {nombre}! ⏳ Tu solicitud ya ingresó en nuestra fila de atención.
+
+Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad por orden de llegada.
+
+⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`,
+        availableTags: ['{nombre}'],
+        childrenIds: []
+    },
+
+    // 2.A.1.2 OPCIÓN 2: AUTOGESTIONAR EN LA WEB -> RESUELTO AUTOMÁTICO
+    {
+        id: 'nodo_turno_autogestion_web',
+        parentId: 'nodo_turno_derivado',
+        level: 5,
+        order: 2,
+        category: 'turnos',
+        title: 'Opción 2: Autogestionar en la Web → Resuelto por Bot',
+        patientTrigger: 'Paciente responde "2", "Web" o "Autogestionar"',
+        patientExamples: ['2', 'Web', 'Me autogestiono por la página'],
+        systemAction: 'Envía el enlace directo de Turnos Online y cierra la conversación como resuelta por el bot sin sobrecargar la cola Sin Asignar.',
+        nodeType: 'bot_response',
+        botResponse: `¡Excelente {nombre}! 🌐 Podés elegir el día y horario que más te convenga las 24 hs de forma inmediata desde nuestro portal oficial de Turnos Online:
+
+👉 https://www.sanatorioargentino.com.ar/turnos-online.html
+
+Si en algún momento necesitás asistencia de un operador o realizar otra consulta, solo volvé a escribirnos. ¡Que tengas un excelente día! ✨`,
+        availableTags: ['{nombre}'],
         childrenIds: []
     },
 

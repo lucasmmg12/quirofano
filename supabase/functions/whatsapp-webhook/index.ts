@@ -2201,6 +2201,19 @@ function getAgentHandoffNotice(queueCountOverride?: number): string {
     return `👩‍⚕️ Un agente te responderá en breve.\n💡 _Si deseás consultar otra opción o reiniciar la atención, podés escribir *"Menú"* en cualquier momento._\n⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.`;
 }
 
+function getTurnoWaitOrSelfManageFooter(): string {
+    return `⚠️ En este momento estamos experimentando una alta demanda en nuestro canal de atención y presentamos algunas demoras.\n\n` +
+        `📲 *Gestión de Turnos Online 24 hs:*\n` +
+        `Si deseás solicitar o gestionar un turno médico de forma inmediata sin esperar, podés hacerlo las 24 hs desde la página oficial del Sanatorio:\n` +
+        `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
+        `*¿Cómo preferís continuar?*\n` +
+        `1️⃣ *Esperar a un agente* _(quedar en fila de atención por orden de llegada)_\n` +
+        `2️⃣ *Autogestionar en la web* _(sacar mi turno online ahora sin esperar)_\n\n` +
+        `_Respondé con *1* o *2* (o escribí *"Esperar"* / *"Web"*)._\n\n` +
+        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+
+}
+
 /**
  * Analiza la obra social registrada en Salus o ficha previa del paciente
  * y determina si es una cobertura real activa o un genérico/particular
@@ -2667,6 +2680,8 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         context?.botStage === 'esperando_obra_social_paciente' ||
         context?.botStage === 'esperando_seleccion_medico' ||
         context?.botStage === 'esperando_orden_foto' ||
+        context?.botStage === 'esperando_orden_foto' ||
+        context?.botStage === 'esperando_decision_espera_turno' ||
         context?.botStage === 'esperando_datos_nuevo';
 
     if (isPureGreeting) {
@@ -2792,7 +2807,8 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         context?.botStage === 'esperando_dni_turno' ||
         context?.botStage === 'esperando_dni' ||
         context?.botStage === 'esperando_datos_nuevo' ||
-        context?.botStage === 'esperando_orden_foto';
+        context?.botStage === 'esperando_orden_foto' ||
+        context?.botStage === 'esperando_decision_espera_turno';
 
     // 1. SUBMENÚ "MÁS INFORMACIÓN" (opción 5 del menú de bienvenida)
     // Opciones: 1: Laboratorio | 2: Radiografías | 3: Agente
@@ -5205,6 +5221,61 @@ async function handleChatbotTriage(
     // =============================================
     // FLUJO 0A-2B: SELECCIÓN DE MÉDICO HOMÓNIMO
     // =============================================
+    else if (currentStage === 'esperando_decision_espera_turno') {
+        const trimmedDecision = cleanText.trim();
+        const choosesSelfManageWeb =
+            /^(?:2|2️⃣|opci[oó]n\s*2)$/i.test(trimmedDecision) ||
+            /(?:^|\n)\s*(?:2|2️⃣|opci[oó]n\s*2)\s*(?:$|\n)/i.test(cleanText) ||
+            /\b(autogesti[oó]n|autogestionar|autogestiono|me\s+autogestiono|web|p[aá]gina|pagina|online|link|enlace|internet|lo\s+saco\s+yo|lo\s+gestiono\s+yo|sin\s+esperar)\b/i.test(cleanText);
+
+        const choosesWaitForAgent =
+            !choosesSelfManageWeb && (
+                /^(?:1|1️⃣|opci[oó]n\s*1)$/i.test(trimmedDecision) ||
+                /(?:^|\n)\s*(?:1|1️⃣|opci[oó]n\s*1)\s*(?:$|\n)/i.test(cleanText) ||
+                /\b(esperar|espero|aguardo|aguardar|prefiero\s+esperar|voy\s+a\s+esperar|si\s+espero|s[ií]\s+espero|agente|asesor|asesora|operador|operadora|humano|persona|chat|por\s+aca|por\s+ac[aá]|por\s+este\s+medio|fila|cola)\b/i.test(cleanText) ||
+                /^(s[ií]+|si|dale|ok|bueno|de\s+una|por\s+favor|confirmar|confirmo)[!.\s]*$/i.test(trimmedDecision)
+            );
+
+        if (choosesSelfManageWeb) {
+            replyText = `¡Excelente${fullName ? ` *${fullName}*` : ''}! 🌐 Podés elegir el día y horario que más te convenga las 24 hs de forma inmediata desde nuestro portal oficial de Turnos Online:\n\n` +
+                `👉 https://www.sanatorioargentino.com.ar/turnos-online.html\n\n` +
+                `Si en algún momento necesitás asistencia de un operador o realizar otra consulta, solo volvé a escribirnos. ¡Que tengas un excelente día! ✨`;
+            updates.status = 'resuelto';
+            updates.bot_active = false;
+            updates.bot_stage = 'resuelto_bot';
+            updates.closed_at = new Date().toISOString();
+            updates.resolution_reason = `Paciente eligió autogestión en Turnos Online Web (${conv?.medico_o_especialidad || 'Turno Médico'})`;
+            nextStage = 'resuelto_bot';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
+        if (choosesWaitForAgent) {
+            replyText = `¡Perfecto${fullName ? ` *${fullName}*` : ''}! ⏳ Tu solicitud ya ingresó en nuestra fila de atención.\n\n` +
+                `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad por orden de llegada.\n\n` +
+                `⏰ *Horario de atención:* Lunes a Viernes de 7:30 a 21:00 hs y Sábados de 8:00 a 12:00 hs.\n\n` +
+                `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+            updates.status = 'sin_asignar';
+            updates.bot_active = false;
+            updates.bot_stage = 'esperando_agente';
+            nextStage = 'esperando_agente';
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
+        // Si el paciente envía un comentario extra o no seleccionó 1 ni 2 claramente, conservar en etapa de decisión y volver a consultar
+        replyText = `¡Recibido${fullName ? ` *${fullName}*` : ''}! 🏥 Para avanzar con tu solicitud de turno${conv?.medico_o_especialidad ? ` (*${conv.medico_o_especialidad}*)` : ''}, por favor confirmános cómo preferís continuar:\n\n` +
+            `1️⃣ *Esperar a un agente* _(quedar en fila de atención por orden de llegada)_\n` +
+            `2️⃣ *Autogestionar en la web* _(sacar mi turno online ahora sin esperar en https://www.sanatorioargentino.com.ar/turnos-online.html)_\n\n` +
+            `_Respondé con *1* o *2* (o escribí *"Esperar"* / *"Web"*)._\n\n` +
+            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+        updates.status = 'bot';
+        updates.bot_active = true;
+        updates.bot_stage = 'esperando_decision_espera_turno';
+        nextStage = 'esperando_decision_espera_turno';
+        return await finalizeAndSend(replyText, nextStage, updates);
+    }
+    // =============================================
+    // FLUJO 0A-2B: SELECCIÓN DE MÉDICO HOMÓNIMO
+    // =============================================
     else if (currentStage === 'esperando_seleccion_medico') {
         let storedDocs = (conv?.ai_summary as any)?.candidates_medicos || [];
 
@@ -6161,9 +6232,7 @@ async function handleChatbotTriage(
                 } else {
                     if (isForOtherPatient) {
                         replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos la solicitud y preferencias para coordinar el turno de *${cleanName}* (DNI: *${targetDni}*)${docMsg}.${osMsg}${horMsg}\n\n` +
-                            `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional para el paciente y te confirmará los detalles a la brevedad.\n\n` +
-                            `${getAgentHandoffNotice()}\n\n` +
-                            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                            `${getTurnoWaitOrSelfManageFooter()}`;
                         updates.motivo_consulta = `Solicitud de Turno (Tercero): ${cleanName} (DNI ${targetDni}) - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
                         updates.es_gestion_tercero = true;
                         updates.titular_nombre = whatsappName;
@@ -6171,15 +6240,14 @@ async function handleChatbotTriage(
                         updates.paciente_dni = targetDni;
                     } else {
                         replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Registramos tus datos y preferencias para coordinar tu turno${docMsg}.${osMsg}${horMsg}\n\n` +
-                            `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                            `${getAgentHandoffNotice()}\n\n` +
-                            `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                            `${getTurnoWaitOrSelfManageFooter()}`;
                         updates.motivo_consulta = updates.motivo_consulta || `Solicitud de Turno: ${cleanName} - ${effectiveDocOrSpec}${preferenciaHoraria ? ` (${preferenciaHoraria})` : ''}`;
                     }
 
-                    updates.status = 'sin_asignar';
-                    updates.bot_active = false;
-                    nextStage = 'esperando_agente';
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_decision_espera_turno';
+                    nextStage = 'esperando_decision_espera_turno';
                     updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
                 }
             }
@@ -6204,14 +6272,11 @@ async function handleChatbotTriage(
                     nextStage = 'esperando_orden_foto';
                 } else {
                     replyText = `¡Muchas gracias *${whatsappName}*! 🏥 Ya registramos tu DNI *${targetDni}* y tu solicitud ${targetPhrase}.\n\n` +
-                        `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n` +
-                        `_(Si contás con obra social o prepaga y aún no la indicaste, podés escribirla aquí mientras aguardás la confirmación)._\n\n` +
-                        `${getAgentHandoffNotice()}\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
-                    updates.status = 'sin_asignar';
-                    updates.bot_active = false;
-                    updates.bot_stage = 'esperando_agente';
-                    nextStage = 'esperando_agente';
+                        `${getTurnoWaitOrSelfManageFooter()}`;
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_decision_espera_turno';
+                    nextStage = 'esperando_decision_espera_turno';
                 }
                 updates.motivo_consulta = `[TURNO] ${effectiveDocOrSpec} | DNI: ${targetDni} | OS: ${updates.obra_social || 'A consultar'}`;
                 updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, Boolean(paciente), paciente?.edad);
@@ -6476,12 +6541,12 @@ async function handleChatbotTriage(
                     };
                 } else {
                     replyText = `¡Muchas gracias *${fullName}*! 🏥 Registramos tu cobertura (*${osPlanText}*) y tu solicitud para *${effectiveDocOrSpec}*.\n\n` +
-                        `Un agente del equipo de Sanatorio Argentino agendará la cita en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                        `${getAgentHandoffNotice()}`;
+                        `${getTurnoWaitOrSelfManageFooter()}`;
                     updates.motivo_consulta = `[TURNO] ${effectiveDocOrSpec} | DNI: ${paciente?.dni || updates.dni} | OS: ${osPlanText}`;
-                    updates.status = 'sin_asignar';
-                    updates.bot_active = false;
-                    nextStage = 'esperando_agente';
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_decision_espera_turno';
+                    nextStage = 'esperando_decision_espera_turno';
                     updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
                 }
             } else {
@@ -7298,14 +7363,13 @@ async function handleChatbotTriage(
                     const effOs = paciente?.coseguro || updates.obra_social || conv?.obra_social || 'Particular';
 
                     replyText = `¡Muchas gracias *${fullName}*! 🏥 Ya registramos todos tus datos y preferencias para coordinar tu turno${docMsg}.\n\n` +
-                        `Un agente del equipo de Sanatorio Argentino agendará tu turno en nuestro sistema institucional y te confirmará los detalles a la brevedad.\n\n` +
-                        `${getAgentHandoffNotice()}\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`;
+                        `${getTurnoWaitOrSelfManageFooter()}`;
 
                     updates.motivo_consulta = `[TURNO] ${effDoc} | DNI: ${effDni} | OS: ${effOs}`;
-                    updates.status = 'sin_asignar';
-                    updates.bot_active = false;
-                    nextStage = 'esperando_agente';
+                    updates.status = 'bot';
+                    updates.bot_active = true;
+                    updates.bot_stage = 'esperando_decision_espera_turno';
+                    nextStage = 'esperando_decision_espera_turno';
                     updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, isExistingPatient, paciente?.edad);
                 }
             }
@@ -8009,6 +8073,12 @@ async function handleNewPatientIntake(
             updates.bot_stage = 'esperando_orden_foto';
             nextStage = 'esperando_orden_foto';
             updates.motivo_consulta = `Alta de Paciente + Turno: ${resolvedName} - ${estudioRequiereOrden} [Aguardando pedido médico]`;
+        } else if (intent === 'turno') {
+            updates.motivo_consulta = `[NUEVO PACIENTE - TURNO] ${targetDocOrStudy || 'Consulta'} | DNI: ${updates.dni} | OS: ${updates.obra_social}`;
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'esperando_decision_espera_turno';
+            nextStage = 'esperando_decision_espera_turno';
         } else {
             updates.motivo_consulta = `[NUEVO PACIENTE - TURNO] ${targetDocOrStudy || 'Consulta'} | DNI: ${updates.dni} | OS: ${updates.obra_social}`;
             updates.status = 'sin_asignar';
@@ -8080,7 +8150,7 @@ async function handleNewPatientIntake(
             (estudioRequiereOrden && !hasSentOrderPhoto
                 ? `_(En cuanto nos envíes la foto del pedido médico, un asesor agendará tu turno con la prescripción correspondiente)._\n\n` +
                   `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"*`
-                : `Tu ficha ya fue cargada para el equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n${getAgentHandoffNotice()}`);
+                : (intent === 'turno' ? getTurnoWaitOrSelfManageFooter() : `Tu ficha ya fue cargada para el equipo de atención. Un agente tomará tu conversación a la brevedad para coordinar tu trámite.\n\n${getAgentHandoffNotice()}`));
 
         return { nextStage, replyText: reply };
     }
