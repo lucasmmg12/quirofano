@@ -126,8 +126,8 @@ export default function LoginScreen({ onLogin }) {
         setWhatsappPhone(userObj.telefono_whatsapp || '');
         setOtpSent(false);
 
-        if (userObj.totp_secret && userObj.totp_secret.length % 8 === 0) {
-            setTotpSecret(userObj.totp_secret);
+        if (userObj.has_totp || (userObj.totp_secret && userObj.totp_secret.length % 8 === 0)) {
+            setTotpSecret(userObj.totp_secret || '');
             setShowQrSetup(false);
         } else {
             setTotpSecret(generateTotpSecret(16));
@@ -1912,7 +1912,10 @@ export default function LoginScreen({ onLogin }) {
                                             type="button"
                                             onClick={() => {
                                                 setMfaMethod('totp');
-                                                setShowQrSetup(true);
+                                                if (!pendingUser?.has_totp) {
+                                                    if (!totpSecret) setTotpSecret(generateTotpSecret(16));
+                                                    setShowQrSetup(true);
+                                                }
                                                 setError('');
                                                 setInfoMsg('');
                                             }}
@@ -2000,7 +2003,10 @@ export default function LoginScreen({ onLogin }) {
                                             </p>
                                             <button
                                                 type="button"
-                                                onClick={() => setShowQrSetup(true)}
+                                                onClick={() => {
+                                                    if (!totpSecret) setTotpSecret(generateTotpSecret(16));
+                                                    setShowQrSetup(true);
+                                                }}
                                                 style={{
                                                     background: 'none', border: 'none', color: '#1E4078',
                                                     fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer',

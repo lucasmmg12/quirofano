@@ -71,9 +71,57 @@ Deno.serve(async (req) => {
     // CORS headers
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-token, x-device-token',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
     };
+
+    // Helper para formatear teléfono para WhatsApp (Argentina 549...)
+    function formatPhoneForWhatsApp(rawPhone: string): string {
+        let clean = String(rawPhone || '').replace(/\D/g, '');
+        if (!clean) return '';
+        if (clean.startsWith('0')) clean = clean.substring(1);
+        if (clean.startsWith('15') && clean.length === 10) {
+            clean = '264' + clean.substring(2);
+        }
+        if (clean.length === 10 && !clean.startsWith('54')) {
+            clean = '549' + clean;
+        } else if (clean.startsWith('54') && !clean.startsWith('549') && clean.length === 12) {
+            clean = '549' + clean.substring(2);
+        }
+        return clean;
+    }
+
+    async function sendDirectBuilderBotMessage(number: string, content: string): Promise<boolean> {
+        const tryLine = async (targetLine?: string) => {
+            const cfg = await getBuilderBotConfig(targetLine);
+            const url = `https://app.builderbot.cloud/api/v2/${cfg.projectId}/messages`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-builderbot': cfg.apiKey,
+                },
+                body: JSON.stringify({
+                    messages: { content },
+                    number,
+                    checkIfExists: false,
+                }),
+            });
+            return res.ok;
+        };
+        try {
+            const ok = await tryLine(undefined);
+            if (ok) return true;
+        } catch (e) {
+            console.warn('[send-whatsapp] Primary line failed for OTP, trying line_c:', e);
+        }
+        try {
+            return await tryLine('line_c');
+        } catch (e2) {
+            console.error('[send-whatsapp] Fallback line_c failed for OTP:', e2);
+            return false;
+        }
+    }
 
     // Handle preflight
     if (req.method === 'OPTIONS') {
@@ -86,6 +134,186 @@ Deno.serve(async (req) => {
         console.log(`[send-whatsapp] Full body:`, JSON.stringify(body));
         console.log(`[send-whatsapp] body.to:`, body.to, `| body.action:`, body.action, `| body.lineId:`, body.lineId);
         const { action, lineId } = body;
+
+        // ========================================
+        // ACTION: send_login_otp — Genera y envía OTP de Login 100% en Backend (nunca expone code al navegador)
+        // ========================================
+        if (action === 'send_login_otp') {
+            const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+            const userId = body.userId;
+            const telefono = body.telefono ? String(body.telefono).trim() : null;
+
+            if (!userId) {
+                return new Response(
+                    JSON.stringify({ success: false, error: 'userId es requerido' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const { data: otpData, error: otpErr } = await supabaseAdmin.rpc('generate_user_otp', {
+                p_user_id: userId,
+                p_telefono: telefono,
+            });
+
+            if (otpErr || !otpData?.success) {
+                return new Response(
+                    JSON.stringify({
+                        success: false,
+                        error: otpData?.error || otpErr?.message || 'No se pudo generar el código OTP',
+                    }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const rawTel = otpData.telefono_whatsapp || otpData.telefono || telefono || '';
+            const targetPhone = formatPhoneForWhatsApp(rawTel);
+            if (!targetPhone || targetPhone.length < 10) {
+                return new Response(
+                    JSON.stringify({ success: false, error: 'Número de WhatsApp inválido.' }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const msg = `🔐 *Sanatorio Argentino — Sistema ADM-QUI*\n\nHola *${otpData.nombre || otpData.usuario}*, tu código de verificación de seguridad (2FA) es:\n\n👉 *${otpData.code}*\n\n⏱️ _Este código expira en 10 minutos. No lo compartas con nadie._`;
+            const sent = await sendDirectBuilderBotMessage(targetPhone, msg);
+
+            if (!sent) {
+                return new Response(
+                    JSON.stringify({ success: false, error: 'Error al enviar el mensaje por WhatsApp.' }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const cleanDigits = String(rawTel).replace(/\D/g, '');
+            const maskedWhatsapp = cleanDigits.length >= 4 ? '***' + cleanDigits.slice(-4) : cleanDigits;
+
+            return new Response(
+                JSON.stringify({
+                    success: true,
+                    masked_whatsapp: maskedWhatsapp,
+                }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        // ========================================
+        // ACTION: send_recovery_otp — Genera y envía OTP de Recuperación 100% en Backend (nunca expone code al navegador)
+        // ========================================
+        if (action === 'send_recovery_otp') {
+            const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+            const userId = body.userId;
+            const channel = body.channel === 'email' ? 'email' : 'whatsapp';
+
+            if (!userId) {
+                return new Response(
+                    JSON.stringify({ success: false, error: 'userId es requerido' }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const { data: otpData, error: otpErr } = await supabaseAdmin.rpc('generate_recovery_otp', {
+                p_user_id: userId,
+                p_channel: channel,
+            });
+
+            if (otpErr || !otpData?.success) {
+                return new Response(
+                    JSON.stringify({
+                        success: false,
+                        error: otpData?.error || otpErr?.message || 'No se pudo generar el código de recuperación',
+                    }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const rawRecoveryPhone = otpData.telefono_whatsapp || otpData.whatsapp || '';
+            const cleanDigits = String(rawRecoveryPhone).replace(/\D/g, '');
+            const maskedWhatsapp = otpData.masked_whatsapp || (cleanDigits.length >= 4 ? '***' + cleanDigits.slice(-4) : cleanDigits);
+            const maskedEmail = otpData.masked_email || '';
+
+            if (channel === 'whatsapp') {
+                const targetPhone = formatPhoneForWhatsApp(rawRecoveryPhone);
+                const msg = `🔐 *Sanatorio Argentino — Recuperación de Contraseña*\n\nHola *${otpData.nombre || otpData.usuario}*, recibimos una solicitud para restablecer tu contraseña en el Sistema ADM-QUI.\n\nTu código de seguridad es:\n👉 *${otpData.code}*\n\n⏱️ _Expira en 10 minutos. Si no solicitaste este cambio, ignora este mensaje._`;
+                const sent = await sendDirectBuilderBotMessage(targetPhone, msg);
+                if (!sent) {
+                    return new Response(
+                        JSON.stringify({ success: false, error: 'Error al enviar el código por WhatsApp.' }),
+                        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        channel: 'whatsapp',
+                        masked_whatsapp: maskedWhatsapp,
+                    }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            if (channel === 'email') {
+                let emailSent = false;
+                try {
+                    const emailRes = await fetch(`${SUPABASE_URL}/functions/v1/send-security-email`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+                        },
+                        body: JSON.stringify({
+                            to: otpData.email,
+                            nombre: otpData.nombre || otpData.usuario,
+                            usuario: otpData.usuario,
+                            code: otpData.code,
+                            type: 'password_recovery',
+                        }),
+                    });
+                    const emailData = await emailRes.json().catch(() => ({}));
+                    if (emailRes.ok && emailData?.success) {
+                        emailSent = true;
+                    }
+                } catch (e) {
+                    console.warn('[send-whatsapp] send-security-email failed:', e);
+                }
+
+                if (emailSent) {
+                    return new Response(
+                        JSON.stringify({
+                            success: true,
+                            channel: 'email',
+                            masked_email: maskedEmail,
+                        }),
+                        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                // Fallback automático a WhatsApp si tiene teléfono registrado
+                if (rawRecoveryPhone) {
+                    const targetPhone = formatPhoneForWhatsApp(rawRecoveryPhone);
+                    const msg = `🔐 *Sanatorio Argentino — Recuperación de Contraseña*\n\nHola *${otpData.nombre || otpData.usuario}*, el envío por correo electrónico demoró y te enviamos tu código de recuperación por WhatsApp:\n\n👉 *${otpData.code}*\n\n⏱️ _Expira en 10 minutos._`;
+                    const sent = await sendDirectBuilderBotMessage(targetPhone, msg);
+                    if (sent) {
+                        return new Response(
+                            JSON.stringify({
+                                success: true,
+                                channel: 'whatsapp_fallback',
+                                masked_whatsapp: maskedWhatsapp,
+                                fallback_message: 'El servidor de correo no está disponible en este momento. Te enviamos el código automáticamente a tu WhatsApp registrado.',
+                            }),
+                            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        );
+                    }
+                }
+
+                return new Response(
+                    JSON.stringify({
+                        success: false,
+                        error: 'No se pudo enviar el correo electrónico de recuperación. Por favor elige la opción de WhatsApp.',
+                    }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+        }
 
         // ========================================
         // ACTION: list_templates — Listar plantillas Meta

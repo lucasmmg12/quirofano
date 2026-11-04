@@ -402,6 +402,42 @@ export async function verifyActiveUserSession(userId, sessionToken = null) {
 // =============================================
 
 /**
+ * Cifra simétricamente la contraseña en tránsito para que en DevTools (F12 -> Network -> Payload)
+ * jamás se visualice la clave en texto plano. PostgreSQL la decodifica internamente con decode_transport_password().
+ */
+export async function encodeTransportPassword(plainPwd) {
+    if (!plainPwd || typeof plainPwd !== 'string') return plainPwd;
+    if (plainPwd.startsWith('sa_enc_v1_')) return plainPwd;
+    try {
+        if (typeof window === 'undefined' || !window.crypto?.subtle) return plainPwd;
+        const saltBytes = new Uint8Array(8);
+        window.crypto.getRandomValues(saltBytes);
+        const saltHex = Array.from(saltBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        const encoder = new TextEncoder();
+        const plainBytes = encoder.encode(plainPwd);
+        const keyStream = [];
+        let counter = 0;
+        while (keyStream.length < plainBytes.length) {
+            const seedBytes = encoder.encode(`${saltHex}:SA_ADMQUI_TRANSPORT_2026:${counter}`);
+            const hashBuf = await window.crypto.subtle.digest('SHA-256', seedBytes);
+            const hashArr = new Uint8Array(hashBuf);
+            for (let i = 0; i < hashArr.length; i++) {
+                keyStream.push(hashArr[i]);
+            }
+            counter++;
+        }
+        let cipherHex = '';
+        for (let i = 0; i < plainBytes.length; i++) {
+            const xorByte = plainBytes[i] ^ keyStream[i];
+            cipherHex += xorByte.toString(16).padStart(2, '0');
+        }
+        return `sa_enc_v1_${saltHex}_${cipherHex}`;
+    } catch {
+        return plainPwd;
+    }
+}
+
+/**
  * Intenta login con usuario y contraseña.
  * Evalúa si el usuario requiere cambio obligatorio de contraseña o verificación 2FA.
  */
@@ -417,24 +453,14 @@ export async function login(usuario, password) {
         }
 
         const deviceToken = getOrCreateDeviceToken();
+        const encodedPassword = await encodeTransportPassword(password);
 
-        // Intentar verify_login_v2 (con soporte de must_change_password, 2FA y trusted_devices)
-        let { data, error } = await supabase.rpc('verify_login_v2', {
+        // Ejecutar verify_login_v2 (sin fallback inseguro a verify_login v1)
+        const { data, error } = await supabase.rpc('verify_login_v2', {
             p_usuario: normalizedUser,
-            p_password: password,
+            p_password: encodedPassword,
             p_device_token: deviceToken,
         });
-
-        // Fallback automático a verify_login clásico por retrocompatibilidad
-        if (error) {
-            console.warn('[AuthService] Fallback a verify_login:', error.message);
-            const fallbackRes = await supabase.rpc('verify_login', {
-                p_usuario: normalizedUser,
-                p_password: password,
-            });
-            data = fallbackRes.data;
-            error = fallbackRes.error;
-        }
 
         if (error) {
             console.error('[AuthService] RPC error:', error);
@@ -500,7 +526,7 @@ export async function login(usuario, password) {
 }
 
 /**
- * Solicita y envía un código OTP de 6 dígitos por WhatsApp al colaborador
+ * Solicita y envía un código OTP de 6 dígitos por WhatsApp al colaborador (100% server-side en Edge Function)
  */
 export async function requestWhatsAppOtp(userId, telefonoInput = null) {
     try {
@@ -511,46 +537,24 @@ export async function requestWhatsAppOtp(userId, telefonoInput = null) {
             }
         }
 
-        const { data, error } = await supabase.rpc('generate_user_otp', {
-            p_user_id: userId,
-            p_telefono: telefonoInput,
+        const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+            body: {
+                action: 'send_login_otp',
+                userId,
+                telefono: telefonoInput || null,
+            },
         });
 
         if (error) {
-            return { success: false, error: error.message || 'No se pudo generar el código OTP' };
+            return { success: false, error: error.message || 'No se pudo enviar el código OTP por WhatsApp' };
         }
-
-        const code = data?.code;
-        const phone = data?.telefono_whatsapp || telefonoInput;
-        const nombre = data?.nombre || 'Colaborador/a';
-
-        if (!code || !phone) {
-            return { success: false, error: 'Número de WhatsApp inválido' };
-        }
-
-        const msgContent =
-            `🔐 *SANATORIO ARGENTINO — Seguridad ADM-QUI*\n\n` +
-            `Hola *${nombre}*, tu código de verificación en dos pasos (2FA) es:\n\n` +
-            `👉 *${code}*\n\n` +
-            `⏱️ Válido por 10 minutos. Si no solicitaste este ingreso, comunicate con Innovación y Sistemas.`;
-
-        try {
-            await sendWhatsAppMessage({
-                content: msgContent,
-                number: phone,
-            });
-        } catch (primaryErr) {
-            console.warn('[AuthService] Reintentando envío OTP por línea alternativa:', primaryErr?.message);
-            await sendWhatsAppMessage({
-                content: msgContent,
-                number: phone,
-                lineId: 'line_c',
-            });
+        if (!data?.success) {
+            return { success: false, error: data?.error || 'No se pudo enviar el código OTP por WhatsApp' };
         }
 
         return {
             success: true,
-            telefono_whatsapp: phone,
+            telefono_whatsapp: data.masked_whatsapp || telefonoInput || '***',
         };
     } catch (err) {
         console.error('[AuthService] Error enviando OTP por WhatsApp:', err);
@@ -590,25 +594,35 @@ export async function verifyWhatsAppOtp(userId, code, trustDevice = true) {
 }
 
 /**
- * Verifica el código de Google/Microsoft Authenticator y registra el dispositivo por 30 días
+ * Verifica el código de Google/Microsoft Authenticator y registra el dispositivo por 30 días.
+ * La validación RFC 6238 se ejecuta en PostgreSQL sin necesitar que totp_secret viaje al navegador.
  */
 export async function verifyAndSaveTotp(userId, secret, code, trustDevice = true) {
-    const isValid = await verifyTotpCode(secret, code);
-    if (!isValid) {
-        return { success: false, error: 'El código de 6 dígitos del autenticador no es válido o expiró' };
+    const cleanCode = String(code || '').replace(/\D/g, '');
+    if (cleanCode.length !== 6) {
+        return { success: false, error: 'Ingresá el código de 6 dígitos del autenticador' };
+    }
+
+    // Si es un enrolamiento QR nuevo (secret presente en memoria), pre-validamos en cliente además de en servidor
+    if (secret && String(secret).trim().length >= 16) {
+        const isValid = await verifyTotpCode(secret, cleanCode);
+        if (!isValid) {
+            return { success: false, error: 'El código de 6 dígitos del autenticador no es válido o expiró' };
+        }
     }
 
     try {
         const { data, error } = await supabase.rpc('complete_totp_verification', {
             p_user_id: userId,
-            p_totp_secret: secret,
+            p_totp_secret: secret && String(secret).trim().length >= 16 ? String(secret).trim() : null,
             p_trust_device: Boolean(trustDevice),
             p_device_token: getOrCreateDeviceToken(),
             p_device_label: getDeviceLabel(),
+            p_code: cleanCode,
         });
 
         if (error || !data) {
-            return { success: false, error: error?.message || 'No se pudo registrar la verificación TOTP' };
+            return { success: false, error: 'El código de 6 dígitos del autenticador no es válido o expiró' };
         }
         return { success: true };
     } catch (err) {
@@ -660,11 +674,13 @@ export async function adminSaveUser(payload) {
         ? Boolean(payload.mfa_enabled)
         : true;
 
+    const encodedPassword = payload.password ? await encodeTransportPassword(payload.password) : null;
+
     const { data, error } = await supabase.rpc('admin_save_user', {
         p_id: payload.id || null,
         p_usuario: payload.usuario,
         p_nombre: payload.nombre,
-        p_password: payload.password || null,
+        p_password: encodedPassword,
         p_iniciales: payload.iniciales || null,
         p_email: payload.email || null,
         p_telefono_whatsapp: cleanPhone || null,
@@ -923,10 +939,11 @@ export async function updateOwnUserProfile(userId, profileData) {
 }
 
 export async function adminResetUserSecurity(userId, { resetPassword = false, tempPassword = '123456', resetMfa = false } = {}) {
+    const encodedTempPassword = tempPassword ? await encodeTransportPassword(tempPassword) : null;
     const { data, error } = await supabase.rpc('admin_reset_user_security', {
         p_user_id: userId,
         p_reset_password: resetPassword,
-        p_temp_password: tempPassword,
+        p_temp_password: encodedTempPassword,
         p_reset_mfa: resetMfa,
     });
     if (error) throw new Error(error.message);
@@ -1011,10 +1028,13 @@ export async function changePassword(userId, oldPassword, newPassword, email = n
     }
 
     try {
+        const encodedOldPassword = await encodeTransportPassword(oldPassword);
+        const encodedNewPassword = await encodeTransportPassword(newPassword);
+
         const { data, error } = await supabase.rpc('change_password', {
             p_user_id: userId,
-            p_old_password: oldPassword,
-            p_new_password: newPassword,
+            p_old_password: encodedOldPassword,
+            p_new_password: encodedNewPassword,
             p_email: cleanEmail,
             p_telefono_whatsapp: cleanPhone,
         });
@@ -1102,14 +1122,17 @@ export async function getPasswordRecoveryOptions(usuarioInput) {
 }
 
 /**
- * Envía un código OTP de 6 dígitos para blanqueo de contraseña al canal registrado
+ * Envía un código OTP de 6 dígitos para blanqueo de contraseña al canal registrado (100% en Backend)
  * (Opción 1: 'whatsapp', Opción 2: 'email' con respaldo automático por WhatsApp si el servidor SMTP no responde)
  */
 export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
     try {
-        const { data, error } = await supabase.rpc('generate_recovery_otp', {
-            p_user_id: userId,
-            p_channel: channel,
+        const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+            body: {
+                action: 'send_recovery_otp',
+                userId,
+                channel,
+            },
         });
 
         if (error) {
@@ -1120,83 +1143,20 @@ export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
             return { success: false, error: data?.error || 'No se pudo generar el código de recuperación' };
         }
 
-        const code = data.code;
-        const nombre = data.nombre || 'Colaborador/a';
-        const usuario = data.usuario || '';
-        const phone = data.telefono_whatsapp;
-
-        const sendRecoveryViaWhatsApp = async (targetPhone) => {
-            const msgContent =
-                `🔐 *SANATORIO ARGENTINO — Blanqueo de Contraseña*\n\n` +
-                `Hola *${nombre}* (@${usuario}), solicitaste blanquear y restablecer tu contraseña en ADM-QUI.\n\n` +
-                `Tu código de verificación de 6 dígitos es:\n\n` +
-                `👉 *${code}*\n\n` +
-                `⏱️ Válido por 15 minutos. Ingresalo en la pantalla del sistema para colocar tu nueva contraseña.`;
-
-            try {
-                await sendWhatsAppMessage({
-                    content: msgContent,
-                    number: targetPhone,
-                });
-            } catch (primaryErr) {
-                console.warn('[AuthService] Reintentando WhatsApp recovery por línea alternativa:', primaryErr?.message);
-                await sendWhatsAppMessage({
-                    content: msgContent,
-                    number: targetPhone,
-                    lineId: 'line_c',
-                });
-            }
-        };
-
-        if (channel === 'whatsapp') {
-            await sendRecoveryViaWhatsApp(phone);
-
+        if (data.channel === 'whatsapp_fallback') {
             return {
                 success: true,
-                channel: 'whatsapp',
-                maskedDestination: data.masked_whatsapp,
-            };
-        } else if (channel === 'email') {
-            const targetEmail = data.email;
-            const { data: emailRes, error: fnErr } = await supabase.functions.invoke('send-security-email', {
-                body: {
-                    to: targetEmail,
-                    nombre,
-                    usuario,
-                    code,
-                },
-            });
-
-            if (fnErr || !emailRes?.success) {
-                if (phone && String(phone).length >= 8) {
-                    try {
-                        await sendRecoveryViaWhatsApp(phone);
-                        return {
-                            success: true,
-                            channel: 'whatsapp_fallback',
-                            maskedDestination: data.masked_whatsapp || phone,
-                            fallbackUsed: true,
-                        };
-                    } catch (waErr) {
-                        console.error('[AuthService] Fallback WhatsApp también falló:', waErr);
-                    }
-                }
-                return {
-                    success: false,
-                    error:
-                        emailRes?.error ||
-                        'No se pudo enviar el correo en este momento. Por favor utilizá la Opción 1 (WhatsApp o Código de Autenticación).',
-                };
-            }
-
-            return {
-                success: true,
-                channel: 'email',
-                maskedDestination: data.masked_email,
+                channel: 'whatsapp_fallback',
+                maskedDestination: data.masked_whatsapp || '***',
+                fallbackUsed: true,
             };
         }
 
-        return { success: false, error: 'Canal no soportado' };
+        return {
+            success: true,
+            channel: data.channel || channel,
+            maskedDestination: channel === 'email' ? (data.masked_email || '***') : (data.masked_whatsapp || '***'),
+        };
     } catch (err) {
         return {
             success: false,
@@ -1206,9 +1166,10 @@ export async function requestPasswordRecoveryOtp(userId, channel = 'whatsapp') {
 }
 
 /**
- * Ejecuta el blanqueo de contraseña olvidada verificando el código recibido por WhatsApp, Email o App Authenticator
+ * Ejecuta el blanqueo de contraseña olvidada verificando el código recibido por WhatsApp, Email o App Authenticator.
+ * La verificación TOTP (RFC 6238 HMAC-SHA1) se realiza 100% en PostgreSQL sin exponer totp_secret ni depender de p_totp_verified.
  */
-export async function resetForgottenPassword({ userId, method, code, newPassword, newEmail = null, totpSecret = null }) {
+export async function resetForgottenPassword({ userId, method, code, newPassword, newEmail = null }) {
     const cleanCode = String(code || '').replace(/\D/g, '');
     if (cleanCode.length !== 6) {
         return { success: false, error: 'Ingresá el código de verificación de 6 dígitos' };
@@ -1229,46 +1190,14 @@ export async function resetForgottenPassword({ userId, method, code, newPassword
     }
 
     try {
-        let totpVerified = false;
-        let secretToUse = totpSecret;
-        if (method === 'totp') {
-            const { data: totpData, error: totpErr } = await supabase.rpc('get_registered_totp_for_recovery', {
-                p_user_id: userId,
-            });
-            if (!totpErr && totpData?.success && totpData?.totp_secret) {
-                secretToUse = totpData.totp_secret;
-            }
-            if (!secretToUse) {
-                return {
-                    success: false,
-                    error: 'No se pudo validar el autenticador QR. Usá la opción de Mensaje WhatsApp.',
-                };
-            }
-            const isValid = await verifyTotpCode(secretToUse, cleanCode);
-            if (!isValid && totpSecret && totpSecret !== secretToUse) {
-                const isValidFallback = await verifyTotpCode(totpSecret, cleanCode);
-                if (isValidFallback) {
-                    secretToUse = totpSecret;
-                    totpVerified = true;
-                }
-            } else if (isValid) {
-                totpVerified = true;
-            }
-
-            if (!totpVerified) {
-                return {
-                    success: false,
-                    error: 'El código de 6 dígitos del autenticador es incorrecto o expiró.',
-                };
-            }
-        }
+        const encodedNewPassword = await encodeTransportPassword(newPassword.trim());
 
         const { data, error } = await supabase.rpc('reset_forgotten_password', {
             p_user_id: userId,
             p_method: method,
             p_code: cleanCode,
-            p_new_password: newPassword.trim(),
-            p_totp_verified: totpVerified,
+            p_new_password: encodedNewPassword,
+            p_totp_verified: false,
             p_new_email: cleanEmail,
         });
 
@@ -1278,17 +1207,6 @@ export async function resetForgottenPassword({ userId, method, code, newPassword
 
         if (!data?.success) {
             return { success: false, error: data?.error || 'Código inválido o expirado' };
-        }
-
-        // Registrar el dispositivo como confiable por 30 días ya que acaba de verificar su identidad con 2FA
-        if (secretToUse) {
-            supabase.rpc('complete_totp_verification', {
-                p_user_id: userId,
-                p_totp_secret: secretToUse,
-                p_trust_device: true,
-                p_device_token: getOrCreateDeviceToken(),
-                p_device_label: getDeviceLabel(),
-            }).then(() => {}).catch(() => {});
         }
 
         return {
