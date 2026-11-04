@@ -424,8 +424,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             nextMsgs = [...currentMsgs, formattedMsg];
                         }
                         
-                        // Capping en memoria activa: mantener máximo 80 mensajes por chat
-                        const updatedMessages = nextMsgs.length > 80 ? nextMsgs.slice(-80) : nextMsgs;
+                        // Capping amplio en memoria activa: mantener hasta 300 mensajes por chat para no truncar historiales cargados
+                        const updatedMessages = nextMsgs.length > 300 ? nextMsgs.slice(-300) : nextMsgs;
 
                         const updatedChat = {
                             ...existingChat,

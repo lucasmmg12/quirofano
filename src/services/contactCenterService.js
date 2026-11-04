@@ -3310,7 +3310,7 @@ export async function saveBotTreeConfig(botTree, user = 'admin') {
  * - Carga inicial (beforeCreatedAt=null): usa caché si existe y es fresco.
  * - Paginación (beforeCreatedAt!=null): siempre va a BD (mensajes más antiguos).
  */
-export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, limit = 50) {
+export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, limit = 150) {
     if (!phone) return [];
     try {
         const normPhone = normalizeArgentinePhone(phone);
@@ -3319,7 +3319,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
         // CACHÉ: Solo para la carga inicial (no para paginación)
         if (!beforeCreatedAt) {
             const cached = _getCachedMessages(normPhone || phone);
-            if (cached) {
+            if (cached && cached.length > 0) {
                 return cached;
             }
         }
@@ -3327,7 +3327,7 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
         let query = supabase
             .from('whatsapp_messages')
             .select(CC_MESSAGE_SLIM_SELECT)
-            .eq('line_id', 'contact_center')
+            .or('line_id.eq.contact_center,line_id.is.null')
             .in('phone', variants)
             .order('created_at', { ascending: false })
             .limit(limit);
@@ -3351,9 +3351,20 @@ export async function fetchOlderMessagesForPhone(phone, beforeCreatedAt = null, 
 
         const result = chronological.map(normalizeMessage);
 
-        // Actualizar caché solo para carga inicial (no para paginación hacia atrás)
+        // Actualizar caché: en carga inicial guarda directo; en paginación hacia atrás fusiona con caché existente
+        const cacheKey = normPhone || phone;
         if (!beforeCreatedAt) {
-            _setCachedMessages(normPhone || phone, result);
+            _setCachedMessages(cacheKey, result);
+        } else {
+            const existingCached = _getCachedMessages(cacheKey) || [];
+            if (existingCached.length > 0) {
+                const seen = new Set(existingCached.map(m => String(m.realId || m.id || '')));
+                const uniqueOlder = result.filter(m => {
+                    const k = String(m.realId || m.id || '');
+                    return !k || !seen.has(k);
+                });
+                _setCachedMessages(cacheKey, [...uniqueOlder, ...existingCached]);
+            }
         }
 
         return result;

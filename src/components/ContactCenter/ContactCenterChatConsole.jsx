@@ -842,6 +842,10 @@ export default function ContactCenterChatConsole({
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [noMoreOlder, setNoMoreOlder] = useState(false);
     const [loadingChatMessages, setLoadingChatMessages] = useState(false);
+    // Mapa persistente de mensajes históricos por teléfono normalizado (garantiza que polling o búsqueda nunca trunquen la conversación)
+    const [loadedMessagesByPhone, setLoadedMessagesByPhone] = useState({});
+    const fullHistoryLoadedPhonesRef = useRef(new Set());
+    const noMoreOlderByPhoneRef = useRef(new Map());
     // Fuerza re-render cuando se cargan mensajes del historial (usado por la auto-carga y "cargar anteriores")
     const [, setForceUpdate] = useState(0);
 
@@ -860,21 +864,29 @@ export default function ContactCenterChatConsole({
     }, [filterTab]);
 
     // Carga inicial de chats finalizados al cambiar a la pestaña de Finalizados
+    // Nota: fetchLiveAndDemoChats ya trae los primeros ~200 archivados en `chats`, por lo que iniciamos el offset desde ahí
     useEffect(() => {
         const isFinalizadosTab = filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados';
         if (isFinalizadosTab && !archivedLoadedRef.current) {
             archivedLoadedRef.current = true;
+            const alreadyLoadedClosedCount = (chats || []).filter(c => isClosedOrArchived(c)).length;
+            const startOffset = alreadyLoadedClosedCount > 0 ? alreadyLoadedClosedCount : 0;
             setLoadingArchived(true);
-            fetchArchivedChats(0, 30)
+            fetchArchivedChats(startOffset, 50)
                 .then(result => {
                     if (result && result.chats && result.chats.length > 0) {
                         setArchivedChats(prev => {
-                            const existingIds = new Set(prev.map(c => c.id));
+                            const existingIds = new Set([
+                                ...prev.map(c => c.id),
+                                ...(chats || []).filter(c => isClosedOrArchived(c)).map(c => c.id)
+                            ]);
                             const newChats = result.chats.filter(c => !existingIds.has(c.id));
                             return [...prev, ...newChats];
                         });
-                        setArchivedOffset(result.chats.length);
+                        setArchivedOffset(startOffset + result.chats.length);
                         setArchivedHasMore(result.hasMore);
+                    } else {
+                        setArchivedOffset(startOffset);
                     }
                 })
                 .catch(err => {
@@ -884,7 +896,7 @@ export default function ContactCenterChatConsole({
                     setLoadingArchived(false);
                 });
         }
-    }, [filterTab]);
+    }, [filterTab, chats]);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [searchScope, setSearchScope] = useState('all'); // 'all' (todas las carpetas) o 'tab' (en esta pestaña)
@@ -997,14 +1009,14 @@ export default function ContactCenterChatConsole({
     useEffect(() => {
         try { localStorage.removeItem('cc_message_sort_order'); } catch (_) {}
     }, []);
-    // Optimización RAM: Renderizar inicialmente 50 mensajes en el thread para computadoras de bajo rendimiento
-    const [visibleMessageCount, setVisibleMessageCount] = useState(50);
+    // Renderizar inicialmente hasta 150 mensajes en el thread para mostrar la conversación completa de inmediato
+    const [visibleMessageCount, setVisibleMessageCount] = useState(150);
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const inputRef = useRef(null);
 
     useEffect(() => {
-        setVisibleMessageCount(50);
+        setVisibleMessageCount(150);
     }, [activeChatId]);
 
     // Estado del Visor Profesional de Documentos y Órdenes Médicas
@@ -2105,36 +2117,70 @@ export default function ContactCenterChatConsole({
     };
 
 
-    // Carga AUTOMÁTICA de mensajes del chat seleccionado al abrirlo si no tiene mensajes en memoria
+    // Helper para fusionar y ordenar cronológicamente mensajes sin duplicados
+    const mergeAndSortMessages = useCallback((listA = [], listB = []) => {
+        const combined = [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])];
+        if (combined.length <= 1) return combined;
+        const seenRealIds = new Set();
+        const seenIds = new Set();
+        const unique = [];
+        for (const m of combined) {
+            if (!m) continue;
+            const rId = m.realId ? String(m.realId) : null;
+            const mId = m.id ? String(m.id) : null;
+            if (rId && seenRealIds.has(rId)) continue;
+            if (mId && seenIds.has(mId)) continue;
+            if (rId) seenRealIds.add(rId);
+            if (mId) seenIds.add(mId);
+            unique.push(m);
+        }
+        return unique.sort((a, b) => {
+            const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return ta - tb;
+        });
+    }, []);
+
+    // Carga AUTOMÁTICA del historial completo del chat seleccionado al abrirlo
+    // Siempre consulta los últimos 150 mensajes del teléfono si aún no se cargó su historial completo,
+    // evitando que el lote global de 1000 mensajes trunque conversaciones con >= 10 mensajes hoy.
     useEffect(() => {
         if (!selectedChat?.phone) return;
+        const normPhone = normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone;
 
-        // Si ya tiene suficientes mensajes en memoria (historial completo), no recargar.
-        // Si tiene pocos (< 10, ej: solo los del polling inicial), recargar para traer historial completo.
-        if (Array.isArray(selectedChat.messages) && selectedChat.messages.length >= 10) {
-            setNoMoreOlder(false);
+        if (fullHistoryLoadedPhonesRef.current.has(normPhone)) {
+            setNoMoreOlder(Boolean(noMoreOlderByPhoneRef.current.get(normPhone)));
             return;
         }
 
         let isCancelled = false;
-        setLoadingChatMessages(true);
+        const INITIAL_HISTORY_LIMIT = 150;
+        const hasInitialMessages = Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0;
+        if (!hasInitialMessages) {
+            setLoadingChatMessages(true);
+        }
         setNoMoreOlder(false);
 
-        fetchOlderMessagesForPhone(selectedChat.phone, null, 60)
+        fetchOlderMessagesForPhone(selectedChat.phone, null, INITIAL_HISTORY_LIMIT)
             .then(msgs => {
                 if (isCancelled) return;
-                // Si la consulta fue exitosa y trajo mensajes
                 if (Array.isArray(msgs) && msgs.length > 0) {
-                    selectedChat.messages = msgs;
+                    const merged = mergeAndSortMessages(msgs, selectedChat.messages || []);
+                    selectedChat.messages = merged;
+                    setLoadedMessagesByPhone(prev => ({ ...prev, [normPhone]: merged }));
+                    fullHistoryLoadedPhonesRef.current.add(normPhone);
+                    const reachedEnd = msgs.length < INITIAL_HISTORY_LIMIT;
+                    noMoreOlderByPhoneRef.current.set(normPhone, reachedEnd);
+                    setNoMoreOlder(reachedEnd);
                     setForceUpdate(n => n + 1);
                 } else if (Array.isArray(msgs) && msgs.length === 0) {
-                    // Solo marcar fin de mensajes si no hay más en BD, pero PRESERVAR los mensajes que ya existían en memoria
                     if (!selectedChat.messages || selectedChat.messages.length === 0) {
                         selectedChat.messages = [];
                     }
+                    fullHistoryLoadedPhonesRef.current.add(normPhone);
+                    noMoreOlderByPhoneRef.current.set(normPhone, true);
                     setNoMoreOlder(true);
                 }
-                // Si msgs es null (error de red o timeout), NUNCA sobreescribir ni vaciar los mensajes existentes
             })
             .catch(err => {
                 console.error('[ContactCenter] Error al auto-cargar mensajes del chat (preservando estado):', err);
@@ -2148,26 +2194,37 @@ export default function ContactCenterChatConsole({
         return () => {
             isCancelled = true;
         };
-    }, [selectedChat?.id, selectedChat?.phone]);
+    }, [selectedChat?.id, selectedChat?.phone, mergeAndSortMessages]);
 
     const handleLoadOlderMessages = async () => {
         if (!selectedChat?.phone || loadingOlder) return;
-        const msgs = selectedChat.messages || [];
+        const normPhone = normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone;
+        const msgs = mergeAndSortMessages(loadedMessagesByPhone[normPhone] || [], selectedChat.messages || []);
         const oldest = msgs[0];
         const beforeIso = oldest?.created_at || null;
+        const PAGE_LIMIT = 100;
         setLoadingOlder(true);
         try {
-            const older = await fetchOlderMessagesForPhone(selectedChat.phone, beforeIso, 40);
+            const older = await fetchOlderMessagesForPhone(selectedChat.phone, beforeIso, PAGE_LIMIT);
             if (Array.isArray(older) && older.length > 0) {
-                const existingIds = new Set(msgs.map(m => m.id || m.realId));
-                const uniqueNewOlder = older.filter(m => !existingIds.has(m.id) && !existingIds.has(m.realId));
+                const existingIds = new Set(msgs.map(m => String(m.realId || m.id || '')));
+                const uniqueNewOlder = older.filter(m => !existingIds.has(String(m.realId || '')) && !existingIds.has(String(m.id || '')));
                 if (uniqueNewOlder.length === 0) {
+                    noMoreOlderByPhoneRef.current.set(normPhone, true);
                     setNoMoreOlder(true);
                 } else {
-                    selectedChat.messages = [...uniqueNewOlder, ...msgs];
+                    const merged = mergeAndSortMessages(uniqueNewOlder, msgs);
+                    selectedChat.messages = merged;
+                    setLoadedMessagesByPhone(prev => ({ ...prev, [normPhone]: merged }));
+                    setVisibleMessageCount(c => Math.max(c + uniqueNewOlder.length, merged.length));
+                    if (older.length < PAGE_LIMIT) {
+                        noMoreOlderByPhoneRef.current.set(normPhone, true);
+                        setNoMoreOlder(true);
+                    }
                     setForceUpdate(n => n + 1);
                 }
             } else if (Array.isArray(older) && older.length === 0) {
+                noMoreOlderByPhoneRef.current.set(normPhone, true);
                 setNoMoreOlder(true);
             }
         } catch (err) {
@@ -2177,13 +2234,14 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Control de desplazamiento: cronológico clásico (abajo los más recientes)
+    // Control de desplazamiento: solo desplazar al final cuando cambia el chat activo o llega un mensaje nuevo al final
+    // (NUNCA desplazar al fondo cuando el agente carga mensajes antiguos hacia arriba)
     useEffect(() => {
         const timer = setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 50);
         return () => clearTimeout(timer);
-    }, [selectedChat?.id, selectedChat?.messages?.length]);
+    }, [selectedChat?.id, lastMsgId]);
 
     // =========================================================================
     // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA
@@ -5040,17 +5098,28 @@ export default function ContactCenterChatConsole({
                     {(filterTab === 'finalizados' || filterTab === 'archivadas' || filterTab === 'cerrados') && (
                         <div style={{ padding: '12px 16px', textAlign: 'center' }}>
                             {loadingArchived ? (
-                                <span style={{ fontSize: '0.72rem', color: themeCardSubtext }}>Cargando...</span>
+                                <span style={{ fontSize: '0.72rem', color: themeCardSubtext }}>Cargando conversaciones anteriores...</span>
                             ) : archivedHasMore ? (
                                 <button
                                     type="button"
                                     onClick={async () => {
                                         setLoadingArchived(true);
                                         try {
-                                            const result = await fetchArchivedChats(archivedOffset, 25);
-                                            setArchivedChats(prev => [...prev, ...result.chats]);
-                                            setArchivedOffset(prev => prev + 25);
-                                            setArchivedHasMore(result.hasMore);
+                                            const closedInMemoryCount = (chats || []).filter(c => isClosedOrArchived(c)).length;
+                                            const effectiveOffset = Math.max(archivedOffset, closedInMemoryCount);
+                                            const result = await fetchArchivedChats(effectiveOffset, 50);
+                                            if (result && Array.isArray(result.chats)) {
+                                                setArchivedChats(prev => {
+                                                    const existingIds = new Set([
+                                                        ...prev.map(c => c.id),
+                                                        ...(chats || []).filter(c => isClosedOrArchived(c)).map(c => c.id)
+                                                    ]);
+                                                    const newUnique = result.chats.filter(c => !existingIds.has(c.id));
+                                                    return [...prev, ...newUnique];
+                                                });
+                                                setArchivedOffset(effectiveOffset + result.chats.length);
+                                                setArchivedHasMore(result.hasMore);
+                                            }
                                         } catch (err) {
                                             console.error('Error cargando más finalizados:', err);
                                         } finally {
@@ -5068,7 +5137,7 @@ export default function ContactCenterChatConsole({
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    Cargar más finalizados
+                                    Cargar más finalizados (+50 anteriores)
                                 </button>
                             ) : (
                                 <span style={{ fontSize: '0.68rem', color: themeCardSubtext }}>No hay más conversaciones</span>
@@ -5926,7 +5995,11 @@ export default function ContactCenterChatConsole({
                     }}
                 >
                     {(() => {
-                        const rawList = selectedChat.messages || [];
+                        const normSelectedPhone = selectedChat?.phone ? (normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone) : null;
+                        const persistedHistory = normSelectedPhone ? (loadedMessagesByPhone[normSelectedPhone] || []) : [];
+                        const rawList = persistedHistory.length > 0
+                            ? mergeAndSortMessages(persistedHistory, selectedChat.messages || [])
+                            : (selectedChat.messages || []);
                         // Deduplicación visual preventiva (elimina colisiones entre mensajes optimistas y eventos Realtime)
                         const rawMsgs = (() => {
                             if (rawList.length <= 1) return rawList;
@@ -6027,7 +6100,7 @@ export default function ContactCenterChatConsole({
                                     <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                         <button
                                             type="button"
-                                            onClick={() => setVisibleMessageCount(c => c + 50)}
+                                            onClick={() => setVisibleMessageCount(c => c + 100)}
                                             style={{
                                                 background: '#F8FAFC',
                                                 border: '1px solid #CBD5E1',
@@ -6048,7 +6121,7 @@ export default function ContactCenterChatConsole({
                                         </button>
                                     </div>
                                 )}
-                                {!hasMore && !noMoreOlder && rawMsgs.length >= 20 && (
+                                {!hasMore && !noMoreOlder && rawMsgs.length > 0 && (
                                     <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                         <button
                                             type="button"
