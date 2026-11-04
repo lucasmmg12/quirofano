@@ -1340,32 +1340,6 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             />
                             {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px', display: 'flex' }}><X size={14} /></button>}
                         </div>
-                        {/* Teléfono inline */}
-                        <div style={{
-                            display: 'flex', gap: '2px', padding: '3px',
-                            background: '#F1F5F9', borderRadius: '10px', flexShrink: 0,
-                        }}>
-                            {[
-                                { val: null, label: '📱 Todos' },
-                                { val: true, label: '✅ Tel.' },
-                                { val: false, label: '❌ Tel.' },
-                            ].map(opt => (
-                                <button
-                                    key={String(opt.val)}
-                                    onClick={() => setTelFilter(opt.val)}
-                                    style={{
-                                        padding: '5px 10px', borderRadius: '8px', border: 'none',
-                                        fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                        background: telFilter === opt.val ? '#fff' : 'transparent',
-                                        color: telFilter === opt.val ? '#0D3B66' : '#94A3B8',
-                                        boxShadow: telFilter === opt.val ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                                    }}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
                     </div>
 
                     {/* ─── ROW 2: Categorías ─── */}
