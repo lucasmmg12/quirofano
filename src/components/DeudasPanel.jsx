@@ -917,7 +917,6 @@ export default function DeudasPanel({ addToast, currentUser }) {
 
                             <div>
                                 <h2 style={st.headerTitle}>Gestión de Deudas</h2>
-                                <span style={st.headerSub}>Seguimiento de cobros · Deudas ≥ ${MIN_DEUDA.toLocaleString('es-AR')} · Fuente: SALUS</span>
                             </div>
                         </div>
 
