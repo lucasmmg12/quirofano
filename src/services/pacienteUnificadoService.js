@@ -4,7 +4,7 @@
  * Usa hospital_pacientes como tabla maestra y cruza en tiempo real.
  */
 import { supabase } from '../lib/supabase';
-import { getSalusSyncBaseUrl } from './salusSync';
+import { getSalusSyncBaseUrl, getAdmQuiHeaders } from './salusSync';
 
 const TABLE = 'hospital_pacientes';
 
@@ -240,7 +240,7 @@ export async function fetchPacienteDetalle(paciente) {
                     const ctrl = new AbortController();
                     const timeoutId = setTimeout(() => ctrl.abort(), 3500);
 
-                    const res = await fetch(`${syncBase}/api/salus/paciente-historial-clinico?${params.toString()}`, {
+                    const res = await fetch(`${syncBase}/api/salus/paciente-historial-clinico?${params.toString()}`, { headers: getAdmQuiHeaders(),
                         signal: ctrl.signal
                     });
                     clearTimeout(timeoutId);

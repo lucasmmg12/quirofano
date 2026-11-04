@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase';
 import { getConfigValue, updateConfig } from './configService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from './builderbotApi';
 import { sendMetaTemplate, fetchMetaTemplates } from './metaTemplateService';
-import { getSalusSyncBaseUrl } from './salusSync';
+import { getSalusSyncBaseUrl, getAdmQuiHeaders } from './salusSync';
 
 const STORAGE_ALLOWED_USERS_KEY = 'sa_contact_center_allowed_users';
 const CONFIG_KEY = 'contact_center_allowed_users';
@@ -2109,7 +2109,7 @@ export async function lookupPatientFromSalus(query) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
+            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, { headers: getAdmQuiHeaders(),
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -2199,7 +2199,7 @@ export async function getAssociatedPatientsByPhone(phone, force = false) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`${baseUrl}/api/salus/familiares/${clean}`, {
+            const res = await fetch(`${baseUrl}/api/salus/familiares/${clean}`, { headers: getAdmQuiHeaders(),
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -3387,7 +3387,7 @@ export async function deleteChatHistoryAndContext({ phone, currentUser }) {
         const baseUrl = syncUrl.replace(/\/api\/salus\/?$/, '');
         const res = await fetch(`${baseUrl}/api/contact-center/delete-chat-context`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAdmQuiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ phone: norm, user: username })
         });
         if (res.ok) {

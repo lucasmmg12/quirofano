@@ -15,7 +15,7 @@ if %ERRORLEVEL% EQU 0 (
     echo     - Local   : http://localhost:3456
     echo.
     echo   Probando respuesta HTTP (/api/salus/health)...
-    curl -s http://127.0.0.1:3456/api/salus/health 2>nul || echo (Respuesta recibida)
+    curl -s -H "x-admqui-client: admqui-web-v1" http://127.0.0.1:3456/api/salus/health 2>nul || echo (Respuesta recibida)
 ) else (
     color 0C
     echo   [DETENIDO] El servidor SALUS Sync NO esta corriendo.

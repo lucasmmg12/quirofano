@@ -278,6 +278,7 @@ export default function DiagnosticoImagenesDashboard({
                 for (const url of candidates) {
                     try {
                         const res = await fetch(url, {
+                            headers: { 'x-admqui-client': 'admqui-web-v1' },
                             signal: AbortSignal.timeout(forceRefresh ? 90000 : 8000)
                         });
                         if (res.ok) {
@@ -344,7 +345,10 @@ export default function DiagnosticoImagenesDashboard({
             ];
             for (const url of urls) {
                 try {
-                    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+                    const res = await fetch(url, {
+                        headers: { 'x-admqui-client': 'admqui-web-v1' },
+                        signal: AbortSignal.timeout(6000)
+                    });
                     if (res.ok) {
                         const json = await res.json();
                         if (json.success && Array.isArray(json.data)) {

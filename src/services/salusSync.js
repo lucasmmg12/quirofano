@@ -10,6 +10,15 @@
 
 import { supabase } from '../lib/supabase';
 
+export const ADMQUI_CLIENT_HEADER_VALUE = import.meta.env?.VITE_ADMQUI_CLIENT_TOKEN || 'admqui-web-v1';
+
+export function getAdmQuiHeaders(extra = {}) {
+    return {
+        'x-admqui-client': ADMQUI_CLIENT_HEADER_VALUE,
+        ...extra
+    };
+}
+
 export function isLocalEnvironment() {
     if (typeof window === 'undefined') return true;
     const host = window.location.hostname;
@@ -43,7 +52,10 @@ export async function checkSalusHealth() {
     // 1. Probar llamada directa HTTP SOLO si estamos en la propia máquina local (localhost)
     if (isLocal && typeof window !== 'undefined' && window.location.protocol !== 'https:') {
         try {
-            const res = await fetch('http://localhost:3456/api/salus/health', { signal: AbortSignal.timeout(1000) });
+            const res = await fetch('http://localhost:3456/api/salus/health', {
+                headers: getAdmQuiHeaders(),
+                signal: AbortSignal.timeout(1000)
+            });
             if (res.ok) {
                 const data = await res.json();
                 if (data.success && data.connected) {
@@ -91,11 +103,17 @@ export async function triggerSalusSync({ isFast = true, requestedBy = 'Usuario',
     // 1. Intento directo SOLO si estamos en localhost
     if (isLocal && typeof window !== 'undefined' && window.location.protocol !== 'https:') {
         try {
-            const hRes = await fetch('http://localhost:3456/api/salus/health', { signal: AbortSignal.timeout(1000) });
+            const hRes = await fetch('http://localhost:3456/api/salus/health', {
+                headers: getAdmQuiHeaders(),
+                signal: AbortSignal.timeout(1000)
+            });
             if (hRes.ok) {
                 const endpoint = `http://localhost:3456/api/salus/sync-all${isFast ? '?fast=true' : ''}`;
                 const timeoutMs = isFast ? 600000 : 1800000;
-                const res = await fetch(endpoint, { signal: AbortSignal.timeout(timeoutMs) });
+                const res = await fetch(endpoint, {
+                    headers: getAdmQuiHeaders(),
+                    signal: AbortSignal.timeout(timeoutMs)
+                });
                 const json = await res.json();
                 if (json.success) return json;
                 throw new Error(json.error || 'Error en sync directo');
@@ -174,7 +192,10 @@ export async function triggerAltasSync({ requestedBy = 'Usuario', onProgress = n
 
     if (isLocal && typeof window !== 'undefined' && window.location.protocol !== 'https:') {
         try {
-            const res = await fetch('http://localhost:3456/api/salus/sync/altas?fast=true', { signal: AbortSignal.timeout(300000) });
+            const res = await fetch('http://localhost:3456/api/salus/sync/altas?fast=true', {
+                headers: getAdmQuiHeaders(),
+                signal: AbortSignal.timeout(300000)
+            });
             if (res.ok) {
                 const json = await res.json();
                 if (json.success) return json;
@@ -233,7 +254,10 @@ export async function syncPacientes(options = {}) {
             if (options.fast) params.append('fast', 'true');
 
             const qs = params.toString() ? `?${params.toString()}` : '';
-            const res = await fetch(`http://localhost:3456/api/salus/sync/pacientes${qs}`, { signal: AbortSignal.timeout(300000) });
+            const res = await fetch(`http://localhost:3456/api/salus/sync/pacientes${qs}`, {
+                headers: getAdmQuiHeaders(),
+                signal: AbortSignal.timeout(300000)
+            });
             if (res.ok) {
                 return await res.json();
             }
@@ -306,7 +330,10 @@ export async function syncPacienteIndividual(ident) {
     const isLocal = isLocalEnvironment();
     if (isLocal && typeof window !== 'undefined' && window.location.protocol !== 'https:') {
         try {
-            const res = await fetch(`http://localhost:3456/api/salus/sync/paciente/${encodeURIComponent(clean)}`, { signal: AbortSignal.timeout(10000) });
+            const res = await fetch(`http://localhost:3456/api/salus/sync/paciente/${encodeURIComponent(clean)}`, {
+                headers: getAdmQuiHeaders(),
+                signal: AbortSignal.timeout(10000)
+            });
             if (res.ok) {
                 return await res.json();
             }

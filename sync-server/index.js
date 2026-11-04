@@ -41,30 +41,33 @@ import { synthesizeSimonSpeech, ELEVENLABS_VOICES_CATALOG, DEFAULT_FEMALE_VOICE_
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Cargar .env: primero buscar en el directorio actual, luego en el padre y .env.local
+// Cargar .env en cascada: primero directorio actual, luego padre y .env.local
 const envLocal = resolve(__dirname, '.env');
 const envParent = resolve(__dirname, '..', '.env');
 const envParentLocal = resolve(__dirname, '..', '.env.local');
-config({ path: fs.existsSync(envLocal) ? envLocal : envParent });
-if (fs.existsSync(envParentLocal)) {
-    config({ path: envParentLocal });
-}
+if (fs.existsSync(envLocal)) config({ path: envLocal });
+if (fs.existsSync(envParent)) config({ path: envParent });
+if (fs.existsSync(envParentLocal)) config({ path: envParentLocal });
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3456;
 
-// â”€â”€ Supabase Client â”€â”€
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhha3lzbnFpcnlpbXhid2RzbHdlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDA0MjI3NCwiZXhwIjoyMDg1NjE4Mjc0fQ.v0Zw7yFjGKJX8xsMCZJPwRyhr2eNd1gjASsI7qSK0YM';
+// ── Supabase Client (credenciales exclusivas desde .env) ──
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+if (!supabaseUrl || !supabaseKey) {
+    console.error('❌ [Config] Faltan VITE_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en el archivo .env');
+}
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// â”€â”€ SQL Server Config â”€â”€
+// ── SQL Server Config (credenciales exclusivas desde .env) ──
 const SQL_CONFIG = {
-    server: '128.223.16.29',
-    port: 2450,
-    user: 'SalusConsulta',
-    password: 'ConsultaSALUS1234',
-    database: 'SALUS',
+    server: process.env.SALUS_DB_SERVER,
+    port: parseInt(process.env.SALUS_DB_PORT || '2450', 10),
+    user: process.env.SALUS_DB_USER,
+    password: process.env.SALUS_DB_PASSWORD,
+    database: process.env.SALUS_DB_NAME || 'SALUS',
     options: {
         encrypt: false,
         trustServerCertificate: true,
@@ -95,9 +98,61 @@ async function getPool() {
     return pool;
 }
 
-// ── Middleware ──
-app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
+// ── Middleware CORS Inteligente por Rango del Sanatorio ──
+const ALLOWED_ORIGIN_PATTERNS = [
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i,                  // Desarrollo local
+    /^https?:\/\/128\.223\.\d{1,3}\.\d{1,3}(:\d+)?$/,                 // Red interna Sanatorio Argentino
+    /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/, // LAN / VPN interna
+    /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,                        // Dominios oficiales en Vercel
+    /^https:\/\/([a-z0-9-]+\.)*onrender\.com$/i,                      // Servicios propios en Render
+    /^https:\/\/([a-z0-9-]+\.)*sanatorioargentino\.com\.ar$/i         // Dominios institucionales
+];
+
+function isAllowedOrigin(origin) {
+    if (!origin) return true; // Peticiones sin Origin (server-to-server, scripts internos)
+    if (ALLOWED_ORIGIN_PATTERNS.some((regex) => regex.test(origin))) return true;
+    const extraOrigins = (process.env.CORS_ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+    return extraOrigins.includes(origin);
+}
+
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (req.headers['access-control-request-private-network'] === 'true' && isAllowedOrigin(origin)) {
+        res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    next();
+});
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+            return callback(null, true);
+        }
+        console.warn(`🛡️ [CORS Bloqueado] Origen externo no autorizado: ${origin}`);
+        return callback(null, false);
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admqui-client']
+}));
 app.use(express.json());
+
+// ── Protección de API Interna (Header x-admqui-client) ──
+const EXPECTED_ADMQUI_CLIENT = process.env.ADMQUI_CLIENT_TOKEN || 'admqui-web-v1';
+function requireAdmQuiClient(req, res, next) {
+    if (req.method === 'OPTIONS') return next();
+    const clientHeader = req.headers['x-admqui-client'];
+    if (!clientHeader || clientHeader !== EXPECTED_ADMQUI_CLIENT) {
+        console.warn(`🛡️ [API Bloqueada] Intento de acceso directo sin x-admqui-client desde ${req.ip} a ${req.originalUrl}`);
+        return res.status(403).json({
+            success: false,
+            error: 'Acceso denegado: Se requiere cliente autorizado de Sistema ADM-QUI.'
+        });
+    }
+    next();
+}
+
+app.use('/api/salus', requireAdmQuiClient);
+app.use('/api/contact-center', requireAdmQuiClient);
 
 // ─── ElevenLabs TTS para Simón IA (Beto) ───
 app.get('/api/elevenlabs/voices', (req, res) => {

@@ -5,7 +5,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { getSalusSyncBaseUrl } from './salusSync';
+import { getSalusSyncBaseUrl, getAdmQuiHeaders } from './salusSync';
 
 // Base Garantizada Histórica (100% Inamovible)
 export const BASE_GARANTIZADA_HISTORICA = 139470.59;
@@ -184,7 +184,7 @@ export async function fetchMetricasIncentivosSalus(periodo, { forceRefresh = fal
     if (base) {
         try {
             const url = `${base}/api/salus/incentivos-contact-center?periodo=${encodeURIComponent(periodo)}`;
-            const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            const res = await fetch(url, { headers: getAdmQuiHeaders(), signal: AbortSignal.timeout(15000) });
             const contentType = res.headers.get('content-type') || '';
             if (res.ok && contentType.includes('application/json')) {
                 const json = await res.json();

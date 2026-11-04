@@ -12,7 +12,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { getSalusSyncBaseUrl } from './salusSync';
+import { getSalusSyncBaseUrl, getAdmQuiHeaders } from './salusSync';
 
 /**
  * Normaliza nombres de agente para matching flexible
@@ -112,7 +112,7 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
             const url = `${base}/api/salus/turnos-agentes-hoy?fecha=${targetDate}`;
             const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
             const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
-            const res = await fetch(url, { signal: controller ? controller.signal : undefined });
+            const res = await fetch(url, { headers: getAdmQuiHeaders(), signal: controller ? controller.signal : undefined });
             if (timeoutId) clearTimeout(timeoutId);
             if (res.ok) {
                 const json = await res.json();
@@ -126,12 +126,12 @@ export async function fetchTurnosSalusHoy(dateStr = null) {
                             category: 'contact_center_diario',
                             updated_at: new Date().toISOString(),
                             updated_by: 'agentShiftService_auto_cache'
-                        }).then(() => {});
-                    } catch (_) {}
+                        }).then(() => { });
+                    } catch (_) { }
                     return json.data;
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     return { fecha: targetDate, total: 0, agentes: [] };
@@ -570,8 +570,8 @@ export async function getAgentDailyShiftMetrics({
     // Si es visión individual: pacientes que ingresaron hoy asignados o gestionados por la operadora
     const incomingPhonesToDistribute = isTeamOverview
         ? Array.from(patientFirstSeenMap.keys())
-        : (typeof agentIngresadosHoySet !== 'undefined' && agentIngresadosHoySet && agentIngresadosHoySet.size > 0 
-            ? Array.from(agentIngresadosHoySet) 
+        : (typeof agentIngresadosHoySet !== 'undefined' && agentIngresadosHoySet && agentIngresadosHoySet.size > 0
+            ? Array.from(agentIngresadosHoySet)
             : Array.from(patientFirstSeenMap.keys()));
 
     incomingPhonesToDistribute.forEach(phone => {
@@ -595,13 +595,13 @@ export async function getAgentDailyShiftMetrics({
     const totalGestionadas = uniqueConsultasMap.size;
 
     // 1. Tasa resolutiva (%)
-    const tasaResolucion = totalGestionadas > 0 
-        ? Math.min(100, Math.round((totalFinalizadas / totalGestionadas) * 100)) 
+    const tasaResolucion = totalGestionadas > 0
+        ? Math.min(100, Math.round((totalFinalizadas / totalGestionadas) * 100))
         : 100;
 
     // 2. Promedio de mensajes por conversación finalizada
-    const promMensajesPorChat = totalFinalizadas > 0 
-        ? (totalMensajes / totalFinalizadas).toFixed(1) 
+    const promMensajesPorChat = totalFinalizadas > 0
+        ? (totalMensajes / totalFinalizadas).toFixed(1)
         : '0';
 
     // 3. Categoría predominante
@@ -614,8 +614,8 @@ export async function getAgentDailyShiftMetrics({
         }
     });
     const categoriaPredominante = categorias[maxCategoriaKey];
-    const pctCategoriaPredominante = totalConsultasClasificadas > 0 
-        ? Math.round((maxCategoriaCount / totalConsultasClasificadas) * 100) 
+    const pctCategoriaPredominante = totalConsultasClasificadas > 0
+        ? Math.round((maxCategoriaCount / totalConsultasClasificadas) * 100)
         : 0;
 
     // 4. Diagnóstico cualitativo del turno
@@ -646,8 +646,8 @@ export async function getAgentDailyShiftMetrics({
             id: 'pico_actividad',
             titulo: 'Franja Horaria Pico',
             valor: peakHour ? `${peakHour} hs` : 'Uniforme',
-            descripcion: peakHourCount > 0 
-                ? `Mayor concentración de respuestas con ${peakHourCount} mensajes emitidos en esa hora.` 
+            descripcion: peakHourCount > 0
+                ? `Mayor concentración de respuestas con ${peakHourCount} mensajes emitidos en esa hora.`
                 : 'El flujo de respuestas se mantuvo homogéneo a lo largo del turno.',
             tipo: 'info',
             badge: 'Ritmo Horario'
@@ -664,7 +664,7 @@ export async function getAgentDailyShiftMetrics({
             id: 'salus_conversion',
             titulo: 'Impacto Asistencial SALUS',
             valor: `${turnosSalusCount} Turnos`,
-            descripcion: turnosSalusCount > 0 
+            descripcion: turnosSalusCount > 0
                 ? `Generaste ${turnosSalusCount} citas médicas confirmadas en el sistema SALUS durante tu horario.`
                 : 'No se registraron turnos creados bajo tu usuario SALUS en el corte actual.',
             tipo: turnosSalusCount >= 10 ? 'success' : 'neutral',
@@ -682,7 +682,7 @@ export async function getAgentDailyShiftMetrics({
             id: 'estado_bandeja',
             titulo: 'Estado para Fin de Turno',
             valor: chatsActivosSinCerrar.length === 0 ? 'Bandeja Limpia ✨' : `${chatsActivosSinCerrar.length} Activos`,
-            descripcion: chatsActivosSinCerrar.length === 0 
+            descripcion: chatsActivosSinCerrar.length === 0
                 ? '¡Excelente! No dejas conversaciones asignadas pendientes de respuesta.'
                 : `Tienes ${chatsActivosSinCerrar.length} conversación(es) abierta(s). Recuerda transferirlas en el Pase de Guardia antes de retirarte.`,
             tipo: chatsActivosSinCerrar.length === 0 ? 'success' : 'alert',
@@ -804,7 +804,7 @@ export async function mapTurnosWithWhatsApp(turnosList = [], targetDate = null) 
                                 matchedAt: c.created_at
                             };
                         }
-                    } catch (_) {}
+                    } catch (_) { }
                 }
             }
 
@@ -830,7 +830,7 @@ export async function mapTurnosWithWhatsApp(turnosList = [], targetDate = null) 
                                 matchedAt: m.created_at
                             };
                         }
-                    } catch (_) {}
+                    } catch (_) { }
                 }
             }
 

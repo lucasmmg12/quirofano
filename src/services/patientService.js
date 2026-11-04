@@ -8,6 +8,7 @@
  * La tabla "pacientes" fue reutilizada por el módulo de enfermería con otro schema.
  */
 import { supabase } from '../lib/supabase';
+import { getAdmQuiHeaders } from './salusSync';
 
 /** Nombre de la tabla del padrón hospitalario */
 const PATIENTS_TABLE = 'hospital_pacientes';
@@ -150,7 +151,7 @@ export async function fetchPatientByDniLive(dni) {
         const candidates = ['http://127.0.0.1:3456/api/salus', 'http://localhost:3456/api/salus'];
         for (const base of candidates) {
             try {
-                const res = await fetch(`${base}/paciente/${cleanDni}`, { signal: AbortSignal.timeout(1000) });
+                const res = await fetch(`${base}/paciente/${cleanDni}`, { headers: getAdmQuiHeaders(), signal: AbortSignal.timeout(1000) });
                 if (res.ok) {
                     const json = await res.json();
                     if (json.success && json.paciente) {

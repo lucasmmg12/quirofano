@@ -57,7 +57,9 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
             // 1. Intentar primero con el endpoint local de sync-server (http://localhost:3456)
             let loaded = false;
             try {
-                const res = await fetch(`http://localhost:3456/api/salus/guardia-internado${forceRefresh ? '?refresh=true' : ''}`);
+                const res = await fetch(`http://localhost:3456/api/salus/guardia-internado${forceRefresh ? '?refresh=true' : ''}`, {
+                    headers: { 'x-admqui-client': 'admqui-web-v1' }
+                });
                 if (res.ok) {
                     const json = await res.json();
                     if (json.success && json.data && Array.isArray(json.data.admisiones_clinicas)) {

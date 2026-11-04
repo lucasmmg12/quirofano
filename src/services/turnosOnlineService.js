@@ -4,6 +4,7 @@
  * Conectado de forma directa y segura a Supabase (HTTPS / Vercel friendly, sin Mixed Content).
  */
 import { supabase } from '../lib/supabase';
+import { getAdmQuiHeaders } from './salusSync';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from './builderbotApi';
 import { saveOutgoingMessage } from './chatService';
 import { sendMetaTemplate } from './metaTemplateService';
@@ -300,7 +301,7 @@ export async function syncTurnosOnlineWithSalus({ days = 1, date = null } = {}) 
             let url = `${baseUrl}/turnos-online/duplicados?days=${days}`;
             if (date) url += `&date=${encodeURIComponent(date)}`;
 
-            const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+            const response = await fetch(url, { headers: getAdmQuiHeaders(), signal: AbortSignal.timeout(8000) });
             if (response.ok) {
                 const data = await response.json();
                 if (data && (data.success || Array.isArray(data.casos))) {
@@ -410,7 +411,7 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null, force
             try {
                 let url = `${base}/turnos-online/duplicados?days=${days}`;
                 if (date) url += `&date=${encodeURIComponent(date)}`;
-                const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+                const response = await fetch(url, { headers: getAdmQuiHeaders(), signal: AbortSignal.timeout(3000) });
                 if (response.ok) return await response.json();
             } catch (_) {}
         }
@@ -469,7 +470,7 @@ export async function saveGestionTurnoOnline({ key, estado, agenteId, agenteNomb
         try {
             await fetch('http://127.0.0.1:3456/api/salus/turnos-online/gestion', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAdmQuiHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ key, estado, agenteId, agenteNombre, notas, templateName })
             });
         } catch {
