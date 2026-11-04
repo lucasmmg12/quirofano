@@ -598,10 +598,8 @@ export default function DiagnosticoImagenesDashboard({
             return Math.max(0.8, 1 + norm);
         };
 
-        // Caso 1: Todos los meses solicitados están disponibles como datos reales en el caché
-        const allRequestedMonthsInCache = monthsInRange.every(m =>
-            fullAvailableMonthsSet.has(m.key) || (availableMonthsSet.has(m.key) && m.key === cacheEnd.substring(0, 7) && effectiveHasta <= cacheEnd)
-        );
+        // Caso 1: Todos los meses solicitados están disponibles como datos reales en el caché (incluyendo el mes en curso ej. 2026-11)
+        const allRequestedMonthsInCache = monthsInRange.every(m => availableMonthsSet.has(m.key));
 
         if (allRequestedMonthsInCache && availableMonthsSet.size > 0) {
             const filteredEvol = (data.evolucion || []).filter(r => {
@@ -610,16 +608,17 @@ export default function DiagnosticoImagenesDashboard({
                 return true;
             });
 
-            // Si el usuario eligió un sub-rango de días dentro de un mes (< 27 días), calcular proporción exacta según evolución diaria real
+            // Si el usuario eligió un sub-rango de días dentro de un mes, calcular proporción exacta según evolución diaria real
+            // (si seleccionó el mes en curso completo ej. 2026-11-01..2026-11-30, subRangeEvolSum === fullMonthEvolSum => ratio = 1)
             let subMonthRatio = 1;
-            if (monthsInRange.length === 1 && daysSelected < 27) {
+            if (monthsInRange.length === 1) {
                 const fullMonthEvolSum = (data.evolucion || [])
                     .filter(r => (r.PeriodoMes || r.FechaDia?.substring(0, 7)) === reqStartMonth)
                     .reduce((acc, r) => acc + (r.Cantidad || 0), 0);
                 const subRangeEvolSum = filteredEvol.reduce((acc, r) => acc + (r.Cantidad || 0), 0);
-                subMonthRatio = fullMonthEvolSum > 0
-                    ? Math.max(0.05, subRangeEvolSum / fullMonthEvolSum)
-                    : Math.max(0.05, daysSelected / 30);
+                if (fullMonthEvolSum > 0 && subRangeEvolSum < fullMonthEvolSum) {
+                    subMonthRatio = Math.max(0.05, subRangeEvolSum / fullMonthEvolSum);
+                }
             }
 
             const filterAndScaleByMonth = (arr, isAgenda = false) => {
@@ -653,8 +652,9 @@ export default function DiagnosticoImagenesDashboard({
         }
 
         // Caso 2: El rango incluye meses fuera del caché (ej. Histórico 2022-2026 o meses previos a 2026-01).
-        // Para los meses que SÍ existen completos en el caché se usa el dato 100% real de SALUS;
-        // para los meses fuera del caché se proyecta tomando UN SOLO MES plantilla (nunca la suma de todos los meses).
+        // Para TODOS los meses que existen en el caché (incluido 2026-11 en curso) se usa el dato 100% real de SALUS;
+        // solo para meses pasados fuera del caché se proyecta tomando UN SOLO MES plantilla completo.
+        const todayMonthKey = new Date().toISOString().substring(0, 7);
         const getTemplateMonthFor = (mObj) => {
             if (fullMonthByMM.has(mObj.mm)) return fullMonthByMM.get(mObj.mm);
             return referenceMonth;
@@ -691,12 +691,15 @@ export default function DiagnosticoImagenesDashboard({
         const buildCollectionForMonths = (byMonthMap, fallbackArr, keyFn, isAgenda = false) => {
             const result = [];
             monthsInRange.forEach(mObj => {
-                // Si el mes existe completo en el caché, usar sus registros reales directos
-                if (fullAvailableMonthsSet.has(mObj.key) && byMonthMap.has(mObj.key)) {
+                // Si el mes existe en el caché (sea completo o el mes actual en curso como Nov 26), usar sus registros reales directos
+                if (availableMonthsSet.has(mObj.key) && byMonthMap.has(mObj.key)) {
                     byMonthMap.get(mObj.key).forEach(r => result.push(r));
                     return;
                 }
-                // Si no existe en caché, usar UN SOLO MES plantilla (1 mes = ~8.500-9.500 estudios)
+                // Nunca proyectar meses futuros que aún no transcurrieron
+                if (mObj.key > todayMonthKey) return;
+
+                // Si es un mes pasado que no existe en caché, usar UN SOLO MES plantilla completo
                 const tplMonth = getTemplateMonthFor(mObj);
                 const tplRows = byMonthMap.get(tplMonth) || (fallbackArr || []);
                 const normDivisor = byMonthMap.has(tplMonth) ? 1 : baseMonthsCount;
@@ -727,12 +730,12 @@ export default function DiagnosticoImagenesDashboard({
             return result;
         };
 
-        // Reconstruir serie de evolución temporal (diaria o mensual) usando datos reales para meses en caché y plantilla de 1 mes para el resto
+        // Reconstruir serie de evolución temporal (diaria o mensual) usando datos reales para todos los meses en caché (incluido Nov 26)
         const scaledEvolucion = [];
         const isDailyRange = monthsInRange.length <= 2 && daysSelected <= 65;
 
         monthsInRange.forEach(mObj => {
-            if (fullAvailableMonthsSet.has(mObj.key) && evolucionByMonth.has(mObj.key)) {
+            if (availableMonthsSet.has(mObj.key) && evolucionByMonth.has(mObj.key)) {
                 evolucionByMonth.get(mObj.key).forEach(e => {
                     if (!e.FechaDia || (e.FechaDia >= effectiveDesde && e.FechaDia <= effectiveHasta)) {
                         scaledEvolucion.push(e);
@@ -740,6 +743,7 @@ export default function DiagnosticoImagenesDashboard({
                 });
                 return;
             }
+            if (mObj.key > todayMonthKey) return;
 
             const tplMonth = getTemplateMonthFor(mObj);
             const tplEvolRows = evolucionByMonth.get(tplMonth) || (data.evolucion || []);
@@ -1204,7 +1208,7 @@ export default function DiagnosticoImagenesDashboard({
                 const mm = String(cur.getMonth() + 1).padStart(2, '0');
                 const dd = String(cur.getDate()).padStart(2, '0');
                 const dayKey = `${yyyy}-${mm}-${dd}`;
-                if (dayKey > todayStr && dayKey > effectiveHasta) break;
+                if (dayKey > todayStr) break;
 
                 map.set(dayKey, {
                     key: dayKey,
