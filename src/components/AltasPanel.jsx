@@ -1293,34 +1293,6 @@ export default function AltasPanel({ addToast, currentUser }) {
                             }}>
                             <Scissors size={14} /> Corte de Mes (Neo/UCI)
                         </button>
-                        {hcLoadedCount > 0 && (
-                            <span style={{ fontSize: '0.75rem', color: '#059669', background: '#D1FAE5', padding: '4px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                                {hcLoadedCount} HC en memoria
-                            </span>
-                        )}
-                        <label style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '8px 14px', borderRadius: '8px',
-                            background: '#EFF6FF', color: '#1D4ED8',
-                            border: '1px solid #BFDBFE', cursor: 'pointer',
-                            fontSize: '0.8rem', fontWeight: 600,
-                        }}>
-                            <FileDown size={14} /> Cargar HC (Excel)
-                            <input type="file" accept=".xlsx" style={{ display: 'none' }}
-                                onChange={async (e) => {
-                                    if(e.target.files && e.target.files[0]) {
-                                        try {
-                                            addToast?.('Procesando archivo Excel...', 'info');
-                                            const count = await processHCExcelFile(e.target.files[0]);
-                                            setHcLoadedCount(count);
-                                            addToast?.(`¡${count} historias cargadas a memoria!`, 'success');
-                                        } catch(err) {
-                                            addToast?.(`Error: ${err.message}`, 'error');
-                                        }
-                                    }
-                                }} 
-                            />
-                        </label>
                         <SalusSyncButton onComplete={loadData} addToast={addToast} />
                         {/* Export buttons */}
                         <button
