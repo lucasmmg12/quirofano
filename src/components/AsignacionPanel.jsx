@@ -190,7 +190,7 @@ export default function AsignacionPanel({ addToast, currentUser }) {
                 boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
                 display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
                 flexWrap: 'wrap', gap: '12px',
-                position: 'relative', overflow: 'hidden'
+                position: 'relative', overflow: 'hidden', flexShrink: 0
             }}>
                 <div style={{ paddingBottom: '16px' }}>
                     <h2 style={{

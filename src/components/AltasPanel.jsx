@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import * as XLSX from 'xlsx';
 import {
     Search, RefreshCw, ChevronRight, ChevronLeft, Clock, Calendar,
     Filter, X, Loader2, FileText, User, Building2,
@@ -996,40 +997,60 @@ export default function AltasPanel({ addToast, currentUser }) {
         return pages;
     };
 
-    // ── Exportar a Excel (CSV con BOM para UTF-8) ──
+    // ── Exportar a Excel (.xlsx nativo) ──
     const exportToExcel = () => {
-        const headers = ['Estado', 'Paciente', 'N° Admisión', 'Obra Social', 'Especialidad', 'Médico', 'Ingreso', 'Alta', 'Responsable', 'Proceso', 'Notas'];
-        const rows = sortedAltas.map(a => {
-            const ecfg = ALTA_ESTADOS[a._effectiveEstado];
-            return [
-                ecfg?.label || '—',
-                a.paciente || '',
-                a.numero_admision ? a.numero_admision.replace(/-P\d*$/i, '') : '',
-                a.cliente || '',
-                a.especialidad || '',
-                a.doctor || '',
-                a.fecha_ingreso || '',
-                a.fecha_alta || '',
-                a._responsable || '',
-                a.proceso || '',
-                (a.notas_internas || '').replace(/[\n\r]+/g, ' '),
+        try {
+            const rows = sortedAltas.map(a => {
+                const ecfg = ALTA_ESTADOS[a._effectiveEstado];
+                let estadoFacturacion = 'Pendiente';
+                if (a._isDevueltaFac) estadoFacturacion = 'Devuelta FAC';
+                else if (a._isFacturada) estadoFacturacion = a.facturado_por ? `Facturada (${a.facturado_por})` : 'Facturada';
+                else if (a.traspaso_id) estadoFacturacion = 'Traspasada a FAC';
+                else if (a.en_carrito_traspaso) estadoFacturacion = 'En Carrito';
+
+                return {
+                    'Estado': ecfg?.label || 'Vacío / Sin Estado',
+                    'Paciente': a.paciente || '',
+                    'DNI': a.numero_documento || '',
+                    'N° Admisión': a.numero_admision ? a.numero_admision.replace(/-P\d*$/i, '') : '',
+                    'Obra Social': a.cliente || '',
+                    'Especialidad': a.especialidad || '',
+                    'Médico': a.doctor || '',
+                    'Ingreso': a.fecha_ingreso ? formatDate(a.fecha_ingreso) : '',
+                    'Alta': a.fecha_alta ? formatDate(a.fecha_alta) : 'Internado',
+                    'Responsable': a._responsable || 'Sin Asignar',
+                    'Facturación': estadoFacturacion,
+                    'Proceso': a.proceso || '',
+                    'Notas': (a.notas_internas || '').replace(/[\n\r]+/g, ' '),
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            ws['!cols'] = [
+                { wch: 18 }, // Estado
+                { wch: 32 }, // Paciente
+                { wch: 12 }, // DNI
+                { wch: 14 }, // N° Admisión
+                { wch: 28 }, // Obra Social
+                { wch: 22 }, // Especialidad
+                { wch: 28 }, // Médico
+                { wch: 12 }, // Ingreso
+                { wch: 12 }, // Alta
+                { wch: 16 }, // Responsable
+                { wch: 22 }, // Facturación
+                { wch: 18 }, // Proceso
+                { wch: 40 }, // Notas
             ];
-        });
-
-        const csvContent = [headers, ...rows]
-            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
-            .join('\n');
-
-        const BOM = '\uFEFF';
-        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        const today = new Date().toISOString().split('T')[0];
-        link.href = url;
-        link.download = `altas_administrativas_${today}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-        addToast?.(`📊 Excel exportado: ${sortedAltas.length} registros`, 'success');
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Control_Altas');
+            const today = new Date().toISOString().split('T')[0];
+            const periodTag = selectedMonth ? `${selectedMonth}_${today}` : today;
+            XLSX.writeFile(wb, `Control_Altas_Administrativas_${periodTag}.xlsx`);
+            addToast?.(`📊 Excel (.xlsx) exportado: ${sortedAltas.length} registros`, 'success');
+        } catch (err) {
+            console.error('Error exportando Excel de Altas:', err);
+            addToast?.(`Error al exportar Excel: ${err.message}`, 'error');
+        }
     };
 
     // ── Exportar a PDF (abre diálogo de impresión del navegador) ──
@@ -1234,14 +1255,14 @@ export default function AltasPanel({ addToast, currentUser }) {
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '16px',
-                padding: '16px 22px 0 22px',
+                padding: '14px 20px',
                 border: '1px solid #E2E8F0',
                 boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 flexWrap: 'wrap', gap: '12px',
-                position: 'relative', overflow: 'hidden'
+                position: 'relative', flexShrink: 0
             }}>
-                <div style={{ paddingBottom: '16px' }}>
+                <div>
                     <h2 style={{ 
                         margin: 0, fontSize: '1.35rem', fontWeight: 800,
                         color: 'var(--neutral-800)', letterSpacing: '-0.3px',
@@ -1259,8 +1280,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                         Gestión del proceso de alta hospitalaria — {total} registros
                     </p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <button onClick={handleCheckCorte}
                             title="Corte de Mes (Internaciones Prolongadas Neo/UCI)"
                             style={{
@@ -1305,21 +1326,22 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <button
                             onClick={exportToExcel}
                             disabled={loading || sortedAltas.length === 0}
-                            title="Exportar a Excel (.csv)"
+                            title="Exportar tabla actual a Excel (.xlsx)"
                             style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                padding: '8px 12px', borderRadius: '10px',
-                                background: '#fff', color: '#059669',
-                                border: '1px solid #05966930',
-                                fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                                padding: '8px 14px', borderRadius: '10px',
+                                background: '#ECFDF5', color: '#047857',
+                                border: '1.5px solid #10B981',
+                                fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                                 transition: 'all 0.2s',
                                 opacity: sortedAltas.length === 0 ? 0.4 : 1,
+                                boxShadow: '0 1px 2px rgba(16, 185, 129, 0.12)',
                             }}
-                            onMouseOver={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#059669'; }}
-                            onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#05966930'; }}
+                            onMouseOver={e => { e.currentTarget.style.background = '#D1FAE5'; e.currentTarget.style.borderColor = '#059669'; }}
+                            onMouseOut={e => { e.currentTarget.style.background = '#ECFDF5'; e.currentTarget.style.borderColor = '#10B981'; }}
                         >
                             <FileDown size={14} />
-                            Excel
+                            Exportar Excel
                         </button>
                         <button
                             onClick={exportToPDF}
@@ -1364,8 +1386,9 @@ export default function AltasPanel({ addToast, currentUser }) {
                         display: 'flex',
                         alignItems: 'flex-end',
                         justifyContent: 'center',
-                        marginTop: '-10px',
-                        marginRight: '4px',
+                        marginBottom: '-14px',
+                        marginTop: '-8px',
+                        marginRight: '2px',
                         pointerEvents: 'none',
                         userSelect: 'none'
                     }}>
@@ -1373,12 +1396,12 @@ export default function AltasPanel({ addToast, currentUser }) {
                             src="/administracion-beto.png"
                             alt="Dr. Beto - Administración"
                             style={{
-                                height: '122px',
+                                height: '86px',
                                 width: 'auto',
                                 objectFit: 'contain',
                                 objectPosition: 'bottom center',
                                 display: 'block',
-                                filter: 'drop-shadow(0 6px 14px rgba(15, 41, 66, 0.14))'
+                                filter: 'drop-shadow(0 4px 10px rgba(15, 41, 66, 0.14))'
                             }}
                         />
                     </div>
@@ -1863,6 +1886,7 @@ export default function AltasPanel({ addToast, currentUser }) {
                 display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
                 padding: '10px 14px', borderRadius: '12px',
                 background: '#FAFAFA', border: '1px solid var(--neutral-100)',
+                flexShrink: 0,
             }}>
                 <div style={{ flex: 1, position: 'relative', minWidth: '200px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
@@ -1904,6 +1928,47 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <option key={r} value={r}>{r}</option>
                     ))}
                 </select>
+
+                {/* Botón rápido de Exportar Excel y PDF directo en la barra de filtros */}
+                <button
+                    onClick={exportToExcel}
+                    disabled={loading || sortedAltas.length === 0}
+                    title="Exportar vista actual a Excel (.xlsx)"
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '7px 12px', borderRadius: '8px',
+                        background: '#ECFDF5', color: '#047857',
+                        border: '1px solid #10B981',
+                        fontSize: '0.76rem', fontWeight: 700, cursor: sortedAltas.length === 0 ? 'not-allowed' : 'pointer',
+                        opacity: sortedAltas.length === 0 ? 0.5 : 1,
+                        transition: 'all 0.15s',
+                    }}
+                    onMouseOver={e => { if (sortedAltas.length > 0) e.currentTarget.style.background = '#D1FAE5'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = '#ECFDF5'; }}
+                >
+                    <FileDown size={14} />
+                    Exportar Excel ({sortedAltas.length})
+                </button>
+
+                <button
+                    onClick={exportToPDF}
+                    disabled={loading || sortedAltas.length === 0}
+                    title="Imprimir / Exportar vista actual a PDF"
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '7px 10px', borderRadius: '8px',
+                        background: '#FFFFFF', color: '#DC2626',
+                        border: '1px solid #FECACA',
+                        fontSize: '0.75rem', fontWeight: 600, cursor: sortedAltas.length === 0 ? 'not-allowed' : 'pointer',
+                        opacity: sortedAltas.length === 0 ? 0.5 : 1,
+                        transition: 'all 0.15s',
+                    }}
+                    onMouseOver={e => { if (sortedAltas.length > 0) e.currentTarget.style.background = '#FEF2F2'; }}
+                    onMouseOut={e => { e.currentTarget.style.background = '#FFFFFF'; }}
+                >
+                    <Download size={13} />
+                    PDF
+                </button>
 
                 {(searchTerm || filterEstado !== 'all' || filterResponsable !== 'all' || activeFilterCount > 0) && (
                     <button

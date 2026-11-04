@@ -275,7 +275,7 @@ export default function TxtProvinciaPanel({ addToast }) {
                 background: '#ffffff', borderRadius: '14px', padding: '18px 24px 0 24px',
                 border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 marginBottom: '20px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-                flexWrap: 'wrap', gap: '16px', position: 'relative', overflow: 'hidden'
+                flexWrap: 'wrap', gap: '16px', position: 'relative', overflow: 'hidden', flexShrink: 0
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '18px', flex: '1 1 420px' }}>
                     <div style={{
