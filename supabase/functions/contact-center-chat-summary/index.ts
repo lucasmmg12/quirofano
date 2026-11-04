@@ -614,7 +614,7 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
             }
         }
 
-        // Sanitizar y validar DNI aportado por IA
+        // Sanitizar y validar DNI aportado por IA o en el texto del chat
         const isDateHourArtifact = (val: any) => {
             if (!val) return false;
             const clean = String(val).replace(/\D/g, '');
@@ -622,17 +622,40 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
             return /^(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])(?:[01]\d|2[0-3])(?:00|15|30|45)$/.test(clean);
         };
 
+        // Detectar si el paciente escribió explícitamente un DNI válido de 7-8 dígitos en los mensajes de la sesión actual
+        const explicitDniMatches = (patientTextMessages.match(/\b\d{7,8}\b/g) || []).filter((d: string) => {
+            const n = parseInt(d, 10);
+            return n >= 3000000 && n <= 99999999 && !isDateHourArtifact(d);
+        });
+        const explicitDniFromChat = explicitDniMatches.length > 0 ? explicitDniMatches[explicitDniMatches.length - 1] : null;
+
+        let matchedPatientFromChat: any = null;
         if (parsed.datos_paciente) {
-            let aiDni = parsed.datos_paciente.dni ? String(parsed.datos_paciente.dni).trim() : null;
+            let aiDni = parsed.datos_paciente.dni ? String(parsed.datos_paciente.dni).replace(/\D/g, '').trim() : null;
             if (aiDni && isDateHourArtifact(aiDni)) {
                 console.warn(`[chat-summary] Descartando DNI espurio/artefacto de fecha y hora: ${aiDni}`);
                 aiDni = null;
             }
-            // Si la conversación ya tiene un DNI verificado en conv.dni, preservarlo prioritariamente
-            if (conv?.dni && conv.dni !== 'A verificar' && !/^[A-Za-z]/.test(conv.dni)) {
-                parsed.datos_paciente.dni = String(conv.dni).trim();
-            } else {
-                parsed.datos_paciente.dni = aiDni;
+            // Si el paciente informó un DNI explícito en el chat actual, ese DNI tiene prioridad sobre cualquier DNI previo de otro familiar en el mismo teléfono
+            const targetDni = explicitDniFromChat || (aiDni && patientTextMessages.includes(aiDni) ? aiDni : null) || (conv?.dni && conv.dni !== 'A verificar' && !/^[A-Za-z]/.test(conv.dni) ? String(conv.dni).trim() : aiDni);
+            parsed.datos_paciente.dni = targetDni || null;
+
+            if (targetDni) {
+                try {
+                    const { data: pByDni } = await supabase
+                        .from('hospital_pacientes')
+                        .select('id_paciente, dni, nombre, coseguro, nhc, fecha_nacimiento, centro')
+                        .eq('dni', targetDni)
+                        .limit(1)
+                        .maybeSingle();
+                    if (pByDni) {
+                        matchedPatientFromChat = pByDni;
+                        parsed.datos_paciente.nombre_completo = pByDni.nombre;
+                        parsed.datos_paciente.obra_social = parsed.datos_paciente.obra_social || pByDni.coseguro || null;
+                        parsed.datos_paciente.fecha_nacimiento = pByDni.fecha_nacimiento || parsed.datos_paciente.fecha_nacimiento || null;
+                        parsed.datos_paciente.es_paciente_existente = true;
+                    }
+                } catch (_) {}
             }
         }
 
@@ -650,12 +673,22 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
             updated_at: new Date().toISOString(),
         };
 
-        // Actualizar campos que la IA detectó y estaban vacíos
-        if (parsed.datos_paciente?.nombre_completo && (!conv?.nombre_completo || conv?.nombre_completo.includes('@') || conv?.nombre_completo.startsWith('Paciente'))) {
-            updates.nombre_completo = parsed.datos_paciente.nombre_completo;
-        }
-        if (parsed.datos_paciente?.dni && (!conv?.dni || conv?.dni === 'A verificar') && !isDateHourArtifact(parsed.datos_paciente.dni)) {
-            updates.dni = parsed.datos_paciente.dni;
+        // Si en el chat se identificó un DNI explícito (ej. esposa/familiar que comparte teléfono), asociar la conversación a ese paciente
+        if (matchedPatientFromChat) {
+            updates.dni = matchedPatientFromChat.dni;
+            updates.nombre_completo = matchedPatientFromChat.nombre;
+            if (matchedPatientFromChat.coseguro) updates.obra_social = matchedPatientFromChat.coseguro;
+            if (matchedPatientFromChat.nhc) updates.nhc = matchedPatientFromChat.nhc;
+            if (matchedPatientFromChat.fecha_nacimiento) updates.fecha_nacimiento = matchedPatientFromChat.fecha_nacimiento;
+            updates.es_paciente_existente = true;
+        } else {
+            // Actualizar campos que la IA detectó y estaban vacíos
+            if (parsed.datos_paciente?.nombre_completo && (!conv?.nombre_completo || conv?.nombre_completo.includes('@') || conv?.nombre_completo.startsWith('Paciente'))) {
+                updates.nombre_completo = parsed.datos_paciente.nombre_completo;
+            }
+            if (parsed.datos_paciente?.dni && (!conv?.dni || conv?.dni === 'A verificar' || explicitDniFromChat) && !isDateHourArtifact(parsed.datos_paciente.dni)) {
+                updates.dni = parsed.datos_paciente.dni;
+            }
         }
         if (parsed.datos_paciente?.obra_social && (!conv?.obra_social || conv?.obra_social === 'A consultar' || conv?.obra_social.toLowerCase().includes('particular'))) {
             const planSuffix = parsed.datos_paciente.plan_obra_social ? ` (${parsed.datos_paciente.plan_obra_social})` : '';

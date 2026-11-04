@@ -4238,8 +4238,23 @@ async function handleChatbotTriage(
             bot_active: false
         };
         const candidateDni = extractDniFromText(cleanText);
-        if (candidateDni && isValidArgentineDni(candidateDni) && !conv.dni) {
+        if (candidateDni && isValidArgentineDni(candidateDni) && candidateDni !== String(conv?.dni || '').trim()) {
             silentUpdates.dni = candidateDni;
+            try {
+                const { data: pFound } = await supabase
+                    .from('hospital_pacientes')
+                    .select('dni, nombre, coseguro, nhc, fecha_nacimiento')
+                    .eq('dni', candidateDni)
+                    .limit(1)
+                    .maybeSingle();
+                if (pFound) {
+                    silentUpdates.nombre_completo = pFound.nombre;
+                    silentUpdates.obra_social = pFound.coseguro || conv?.obra_social;
+                    silentUpdates.nhc = pFound.nhc || conv?.nhc;
+                    if (pFound.fecha_nacimiento) silentUpdates.fecha_nacimiento = pFound.fecha_nacimiento;
+                    silentUpdates.es_paciente_existente = true;
+                }
+            } catch (_) {}
         }
 
         // Si el paciente escribe fuera de horario laboral, notificarle cuándo retoma la atención
@@ -4282,12 +4297,12 @@ async function handleChatbotTriage(
                 silentUpdates.tags = additionalTags;
             }
             const extractedDni = extractDniFromText(cleanText);
-            if (extractedDni && isValidArgentineDni(extractedDni) && !conv.dni) {
+            if (extractedDni && isValidArgentineDni(extractedDni) && extractedDni !== String(conv?.dni || '').trim()) {
                 silentUpdates.dni = extractedDni;
                 try {
                     const { data: pFound } = await supabase
                         .from('hospital_pacientes')
-                        .select('dni, nombre, coseguro, nhc')
+                        .select('dni, nombre, coseguro, nhc, fecha_nacimiento')
                         .eq('dni', extractedDni)
                         .limit(1)
                         .maybeSingle();
@@ -4295,6 +4310,7 @@ async function handleChatbotTriage(
                         silentUpdates.nombre_completo = pFound.nombre;
                         silentUpdates.obra_social = pFound.coseguro || conv?.obra_social;
                         silentUpdates.nhc = pFound.nhc || conv?.nhc;
+                        if (pFound.fecha_nacimiento) silentUpdates.fecha_nacimiento = pFound.fecha_nacimiento;
                         silentUpdates.es_paciente_existente = true;
                     }
                 } catch (_) {}
@@ -4500,7 +4516,7 @@ async function handleChatbotTriage(
     const candidateDni: string | null = extractDniFromText(cleanText);
     const dniInMessage = candidateDni;
 
-    // Mapeo del grupo familiar asociado a la línea telefónica (prioridad titular)
+    // Mapeo del grupo familiar asociado a la línea telefónica (asociación inteligente según el chat)
     const cleanLocalPhone = phone.replace(/\D/g, '').replace(/^(?:549|54)/, '');
     let pacientesGrupoFamiliar: any[] = [];
     if (cleanLocalPhone.length >= 8) {
@@ -4510,7 +4526,7 @@ async function handleChatbotTriage(
                 .select('id_paciente, dni, nombre, coseguro, telefono, email, nhc, centro, edad, fecha_nacimiento')
                 .ilike('telefono', `%${cleanLocalPhone}%`)
                 .order('id_paciente', { ascending: false })
-                .limit(5);
+                .limit(10);
 
             if (pList && pList.length > 0) {
                 pacientesGrupoFamiliar = pList;
@@ -4521,15 +4537,60 @@ async function handleChatbotTriage(
         }
     }
 
+    const normSimple = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normChatText = normSimple(cleanText);
+    const normSenderProfile = normSimple(senderName || '');
+
+    // Detectar si el chat menciona explícitamente a alguno de los integrantes del grupo familiar por DNI, nombre, parentesco o tipo de estudio
+    let matchedFamilyMemberByChat: any = null;
+    if (pacientesGrupoFamiliar.length > 0) {
+        if (dniInMessage) {
+            matchedFamilyMemberByChat = pacientesGrupoFamiliar.find(p => String(p.dni) === String(dniInMessage)) || null;
+        }
+        if (!matchedFamilyMemberByChat && normChatText.length >= 3) {
+            for (const p of pacientesGrupoFamiliar) {
+                const nameTokens = normSimple(p.nombre || '').split(/[^a-z]+/).filter(t => t.length >= 3);
+                const matchedTokens = nameTokens.filter(t => new RegExp(`\\b${t}\\b`, 'i').test(normChatText));
+                if (matchedTokens.length >= 2 || (matchedTokens.length === 1 && !pacientesGrupoFamiliar.some(other => other !== p && normSimple(other.nombre || '').includes(matchedTokens[0])))) {
+                    matchedFamilyMemberByChat = p;
+                    break;
+                }
+            }
+        }
+        if (!matchedFamilyMemberByChat && pacientesGrupoFamiliar.length > 1) {
+            const isFemaleStudyOrWife = /\b(mamograf[ií]a|ecograf[ií]a\s+mamaria|eco\s+mamaria|ecograf[ií]a\s+transvaginal|eco\s+transvaginal|transvaginal|ginecolog[ií]a|ginec[oó]log[oa]|obstetricia|papanicolaou|pap|colposcop[ií]a|mi\s+esposa|mi\s+mujer|mi\s+se[nñ]ora)\b/i.test(normChatText);
+            const isChildQuery = /\b(mi\s+hijo|mi\s+hija|mi\s+nene|mi\s+nena|mi\s+beb[eé]|pediatr[ií]a|pediatra)\b/i.test(normChatText);
+            if (isFemaleStudyOrWife) {
+                const femaleCandidate = pacientesGrupoFamiliar.find(p => {
+                    const givenNames = normSimple((p.nombre || '').split(',')[1] || p.nombre || '').trim().split(/\s+/);
+                    const firstGiven = givenNames[0] || '';
+                    return Number(p.edad || 30) >= 15 && (firstGiven.endsWith('a') || ['analia', 'veronica', 'maria', 'carolina', 'valeria', 'rocio', 'belen', 'carmen', 'mercedes', 'pilar', 'soledad', 'lourdes', 'ines', 'beatriz', 'noemi', 'raquel', 'ester', 'esther', 'ruth', 'edith', 'judith', 'miriam', 'karen', 'ivana', 'silvina', 'romina', 'natalia', 'gabriela', 'patricia', 'claudia', 'laura', 'paola', 'andrea', 'florencia', 'lucia', 'sofia', 'camila', 'agustina', 'micaela', 'julieta', 'victoria', 'martina', 'antonella', 'melisa', 'vanesa', 'jesica', 'yamila', 'tamara', 'celeste', 'guadalupe', 'milagros'].includes(firstGiven));
+                });
+                if (femaleCandidate) matchedFamilyMemberByChat = femaleCandidate;
+            } else if (isChildQuery) {
+                const childCandidate = pacientesGrupoFamiliar.find(p => Number(p.edad || 99) < 18);
+                if (childCandidate) matchedFamilyMemberByChat = childCandidate;
+            }
+        }
+    }
+
+    const titularMatchedBySender = (pacientesGrupoFamiliar.length > 1 && normSenderProfile.length >= 3)
+        ? pacientesGrupoFamiliar.find(p => {
+            const pTokens = normSimple(p.nombre || '').split(/[^a-z]+/).filter(t => t.length >= 3);
+            const sTokens = normSenderProfile.split(/[^a-z]+/).filter(t => t.length >= 3);
+            return sTokens.some(st => pTokens.includes(st));
+        })
+        : null;
+
     const titularDeLaLinea = pacientesGrupoFamiliar.length > 0
-        ? (pacientesGrupoFamiliar.find(p => Number(p.edad || 0) >= 18) || pacientesGrupoFamiliar[0])
+        ? (matchedFamilyMemberByChat || titularMatchedBySender || pacientesGrupoFamiliar.find(p => Number(p.edad || 0) >= 18) || pacientesGrupoFamiliar[0])
         : null;
 
     const isThirdPartyQuery = /\b(este\s+paciente|para\s+(?:mi\s+)?(?:hijo|hija|mam[aá]|pap[aá]|padre|madre|abuel[oa]|espos[oa]|marido|mujer|pareja|familiar|herman[oa]|amig[oa]|otra\s+persona|tercero)|dni\s+de\s+(?:mi|otro))\b/i.test(cleanText);
 
-    // Persistencia y memoria: DNI en el mensaje actual O DNI previamente validado y registrado en la conversación
+    // Persistencia y memoria: Prioridad ESTRICTA al DNI en el mensaje actual, luego al integrante detectado por el chat, luego al DNI ya validado en la conversación, y recién como último recurso al titular por defecto de la línea
     const establishedConvDni = (conv?.dni && isValidArgentineDni(conv.dni)) ? conv.dni : null;
-    const effectiveDni = dniInMessage || (titularDeLaLinea ? titularDeLaLinea.dni : establishedConvDni) || null;
+    const effectiveDni = dniInMessage || (matchedFamilyMemberByChat ? matchedFamilyMemberByChat.dni : null) || establishedConvDni || (titularDeLaLinea ? titularDeLaLinea.dni : null) || null;
 
     let paciente: any = null;
     let terceroPaciente: any = null;
@@ -4544,20 +4605,16 @@ async function handleChatbotTriage(
                 .maybeSingle();
 
             if (pByDni) {
-                // Si la línea tiene un titular diferente al DNI del mensaje o es consulta explícita por tercero
+                // El paciente activo de la conversación SIEMPRE debe ser el dueño del DNI efectivo (pByDni)
+                paciente = pByDni;
                 if (titularDeLaLinea && (isThirdPartyQuery || String(effectiveDni) !== String(titularDeLaLinea.dni))) {
-                    paciente = titularDeLaLinea;
                     terceroPaciente = pByDni;
-                    console.log(`[triage-bot] 👥 Gestión para tercero detectada. Titular de línea: ${titularDeLaLinea.nombre} (${titularDeLaLinea.dni}) | Paciente consultado: ${pByDni.nombre} (${pByDni.dni})`);
-                } else if (!titularDeLaLinea && isThirdPartyQuery) {
-                    terceroPaciente = pByDni;
-                    console.log(`[triage-bot] 👥 Consulta para tercero de usuario nuevo: ${pByDni.nombre} (${pByDni.dni})`);
+                    console.log(`[triage-bot] 👥 Paciente del turno asociado según chat: ${pByDni.nombre} (${pByDni.dni}) | Línea compartida con: ${titularDeLaLinea.nombre} (${titularDeLaLinea.dni})`);
                 } else {
-                    paciente = pByDni;
                     console.log(`[triage-bot] Paciente identificado por DNI ${effectiveDni}: ${paciente.nombre} (HC: ${paciente.nhc})`);
                 }
             } else {
-                if (titularDeLaLinea) {
+                if (!dniInMessage && titularDeLaLinea) {
                     paciente = titularDeLaLinea;
                 }
                 console.log(`[triage-bot] DNI ${effectiveDni} no figura en padrón institucional (usuario nuevo)`);

@@ -1915,6 +1915,8 @@ export default function ContactCenterChatConsole({
     }, [selectedChat?.id]);
 
     // Cargar pacientes asociados al número de teléfono en segundo plano (Grupo Familiar)
+    const autoMatchedChatPhoneRef = useRef(new Set());
+
     const loadAssociatedPatients = async (phone, force = false) => {
         if (!phone) {
             setAssociatedPatients([]);
@@ -1923,7 +1925,12 @@ export default function ContactCenterChatConsole({
         setIsLoadingAssociated(true);
         try {
             const list = await getAssociatedPatientsByPhone(phone, force);
-            setAssociatedPatients(list || []);
+            const safeList = list || [];
+            setAssociatedPatients(safeList);
+            // Si hay más de 1 contacto asociado al teléfono, expandir automáticamente el panel de asociados
+            if (safeList.length > 1) {
+                setShowAssociatedDrawer(true);
+            }
         } catch (err) {
             console.error('Error al cargar pacientes asociados:', err);
             setAssociatedPatients([]);
@@ -1939,6 +1946,94 @@ export default function ContactCenterChatConsole({
             setAssociatedPatients([]);
         }
     }, [selectedChat?.phone, selectedChat?.id]);
+
+    // Auto-asociar el paciente correcto según lo escrito en el chat cuando el teléfono tiene varios contactos en SALUS
+    useEffect(() => {
+        if (!selectedChat?.phone || !Array.isArray(associatedPatients) || associatedPatients.length <= 1) return;
+        const msgs = Array.isArray(selectedChat.messages) ? selectedChat.messages : [];
+        if (msgs.length === 0) return;
+
+        // Tomar los últimos mensajes del paciente en la sesión actual (hasta 15 mensajes recientes)
+        const recentPatientMsgs = msgs
+            .filter(m => m.sender === 'patient' || m.direction === 'inbound')
+            .slice(-15);
+        if (recentPatientMsgs.length === 0) return;
+
+        const combinedPatientText = recentPatientMsgs
+            .map(m => `${m.text || m.content || ''} ${m.caption || ''} ${m.orderAnalysis?.estudioDetectado || ''}`)
+            .join(' \n ');
+        const normText = combinedPatientText
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+
+        // 1. Buscar coincidencia exacta de DNI escrito por el paciente en el chat
+        let matchedByChat = null;
+        for (let i = recentPatientMsgs.length - 1; i >= 0; i--) {
+            const rawMsg = String(recentPatientMsgs[i].text || recentPatientMsgs[i].content || '');
+            const dniMatches = rawMsg.match(/\b(\d{1,2}\.?\d{3}\.?\d{3}|\d{7,8})\b/g) || [];
+            for (const cand of dniMatches) {
+                const cleanDni = cand.replace(/\D/g, '');
+                const found = associatedPatients.find(p => String(p.dni || '').replace(/\D/g, '') === cleanDni);
+                if (found) {
+                    matchedByChat = { patient: found, reason: `DNI ${cleanDni} indicado en el chat` };
+                    break;
+                }
+            }
+            if (matchedByChat) break;
+        }
+
+        // 2. Si no hubo DNI explícito de un asociado, buscar por nombre del paciente escrito en el chat
+        if (!matchedByChat) {
+            for (const p of associatedPatients) {
+                const pTokens = String(p.nombre || '')
+                    .toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[,._-]/g, ' ')
+                    .split(/\s+/)
+                    .filter(t => t.length >= 3);
+                const matchedTokens = pTokens.filter(t => normText.includes(t));
+                if (matchedTokens.length >= 2 || (pTokens.length > 0 && normText.includes(pTokens[pTokens.length - 1]) && matchedTokens.length >= 1)) {
+                    matchedByChat = { patient: p, reason: `Nombre "${p.nombre}" mencionado en el chat` };
+                    break;
+                }
+            }
+        }
+
+        // 3. Si pide estudios ginecológicos/mamarios ("mamografía", "transvaginal", "ecografía mamaria") y el titular activo es masculino
+        if (!matchedByChat) {
+            const isFemaleStudy = /\b(mamograf\w*|ecograf\w*\s+mamari\w*|eco\s+mamari\w*|transvaginal\w*|ginecolog\w*|obstetric\w*|papanicolaou|pap\b|colposcop\w*|control\s+embarazo|para\s+mi\s+esposa|para\s+mi\s+mujer|para\s+mi\s+mama|para\s+mi\s+madre)\b/i.test(normText);
+            if (isFemaleStudy) {
+                const femaleCandidates = associatedPatients.filter(p => {
+                    const sx = String(p.sexo || '').toUpperCase();
+                    if (sx === 'F' || sx === 'FEMENINO' || sx === 'MUJER') return true;
+                    const words = String(p.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/,/g, ' ').trim().split(/\s+/);
+                    const givenNames = words.slice(1);
+                    return givenNames.some(w => /^(analia|veronica|maria|laura|carolina|valeria|natalia|romina|silvina|andrea|claudia|patricia|gabriela|daniela|florencia|camila|lucia|martina|sofia|valentina|paula|julieta|micaela|agustina|rocio|belen|cecilia|marcela|monica|adriana|viviana|sandra| Karina|lorena|vane|vanesa|yesica|jessica|noelia|nadia|cintia|cynthia|melisa|mariana|liliana|graciela|marta|rosa|carmen|ana|juana|elena|alicia|beatriz|silvia|susana|norma|miriam|ester|estela|gladys|nora|olga|irma|nelida|blanca|celia|dora|elsa|eva|hilda|ines|irene|julia|lidia|luisa|mabel|margarita|mirta|nelly|raquel|sara|teresa|victoria|zulma)$/i.test(w));
+                });
+                if (femaleCandidates.length === 1) {
+                    matchedByChat = { patient: femaleCandidates[0], reason: 'Estudios ginecológicos/mamarios detectados en el chat' };
+                }
+            }
+        }
+
+        if (matchedByChat && matchedByChat.patient) {
+            const target = matchedByChat.patient;
+            const currentActiveDni = String(crmForm.dni || selectedChat?.customFields?.dni || '').replace(/\D/g, '');
+            const targetDni = String(target.dni || '').replace(/\D/g, '');
+            const matchKey = `${selectedChat.id}_${targetDni}`;
+
+            if (targetDni && targetDni !== currentActiveDni && !autoMatchedChatPhoneRef.current.has(matchKey)) {
+                autoMatchedChatPhoneRef.current.add(matchKey);
+                handleSelectAssociatedPatient(target, {
+                    keepDrawerOpen: true,
+                    autoReason: matchedByChat.reason
+                });
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [associatedPatients, selectedChat?.id, selectedChat?.messages?.length]);
 
     // Rastrear en tiempo real qué conversación está mirando este agente ("El Ojito")
     useEffect(() => {
@@ -2568,7 +2663,7 @@ export default function ContactCenterChatConsole({
     };
 
     // Seleccionar y conmutar ficha médica al paciente asociado / familiar elegido
-    const handleSelectAssociatedPatient = async (patient) => {
+    const handleSelectAssociatedPatient = async (patient, options = {}) => {
         if (!patient || !selectedChat) return;
 
         const birth = patient.fecha_nacimiento || '';
@@ -2578,12 +2673,18 @@ export default function ContactCenterChatConsole({
         // Si ya está activo exactamente este DNI
         const currentDni = crmForm.dni || selectedChat.customFields?.dni;
         if (patient.dni && currentDni && String(patient.dni) === String(currentDni)) {
-            showToast(`El paciente ${patient.nombre} ya se encuentra activo en la ficha.`, 'info');
+            if (!options.autoReason) {
+                showToast(`El paciente ${patient.nombre} ya se encuentra activo en la ficha.`, 'info');
+            }
             return;
         }
 
         setIsSearchingSalus(true);
         try {
+            const noteLine = options.autoReason
+                ? `[Auto-Asociado por Chat: ${options.autoReason}] Paciente: ${patient.nombre} (DNI: ${patient.dni || 'S/D'})`
+                : `[Contacto Asociado Seleccionado] Titular de línea: ${currentTitularName} | Paciente: ${patient.nombre} (DNI: ${patient.dni || 'S/D'})`;
+
             setCrmForm(prev => ({
                 ...prev,
                 dni: patient.dni || prev.dni,
@@ -2592,7 +2693,7 @@ export default function ContactCenterChatConsole({
                 fechaNacimiento: formattedBirth || prev.fechaNacimiento,
                 email: patient.email || prev.email,
                 departamento: patient.centro || prev.departamento,
-                notas: (prev.notas ? prev.notas + '\n' : '') + `[Contacto Asociado Seleccionado] Titular de línea: ${currentTitularName} | Paciente: ${patient.nombre} (DNI: ${patient.dni || 'S/D'})`
+                notas: (prev.notas ? prev.notas + '\n' : '') + noteLine
             }));
 
             if (selectedChat?.customFields) {
@@ -2614,6 +2715,9 @@ export default function ContactCenterChatConsole({
                     pacienteNhc: patient.nhc
                 };
             }
+            if (patient.nombre) {
+                selectedChat.contactName = patient.nombre;
+            }
 
             await saveCrmPatientCard({
                 phone: selectedChat.phone,
@@ -2632,9 +2736,16 @@ export default function ContactCenterChatConsole({
                 pacienteObraSocial: patient.coseguro
             });
 
-            showToast(`Ficha vinculada: ${patient.nombre} (DNI ${patient.dni || 'S/D'})`, 'success');
+            showToast(
+                options.autoReason
+                    ? `🔄 Paciente asociado automáticamente por chat: ${patient.nombre} (DNI ${patient.dni || 'S/D'})`
+                    : `Ficha vinculada: ${patient.nombre} (DNI ${patient.dni || 'S/D'})`,
+                'success'
+            );
             setActiveDualTab('paciente');
-            setShowAssociatedDrawer(false);
+            if (!options.keepDrawerOpen && associatedPatients.length <= 1) {
+                setShowAssociatedDrawer(false);
+            }
 
             if (typeof onReloadChats === 'function') {
                 onReloadChats();
@@ -5343,6 +5454,38 @@ export default function ContactCenterChatConsole({
                             >
                                 {selectedChat.customFields?.esPacienteExistente ? '✓ Paciente Registrado' : '+ Nuevo Paciente'}
                             </span>
+
+                            {/* ALERTA FERVIENTE DE TELÉFONO COMPARTIDO / MÚLTIPLES CONTACTOS ASOCIADOS */}
+                            {associatedPatients.length > 1 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setRightSidebarCollapsed(false);
+                                        setActiveDetailTab('ficha');
+                                        setShowAssociatedDrawer(true);
+                                    }}
+                                    title={`¡ATENCIÓN! Este número telefónico pertenece a ${associatedPatients.length} pacientes distintos en SALUS: ${associatedPatients.map(p => p.nombre).join(' / ')}. Haz clic para verificar a quién corresponde el turno.`}
+                                    style={{
+                                        fontSize: '0.64rem',
+                                        fontWeight: 900,
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        background: '#FEF3C7',
+                                        color: '#B45309',
+                                        border: '1.5px solid #F59E0B',
+                                        boxShadow: '0 1px 4px rgba(245, 158, 11, 0.28)',
+                                        lineHeight: 1.2,
+                                        whiteSpace: 'nowrap',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <AlertTriangle size={11} style={{ color: '#D97706', flexShrink: 0 }} />
+                                    <span>⚠️ TELÉFONO COMPARTIDO ({associatedPatients.length} CONTACTOS ASOCIADOS)</span>
+                                </button>
+                            )}
 
                             {/* ETIQUETAS BOT EN CABECERA */}
                             {renderBotTags(selectedChat, ccTheme)}
@@ -8619,32 +8762,80 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                             </div>
 
 
-                            {/* BANNER RECOMENDACIÓN GRUPO FAMILIAR SI HAY MÚLTIPLES PACIENTES */}
-                            {associatedPatients.length > 1 && !selectedChat.customFields?.fichaDual?.esGestionTercero && !showAssociatedDrawer && (
+                            {/* BANNER DE ALERTA ALTA PRIORIDAD SI EL TELÉFONO TIENE MÚLTIPLES CONTACTOS ASOCIADOS */}
+                            {associatedPatients.length > 1 && (
                                 <div 
                                     onClick={() => setShowAssociatedDrawer(true)}
                                     style={{
-                                        background: ccTheme.isDark ? 'rgba(30, 58, 138, 0.25)' : '#F0F9FF',
-                                        border: '1px solid #BAE6FD',
-                                        borderRadius: '8px',
-                                        padding: '7px 10px',
+                                        background: ccTheme.isDark ? 'rgba(180, 83, 9, 0.25)' : 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                                        border: '2px solid #F59E0B',
+                                        borderRadius: '10px',
+                                        padding: '9px 11px',
                                         display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
+                                        flexDirection: 'column',
+                                        gap: '5px',
                                         cursor: 'pointer',
+                                        boxShadow: '0 3px 10px rgba(245, 158, 11, 0.18)',
                                         transition: 'all 0.15s ease'
                                     }}
-                                    title="Haz clic para ver todos los pacientes registrados con este mismo número"
+                                    title="Este teléfono está registrado en múltiples historias clínicas de SALUS. Verifique siempre para quién es el turno."
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <Users size={13} style={{ color: '#0284C7' }} />
-                                        <span style={{ fontSize: '0.69rem', fontWeight: 600, color: themeCardText }}>
-                                            Línea compartida: <strong>{associatedPatients.length} pacientes</strong> en SALUS
-                                        </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{
+                                                width: '20px', height: '20px', borderRadius: '6px',
+                                                background: '#D97706', color: '#FFFFFF',
+                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                flexShrink: 0
+                                            }}>
+                                                <AlertTriangle size={12} />
+                                            </span>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 900, color: ccTheme.isDark ? '#FDE68A' : '#92400E', letterSpacing: '0.2px' }}>
+                                                ¡ATENCIÓN! {associatedPatients.length} CONTACTOS ASOCIADOS AL TELÉFONO
+                                            </span>
+                                        </div>
+                                        {!showAssociatedDrawer && (
+                                            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#B45309', whiteSpace: 'nowrap' }}>
+                                                Ver todos ➔
+                                            </span>
+                                        )}
                                     </div>
-                                    <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#0284C7', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                        Ver asociados ➔
-                                    </span>
+                                    <div style={{ fontSize: '0.67rem', fontWeight: 600, color: ccTheme.isDark ? '#FCD34D' : '#78350F', lineHeight: 1.35 }}>
+                                        Teléfono compartido por grupo familiar en SALUS. <strong>Verifique en el chat para cuál de los {associatedPatients.length} pacientes solicita el turno</strong> antes de agendar:
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                                        {associatedPatients.map((ap) => {
+                                            const isCurrent = (crmForm.dni && ap.dni && String(crmForm.dni) === String(ap.dni)) ||
+                                                (crmForm.pacienteNombre && ap.nombre && crmForm.pacienteNombre.trim().toLowerCase() === ap.nombre.trim().toLowerCase());
+                                            return (
+                                                <button
+                                                    key={ap.id_paciente || ap.dni || ap.nombre}
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleSelectAssociatedPatient(ap, { keepDrawerOpen: true });
+                                                    }}
+                                                    style={{
+                                                        fontSize: '0.63rem',
+                                                        fontWeight: 800,
+                                                        padding: '2px 7px',
+                                                        borderRadius: '6px',
+                                                        border: isCurrent ? '1.5px solid #16A34A' : '1px solid #F59E0B',
+                                                        background: isCurrent ? '#DCFCE7' : '#FFFFFF',
+                                                        color: isCurrent ? '#15803D' : '#92400E',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                    title={`Clic para activar a ${ap.nombre} (DNI ${ap.dni || 'S/D'})`}
+                                                >
+                                                    <span>{isCurrent ? '✓ ' : '⇄ '}{ap.nombre}</span>
+                                                    {ap.dni && <span style={{ opacity: 0.8 }}>({ap.dni})</span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             )}
 
@@ -8661,12 +8852,14 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         title="Ver pacientes registrados con este mismo número de teléfono (grupo familiar)"
                                         style={{
                                             fontSize: '0.66rem',
-                                            fontWeight: 700,
-                                            color: showAssociatedDrawer ? '#FFFFFF' : (ccTheme.accentColor || '#0284C7'),
-                                            background: showAssociatedDrawer 
-                                                ? (ccTheme.accentColor || '#0284C7') 
-                                                : (ccTheme.isDark ? '#0F172A' : '#EFF6FF'),
-                                            border: `1px solid ${showAssociatedDrawer ? (ccTheme.accentColor || '#0284C7') : '#93C5FD'}`,
+                                            fontWeight: 800,
+                                            color: associatedPatients.length > 1
+                                                ? (showAssociatedDrawer ? '#FFFFFF' : '#B45309')
+                                                : (showAssociatedDrawer ? '#FFFFFF' : (ccTheme.accentColor || '#0284C7')),
+                                            background: associatedPatients.length > 1
+                                                ? (showAssociatedDrawer ? '#D97706' : '#FEF3C7')
+                                                : (showAssociatedDrawer ? (ccTheme.accentColor || '#0284C7') : (ccTheme.isDark ? '#0F172A' : '#EFF6FF')),
+                                            border: `1.5px solid ${associatedPatients.length > 1 ? '#F59E0B' : (showAssociatedDrawer ? (ccTheme.accentColor || '#0284C7') : '#93C5FD')}`,
                                             padding: '3px 7px',
                                             borderRadius: '6px',
                                             display: 'inline-flex',
@@ -8677,12 +8870,14 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                         }}
                                     >
                                         <Users size={11} />
-                                        <span>Asociados</span>
+                                        <span>{associatedPatients.length > 1 ? '⚠️ Asociados' : 'Asociados'}</span>
                                         {isLoadingAssociated ? (
                                             <Loader2 size={9} className="animate-spin" />
                                         ) : (
                                             <span style={{
-                                                background: showAssociatedDrawer ? 'rgba(255,255,255,0.3)' : (ccTheme.accentColor || '#0284C7'),
+                                                background: associatedPatients.length > 1
+                                                    ? (showAssociatedDrawer ? 'rgba(255,255,255,0.28)' : '#D97706')
+                                                    : (showAssociatedDrawer ? 'rgba(255,255,255,0.3)' : (ccTheme.accentColor || '#0284C7')),
                                                 color: '#FFFFFF',
                                                 borderRadius: '9999px',
                                                 padding: '0 4px',
