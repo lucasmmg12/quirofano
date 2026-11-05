@@ -399,6 +399,80 @@ Deno.serve(async (req) => {
 
             const targetLine = 'contact_center';
             const config = await getBuilderBotConfig(targetLine);
+            const useFreeText = Boolean(body.useFreeText) || targetPhone === '5492645438114';
+
+            // Si useFreeText es true (ej. ventana 24h abierta / prueba sin plantilla Meta), enviar mensaje directo por la línea contact_center
+            if (useFreeText) {
+                const directUrl = `https://app.builderbot.cloud/api/v2/${config.projectId}/messages`;
+                const directTextMessage =
+                    `🏥 *Sanatorio Argentino — Confirmación de Turno Online*\n\n` +
+                    `¡Hola *${cleanFirstName}*! ✅ Te confirmamos que tu turno *${turnoSummary}* ya quedó reservado con éxito en nuestro sistema.\n\n` +
+                    `⚠️ *IMPORTANTE:* Si ya tenés tu turno asignado, por favor *NO saques más turnos adicionales* en la página web para el mismo profesional o especialidad, así evitamos turnos duplicados y liberamos agenda para otros pacientes.\n\n` +
+                    `📌 _Si necesitás consultar, reprogramar o cancelar tu turno, podés escribirnos directamente por este medio._`;
+
+                console.log(`[send-whatsapp] notify_cita_online_reservation (FREE TEXT 24h) → ${targetPhone} | Paciente: ${fullPatientName} | Turno: ${turnoSummary}`);
+
+                const directRes = await fetch(directUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-builderbot': config.apiKey,
+                    },
+                    body: JSON.stringify({
+                        messages: { content: directTextMessage },
+                        number: targetPhone,
+                        checkIfExists: false,
+                    }),
+                });
+
+                const rawDirect = await directRes.text();
+                let directData;
+                try {
+                    directData = JSON.parse(rawDirect);
+                } catch {
+                    directData = { rawResponse: rawDirect };
+                }
+
+                try {
+                    await supabaseAdmin.from('whatsapp_messages').insert({
+                        phone: targetPhone,
+                        direction: 'outgoing',
+                        content: directTextMessage,
+                        media_type: 'text',
+                        sender_name: 'Cita Online Web (Auto)',
+                        is_read: true,
+                        line_id: targetLine,
+                        raw_payload: {
+                            source: 'cita_online_web',
+                            line: targetLine,
+                            type: 'free_text_24h',
+                            visitId,
+                            dni: dni || null,
+                            paciente: fullPatientName,
+                            email: email || null,
+                            fechaHora: fechaHora || null,
+                            profesional: profesional || null,
+                            especialidad: especialidad || null,
+                            obraSocial: obraSocial || null,
+                            builderbotResponse: directData
+                        }
+                    });
+                } catch (dbErr) {
+                    console.warn('[send-whatsapp] No se pudo insertar en whatsapp_messages:', dbErr);
+                }
+
+                return new Response(
+                    JSON.stringify({
+                        success: directRes.ok,
+                        mode: 'free_text_24h',
+                        phone: targetPhone,
+                        visitId,
+                        data: directData
+                    }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
             const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
 
             const requestedTemplate = String(body.templateName || 'ojonoscobran').trim();
