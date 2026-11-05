@@ -167,6 +167,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
     // 1. Cargar turnos desde SALUS
     const [syncStatus, setSyncStatus] = useState(null); // 'idle', 'syncing', 'success', 'error'
+    const [loadError, setLoadError] = useState(null);
 
     const loadData = async (days = filtroDias, customDate = fechaCustom, forceSync = false) => {
         setLoading(true);
@@ -178,7 +179,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 forceSync
             });
 
-            if (res && (res.success || Array.isArray(res.casos))) {
+            if (res && res.success && Array.isArray(res.casos)) {
+                setLoadError(null);
                 setStats(res.stats || { totalPacientesConDuplicados: 0, totalTurnosEnConflicto: 0, totalPendientes: 0, totalContactados: 0, totalResueltos: 0 });
                 setCasos(res.casos || []);
                 if (forceSync) {
@@ -190,13 +192,32 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     setExpandedKey(null);
                 }
             } else {
-                if (addToast) addToast(res?.error || 'Error al consultar turnos online', 'error');
-                if (forceSync) setSyncStatus('error');
+                const errMsg = res?.error || 'Demora de red al consultar turnos online. Reintentando automáticamente...';
+                setLoadError(errMsg);
+                if (forceSync) {
+                    setSyncStatus('error');
+                    if (addToast) addToast(errMsg, 'error');
+                }
+                // Auto-reintento rápido en 2.5s si aún no tenemos datos cargados
+                setTimeout(() => {
+                    fetchTurnosOnlineDuplicados({ days, date: customDate || null, forceSync: false })
+                        .then(retryRes => {
+                            if (retryRes && retryRes.success && Array.isArray(retryRes.casos)) {
+                                setLoadError(null);
+                                setStats(retryRes.stats || { totalPacientesConDuplicados: 0, totalTurnosEnConflicto: 0, totalPendientes: 0, totalContactados: 0, totalResueltos: 0 });
+                                setCasos(retryRes.casos || []);
+                            }
+                        })
+                        .catch(() => {});
+                }, 2500);
             }
         } catch (err) {
             console.error('Error cargando turnos online:', err);
-            if (addToast) addToast('No se pudo conectar con el servidor de sincronización SALUS', 'error');
-            if (forceSync) setSyncStatus('error');
+            setLoadError('Demora de conexión con el servidor. Reintentando...');
+            if (forceSync) {
+                setSyncStatus('error');
+                if (addToast) addToast('No se pudo conectar con el servidor de sincronización SALUS', 'error');
+            }
         } finally {
             setLoading(false);
             if (forceSync) setTimeout(() => setSyncStatus(null), 3000);
@@ -910,6 +931,32 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                     <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748B' }}>
                         Extrayendo comentarios estructurados y cruzando pacientes con turnos duplicados.
                     </p>
+                </div>
+            ) : loadError && casos.length === 0 ? (
+                <div style={{
+                    background: '#FFFBEB', borderRadius: '20px', padding: '42px 24px',
+                    textAlign: 'center', border: '1.5px solid #FDE68A'
+                }}>
+                    <RefreshCw size={38} style={{ color: '#D97706', marginBottom: '12px' }} />
+                    <div style={{ fontSize: '1.12rem', fontWeight: 800, color: '#92400E' }}>
+                        Demora temporal de conexión con la base de datos
+                    </div>
+                    <p style={{ margin: '6px auto 16px', fontSize: '0.86rem', color: '#B45309', maxWidth: '520px' }}>
+                        {loadError}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => loadData(filtroDias, fechaCustom, false)}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '8px',
+                            padding: '9px 18px', borderRadius: '10px', border: 'none',
+                            background: '#0F2942', color: '#FFFFFF', fontSize: '0.84rem',
+                            fontWeight: 700, cursor: 'pointer'
+                        }}
+                    >
+                        <RefreshCw size={15} />
+                        Reintentar ahora
+                    </button>
                 </div>
             ) : casosFiltrados.length === 0 ? (
                 <div style={{

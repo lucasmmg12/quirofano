@@ -268,7 +268,7 @@ export async function fetchUserPersonalCopilot(currentUser) {
                 .limit(60),
             supabase
                 .from('altas_administrativas')
-                .select('numero_admision, paciente, estado, operador, responsable_override, control_adm_finalizado, observacion, fecha_ingreso, fecha_alta, updated_at')
+                .select('numero_admision, paciente, estado, operador, responsable_override, control_adm_finalizado, observaciones, fecha_ingreso, fecha_alta, created_at')
                 .order('fecha_ingreso', { ascending: false })
                 .limit(120),
         ]);
@@ -405,7 +405,7 @@ export async function fetchUserPersonalCopilot(currentUser) {
             const badgeLabel = finalizado ? '✓ Control al día' : `⚠️ Pendiente (${alta.estado || 'Abierta'})`;
             const estadoTexto = finalizado
                 ? `Dejaste el Control Administrativo finalizado correctamente (Adm. ${alta.numero_admision}).`
-                : `Admisión ${alta.numero_admision} aún figura en estado "${alta.estado || 'Pendiente'}" sin tilde de control finalizado.${alta.observacion ? ` Obs: "${alta.observacion.slice(0, 50)}"` : ''}`;
+                : `Admisión ${alta.numero_admision} aún figura en estado "${alta.estado || 'Pendiente'}" sin tilde de control finalizado.${alta.observaciones ? ` Obs: "${alta.observaciones.slice(0, 50)}"` : ''}`;
 
             misPacientesRecientes.push({
                 id: key,
@@ -413,7 +413,7 @@ export async function fetchUserPersonalCopilot(currentUser) {
                 identificador: `Adm. ${alta.numero_admision}`,
                 modulo: 'altas',
                 moduloLabel: 'Altas Administrativas',
-                fechaAccion: alta.updated_at || alta.fecha_alta || alta.fecha_ingreso,
+                fechaAccion: alta.created_at || alta.fecha_alta || alta.fecha_ingreso,
                 alDia,
                 badgeLabel,
                 estadoTexto,

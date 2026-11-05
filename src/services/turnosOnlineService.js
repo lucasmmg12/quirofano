@@ -328,78 +328,111 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null, force
         return syncTurnosOnlineWithSalus({ days, date });
     }
 
-    try {
-        let query = supabase
-            .from('contact_center_turnos_online')
-            .select('*')
-            .order('fecha_creacion', { ascending: false });
+    const cacheKey = `sa_turnos_online_cache_${days}_${date || 'all'}`;
+    let lastError = null;
 
-        if (date) {
-            query = query.eq('fecha_creacion', date);
-        } else if (days && Number(days) > 0) {
-            const d = new Date();
-            d.setDate(d.getDate() - Number(days));
-            const minDate = d.toISOString().split('T')[0];
-            query = query.gte('fecha_creacion', minDate);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            let query = supabase
+                .from('contact_center_turnos_online')
+                .select('*')
+                .order('fecha_creacion', { ascending: false });
+
+            if (date) {
+                query = query.eq('fecha_creacion', date);
+            } else if (days && Number(days) > 0) {
+                const d = new Date();
+                d.setDate(d.getDate() - Number(days));
+                const minDate = d.toISOString().split('T')[0];
+                query = query.gte('fecha_creacion', minDate);
+            }
+
+            const { data, error } = await query;
+
+            if (error) {
+                console.error(`Error consultando Supabase contact_center_turnos_online (intento ${attempt + 1}):`, error);
+                lastError = error;
+                await new Promise(r => setTimeout(r, 400));
+                continue;
+            }
+
+            if (Array.isArray(data)) {
+                const casos = data.map(row => ({
+                    key: row.id,
+                    dni: row.dni,
+                    nombre: row.paciente_nombre,
+                    telefono: row.telefono,
+                    email: row.email,
+                    idPersonal: row.prestador_id,
+                    profesional: row.prestador_nombre,
+                    idAgenda: row.agenda_id,
+                    agenda: row.agenda_nombre,
+                    turnos: row.turnos || [],
+                    cantidadTurnos: row.total_turnos || (row.turnos?.length || 2),
+                    esMismoDia: row.mismo_dia,
+                    fechasTurnos: row.fechas_resumen ? row.fechas_resumen.split(', ') : [],
+                    severidad: row.total_turnos >= 3 ? 'alta' : row.mismo_dia ? 'alta' : 'media',
+                    gestion: {
+                        estado: row.estado || 'pendiente',
+                        agenteId: row.agente_id,
+                        agenteNombre: row.agente_nombre,
+                        notas: row.notas || '',
+                        fechaContacto: row.fecha_contacto,
+                        updatedAt: row.updated_at
+                    }
+                }));
+
+                const totalTurnosAnalizados = casos.length * 15; // Estimado visual
+                const totalPacientesConDuplicados = casos.length;
+                const totalTurnosEnConflicto = casos.reduce((acc, c) => acc + c.cantidadTurnos, 0);
+                const totalPendientes = casos.filter(c => c.gestion.estado === 'pendiente').length;
+                const totalContactados = casos.filter(c => c.gestion.estado === 'contactado').length;
+                const totalResueltos = casos.filter(c => c.gestion.estado === 'resuelto').length;
+
+                const result = {
+                    success: true,
+                    rango: { days, targetDate: date },
+                    stats: {
+                        totalTurnosAnalizados,
+                        totalPacientesConDuplicados,
+                        totalTurnosEnConflicto,
+                        totalPendientes,
+                        totalContactados,
+                        totalResueltos
+                    },
+                    casos
+                };
+
+                try {
+                    if (typeof window !== 'undefined' && window.sessionStorage) {
+                        window.sessionStorage.setItem(cacheKey, JSON.stringify(result));
+                    }
+                } catch (_) {}
+
+                return result;
+            }
+        } catch (err) {
+            lastError = err;
+            console.warn(`⚠️ Consulta directa Supabase falló (intento ${attempt + 1}):`, err?.message || err);
+            if (attempt === 0) {
+                await new Promise(r => setTimeout(r, 450));
+            }
         }
-
-        const { data, error } = await query;
-
-        if (error) {
-            console.error('Error consultando Supabase contact_center_turnos_online:', error);
-            throw error;
-        }
-
-        if (Array.isArray(data)) {
-            const casos = data.map(row => ({
-                key: row.id,
-                dni: row.dni,
-                nombre: row.paciente_nombre,
-                telefono: row.telefono,
-                email: row.email,
-                idPersonal: row.prestador_id,
-                profesional: row.prestador_nombre,
-                idAgenda: row.agenda_id,
-                agenda: row.agenda_nombre,
-                turnos: row.turnos || [],
-                cantidadTurnos: row.total_turnos || (row.turnos?.length || 2),
-                esMismoDia: row.mismo_dia,
-                fechasTurnos: row.fechas_resumen ? row.fechas_resumen.split(', ') : [],
-                severidad: row.total_turnos >= 3 ? 'alta' : row.mismo_dia ? 'alta' : 'media',
-                gestion: {
-                    estado: row.estado || 'pendiente',
-                    agenteId: row.agente_id,
-                    agenteNombre: row.agente_nombre,
-                    notas: row.notas || '',
-                    fechaContacto: row.fecha_contacto,
-                    updatedAt: row.updated_at
-                }
-            }));
-
-            const totalTurnosAnalizados = casos.length * 15; // Estimado visual
-            const totalPacientesConDuplicados = casos.length;
-            const totalTurnosEnConflicto = casos.reduce((acc, c) => acc + c.cantidadTurnos, 0);
-            const totalPendientes = casos.filter(c => c.gestion.estado === 'pendiente').length;
-            const totalContactados = casos.filter(c => c.gestion.estado === 'contactado').length;
-            const totalResueltos = casos.filter(c => c.gestion.estado === 'resuelto').length;
-
-            return {
-                success: true,
-                rango: { days, targetDate: date },
-                stats: {
-                    totalTurnosAnalizados,
-                    totalPacientesConDuplicados,
-                    totalTurnosEnConflicto,
-                    totalPendientes,
-                    totalContactados,
-                    totalResueltos
-                },
-                casos
-            };
-        }
-    } catch (err) {
-        console.warn('⚠️ Consulta directa Supabase falló, intentando sync-server si estamos en localhost:', err.message);
     }
+
+    // Si hubo caída de red transitoria (ERR_CONNECTION_TIMED_OUT), recuperar caché de sesión si existe
+    try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+            const cachedRaw = window.sessionStorage.getItem(cacheKey);
+            if (cachedRaw) {
+                const cached = JSON.parse(cachedRaw);
+                if (cached && Array.isArray(cached.casos) && cached.casos.length > 0) {
+                    console.info('[turnosOnlineService] Usando caché de sesión por timeout de red transitorio.');
+                    return { ...cached, fromCache: true };
+                }
+            }
+        }
+    } catch (_) {}
 
     // Fallback opcional local
     const isLocal = typeof window !== 'undefined' && 
@@ -418,7 +451,8 @@ export async function fetchTurnosOnlineDuplicados({ days = 1, date = null, force
     }
 
     return {
-        success: true,
+        success: false,
+        error: lastError?.message || 'Timeout de conexión con la base de datos. Reintentando...',
         rango: { days, targetDate: date },
         stats: {
             totalTurnosAnalizados: 0,

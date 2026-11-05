@@ -79,14 +79,35 @@ Deno.serve(async (req) => {
     function formatPhoneForWhatsApp(rawPhone: string): string {
         let clean = String(rawPhone || '').replace(/\D/g, '');
         if (!clean) return '';
+        if (clean.startsWith('549') && clean.length === 13) return clean;
+        if (clean.startsWith('549') && clean.length > 13) {
+            const inner = clean.slice(3);
+            const idx15 = inner.indexOf('15');
+            if (idx15 >= 2 && idx15 <= 4) {
+                const cleaned = inner.slice(0, idx15) + inner.slice(idx15 + 2);
+                if (cleaned.length === 10) return '549' + cleaned;
+            }
+            return '549' + inner.slice(0, 10);
+        }
+        if (clean.startsWith('54') && !clean.startsWith('549')) {
+            clean = clean.slice(2);
+        }
         if (clean.startsWith('0')) clean = clean.substring(1);
-        if (clean.startsWith('15') && clean.length === 10) {
+        if (clean.startsWith('15') && clean.length <= 10) {
             clean = '264' + clean.substring(2);
+            return '549' + clean;
+        }
+        if (clean.length > 10 && clean.includes('15')) {
+            const idx = clean.indexOf('15');
+            if (idx >= 2 && idx <= 4) {
+                clean = clean.slice(0, idx) + clean.slice(idx + 2);
+            }
+        }
+        if (clean.length > 10) {
+            clean = clean.slice(0, 10);
         }
         if (clean.length === 10 && !clean.startsWith('54')) {
             clean = '549' + clean;
-        } else if (clean.startsWith('54') && !clean.startsWith('549') && clean.length === 12) {
-            clean = '549' + clean.substring(2);
         }
         return clean;
     }
@@ -313,6 +334,153 @@ Deno.serve(async (req) => {
                     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
+        }
+
+        // ========================================
+        // ACTION: notify_cita_online_reservation — Envía Plantilla Oficial Meta desde Contact Center al confirmar reserva en CitaOnline
+        // ========================================
+        if (action === 'notify_cita_online_reservation') {
+            const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+            let rawPhone = String(body.phone || body.PatientPhone || '').trim();
+            const dni = String(body.dni || body.NIF || '').replace(/\D/g, '');
+            const nombre = String(body.nombre || body.PatientName || '').trim();
+            const apellido = String(body.apellido || body.PatientSurname || '').trim();
+            const segundoApellido = String(body.segundoApellido || body.PatientSecondSurname || '').trim();
+            const email = String(body.email || body.PatientEMail || '').trim();
+            const fechaHora = String(body.fechaHora || body.Date || body.Hour || '').trim();
+            const profesional = String(body.profesional || '').trim();
+            const especialidad = String(body.especialidad || '').trim();
+            const obraSocial = String(body.obraSocial || '').trim();
+            const visitId = body.visitId || body.VisitId || null;
+
+            // Si el paciente reservó logueado y no vino teléfono en el form, buscar en padrón por DNI
+            if (!rawPhone && dni) {
+                const { data: patRow } = await supabaseAdmin
+                    .from('patients')
+                    .select('telefono')
+                    .eq('dni', dni)
+                    .maybeSingle();
+                if (patRow?.telefono) rawPhone = String(patRow.telefono).trim();
+            }
+
+            const targetPhone = formatPhoneForWhatsApp(rawPhone);
+            if (!targetPhone || targetPhone.length < 12) {
+                return new Response(
+                    JSON.stringify({ success: false, error: 'Número de teléfono vacío o inválido para WhatsApp', rawPhone }),
+                    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            const fullPatientName = [nombre, apellido, segundoApellido].filter(Boolean).join(' ').trim() || 'Paciente';
+            const cleanFirstName = (nombre || fullPatientName.split(' ')[0] || 'Paciente')
+                .replace(/[\r\n\t]+/g, ' ')
+                .trim();
+
+            const turnoInfoParts: string[] = [];
+            if (fechaHora) turnoInfoParts.push(`el ${fechaHora}`);
+            if (profesional) {
+                const profClean = profesional.replace(/\s*\([^)]*\)\s*/g, '').trim();
+                turnoInfoParts.push(`con ${profClean}`);
+            }
+            if (especialidad) {
+                const espClean = especialidad.replace(/\s*\([^)]*\)\s*/g, '').trim();
+                if (espClean) turnoInfoParts.push(`(${espClean})`);
+            }
+            const turnoSummary = turnoInfoParts.length > 0
+                ? turnoInfoParts.join(' ')
+                : 'en nuestro portal de Turnos Online';
+
+            // Parámetro 2 para la plantilla oficial aprobada 'ojonoscobran' (es_AR) de la línea contact_center
+            // Meta no permite saltos de línea ni tabs dentro de los parámetros de variables
+            const param2Confirmacion = `el Contact Center — ✅ Confirmamos que tu turno ${turnoSummary} ya quedó reservado con éxito. IMPORTANTE: Si ya tenés tu turno asignado, por favor NO saques más turnos adicionales en la web para liberar agenda a otros pacientes`
+                .replace(/[\r\n\t]+/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+
+            const targetLine = 'contact_center';
+            const config = await getBuilderBotConfig(targetLine);
+            const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
+
+            const requestedTemplate = String(body.templateName || 'ojonoscobran').trim();
+            const requestedLang = String(body.languageCode || 'es_AR').trim();
+
+            const templatePayload = {
+                to: targetPhone,
+                templateName: requestedTemplate,
+                languageCode: requestedLang,
+                components: [
+                    {
+                        type: 'body',
+                        parameters: [
+                            { type: 'text', text: cleanFirstName },
+                            { type: 'text', text: param2Confirmacion }
+                        ]
+                    }
+                ]
+            };
+
+            console.log(`[send-whatsapp] notify_cita_online_reservation → ${targetPhone} | Paciente: ${fullPatientName} | Turno: ${turnoSummary}`);
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-builderbot': config.apiKey,
+                },
+                body: JSON.stringify(templatePayload),
+            });
+
+            const rawText = await response.text();
+            let data;
+            try {
+                data = JSON.parse(rawText);
+            } catch {
+                data = { rawResponse: rawText };
+            }
+
+            const resolvedDisplayMessage = `📋 [Plantilla Meta CitaOnline: ${requestedTemplate}] Hola ${cleanFirstName} soy ${param2Confirmacion} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
+            const nowIso = new Date().toISOString();
+
+            // Registrar en whatsapp_messages para trazabilidad en la consola del Contact Center
+            try {
+                await supabaseAdmin.from('whatsapp_messages').insert({
+                    phone: targetPhone,
+                    direction: 'outgoing',
+                    content: resolvedDisplayMessage,
+                    media_type: 'text',
+                    sender_name: 'Cita Online Web (Auto)',
+                    is_read: true,
+                    line_id: targetLine,
+                    raw_payload: {
+                        source: 'cita_online_web',
+                        line: targetLine,
+                        type: 'meta_template',
+                        templateName: requestedTemplate,
+                        visitId,
+                        dni: dni || null,
+                        paciente: fullPatientName,
+                        email: email || null,
+                        fechaHora: fechaHora || null,
+                        profesional: profesional || null,
+                        especialidad: especialidad || null,
+                        obraSocial: obraSocial || null,
+                        metaResponse: data
+                    }
+                });
+            } catch (dbErr) {
+                console.warn('[send-whatsapp] No se pudo insertar en whatsapp_messages:', dbErr);
+            }
+
+            return new Response(
+                JSON.stringify({
+                    success: response.ok && data?.success !== false,
+                    phone: targetPhone,
+                    templateName: requestedTemplate,
+                    visitId,
+                    data
+                }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
 
         // ========================================
