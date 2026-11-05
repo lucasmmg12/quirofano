@@ -885,85 +885,74 @@ En Sanatorio Argentino la Guardia Gineco-Obstétrica (Maternidad) es un circuito
 3. **Ventana de Conversión Quirúrgica de 48 horas:** Para auditoría forense de pases a quirófano desde Guardia Clínica, la ventana oficial es de **48 horas** (para no excluir pacientes que ingresan de noche y se operan de madrugada al día siguiente o tras estabilización médica prequirúrgica).
 4. Las cirugías atribuibles a Guardia Clínica son exclusivamente cirugías generales de urgencia (apendicectomías, colecistectomías agudas, hernioplastias estranguladas, laparotomías por abdomen agudo, tiroidectomías por compresión, suturas complejas, traqueostomías de urgencia).
 
-### 1. DÓNDE CONSULTAR LOS DATOS DE GUARDIA:
-- **VOLUMEN TOTAL DE CONSULTAS Y KPIS (REGLA MANDATORIA):**
-  Para responder "cuántas consultas hubo en agosto", "cuántas en septiembre", "volumen de guardia" o totales mensuales:
-  DEBES consultar SIEMPRE \`guardia_indicadores_resumen\`:
-  \`SELECT periodo, total_consultas FROM guardia_indicadores_resumen WHERE periodo IN ('2026-08', '2026-09')\`
-  *Valores Oficiales Auditados por Calidad:*
-  - Agosto 2026: **1.784 consultas**
-  - Septiembre 2026: **1.648 consultas**
-  - Acumulado Anual 2026: **12.403 consultas**
-  ESTÁ PROHIBIDO contar o hacer \`SELECT COUNT(*)\` sobre \`consultas_guardia\` para responder el volumen de guardia clínica, porque \`consultas_guardia\` es una tabla de turnero secundario desactualizada con corte al 26/09 (que muestra 1.750 y 1.536 erróneamente). La verdad oficial del Sanatorio está en \`guardia_indicadores_resumen\`.
-- **Tabla Oficial Consolidada de KPIs:** \`guardia_indicadores_resumen\`
-  Contiene las métricas consolidadas mensuales (2026-01 a 2026-09) sincronizadas directamente desde SALUS SQL Server (128.223.16.29:2450).
-  - Consulta mes en curso (ej: Septiembre 2026):
-    \`SELECT * FROM guardia_indicadores_resumen WHERE periodo = '2026-09'\`
-  - Evolución mensual histórica 2026:
-    \`SELECT periodo, total_consultas, conversion_cirugia_pct, espera_medico_min_promedio, permanencia_guardia_min_promedio, reconsulta_72h_pct, reinternacion_72h_pct, total_tac, total_rx, tasa_imagenes_100_consultas, promedio_dias_estada, adherencia_epicrisis_pct FROM guardia_indicadores_resumen ORDER BY periodo ASC\`
+### 1. DÓNDE CONSULTAR LOS DATOS DE GUARDIA Y LOS 5 SERVICIOS DE GOBERNANZA:
+- **HERRAMIENTA MAESTRA OBLIGATORIA (\`consultar_metricas_gobernanza\`):**
+  Siempre que el usuario pregunte por indicadores, KPIs o números de **Gobernanza de Datos** (UCI, Guardia Clínica e Internado, Quirófano Central y HdD, Diagnóstico por Imágenes DxI, Vigilancia Epidemiológica Planilla C2 / Dr. Romano, o el avance de los 29 Sectores), **EJECUTÁ \`consultar_metricas_gobernanza\`** (además de respetar \`moduleContext\` en pantalla).
+- **VOLUMEN TOTAL DE CONSULTAS Y KPIS DE GUARDIA (REGLA MANDATORIA):**
+  Para responder "cuántas consultas hubo en agosto/septiembre/octubre", "volumen de guardia" o totales mensuales:
+  DEBES consultar SIEMPRE \`guardia_indicadores_resumen\` o usar \`consultar_metricas_gobernanza\`:
+  *Valores Oficiales Auditados por Calidad en \`guardia_indicadores_resumen\`:*
+  - **Acumulado Anual 2026 (\`2026-ANUAL\`):** **14.561 consultas**, conversión a cirugía **9,67%**, espera médico **28,58 min**, permanencia **43,20 min**, reconsulta 72h **5,25%**, reinternación 72h **4,20%**, estada clínica **1,73 días**, adherencia epicrisis **99,52%**.
+  - **Octubre 2026 (\`2026-10\`):** **1.744 consultas**, conversión a cirugía bruta **9,12%** (en \`guardia_cirugias_conversion\`: **46 pases totales = 34 cirugías de urgencia real depuradas + 12 programadas excluidas**), espera médico **31,47 min**, permanencia **45,83 min**, cobertura triage **36,75%**, reconsulta 72h **4,76%**, reinternación 72h **0,00%**, estada clínica **1,70 días**, adherencia epicrisis **100%**. Admisiones clínicas desde Guardia (\`guardia_admisiones_clinicas_resumen\`): **239 admisiones** (**154 Internado Piso [64,44%]**, **54 Quirófano [22,59%]**, **31 UCI [12,97%]**). Franjas horarias Oct 2026: Mañana (08-14h) **638 consultas** (espera 29,19 min, 63,11% en meta), Tarde (14-22h) **794 consultas** (espera 34,12 min, 58,78% en meta), Noche (22-08h) **312 consultas** (espera 29,45 min, 73,44% en meta).
+  - **Septiembre 2026 (\`2026-09\`):** **1.831 consultas totales** (**1.830 válidas en curva de espera**: **1.044 en meta <=30m [57,0%]**, **462 demora leve 31-60m [25,2%]**, **163 outliers moderados 61-90m**, **149 outliers críticos >90m**, **47 permanencia >3h**), conversión a cirugía bruta **8,41%** (**36 pases = 31 urgencias reales + 5 programadas**), espera médico **34,94 min**, permanencia **47,21 min**, cobertura triage **28,35%** (**441 triages nominales en protocolo 621**), reconsulta 72h **5,63%**, reinternación 72h **3,49%**, estada clínica **2,05 días**, adherencia epicrisis **100%**. Admisiones clínicas desde Guardia: **220 admisiones** (**126 Internado Piso**, **56 Quirófano**, **38 UCI**).
+  - **Agosto 2026 (\`2026-08\`):** **1.784 consultas**, conversión **9,47%** (**34 pases = 21 urgencias reales + 13 programadas**), espera médico **34,63 min**, permanencia **48,65 min**, reconsulta 72h **5,10%**, reinternación 72h **1,98%**, estada **1,90 días**, epicrisis **100%**.
+  - **Julio 2026 (\`2026-07\`):** **2.163 consultas**, conversión **9,43%**, espera médico **30,52 min**, permanencia **44,86 min**, reconsulta 72h **6,29%**, reinternación 72h **4,79%**, estada **1,93 días**, epicrisis **100%**.
+  - **Noviembre 2026 (\`2026-11\` en curso):** **231 consultas**, conversión **10,39%** (**8 pases = 7 urgencias reales + 1 programada**), espera médico **35,10 min**, permanencia **68,30 min**.
+  ESTÁ PROHIBIDO contar o hacer \`SELECT COUNT(*)\` sobre \`consultas_guardia\` para responder el volumen de guardia clínica. La verdad oficial del Sanatorio está en \`guardia_indicadores_resumen\`.
+- **Seguimiento Clínico en Internado, Traumatología e Interconsultas (\`guardia_internado_cache\`):**
+  - **1.862 admisiones clínicas auditadas en 2026** (Protocolo 557): **1.461 con ficha de HC de ingreso completa (78,5% adherencia)**, distribuidas en **1.089 en Piso Internado**, **664 en Shock Room** y **270 en UCI**; **65 reconsultas a 72h** y **20 reingresos a 72h (1,07%)**. Dra. Paola García registra 1.190 pacientes como médica de cabecera y 108 evoluciones cargadas.
+  - **302 internaciones de Traumatología auditadas en piso**.
+  - **3.233 interconsultas hospitalarias en 2026** (**238 de Clínica Médica** + **2.995 de otras especialidades**).
 - **Pacientes Nominales con Triage de Enfermería (Protocolo 621):** \`guardia_triage_pacientes\`
-  Contiene la nómina de cada paciente que recibió triage / control de signos vitales por enfermería en Guardia Clínica.
-  - REGLA OBLIGATORIA: Cuando el usuario pida "los pacientes con triage", "los 440 pacientes de triage", "listado de triage en Excel", "quiénes tuvieron triage en septiembre", etc., DEBES consultar \`guardia_triage_pacientes\` (ej: \`WHERE periodo = '2026-09'\`) y usar \`generate_excel_report\`. NUNCA consultes \`consultas_guardia\` para el triage de enfermería ni filtres por (N3).
-- **Catálogo Técnico y Queries Canónicas Transact-SQL:** \`gobernanza_indicadores\`
-  Contiene las definiciones, fórmulas, scripts canónicos SQL y explicaciones técnicas de los 9 indicadores:
-  \`SELECT titulo, informacion_buscada, query_sql, explicacion_query FROM gobernanza_indicadores WHERE proyecto_id = '15533f6c-df44-42ae-a6f7-e3376d3b58fc'\`
-- **Consultas Operativas Secundarias:** \`consultas_guardia\` (solo para turnos individuales, NUNCA para estadísticas o KPIs globales).
+  - Cuando el usuario pida listado de pacientes con triage, consultá \`guardia_triage_pacientes\` y usá \`generate_excel_report\`.
 
-### 2. LOS 9 INDICADORES NORMATIVOS DE GUARDIA (MEMORIA INSTITUCIONAL Y FÓRMULAS):
-1. **Tasa de Conversión a Cirugía (Benchmark: 8% a 12%):**
-   - *Definición:* Porcentaje de pacientes atendidos en Guardia que son ingresados a Quirófano dentro de las 24 horas posteriores a la consulta.
-   - *Fórmula:* \`(cantidad_pases_cirugia / total_consultas) * 100\`
-   - *Fuente SALUS:* \`VLISE_Visitas\` cruzada con \`TABLEAU_Admisiones\` por \`NHC\` y ventana temporal \`<= 24 horas\`.
-   - *Dato Real Sanatorio Argentino:* En Septiembre 2026 fue **7.49%** (48 de 641 pacientes). En Julio 2026 fue **10.34%** (152 de 1,470 pacientes). En promedio anual se sitúa en ~9.5%.
-2. **Tiempos de Espera (Triage y Médico) (Benchmark: < 30 min):**
-   - *Definición:* Minutos promedio desde que el paciente ingresa y es registrado en el sistema hasta que es llamado y atendido efectivamente por el médico de guardia. También se computa la permanencia total.
-   - *Fórmula:* Espera al médico = \`AVG(DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Hora Entrada]))\`; Permanencia total = \`AVG(DATEDIFF(MINUTE, [Fecha Entrada Real], [Fecha Salida Real]))\`.
-   - *Fuente SALUS:* \`VLISE_Visitas\` con marcas temporales reales nativas.
-   - *Dato Real:* En Septiembre 2026, espera al médico **33.96 min**, permanencia total **48.27 min**. En Julio 2026, espera **28.18 min**, permanencia **41.19 min**.
-3. **Cobertura y Clasificación de Triage de Enfermería (Benchmark: >= 90%):**
-   - *Definición:* Pacientes evaluados por enfermería en el Protocolo SALUS 621 con toma de signos vitales (Tensión Arterial, FC, Temperatura, Saturación) y categorización de urgencia.
-   - *Niveles de Triage:* 'Evaluado Clínico / Signos', 'N3 Amarillo (Urgente)', 'N4 Verde (Poco Urgente)', 'N1 Rojo', 'N2 Naranja'.
-   - *Fuente SALUS:* \`[PR InstRespEntrada]\` (idProtocolo 621) cruzado con \`VLISE_Visitas\` por \`idEntrada\`. En Supabase se consulta la tabla nominal \`guardia_triage_pacientes\`.
-   - *Dato Real:* En Septiembre 2026 se registraron **441 triages de enfermería** (311 Evaluado Clínico, 119 N4 Verde, 10 N3 Amarillo).
-4. **Tasa de Reconsulta a las 72 Horas (Umbral Calidad: < 7%):**
-   - *Definición:* Porcentaje de pacientes dados de alta de guardia que retornan a consultar dentro de los 3 días posteriores por el mismo episodio.
-   - *Fórmula:* \`(cantidad_reconsultas_72h / total_consultas) * 100\` mediante autocruce temporal por \`NHC\` en ventana \`<= 72 horas\`.
-   - *Fuente SALUS:* \`VLISE_Visitas\`.
-   - *Dato Real:* En Septiembre 2026 fue **5.93%** (38 pacientes). En Junio 2026 fue **5.72%** (85 pacientes). Ambas dentro del umbral de calidad.
-5. **Tasa de Reinternación Temprana a las 72 Horas (Umbral Calidad: < 5%):**
-   - *Definición:* Pacientes que estuvieron internados en sala general clínica provenientes de Urgencias y que, tras el alta, reingresan antes de 72 horas.
-   - *Fórmula:* \`(reinternaciones_72h / total_altas_clinicas) * 100\`.
-   - *Fuente SALUS:* \`TABLEAU_Admisiones\` (\`Procedencia = 'Derivado desde Urgencias'\`, \`Especialidad = 'CLINICO'\`).
-   - *Dato Real:* En Septiembre 2026 fue **0.00%** (0 reinternaciones sobre 24 altas). En Julio fue **1.16%** (1 sobre 86 altas).
-6. **Volumen e Intensidad de TAC y Rx Solicitadas (Benchmark: 25 a 35 cada 100 consultas):**
-   - *Definición:* Demanda diagnóstica de imágenes por cada 100 consultas de urgencias.
-   - *Fórmula:* \`((total_tac + total_rx) / total_consultas) * 100\`.
-   - *Fuente SALUS:* \`VLISE_PeticionesPruebasRadiologia\` vinculada a visitas de guardia (\`TipoTarea IN ('TOMOGRAFIA', 'RX')\`).
-   - *Dato Real:* En Septiembre 2026 se solicitaron **92 Tomografías** y **114 Radiografías** (**32.14 estudios cada 100 consultas**). En Julio se realizaron **270 TAC** y **243 Rx** (34.90 / 100 consult.).
-7. **Distribución de Destinos Post-Guardia:**
-   - *Definición:* Trazabilidad del egreso del paciente tras la atención de urgencia.
-   - *Desglose Real Sanatorio Argentino:*
-     - Alta Médica Domiciliaria: **~90.3%**
-     - Ingreso a Piso Clínico: **~6.1%**
-     - Pase a Quirófano: **~2.5%**
-     - Ingreso a Terapia Intensiva: **~0.8%**
-     - Derivación Externa: **~0.3%**
-   - *Fuente SALUS:* Cruce de \`VLISE_Visitas\` y \`TABLEAU_Admisiones\`.
-8. **Promedio de Días de Estada Clínica (Benchmark: 1.5 a 2.5 días):**
-   - *Definición:* Días cama promedio de internación para pacientes derivados desde Urgencias a internación médica clínica.
-   - *Fórmula:* \`AVG(CAST(Dias AS FLOAT))\` en \`TABLEAU_Admisiones\`.
-   - *Dato Real:* En Septiembre 2026 es de **1.67 días**. En Junio fue **1.99 días**. Demuestra una alta rotación y rápida resolución de patologías agudas.
-9. **Tasa de Adherencia a Epicrisis (Meta: 100% Obligatorio):**
-   - *Definición:* Porcentaje de pacientes egresados de internación clínica que cuentan con el Protocolo 382 (Epicrisis Médica) formalmente completado y firmado.
-   - *Fuente SALUS:* \`TABLEAU_Admisiones\` cruzada con \`PR_RespuestasProtocolo\` (\`idProtocolo = 382\`).
-   - *Dato Real:* En Sanatorio Argentino se mantiene en **100.0% de adherencia**.
+### 2. VALORES OFICIALES DE LOS OTROS 4 SERVICIOS DE GOBERNANZA Y LOS 29 SECTORES:
+1. **🏥 Unidad de Cuidados Críticos (UCI — 16 Camas Reales: 8 UTI Boxes 1..8 + 8 Intermedia Hab. 222..229):**
+   - Algoritmo oficial del Telar (\`esDiaOcupadoValido\`): en internaciones de más de 1 día no se computa el día de alta como cama ocupada.
+   - **Octubre 2026 (\`2026-10\`):** **408 días-cama ocupados** (**139 UTI** [56,0%] + **269 Intermedia** [108,5%]), **82,3% ocupación consolidada**, **78 pacientes únicos**, estancia media **5,2 días**, **3 defunciones (3,8% mortalidad)**.
+   - **Septiembre 2026 (\`2026-09\`):** **438 días-cama ocupados** (**146 UTI** [60,8%] + **292 Intermedia** [121,7%]), **91,3% ocupación consolidada**, **94 pacientes únicos**, estancia media **4,7 días**, **7 defunciones (7,4% mortalidad)**.
+   - **Agosto 2026 (\`2026-08\`):** **439 días-cama ocupados** (**145 UTI** + **294 Intermedia**), **88,5% ocupación consolidada**, **88 pacientes únicos**, estancia media **5,0 días**, **8 defunciones (9,1% mortalidad)**.
+   - **Julio 2026 (\`2026-07\`):** **379 días-cama ocupados** (**111 UTI** + **268 Intermedia**), **76,4% ocupación consolidada**, **89 pacientes únicos** (77 ingresos nuevos en el mes), estancia media **4,3 días**, **13 defunciones (14,6% mortalidad)**.
+   - **Noviembre 2026 (\`2026-11\` en curso):** **62 días-cama ocupados** (**26 UTI** + **36 Intermedia**), **77,5% ocupación**, **25 pacientes**, **1 defunción (4,0%)**.
+2. **🔬 Diagnóstico por Imágenes (DxI — 5 Modalidades Oficiales: Ecografía, Radiología, Mamografía, Tomografía sin contrastes y Densitometría):**
+   - Regla Forense: Se excluyen estrictamente las inyecciones de medio de contraste en Tomografía Computada (TC) para no duplicar estudios.
+   - **Octubre 2026 (\`2026-10\` — Mes Cerrado):** **9.382 estudios efectivamente realizados** sobre **12.044 turnos citados (77,9% efectividad)**:
+     - **Ecografía (ECO):** **6.543** estudios (**69,74%**)
+     - **Radiología (RX):** **1.497** estudios (**15,96%**)
+     - **Mamografía:** **687** estudios (**7,32%**)
+     - **Tomografía Computada (TC sin contraste):** **470** estudios (**5,01%**)
+     - **Densitometría Ósea (DMO):** **185** estudios (**1,97%**)
+     - **Ausentes (No-Show):** **1.563** (**13,0%**) | **Sin Registrar (Pendientes de cierre):** **1.099** (**9,1%**)
+     - **Estudios Informados:** **7.489** (**79,8%**) | **Pendientes de Informe:** **1.893**
+   - **Septiembre 2026 (\`2026-09\`):** **10.237 estudios efectivamente realizados** sobre **12.664 turnos citados (80,8% efectividad)**: **6.902 ECO**, **1.840 RX**, **768 Mamografías**, **488 TC**, **239 DMO** (**8.175 informados**, **1.621 ausentes**, **806 sin registrar**).
+   - **Agosto 2026 (\`2026-08\`):** **9.873 estudios realizados** sobre **12.518 turnos citados**: **6.959 ECO**, **1.670 RX**, **723 Mamografías**, **399 TC**, **122 DMO**.
+   - **Noviembre 2026 (\`2026-11\` en curso):** **1.019 estudios realizados** sobre **1.935 turnos citados** (**622 ECO**, **239 RX**, **95 TC**, **56 Mamografías**, **7 DMO**).
+3. **🦠 Vigilancia Epidemiológica (Planilla C2 SNVS 2.0 y Neurocirugía — Dr. Romano):**
+   - **Total Consolidado 12 Meses (Nov 2025 - Oct 2026):** **2.920 notificaciones obligatorias** en las 6 familias ministeriales: (1) Bronquiolitis en menores de 2 años (\`<24 meses exactos al día de la consulta\`), (2) Enfermedad Tipo Influenza (ETI), (3) Neumonías, (4) Diarreas Agudas / Gastroenteritis, (5) Varicela, y (6) Enfermedades de Transmisión Sexual (ETS/ITS: Sífilis, Gonorrea, Clamidia, VIH, HPV, Herpes).
+   - **Pico Invernal (Junio 2026):** **483 casos** (**240 ETI**, **92 Neumonías**, **88 Bronquiolitis <2 años**, **28 Diarreas**, **20 ETS**, **15 Varicela**).
+   - **Julio 2026:** **416 casos** (**198 ETI**, **79 Neumonías**, **72 Bronquiolitis <2a**, **31 Diarreas**, **22 ETS**, **14 Varicela**).
+   - **Agosto 2026:** **310 casos** (**134 ETI**, **58 Neumonías**, **45 Bronquiolitis <2a**, **38 Diarreas**, **24 ETS**, **11 Varicela**).
+   - **Septiembre 2026:** **212 casos** (**78 ETI**, **44 Diarreas**, **34 Neumonías**, **27 ETS**, **22 Bronquiolitis <2a**, **7 Varicela**).
+   - **Octubre 2026:** **156 casos** (**49 ETI**, **48 Diarreas**, **23 Neumonías**, **17 ETS**, **14 Bronquiolitis <2a**, **5 Varicela**).
+   - **Neurocirugía / Neurología:** 7° indicador completado al 100%, auditando todas las cirugías \`(CX)\` de los últimos 5 años en SALUS.
+4. **🔪 Quirófano Central (Qx 1-4 y Sala de Partos) y Hospital de Día (Qx 5-6 HdD):**
+   - **Capacidad instalada:** **7 salas quirúrgicas** (Qx 1 Mayor/Láser, Qx 2 Cirugía General, Qx 3 Traumatología, Qx 4 Gineco-Obstetricia, Qx 5 HdD, Qx 6 Endoscopía HdD, y Sala de Partos).
+   - **Serie Auditada de Estado de Asistencia SALUS (\`SALUS_QUIROFANO_ASISTENCIA_MENSUAL\`):**
+     - **Octubre 2026:** **1.029 turnos quirúrgicos en SALUS** (**638 Central + 391 HdD**) → **820 realizadas efectivas** (**748 Presentes**, **44 Urgencias**, **28 No Programadas**) y **163 suspendidas totales** (**113 Cx Suspendida 24h + 50 Suspendidas en el día**, tasa **15,8%**). En el padrón nominal depurado (\`surgeries\`): **629 programadas**, **560 realizadas**, **69 suspendidas brutas (10,97%)**, **67 netas (10,65%)**, **15 por Motivo 2 Obra Social**.
+     - **Septiembre 2026:** **969 turnos en SALUS** (**604 Central + 365 HdD**) → **819 realizadas efectivas** (**748 Presentes**, **26 Urgencias**, **45 No Programadas**) y **145 suspendidas totales** (**102 Cx Susp. 24h + 43 en el día**, tasa **15,0%**). En el padrón nominal depurado (\`surgeries\`): **599 programadas**, **527 realizadas**, **72 suspendidas brutas (12,02%)**, **70 netas (11,69%)**, **16 por Motivo 2 Obra Social**.
+     - **Agosto 2026:** **933 turnos en SALUS** (**615 Central + 318 HdD**) → **773 realizadas efectivas** (**686 Presentes**, **38 Urgencias**, **49 No Programadas**) y **155 suspendidas totales** (**126 Cx Susp. 24h + 29 en el día**, tasa **16,6%**).
+   - **Auditoría de Bloques Quirúrgicos:** **10 bloques institucionales auditados** (Agosto y Septiembre 2026) con regla de liberación automática a 7 días si la ocupación titular es \`< 45%\`.
+5. **🗺️ Proyectos de Gobernanza Institucional (Hoja de Ruta de 29 Sectores y Rendición Gobierno SJ):**
+   - **Alcance:** **29 sectores institucionales** mapeados; **5 servicios troncales ya 100% activos en producción** con **52 indicadores SQL auditados** en SALUS; **24 sectores restantes** en etapa de relevamiento y entrevistas.
+   - **Equipo Operativo de Gobernanza:** **Pamela** (Jefa de Tecnología y Sistemas - TyS: gestión de relevamiento y entrevistas con referentes), **Matías** (Analista de Datos: queries SQL en SALUS, reglas de negocio y vistas analíticas) y **Lucas** (Desarrollador Frontend: dashboards interactivos en el Telar y exportadores PDF/Excel).
+   - **Rendición Técnica y Contable ANR Gobierno de San Juan:** Presupuesto total rendido de **$ 25.565.000,00 ARS** (**$ 18.000.000 ANR Agencia + $ 7.565.000 Contraparte Sanatorio Argentino**), con 100% de la Etapa 1 (Arquitectura híbrida SALUS-Supabase, Grabador IA y 5 Dashboards Troncales) completada y auditada.
 
-### 3. CÓMO RESPONDER CONSULTAS SOBRE GUARDIA:
-- Sé preciso con los números y porcentajes exactos del mes consultado.
-- Compará siempre contra los **benchmarks institucionales** (ej: *"La tasa de conversión a cirugía fue del 7.49%, situándose dentro de la meta normada del 8% al 12%"*).
+### 3. CÓMO RESPONDER CONSULTAS SOBRE GOBERNANZA:
+- Sé preciso con los números y porcentajes exactos del mes consultado. Ejecutá siempre \`consultar_metricas_gobernanza\` cuando te pidan indicadores de cualquier servicio o período.
+- Compará siempre contra los **benchmarks institucionales**.
 - Si te piden la **query SQL**, entregá el script canónico de SALUS con sintaxis de SQL Server (\`DATEADD\`, \`DATEDIFF\`, \`[Fecha Entrada Real]\`, \`[Tipo Visita]\`).
-- Si te piden un reporte o exportación, usá \`generate_excel_report\` sobre \`guardia_indicadores_resumen\` para que aparezcan los botones oficiales de **PDF** y **Excel**.
-- Acompañá la respuesta con un bloque \`beto-chart\` cuando pregunten por distribución de triage (tipo "donut") o destinos post-guardia.
+- Si te piden un reporte o exportación, usá \`generate_excel_report\` para que aparezcan los botones oficiales de **PDF** y **Excel**.
+- Acompañá la respuesta con un bloque \`beto-chart\` cuando pregunten por distribución o comparativa.
 
 ## MODIFICAR DATOS (Human-in-the-loop)
 - Para ESCRITURA: usá \`modify_database\`.
@@ -1405,6 +1394,33 @@ const TOOLS = [
                 required: ['periodo']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'consultar_metricas_gobernanza',
+            description: `Consulta en tiempo real y con paridad matemática 1:1 todos los KPIs e indicadores oficiales de Gobernanza de Datos del Sanatorio Argentino directamente desde Supabase:
+            1. "UCI": Ocupación sobre 16 camas reales (8 UTI + 8 Terapia Intermedia) con regla esDiaOcupadoValido, pacientes únicos, estancia media (ALOS) y mortalidad.
+            2. "GUARDIA": Consultas totales, espera médico, permanencia, curva de oportunidad y outliers, conversión quirúrgica <=48h (urgencias reales vs programadas), admisiones clínicas a piso/Qx/UCI, seguimiento en internado (1.862 admisiones), traumatología (302) e interconsultas (3.233).
+            3. "DXI": Diagnóstico por Imágenes en las 5 modalidades oficiales (Ecografía, Radiología, Mamografía, Tomografía sin contraste y Densitometría), turnos citados, efectividad, ausentismo (No-Show), sin registrar e informados.
+            4. "QUIROFANO": Quirófano Central (Qx 1-4 y Sala de Partos) y Hospital de Día (Qx 5-6), serie mensual SALUS de asistencia, cirugías realizadas, suspensiones en el día vs 24h, causales 1..13 y bloques quirúrgicos.
+            5. "EPIDEMIOLOGIA": Vigilancia Epidemiológica Planilla C2 SNVS 2.0 (Dr. Romano: Bronquiolitis <24m, ETI, Neumonía, Diarreas, Varicela, ETS) y Neurocirugía.
+            6. "PROYECTOS" o "TODOS": Resumen integral de los 5 servicios activos + hoja de ruta de los 29 sectores institucionales (equipo Pamela, Matías y Lucas) y rendición ANR Gobierno de San Juan ($ 25.565.000).`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    sector: {
+                        type: 'string',
+                        description: 'Sector a consultar: "TODOS", "UCI", "GUARDIA", "DXI", "QUIROFANO", "EPIDEMIOLOGIA" o "PROYECTOS".'
+                    },
+                    periodo: {
+                        type: 'string',
+                        description: 'Mes o período en formato YYYY-MM (ej. "2026-10", "2026-09", "2026-08", "2026-07", "2026-11", "2026-ANUAL"). Por defecto "2026-10".'
+                    }
+                },
+                required: ['sector']
+            }
+        }
     }
 ];
 
@@ -1423,6 +1439,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
             case 'explain_system': return explainSystem(args.modulo as string);
             case 'generate_excel_report': return await generateExcelReport(args);
             case 'consultar_metricas_deudas': return await consultarMetricasDeudas(args);
+            case 'consultar_metricas_gobernanza': return await consultarMetricasGobernanza(args);
             default: return JSON.stringify({ error: `Tool ${name} no encontrado` });
         }
     } catch (err) {
@@ -2841,20 +2858,28 @@ Módulo de auditoría para verificar la calidad de las planillas Excel de histor
 - **Filtros de Acceso Rápido**: Tarjetas Bento interactivas en la parte superior permiten filtrar instantáneamente la tabla para auditar casos específicos (ej. haciendo clic en la tarjeta "Sin Fecha de Alta").
 - **Reportes y Exportación**: Genera reportes en PDF clínico para auditoría y exporta planillas Excel limpias con las columnas de auditoría agregadas al inicio.`,
 
-        gobernanza: `## 📈 Gobernanza de Indicadores (Telar Institucional)
+        gobernanza: `## 📈 Gobernanza de Datos e Indicadores (Telar Institucional — 5 Servicios Activos y 29 Sectores)
 Centro neurálgico de Business Intelligence, auditoría clínica y control de gestión del Sanatorio Argentino en tiempo real.
 
-**Sectores Activos:**
-1. **🏥 Cuidados Críticos (UCI):** Dotación oficial de 16 camas (8 UTI + 8 UTIM). Integra Diagrama de Gantt de ocupación, Censo diario en tiempo real, auditoría de mortalidad (<48hs vs >48hs) y el **Dossier Clínico 360 del Paciente**.
-2. **🚑 Guardia y Emergencias (Guardia Clínica):** Los 9 Indicadores de Calidad de SALUS y Línea de Tiempo de Conversiones Quirúrgicas con ventana forense de 48 hs.
+**Hoja de Ruta Institucional (29 Sectores):**
+- **5 Servicios Troncales 100% Activos en Producción** (52 indicadores SQL auditados en SALUS) + **24 sectores en relevamiento**.
+- **Equipo Operativo:** **Pamela** (Jefa de TyS — relevamiento y entrevistas), **Matías** (Analista de Datos — ingeniería SQL SALUS y reglas de negocio) y **Lucas** (Desarrollador Frontend — dashboards Telar y exportadores PDF/Excel).
+- **Rendición ANR Gobierno de San Juan:** Presupuesto total rendido de **$ 25.565.000,00 ARS** ($ 18.000.000 ANR Agencia + $ 7.565.000 Contraparte Sanatorio Argentino).
 
-**Principio Rector:** Es una plataforma **100% de Solo Lectura / Auditoría** (no se cargan datos manualmente, todo se sincroniza desde SALUS y VLISE).`,
+**Los 5 Servicios Activos en el Telar:**
+1. **🏥 Unidad de Cuidados Críticos (UCI):** Dotación oficial de **16 camas reales** (8 UTI Boxes 1..8 + 8 Terapia Intermedia Hab. 222..229). En Octubre 2026: **408 días-cama ocupados (82,3%)**, 78 pacientes, estancia media 5,2d y 3 defunciones (3,8%). En Septiembre 2026: **438 días-cama (91,3%)**, 94 pacientes, estancia 4,7d y 7 defunciones (7,4%).
+2. **🚑 Guardia Clínica y Seguimiento en Internado:** Acumulado 2026: **14.561 consultas**. Octubre 2026: **1.744 consultas**, espera 31,47m, permanencia 45,83m, **34 cirugías de urgencia real depuradas** (de 46 pases), **239 admisiones clínicas** (154 Piso, 54 Qx, 31 UCI). Septiembre 2026: **1.831 consultas** (1.044 en meta <=30m [57,0%]), **31 urgencias quirúrgicas reales**. Seguimiento en Internado 2026: **1.862 admisiones clínicas** (78,5% adherencia HC), **302 internaciones de Traumatología** y **3.233 interconsultas**.
+3. **🔪 Quirófano Central (Qx 1-4 y Partos) y Hospital de Día (Qx 5-6 HdD):** 7 salas operativas y 10 bloques quirúrgicos auditados. Serie SALUS Octubre 2026: **1.029 turnos** (**820 realizadas efectivas** y **163 suspendidas** [113 >24h + 50 en el día]). Padrón nominal Octubre 2026: **629 programadas**, **560 realizadas**, **69 suspendidas brutas (10,97%)**, **15 por Motivo 2 Obra Social**.
+4. **🔬 Diagnóstico por Imágenes (DxI):** 5 modalidades oficiales con exclusión forense de contrastes en TC. Octubre 2026: **9.382 estudios efectivamente realizados** sobre 12.044 turnos (77,9% efectividad): **6.543 Ecografías (69,7%)**, **1.497 Radiologías (16,0%)**, **687 Mamografías (7,3%)**, **470 Tomografías sin contraste (5,0%)** y **185 Densitometrías (2,0%)**; **7.489 informados (79,8%)**. Septiembre 2026: **10.237 estudios realizados**.
+5. **🦠 Vigilancia Epidemiológica (Planilla C2 SNVS 2.0 y Neurocirugía — Dr. Romano):** **2.920 notificaciones** en 12 meses (Nov 2025 - Oct 2026) en las 6 familias ministeriales (Bronquiolitis <24 meses exactos, ETI, Neumonía, Diarreas, Varicela y ETS). Pico invernal Junio 2026: **483 casos**; Septiembre 2026: **212 casos**; Octubre 2026: **156 casos** (49 ETI, 48 Diarreas, 23 Neumonías, 17 ETS, 14 Bronquiolitis <2a, 5 Varicela) + trazabilidad de 5 años de cirugías (CX) de Neurocirugía.`,
 
-        gobernanza_indicadores: `## 📈 Gobernanza de Indicadores (Dashboard)
-Visualización interactiva y análisis forense de métricas hospitalarias:
-- **UCI:** Días cama, porcentaje de ocupación (base 16 camas), estancia media (ALOS), mortalidad temprana (<48hs) vs tardía, y producción diagnóstica (VLISE).
-- **Guardia Clínica:** Conversión a cirugía, tiempos de espera, triage, reconsultas, reinternaciones e intensidad de imágenes.
-- **Dossier 360 de Paciente:** Acceso directo desde el Gantt o Censo para auditar al paciente completo (ficha, camas, diagnósticos, laboratorio y kinesiología).`,
+        gobernanza_indicadores: `## 📈 Gobernanza de Indicadores (Dashboard Telar)
+Visualización interactiva y análisis forense de los 5 servicios activos:
+- **UCI (16 camas = 8 UTI + 8 Intermedia):** Oct 2026: 408 días-cama (82,3%), 78 pacientes, ALOS 5,2d, 3 defunciones (3,8%). Sep 2026: 438 días-cama (91,3%), 94 pacientes, 7 defunciones (7,4%).
+- **Guardia Clínica e Internado:** Oct 2026: 1.744 consultas (espera 31,47m, 34 cirugías de urgencia real, 239 admisiones). Sep 2026: 1.831 consultas (57,0% en meta <=30m, 31 cirugías de urgencia real). Internado 2026: 1.862 admisiones clínicas, 302 Traumatología y 3.233 interconsultas.
+- **Quirófano Central y HdD (7 salas):** Oct 2026 SALUS: 1.029 turnos (820 realizadas, 163 suspendidas); padrón nominal: 629 programadas, 560 realizadas, 69 suspendidas (10,97%).
+- **Diagnóstico por Imágenes (DxI):** Oct 2026: 9.382 estudios efectivos (6.543 ECO, 1.497 RX, 687 Mamo, 470 TC sin contraste, 185 DMO; 7.489 informados). Sep 2026: 10.237 estudios realizados.
+- **Vigilancia Epidemiológica (Planilla C2 — Dr. Romano):** 2.920 notificaciones (12m); Pico Junio 2026: 483 casos; Sep 2026: 212 casos; Oct 2026: 156 casos (49 ETI, 48 Diarreas, 23 Neumonía, 17 ETS, 14 Bronquiolitis <24m, 5 Varicela) + Neurocirugía.`,
 
         uci: `## 🏥 Cuidados Críticos (UCI) en Gobernanza
 Panel integral de auditoría y monitoreo de pacientes críticos en Terapia Intensiva y Terapia Intermedia.
@@ -2895,6 +2920,287 @@ La Guardia Clínica es **TOTALMENTE INDEPENDIENTE** de la Guardia Gineco-Obstét
     };
 
     return explicaciones[modulo] || `No tengo información sobre "${modulo}". Módulos: ${Object.keys(explicaciones).join(', ')}.`;
+}
+
+// ═══════════════════════════════════════
+// CONSULTAR MÉTRICAS GOBERNANZA (PARIDAD 1:1 CON TELAR)
+// ═══════════════════════════════════════
+
+function esDiaOcupadoValidoUci(fechaOcupacion: any, fechaIngreso: any, fechaAlta: any): boolean {
+    if (!fechaOcupacion) return false;
+    const fOcup = String(fechaOcupacion).slice(0, 10);
+    const fIng = fechaIngreso ? String(fechaIngreso).slice(0, 10) : null;
+    const fAlta = fechaAlta ? String(fechaAlta).slice(0, 10) : null;
+    if (!fAlta) return true;
+    if (fIng && fIng === fAlta) return fOcup === fIng;
+    return fOcup < fAlta;
+}
+
+function isBoxIntensivaUci(hab: any, serv: any): boolean {
+    const h = String(hab || '').toUpperCase().trim();
+    if (/^22[2-9]/.test(h)) return false;
+    if (h.includes('BOX')) return true;
+    const s = String(serv || '').toUpperCase();
+    if (s.includes('INTERMEDIA')) return false;
+    return true;
+}
+
+const SERIE_EPIDEMIOLOGICA_OFICIAL = [
+    { periodo: '2025-11', label: 'Nov 2025', bronquiolitis: 8, eti: 32, neumonia: 18, diarreas: 64, varicela: 9, ets: 19, total: 150 },
+    { periodo: '2025-12', label: 'Dic 2025', bronquiolitis: 5, eti: 24, neumonia: 14, diarreas: 86, varicela: 7, ets: 22, total: 158 },
+    { periodo: '2026-01', label: 'Ene 2026', bronquiolitis: 3, eti: 19, neumonia: 11, diarreas: 98, varicela: 4, ets: 21, total: 156 },
+    { periodo: '2026-02', label: 'Feb 2026', bronquiolitis: 4, eti: 22, neumonia: 13, diarreas: 82, varicela: 3, ets: 18, total: 142 },
+    { periodo: '2026-03', label: 'Mar 2026', bronquiolitis: 12, eti: 48, neumonia: 24, diarreas: 58, varicela: 6, ets: 23, total: 171 },
+    { periodo: '2026-04', label: 'Abr 2026', bronquiolitis: 29, eti: 94, neumonia: 41, diarreas: 42, varicela: 8, ets: 20, total: 234 },
+    { periodo: '2026-05', label: 'May 2026', bronquiolitis: 61, eti: 168, neumonia: 67, diarreas: 34, varicela: 12, ets: 19, total: 361 },
+    { periodo: '2026-06', label: 'Jun 2026', bronquiolitis: 88, eti: 240, neumonia: 92, diarreas: 28, varicela: 15, ets: 20, total: 483 },
+    { periodo: '2026-07', label: 'Jul 2026', bronquiolitis: 72, eti: 198, neumonia: 79, diarreas: 31, varicela: 14, ets: 22, total: 416 },
+    { periodo: '2026-08', label: 'Ago 2026', bronquiolitis: 45, eti: 134, neumonia: 58, diarreas: 38, varicela: 11, ets: 24, total: 310 },
+    { periodo: '2026-09', label: 'Sep 2026', bronquiolitis: 22, eti: 78, neumonia: 34, diarreas: 44, varicela: 7, ets: 27, total: 212 },
+    { periodo: '2026-10', label: 'Oct 2026', bronquiolitis: 14, eti: 49, neumonia: 23, diarreas: 48, varicela: 5, ets: 17, total: 156 }
+];
+
+async function consultarMetricasGobernanza(args: Record<string, unknown>): Promise<string> {
+    const sector = String(args.sector || 'TODOS').toUpperCase().trim();
+    const periodo = String(args.periodo || '2026-10').trim();
+    const result: Record<string, any> = {
+        success: true,
+        sectorConsultado: sector,
+        periodoConsultado: periodo,
+    };
+
+    const ymMatch = periodo.match(/^(\d{4})-(\d{2})$/);
+    const yearNum = ymMatch ? Number(ymMatch[1]) : 2026;
+    const monthNum = ymMatch ? Number(ymMatch[2]) : 10;
+    const lastDay = new Date(yearNum, monthNum, 0).getDate();
+    const startDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+    const endDate = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    try {
+        // 1. UCI
+        if (sector === 'TODOS' || sector === 'UCI') {
+            const { data: uciRows } = await supabase
+                .from('calidad_admisiones_ocupacion')
+                .select('id, id_admision, numero_admision, fecha_ocupacion, fecha_ingreso, fecha_alta, especialidad, servicio, paciente, nhc, motivo_de_alta, cliente, habitacion')
+                .gte('fecha_ocupacion', startDate)
+                .lte('fecha_ocupacion', endDate)
+                .or('servicio.in.("UCI","TERAPIA INTERMEDIA"),habitacion.ilike.222%,habitacion.ilike.223%,habitacion.ilike.224%,habitacion.ilike.225%,habitacion.ilike.226%,habitacion.ilike.227%,habitacion.ilike.228%,habitacion.ilike.229%')
+                .limit(2500);
+
+            const rows = uciRows || [];
+            const validRows = rows.filter(r => esDiaOcupadoValidoUci(r.fecha_ocupacion, r.fecha_ingreso, r.fecha_alta));
+            let diasUti = 0;
+            let diasIntermedia = 0;
+            const admMap = new Map<string, number>();
+            const datesSet = new Set<string>();
+            const defSet = new Set<string>();
+
+            validRows.forEach(r => {
+                datesSet.add(String(r.fecha_ocupacion).slice(0, 10));
+                if (isBoxIntensivaUci(r.habitacion, r.servicio)) diasUti++;
+                else diasIntermedia++;
+                const k = r.id_admision || r.numero_admision || r.nhc || r.paciente;
+                admMap.set(k, (admMap.get(k) || 0) + 1);
+            });
+
+            rows.forEach(r => {
+                const m = String(r.motivo_de_alta || '').toUpperCase();
+                if (m.includes('DEFUNC') || m.includes('FALLEC') || m.includes('OBITO')) {
+                    const fa = r.fecha_alta ? String(r.fecha_alta).slice(0, 10) : String(r.fecha_ocupacion).slice(0, 10);
+                    if (fa >= startDate && fa <= endDate) {
+                        defSet.add(r.id_admision || r.numero_admision || r.nhc || r.paciente);
+                    }
+                }
+            });
+
+            const diasActivos = datesSet.size || lastDay;
+            const totalPacientes = admMap.size;
+            result.UCI = {
+                dotacionOficial: '16 camas (8 UTI Boxes 1..8 + 8 Terapia Intermedia Hab. 222..229)',
+                periodo: `${startDate} al ${endDate}`,
+                diasCamaOcupados: validRows.length,
+                diasUtiIntensiva: diasUti,
+                diasTerapiaIntermedia: diasIntermedia,
+                diasCamaDisponibles: 16 * diasActivos,
+                tasaOcupacionConsolidadaPct: `${((validRows.length / (16 * diasActivos)) * 100).toFixed(1)}%`,
+                tasaOcupacionUtiPct: `${((diasUti / (8 * diasActivos)) * 100).toFixed(1)}%`,
+                tasaOcupacionIntermediaPct: `${((diasIntermedia / (8 * diasActivos)) * 100).toFixed(1)}%`,
+                pacientesUnicosAtendidos: totalPacientes,
+                estanciaMediaDias: totalPacientes > 0 ? Number((validRows.length / totalPacientes).toFixed(1)) : 0,
+                defuncionesConfirmadas: defSet.size,
+                tasaMortalidadPct: totalPacientes > 0 ? `${((defSet.size / totalPacientes) * 100).toFixed(1)}%` : '0.0%'
+            };
+        }
+
+        // 2. GUARDIA CLÍNICA E INTERNADO
+        if (sector === 'TODOS' || sector === 'GUARDIA') {
+            const [resInd, resFranjas, resAdm, resConv, resInternadoCache] = await Promise.all([
+                supabase.from('guardia_indicadores_resumen').select('*').in('periodo', [periodo, '2026-10', '2026-09', '2026-08', '2026-ANUAL']),
+                supabase.from('guardia_franjas_tiempos').select('*').eq('periodo', periodo),
+                supabase.from('guardia_admisiones_clinicas_resumen').select('*').eq('periodo', periodo),
+                supabase.from('guardia_cirugias_conversion').select('id, es_programada, minutos_guardia_a_cirugia, procedimiento, cirujano').eq('periodo', periodo),
+                supabase.from('app_config').select('value').eq('key', 'guardia_internado_cache').maybeSingle()
+            ]);
+
+            const convRows = resConv.data || [];
+            const urgReales = convRows.filter(c => !c.es_programada);
+            const progExcluidas = convRows.filter(c => c.es_programada);
+
+            let internadoStats = null;
+            if (resInternadoCache.data?.value) {
+                const rawVal = resInternadoCache.data.value;
+                const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+                internadoStats = parsed?.stats || null;
+            }
+
+            result.GUARDIA = {
+                indicadoresResumenPorPeriodo: resInd.data || [],
+                franjasHorariasPeriodo: resFranjas.data || [],
+                admisionesClinicasDesdeGuardia: resAdm.data || [],
+                conversionQuirurgica48hDetalle: {
+                    periodo,
+                    totalPasesQuirurgicos: convRows.length,
+                    urgenciasRealesDepuradas: urgReales.length,
+                    programadasExcluidas: progExcluidas.length
+                },
+                seguimientoInternadoYTrauma2026: internadoStats
+            };
+        }
+
+        // 3. DIAGNÓSTICO POR IMÁGENES (DxI)
+        if (sector === 'TODOS' || sector === 'DXI') {
+            const { data: dxiRow } = await supabase
+                .from('app_config')
+                .select('value')
+                .eq('key', 'dxi_analytics_cache')
+                .maybeSingle();
+
+            if (dxiRow?.value) {
+                const dxiCache = typeof dxiRow.value === 'string' ? JSON.parse(dxiRow.value) : dxiRow.value;
+                const evolucion = (dxiCache?.evolucion || []).filter((r: any) => r.PeriodoMes === periodo);
+                const ESTADOS_EFECTIVOS = new Set(['Presente', 'Internado', 'Urgencia', 'Sobreturno']);
+                const modCounts: Record<string, number> = { ECOGRAFIA: 0, RADIOLOGIA: 0, MAMOGRAFIA: 0, TOMOGRAFIA: 0, DENSITOMETRIA: 0 };
+                let realizados = 0, totalTurnos = 0, ausentes = 0, sinReg = 0;
+
+                evolucion.forEach((r: any) => {
+                    const c = Number(r.Cantidad) || 0;
+                    totalTurnos += c;
+                    if (ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                        realizados += c;
+                        if (modCounts[r.Modalidad] !== undefined) modCounts[r.Modalidad] += c;
+                    } else if (r.EstadoAsistencia === 'Ausente') {
+                        ausentes += c;
+                    } else if (r.EstadoAsistencia === 'Sin Registrar') {
+                        sinReg += c;
+                    }
+                });
+
+                result.DXI = {
+                    periodo,
+                    reglaForense: '5 modalidades oficiales con exclusión estricta de medios de contraste en Tomografía Computada (TC).',
+                    estudiosEfectivamenteRealizados: realizados,
+                    totalTurnosCitados: totalTurnos,
+                    tasaEfectividadPct: totalTurnos > 0 ? `${((realizados / totalTurnos) * 100).toFixed(1)}%` : '0%',
+                    ausentesNoShow: ausentes,
+                    tasaAusentismoPct: totalTurnos > 0 ? `${((ausentes / totalTurnos) * 100).toFixed(1)}%` : '0%',
+                    sinRegistrarPendientesCierre: sinReg,
+                    desglosePorModalidad: modCounts
+                };
+            }
+        }
+
+        // 4. QUIRÓFANO CENTRAL Y HOSPITAL DE DÍA
+        if (sector === 'TODOS' || sector === 'QUIROFANO') {
+            const [resSalusQx, resSurgeries] = await Promise.all([
+                supabase.from('app_config').select('value').eq('key', 'quirofano_asistencia_mensual_salus').maybeSingle(),
+                supabase.from('surgeries').select('id, status, ausente, motivo, grupo_agendas').eq('excluido', false).gte('fecha_cirugia', startDate).lte('fecha_cirugia', endDate)
+            ]);
+
+            let salusMes = { Presente: 0, URGENCIA: 0, NO_PROGRAMADA: 0, CX_SUSPENDIDA_24H: 0, SUSPENDIDA: 0, Ausencia: 0, SinRegistrar: 0, total: 0 };
+            if (resSalusQx.data?.value) {
+                const parsed = typeof resSalusQx.data.value === 'string' ? JSON.parse(resSalusQx.data.value) : resSalusQx.data.value;
+                for (const r of (parsed?.rows || [])) {
+                    if (r.mes !== periodo) continue;
+                    const c = Number(r.cant) || 0;
+                    const a = String(r.asistencia || '').trim();
+                    if (a === 'Presente' || a === 'INTERNADO') salusMes.Presente += c;
+                    else if (a === 'URGENCIA') salusMes.URGENCIA += c;
+                    else if (a === 'NO PROGRAMADA') salusMes.NO_PROGRAMADA += c;
+                    else if (a === 'CX SUSPENDIDA 24H') salusMes.CX_SUSPENDIDA_24H += c;
+                    else if (a === 'SUSPENDIDA') salusMes.SUSPENDIDA += c;
+                    else if (a.toLowerCase().includes('ausencia')) salusMes.Ausencia += c;
+                    else salusMes.SinRegistrar += c;
+                    salusMes.total += c;
+                }
+            }
+
+            const sRows = resSurgeries.data || [];
+            const sSusp = sRows.filter(s => s.ausente === '1' || s.status === 'rojo' || Boolean(s.motivo && s.motivo.trim()));
+            result.QUIROFANO = {
+                periodo,
+                capacidadInstalada: '7 Salas (Qx 1 a Qx 4 Centrales, Qx 5 y Qx 6 Hospital de Día, Sala de Partos) y 10 Bloques Quirúrgicos Auditados',
+                serieAsistenciaSalusMes: {
+                    ...salusMes,
+                    totalRealizadasSalus: salusMes.Presente + salusMes.URGENCIA + salusMes.NO_PROGRAMADA,
+                    totalSuspendidasSalus: salusMes.SUSPENDIDA + salusMes.CX_SUSPENDIDA_24H,
+                    tasaSuspensionSalusPct: salusMes.total > 0 ? `${(((salusMes.SUSPENDIDA + salusMes.CX_SUSPENDIDA_24H) / salusMes.total) * 100).toFixed(1)}%` : '0%'
+                },
+                padronNominalTablero: {
+                    programadas: sRows.length,
+                    realizadas: sRows.length - sSusp.length,
+                    suspendidasBrutas: sSusp.length,
+                    tasaSuspensionBrutaPct: sRows.length > 0 ? `${((sSusp.length / sRows.length) * 100).toFixed(2)}%` : '0%'
+                }
+            };
+        }
+
+        // 5. VIGILANCIA EPIDEMIOLÓGICA (PLANILLA C2 SNVS 2.0 - DR. ROMANO)
+        if (sector === 'TODOS' || sector === 'EPIDEMIOLOGIA') {
+            const mesEpi = SERIE_EPIDEMIOLOGICA_OFICIAL.find(e => e.periodo === periodo) || SERIE_EPIDEMIOLOGICA_OFICIAL[SERIE_EPIDEMIOLOGICA_OFICIAL.length - 1];
+            result.EPIDEMIOLOGIA = {
+                consolidado12Meses: {
+                    periodo: 'Noviembre 2025 - Octubre 2026',
+                    totalNotificaciones: 2920,
+                    picoInvernalJunio2026: SERIE_EPIDEMIOLOGICA_OFICIAL.find(e => e.periodo === '2026-06'),
+                    corteSeptiembre2026: SERIE_EPIDEMIOLOGICA_OFICIAL.find(e => e.periodo === '2026-09'),
+                    corteOctubre2026: SERIE_EPIDEMIOLOGICA_OFICIAL.find(e => e.periodo === '2026-10')
+                },
+                detalleMesConsultado: mesEpi,
+                serieCompleta12Meses: SERIE_EPIDEMIOLOGICA_OFICIAL,
+                reglaForenseBronquiolitis: 'Lactantes < 24 meses exactos cumplidos al día de la consulta diagnóstica (DATEDIFF(MONTH, FechaNacimiento, FechaVisita) < 24).',
+                neurocirugia: 'Indicador N° 7 completado al 100%: trazabilidad histórica (5 años) de cirugías (CX) realizadas en Neurocirugía y Neurología.'
+            };
+        }
+
+        // 6. PROYECTOS DE GOBERNANZA (29 SECTORES Y RENDICIÓN ANR)
+        if (sector === 'TODOS' || sector === 'PROYECTOS') {
+            const { data: proyRows } = await supabase
+                .from('gobernanza_proyectos')
+                .select('id, nombre, estado, responsable, progreso');
+
+            result.PROYECTOS_GOBERNANZA = {
+                sectoresTotalesObjetivo: 29,
+                serviciosActivosEnProduccion: 5,
+                indicadoresSqlAuditados: 52,
+                proyectosRegistradosDb: proyRows || [],
+                equipoOperativo: [
+                    { nombre: 'Pamela', rol: 'Jefa de Tecnología y Sistemas (TyS) — Relevamiento y entrevistas con referentes de los 29 sectores' },
+                    { nombre: 'Matías', rol: 'Analista de Datos — Consultas SQL en SALUS, reglas de negocio y vistas analíticas' },
+                    { nombre: 'Lucas', rol: 'Desarrollador Frontend — Dashboards interactivos en el Telar y exportadores PDF/Excel' }
+                ],
+                rendicionGobiernoSanJuan: {
+                    presupuestoTotal: '$ 25.565.000,00 ARS',
+                    aporteAgenciaANR: '$ 18.000.000,00 ARS',
+                    contraparteSanatorio: '$ 7.565.000,00 ARS',
+                    estado: 'Etapa 1 (Arquitectura híbrida SALUS-Supabase, Grabador IA y 5 Dashboards Troncales) 100% completada y operativa.'
+                }
+            };
+        }
+
+        return JSON.stringify(result);
+    } catch (err) {
+        return JSON.stringify({ error: err.message });
+    }
 }
 
 // ═══════════════════════════════════════

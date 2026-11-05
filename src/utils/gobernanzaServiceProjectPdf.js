@@ -194,7 +194,7 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Consultas Auditadas / Mes', valor: '1.830 Pacientes (Sep 2026)', detalle: '1.044 en meta <= 30 min (57,0%)' },
+            { etiqueta: 'Consultas Auditadas / Mes', valor: '1.744 (Oct) · 1.831 (Sep)', detalle: 'Acumulado 2026: 14.561 consultas' },
             { etiqueta: 'Admisiones Clínicas Auditadas', valor: '1.862 Episodios (2026)', detalle: '1.089 Internado · 664 Shock · 270 UCI' },
             { etiqueta: 'Traumatología en Piso', valor: '302 Internaciones Auditadas', detalle: 'Seguimiento nominal de evoluciones' },
             { etiqueta: 'Red de Interconsultas', valor: '3.233 Interconsultas (2026)', detalle: '238 Clínicas + 2.995 Especialidades' }
@@ -203,14 +203,14 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             {
                 titulo: 'Ejemplo Real 1: Análisis de la Curva de Oportunidad y Outliers en Guardia (Septiembre y Octubre 2026)',
                 contexto: 'La Jefatura de Guardia necesita identificar cuántos pacientes sufren esperas excesivas y distinguir entre saturación real de consultorios y errores de cierre administrativo.',
-                analisisDatos: 'En Septiembre 2026 se auditaron 1.830 consultas válidas en Guardia Clínica: 1.044 pacientes (57,0%) fueron atendidos dentro de la meta institucional (<=30 minutos) y 462 pacientes (25,2%) tuvieron una demora leve de 31 a 60 minutos (82,3% atendido en menos de 1 hora). El detector de Outliers identificó 163 casos con espera de 61 a 90 minutos, 149 casos críticos con espera >90 minutos y 47 pacientes con permanencia total >3 horas. Asimismo, en Octubre 2026 se auditaron 1.550 consultas con 247 casos >60 min y 37 permanencias >3 hs.',
+                analisisDatos: 'En Septiembre 2026 se auditaron 1.831 consultas totales (1.830 válidas en curva de espera): 1.044 pacientes (57,0%) fueron atendidos dentro de la meta institucional (<=30 minutos) y 462 pacientes (25,2%) tuvieron una demora leve de 31 a 60 minutos (82,3% atendido en menos de 1 hora), con espera promedio puerta-médico de 34,94 min y permanencia de 47,21 min. El detector de Outliers identificó 163 casos con espera de 61 a 90 minutos, 149 casos críticos con espera >90 minutos y 47 pacientes con permanencia total >3 horas. En Octubre 2026 se auditaron 1.744 consultas totales con espera promedio de 31,47 min, permanencia de 45,83 min, cobertura de triage del 36,75%, 239 admisiones clínicas desde guardia (154 Piso Internado, 54 Quirófano y 31 UCI) y 100% de adherencia de epicrisis.',
                 decisionGestion: 'Al hacer clic en la tarjeta interactiva "Outliers Críticos (>90 min)", la tabla nominal revela que los picos de demora se concentran en la franja vespertina (14 a 22 hs), permitiendo reforzar la dotación médica en horas pico y corregir turnos que quedan abiertos al cambio de guardia.'
             },
             {
                 titulo: 'Ejemplo Real 2: Depuración de la Tasa de Conversión Quirúrgica desde Guardia (Ventana <= 48 hs)',
                 contexto: 'Auditoría Médica observó que el cruce bruto entre visitas de guardia y cirugías incluía pacientes que habían ingresado para cirugías programadas.',
-                analisisDatos: 'El módulo de Conversión Quirúrgica separa automáticamente ambos universos: al activar el filtro "Solo Urgencias Reales", el sistema aísla las cirugías agudas genuinas (colecistectomías laparoscópicas por colecistitis aguda, apendicectomías, reducciones osteosintéticas de urgencia y laparotomías exploradoras), excluyendo las admisiones programadas que pasaron administrativamente por ventanilla de guardia.',
-                decisionGestion: 'Se obtiene un indicador puro de conversión quirúrgica de urgencias (2,4% a 3,1% mensual) con trazabilidad hora por hora desde el ingreso en guardia hasta el inicio de la anestesia en quirófano.'
+                analisisDatos: 'El módulo de Conversión Quirúrgica separa automáticamente ambos universos: en Octubre 2026 (conversión bruta 9,12%, 46 pases quirúrgicos en <=48h), al activar el filtro "Solo Urgencias Reales", el sistema aísla exactamente 34 cirugías agudas genuinas y excluye 12 cirugías programadas; en Septiembre 2026 (conversión bruta 8,41%, 36 pases), aísla 31 urgencias reales y excluye 5 programadas.',
+                decisionGestion: 'Se obtiene un indicador puro de conversión quirúrgica de urgencias con trazabilidad hora por hora desde el ingreso en guardia hasta el inicio de la anestesia en quirófano.'
             },
             {
                 titulo: 'Ejemplo Real 3: Auditoría de Seguimiento Clínico en Internado, Traumatología e Interconsultas',
@@ -283,8 +283,8 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
         ],
         metricasResumen: [
             { etiqueta: 'Dotación Oficial UCI', valor: '16 Camas Operativas', detalle: '8 Camas UTI + 8 Intermedios' },
-            { etiqueta: 'Capacidad Mensual (30d)', valor: '480 Días-Cama Disp.', detalle: '496 Días-Cama en meses de 31d' },
-            { etiqueta: 'Doble Motor de Cálculo', valor: 'Medianoche / Horas', detalle: 'Recorte exacto por período Telar' },
+            { etiqueta: 'Ocupación Sep / Oct 2026', valor: '91,3% (Sep) · 82,3% (Oct)', detalle: '438 días-cama Sep (94 pac) · 408 Oct (78 pac)' },
+            { etiqueta: 'Estancia Media y Mortalidad', valor: 'ALOS 4,7d (Sep) · 5,2d (Oct)', detalle: 'Defunción: 7,4% Sep (7) · 3,8% Oct (3)' },
             { etiqueta: 'Indicadores Documentados', valor: '10 Indicadores SQL', detalle: '100% Finalizados y auditados' }
         ],
         ejemplosDetallados: [
@@ -451,28 +451,28 @@ export const GOBERNANZA_PROJECTS_DOSSIER_DATA = {
             }
         ],
         metricasResumen: [
-            { etiqueta: 'Estudios Efectivos (Oct 2026)', valor: '7.438 Estudios Realizados', detalle: 'Presentes, Internados y Urgencias' },
-            { etiqueta: 'Líder en Volumen: Ecografía', valor: '5.166 Ecografías (69,5%)', detalle: 'Seguido por RX con 1.266 (17,0%)' },
-            { etiqueta: 'Alta Complejidad y Screening', valor: '477 Mamo · 401 TC · 128 DMO', detalle: 'TC 100% depurada de contrastes' },
+            { etiqueta: 'Estudios Efectivos (Oct 2026)', valor: '9.382 Estudios Realizados', detalle: 'Sobre 12.044 turnos (77,9% efectividad) · Sep: 10.237' },
+            { etiqueta: 'Líder en Volumen: Ecografía', valor: '6.543 Ecografías (69,7%)', detalle: 'Seguido por RX con 1.497 (16,0%)' },
+            { etiqueta: 'Alta Complejidad y Screening', valor: '687 Mamo · 470 TC · 185 DMO', detalle: 'TC 100% depurada de contrastes · 7.489 informados' },
             { etiqueta: 'Indicadores Documentados', valor: '8 Indicadores SQL', detalle: '100% Finalizados y auditados' }
         ],
         ejemplosDetallados: [
             {
-                titulo: 'Ejemplo Real 1: Radiografía Productiva de las 5 Modalidades en Octubre 2026 (7.438 Estudios Efectivos)',
-                contexto: 'La Gerencia Operativa y la Jefatura de Diagnóstico por Imágenes requieren conocer la composición exacta de estudios efectivamente realizados en el mes corriente.',
-                analisisDatos: 'En Octubre 2026 (2026-10-01 al 2026-10-31), el servicio registra exactamente 7.438 estudios efectivos realizados: Ecografía lidera con 5.166 estudios (69,45% del total), seguida por Radiología Convencional con 1.266 estudios (17,02%), Mamografía con 477 estudios (6,41%), Tomografía Computada (depurada de contrastes) con 401 estudios (5,39%) y Densitometría Ósea Total con 128 estudios (1,72%).',
-                decisionGestion: 'La alta concentración en Ecografía (más de 5.100 estudios mensuales entre Sede Santa Fe y San Luis Sede 3) justifica la apertura de agendas vespertinas adicionales de Ecografía General, Obstétrica y Doppler para absorber la demanda de sobreturnos.'
+                titulo: 'Ejemplo Real 1: Radiografía Productiva de las 5 Modalidades en Octubre 2026 (9.382 Estudios Efectivos)',
+                contexto: 'La Gerencia Operativa y la Jefatura de Diagnóstico por Imágenes requieren conocer la composición exacta de estudios efectivamente realizados en el mes cerrado de Octubre 2026 y su comparativa con Septiembre 2026.',
+                analisisDatos: 'En Octubre 2026 (2026-10-01 al 2026-10-31), sobre 12.044 turnos citados el servicio registra exactamente 9.382 estudios efectivos realizados (77,9% de efectividad): Ecografía lidera con 6.543 estudios (69,74% del total), seguida por Radiología Convencional con 1.497 estudios (15,96%), Mamografía con 687 estudios (7,32%), Tomografía Computada depurada de contrastes con 470 estudios (5,01%) y Densitometría Ósea Total con 185 estudios (1,97%). Asimismo, en Septiembre 2026 se realizaron 10.237 estudios efectivos sobre 12.664 turnos (6.902 ECO, 1.840 RX, 768 Mamografías, 488 TC y 239 DMO).',
+                decisionGestion: 'La alta concentración en Ecografía (6.543 estudios en Octubre y 6.902 en Septiembre entre Sede Santa Fe y San Luis Sede 3) justifica la apertura de agendas vespertinas adicionales de Ecografía General, Obstétrica y Doppler para absorber la demanda de sobreturnos.'
             },
             {
                 titulo: 'Ejemplo Real 2: Impacto de la Depuración de Contrastes en Tomografía y Auditoría de Informes',
                 contexto: 'Existía discrepancia entre la cantidad de ítems facturados en el tomógrafo y la cantidad real de pacientes estudiados, además de la necesidad de monitorear el SLA de informes firmados.',
-                analisisDatos: 'Al excluir algorítmicamente las inyecciones de medio de contraste endovenoso/oral, el tablero establece con exactitud 401 estudios tomográficos puros en Octubre 2026. Asimismo, al auditar la pestaña de "Profesionales Informantes" en prácticas como Densitometría Ósea Total (128 estudios presentes en Sede Santa Fe), el sistema detalla nominalmente que 120 estudios ya cuentan con informe firmado (93,8% de cumplimiento, liderado por Dra. Laura Orozco Mercado con 29 informes, Dra. Cecilia Tello con 22 y Dra. Malvina Gómez con 20) y alerta sobre exactamente 8 estudios pendientes de firma.',
+                analisisDatos: 'Al excluir algorítmicamente las inyecciones de medio de contraste endovenoso/oral, el tablero establece con exactitud 470 estudios tomográficos puros en Octubre 2026 (y 488 en Septiembre 2026). En cuanto al cierre médico de informes, en Octubre 2026 se registran 7.489 estudios informados (79,8% de cobertura global) y 1.893 pendientes de firma, mientras que en prácticas como Densitometría Ósea Total (185 estudios realizados en Sede Santa Fe) el cumplimiento de informes firmados supera el 93%.',
                 decisionGestion: 'El jefe de servicio visualiza en tiempo real qué agendas tienen estudios realizados pendientes de informe para garantizar la entrega al paciente en menos de 24-48 horas.'
             },
             {
                 titulo: 'Ejemplo Real 3: Auditoría de Ausentismo (No-Show) y Registros sin Cierre por Financiador',
                 contexto: 'El área de Turnos y Recepción de Imágenes necesita reducir la capacidad ociosa de los equipos provocada por pacientes ausentes o turnos que quedan "Sin Registrar".',
-                analisisDatos: 'Tomando como caso testigo la agenda "(RX) DENSITOMETRIA OSEA TOTAL" en Sede Santa Fe durante Octubre 2026, sobre 190 turnos totales se registran 128 pacientes Presentes (67,4%), 19 Ausentes (6 ausencias injustificadas y 13 justificadas = 10,0% de No-Show) y 43 turnos en estado "SIN REGISTRAR" (22,6%). Al cruzar por Obra Social, "001 - PROVINCIA" concentra 84 presentes, 8 ausentes y 16 turnos sin cierre administrativo.',
+                analisisDatos: 'En Octubre 2026, sobre 12.044 turnos citados se registran 1.563 turnos Ausentes / No-Show (13,0%) y 1.099 turnos en estado "SIN REGISTRAR" pendientes de cierre administrativo (9,1%). Al cruzar por Obra Social, "001 - PROVINCIA" lidera el volumen institucional, permitiendo auditar nominalmente los pacientes ausentes y los turnos sin cierre en recepción.',
                 decisionGestion: 'Se activa el recordatorio automatizado de confirmación de turno por WhatsApp 24 hs antes para Mamografía, Densitometría y Ecografía, y se instruye a recepción para cerrar diariamente los estados pendientes.'
             }
         ],

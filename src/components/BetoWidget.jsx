@@ -107,7 +107,7 @@ const SMART_SUGGESTIONS = {
         '🗺️ ¿Cómo avanzamos con los 29 sectores (Pamela, Matías y Lucas)?',
         '🏛️ Resumen del Informe Técnico y Contable (Gobierno SJ)',
         '🏥 ¿Qué hicimos en los 5 servicios activos de Gobernanza?',
-        '🔬 Resumen de Diagnóstico por Imágenes (7.438 estudios)',
+        '🔬 Resumen de Diagnóstico por Imágenes (9.382 estudios Oct)',
         '🦠 Vigilancia Epidemiológica Planilla C2 (Dr. Romano)',
         '🚑 Curva de espera y Outliers en Guardia Clínica'
     ],

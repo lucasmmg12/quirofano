@@ -1106,78 +1106,6 @@ export default function DiagnosticoImagenesDashboard({
             .sort((a, b) => b.cantidad - a.cantidad);
     }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia]);
 
-    // Sincronizar contexto en vivo de Diagnóstico por Imágenes (DxI) con Beto IA
-    useEffect(() => {
-        if (typeof window === 'undefined' || !scopedData) return;
-        const dxiPayload = {
-            modulo: 'Gobernanza Indicadores - Diagnóstico por Imágenes (DxI)',
-            sectorId: 'DXI',
-            sector: 'Diagnóstico por Imágenes (Ecografía, Radiología, Mamografía, Tomografía y Densitometría)',
-            periodo: `${effectiveDesde} al ${effectiveHasta}`,
-            fechaDesde: effectiveDesde,
-            fechaHasta: effectiveHasta,
-            filtrosActivos: {
-                modalidad: selectedModalidad,
-                agenda: selectedAgenda,
-                ambito: filterAmbito,
-                asistencia: filterAsistencia
-            },
-            kpis: {
-                estudiosEfectivamenteRealizados: totals.realizados,
-                totalTurnosCitados: totals.total,
-                tasaEfectividadPct: `${totals.pctRealizados}%`,
-                ambulatorios: totals.ambulatorio,
-                hospitalizados: totals.hospitalizacion,
-                presentes: totals.presente,
-                internados: totals.internado,
-                urgencias: totals.urgencia,
-                sobreturnos: totals.sobreturno,
-                ausentesNoShow: totals.ausente,
-                tasaAusentismoPct: `${totals.pctAusente}%`,
-                sinRegistrarPendientesCierre: totals.sinRegistrar,
-                estudiosInformados: totals.informados,
-                pctInformados: `${totals.pctInformados}%`,
-                pendientesInforme: totals.pendientes
-            },
-            produccionEfectivaPorModalidad: modalidadCounts,
-            topAgendas: agendasSummaryList.slice(0, 12).map(a => ({
-                agenda: a.agenda,
-                modalidad: a.modalidad,
-                realizados: a.realizados,
-                totalTurnos: a.total,
-                ausentes: a.ausente,
-                sinRegistrar: a.sinRegistrar,
-                informados: a.informados,
-                pendientesInforme: a.pendientes
-            })),
-            topRealizadores: realizadoresRanking.slice(0, 10),
-            topInformantes: informantesRanking.slice(0, 10),
-            topSolicitantes: solicitantesRanking.slice(0, 10),
-            topObrasSociales: obrasSocialesRanking.slice(0, 10),
-            centrosOperativos: centrosRanking
-        };
-        window.__dxi_active_context = dxiPayload;
-        if (window.__telar_active_sector === 'DXI') {
-            window.__indicadores_active_context = dxiPayload;
-        }
-    }, [
-        scopedData,
-        effectiveDesde,
-        effectiveHasta,
-        selectedModalidad,
-        selectedAgenda,
-        filterAmbito,
-        filterAsistencia,
-        totals,
-        modalidadCounts,
-        agendasSummaryList,
-        realizadoresRanking,
-        informantesRanking,
-        solicitantesRanking,
-        obrasSocialesRanking,
-        centrosRanking
-    ]);
-
     // ─── CÁLCULOS PARA GRÁFICO DE PROGRESIÓN TEMPORAL ───
     const rangeDays = useMemo(() => {
         if (!effectiveDesde || !effectiveHasta) return 30;
@@ -1321,6 +1249,9 @@ export default function DiagnosticoImagenesDashboard({
                 estudiosEfectivamenteRealizados: totals.realizados,
                 totalTurnosCitados: totals.total,
                 tasaEfectividadPct: `${totals.pctRealizados}%`,
+                ambulatorios: totals.ambulatorio,
+                hospitalizados: totals.hospitalizacion,
+                presentes: totals.presente,
                 internados: totals.internado,
                 urgencias: totals.urgencia,
                 sobreturnos: totals.sobreturno,
@@ -1331,7 +1262,8 @@ export default function DiagnosticoImagenesDashboard({
                 pctInformados: `${totals.pctInformados}%`,
                 pendientesInforme: totals.pendientes
             },
-            produccionEfectivaPorModalidad: modalidadTotals,
+            produccionEfectivaPorModalidad: modalidadCounts,
+            progresionTemporalStats: chartStats,
             topAgendas: agendasSummaryList.slice(0, 12).map(a => ({
                 agenda: a.agenda,
                 modalidad: a.modalidad,
@@ -1361,7 +1293,8 @@ export default function DiagnosticoImagenesDashboard({
         filterAmbito,
         filterAsistencia,
         totals,
-        modalidadTotals,
+        modalidadCounts,
+        chartStats,
         agendasSummaryList,
         realizadoresRanking,
         informantesRanking,

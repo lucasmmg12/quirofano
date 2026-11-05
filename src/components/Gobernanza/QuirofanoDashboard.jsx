@@ -1377,8 +1377,13 @@ export default function QuirofanoDashboard({
             .eq('key', 'quirofano_asistencia_mensual_salus')
             .maybeSingle()
             .then(({ data }) => {
-                if (active && data?.value?.rows && Array.isArray(data.value.rows) && data.value.rows.length > 0) {
-                    setSalusAsistenciaRows(data.value.rows);
+                if (!active || !data?.value) return;
+                let parsed = data.value;
+                if (typeof parsed === 'string') {
+                    try { parsed = JSON.parse(parsed); } catch (_) { parsed = null; }
+                }
+                if (parsed?.rows && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
+                    setSalusAsistenciaRows(parsed.rows);
                 }
             })
             .catch(() => {});
@@ -2602,13 +2607,18 @@ export default function QuirofanoDashboard({
                 },
                 motivosOficiales: activeMotivosSuspension,
                 bloquesQuirurgicosResumen: bloquesMetricsSummary,
-                salasDetalle: activeSalasData
+                salasDetalle: activeSalasData,
+                asistenciaMensualSalus: {
+                    anioFiltro: asistenciaAnioFiltro,
+                    totalesAnuales: asistenciaMensualTotals,
+                    serieMensual: asistenciaMensualSeries
+                }
             };
             if (window.__telar_active_sector === 'QUIROFANO') {
                 window.__indicadores_active_context = window.__quirofano_active_context;
             }
         }
-    }, [dynamicMetrics, suspensionCategoriesSummary, activeMotivosSuspension, classifiedSuspendedSurgeries, activePeriodLabel, bloquesMetricsSummary, activeSalasData]);
+    }, [dynamicMetrics, suspensionCategoriesSummary, activeMotivosSuspension, classifiedSuspendedSurgeries, activePeriodLabel, bloquesMetricsSummary, activeSalasData, asistenciaAnioFiltro, asistenciaMensualTotals, asistenciaMensualSeries]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
