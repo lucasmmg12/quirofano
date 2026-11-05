@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html style="overflow-y: hidden">
+  <head>    
+  </head>
+  <body>
+    <iframe name="ventana"></iframe> 
+    <form id="pagoForm" action="" name="pagoForm" target="ventana" method="post"> 
+      <input type="hidden" id="TOKEN" name="TOKEN" value=""/> 
+    </form> 
+    
+    <script type="text/javascript"> 
+    
+      window.onload= function() { 
+    
+        function findGetParameter(parameterName) {
+              var result = null,
+              tmp = [];
+              location.search
+              .substr(1)
+              .split("&")
+              .forEach(function (item) {
+              tmp = item.split("=");
+              if (tmp[0] === parameterName) result = decodeURIComponent(tmp[1]);
+              });
+              return result;
+          }
+
+        var u = findGetParameter("u");
+        var t = findGetParameter("t");
+
+        document.getElementById('pagoForm').setAttribute("action", u);
+        document.getElementById('TOKEN').setAttribute("value", t);
+
+        document.forms['pagoForm'].submit(); 
+      }; 
+
+    </script>
+  </body>
+</html>

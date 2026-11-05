@@ -155,8 +155,8 @@ export async function syncTurnosActivos(pool, supabase) {
             if (!dni || !paciente) continue;
 
             const fechaRaw = r.FECHA;
-            const fechaStr = fechaRaw instanceof Date 
-                ? fechaRaw.toISOString().split('T')[0] 
+            const fechaStr = fechaRaw instanceof Date
+                ? fechaRaw.toISOString().split('T')[0]
                 : String(fechaRaw).slice(0, 10);
 
             if (fechaStr < todayIso) continue;

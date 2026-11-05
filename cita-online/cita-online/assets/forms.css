@@ -1,0 +1,753 @@
+/* ==========================================================================
+   SANATORIO ARGENTINO — REDISEÑO INSTITUCIONAL 2026 PARA CITA ONLINE
+   Inspirado 100% en https://www.sanatorioargentino.com.ar/
+   Tipografías: "DM Serif Display" (Títulos) + "Inter" (UI, Cards y Formularios)
+   Paleta Oficial:
+     - Azul Institucional: #004695
+     - Celeste Médico:     #009fe3
+     - Verde Agua Clínico: #2bc8ab / #5e988b
+     - Naranja Acción:     #fe5d37
+     - Texto Base:         #313f4c
+     - Superficie Suave:   #f4f7fa / #ecf1f5
+   ========================================================================== */
+
+:root {
+  --sa-blue: #004695 !important;
+  --sa-blue-dark: #00336d !important;
+  --sa-cyan: #009fe3 !important;
+  --sa-aqua: #2bc8ab !important;
+  --sa-teal: #5e988b !important;
+  --sa-orange: #fe5d37 !important;
+  --sa-orange-hover: #e04823 !important;
+  --sa-text: #313f4c !important;
+  --sa-muted: #64748b !important;
+  --sa-bg: #f4f7fa !important;
+  --sa-surface: #ecf1f5 !important;
+  --sa-card-shadow: 0 10px 28px rgba(0, 70, 149, 0.07) !important;
+  --sa-card-shadow-hover: 0 18px 36px rgba(0, 70, 149, 0.14) !important;
+
+  /* Sobrescritura de variables nativas de SALUS CitaOnline */
+  --generic-background-color: #f4f7fa !important;
+  --generic-font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
+  --generic-font-color: #313f4c !important;
+  --principal-header-color: #ffffff !important;
+  --principal-header-text-color: #004695 !important;
+  --Navigation-Panel-background-color: #ffffff !important;
+  --ActualStep-color: #004695 !important;
+  --PrevStep-color: #2bc8ab !important;
+  --PrevStep-hover-color: #009fe3 !important;
+  --breadcrumb-item-color: #cbd5e1 !important;
+  --speciality-card-text-background-color: #ffffff !important;
+  --speciality-card-text-color: #004695 !important;
+  --speciality-card-hover-color: #f0f9ff !important;
+  --speciality-header-background-color: #004695 !important;
+  --speciality-header-color: #ffffff !important;
+  --speciality-header-title-color: #ffffff !important;
+  --virtual-group-panel-background-color: #ffffff !important;
+  --virtual-group-panel-title-color: #004695 !important;
+  --virtual-group-panel-text-color: #313f4c !important;
+  --virtual-group-datetime-selector-background-color: #f8fafc !important;
+  --virtual-group-datetime-selector-select-day-color: #004695 !important;
+  --virtual-group-datetime-selector-select-hour-color: #004695 !important;
+  --virtual-group-datetime-selector-select-hour-background-color: #ffffff !important;
+  --virtual-group-datetime-selector-select-hour-border-color: #009fe3 !important;
+  --virtual-group-datetime-selector-select-hour-hover-color: #ffffff !important;
+  --virtual-group-datetime-selector-select-hour-hover-background-color: #004695 !important;
+  --virtual-group-datetime-selector-select-hour-hover-border-color: #004695 !important;
+  --send-button-background-color: #fe5d37 !important;
+  --send-button-border-color: #fe5d37 !important;
+  --send-button-font-color: #ffffff !important;
+  --send-button-hover-background-color: #e04823 !important;
+  --send-button-hover-border-color: #e04823 !important;
+  --confirmation-description-datetime-color: #2bc8ab !important;
+  --confirmation-description-doctor-color: #004695 !important;
+  --input-correct-color: #2bc8ab !important;
+  --input-invalid-color: #fe5d37 !important;
+  --input-focused-color: #009fe3 !important;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  background-color: #f4f7fa !important;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  color: #313f4c !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   1. HEADER Y HERO BANNER OFICIAL SANATORIO ARGENTINO
+   ========================================================================== */
+.sa-topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 4px 20px rgba(0, 70, 149, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 1050;
+  padding: 14px 24px;
+}
+
+.sa-topbar-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sa-brand-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none !important;
+}
+
+.sa-logo {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+
+.sa-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.sa-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background-color: #ecf1f5;
+  color: #004695;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 50px;
+  text-transform: uppercase;
+}
+
+.sa-pill-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #2bc8ab;
+  display: inline-block;
+  box-shadow: 0 0 0 3px rgba(43, 200, 171, 0.22);
+}
+
+.sa-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 20px;
+  border-radius: 50px;
+  border: 1.5px solid #009fe3;
+  color: #004695 !important;
+  background: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none !important;
+  transition: all 0.25s ease;
+}
+
+.sa-back-btn:hover {
+  background: #004695;
+  border-color: #004695;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 70, 149, 0.18);
+}
+
+/* HERO BANNER */
+.sa-hero-banner {
+  background: linear-gradient(125deg, #00336d 0%, #004695 55%, #0077b6 100%);
+  color: #ffffff;
+  padding: 28px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sa-hero-banner::after {
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -80px;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(43, 200, 171, 0.22) 0%, rgba(0, 159, 227, 0) 70%);
+  pointer-events: none;
+}
+
+.sa-hero-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.sa-hero-text {
+  max-width: 680px;
+}
+
+.sa-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #2bc8ab;
+  margin-bottom: 6px;
+}
+
+.sa-hero-title {
+  font-family: "DM Serif Display", Georgia, serif !important;
+  font-size: 2.15rem !important;
+  font-weight: 400 !important;
+  color: #ffffff !important;
+  margin: 0 0 6px 0 !important;
+  line-height: 1.15;
+}
+
+.sa-hero-subtitle {
+  font-size: 0.96rem;
+  color: rgba(255, 255, 255, 0.88) !important;
+  margin: 0 !important;
+  font-weight: 400;
+}
+
+.sa-hero-sedes {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 8px 10px;
+}
+
+.sa-sede-chip {
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sa-sede-chip strong {
+  color: #2bc8ab;
+  font-weight: 700;
+}
+
+/* CONTENEDOR PRINCIPAL */
+.sa-main-wrapper {
+  max-width: 1320px;
+  margin: 24px auto 48px auto;
+  padding: 0 20px;
+  min-height: calc(100vh - 380px);
+}
+
+/* ==========================================================================
+   2. HEADER INTERNO DE ANGULAR ("Bienvenido") Y STEPPER DE PASOS
+   ========================================================================== */
+.principal-header {
+  display: none !important; /* Ocultamos la barra celeste vieja "Bienvenido" ya reemplazada por el Hero Oficial */
+}
+
+/* Cuando el usuario está logueado y aparece botón desconectar, mostrarlo limpio */
+.principal-header:has(.nav-link) {
+  display: flex !important;
+  background: #ffffff !important;
+  border-radius: 14px !important;
+  padding: 10px 18px !important;
+  margin-bottom: 14px !important;
+  box-shadow: 0 4px 14px rgba(0, 70, 149, 0.06) !important;
+}
+
+.Navigation-Panel.breadcrumb {
+  background: #ffffff !important;
+  border-radius: 18px !important;
+  padding: 18px 24px !important;
+  margin-bottom: 22px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 8px 24px rgba(0, 70, 149, 0.06) !important;
+}
+
+/* Círculos e indicadores del Stepper (0 Especialidad - 1 Doctor - 2 Confirmar) */
+.ActualStep {
+  background-color: #fe5d37 !important;
+  border-color: #fe5d37 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(254, 93, 55, 0.35) !important;
+}
+
+.ActualStep-label,
+.k-step-current .k-step-text,
+.k-step-current .step-label-mips {
+  color: #004695 !important;
+  font-weight: 700 !important;
+  border: none !important;
+  font-size: 13px !important;
+}
+
+.PrevStep {
+  background-color: #2bc8ab !important;
+  border-color: #2bc8ab !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+.PrevStep-label {
+  color: #047857 !important;
+  font-weight: 600 !important;
+  border: none !important;
+  font-size: 13px !important;
+}
+
+.breadcrumb-item {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+  font-weight: 600 !important;
+}
+
+.breadcrumb-item-label {
+  color: #64748b !important;
+  border: none !important;
+  font-size: 13px !important;
+}
+
+.step-label-mips {
+  font-size: 12.5px !important;
+  font-family: "Inter", sans-serif !important;
+  letter-spacing: 0.01em;
+}
+
+/* ==========================================================================
+   3. BUSCADOR DE ESPECIALIDADES Y BARRA DE FILTROS
+   ========================================================================== */
+.input-group.mb-3,
+.input-group.mb-2 {
+  background: #ffffff;
+  border-radius: 50px !important;
+  padding: 5px 8px;
+  border: 1.5px solid #cbd5e1;
+  box-shadow: 0 8px 24px rgba(0, 70, 149, 0.06);
+  margin-bottom: 24px !important;
+  transition: all 0.25s ease;
+}
+
+.input-group:focus-within {
+  border-color: #009fe3 !important;
+  box-shadow: 0 10px 28px rgba(0, 159, 227, 0.16) !important;
+}
+
+.input-group-prepend .input-group-text {
+  background: #004695 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 50px !important;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-group input.form-control {
+  border: none !important;
+  background: transparent !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  color: #313f4c !important;
+  padding-left: 14px !important;
+  box-shadow: none !important;
+}
+
+.input-group input.form-control::placeholder {
+  color: #94a3b8 !important;
+  font-weight: 400;
+}
+
+/* ==========================================================================
+   4. GRILLA DE ESPECIALIDADES MÉDICAS (CARDS ESTILO SANATORIO ARGENTINO)
+   ========================================================================== */
+.speciality-card {
+  border-radius: 20px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 22px rgba(0, 70, 149, 0.06) !important;
+  overflow: hidden !important;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease, border-color 0.28s ease !important;
+  cursor: pointer !important;
+  margin-bottom: 18px !important;
+}
+
+.speciality-card:hover {
+  transform: translateY(-6px) !important;
+  box-shadow: 0 18px 36px rgba(0, 70, 149, 0.15) !important;
+  border-color: #009fe3 !important;
+  background: #ffffff !important;
+}
+
+.card-Speciality {
+  padding: 0 !important;
+  overflow: hidden !important;
+  position: relative;
+  background: #eef4f8;
+}
+
+.card-Speciality img.img-fluid,
+.card-Speciality app-securedimage img {
+  width: 100% !important;
+  height: 140px !important;
+  object-fit: cover !important;
+  display: block !important;
+  transition: transform 0.4s ease !important;
+}
+
+.speciality-card:hover .card-Speciality img {
+  transform: scale(1.06) !important;
+}
+
+.speciality-card .card-footer,
+.speciality-card .card-title > h5 {
+  background: #ffffff !important;
+  color: #004695 !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+  text-align: center !important;
+  padding: 14px 10px !important;
+  border-top: 1px solid #f1f5f9 !important;
+  min-height: 54px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background-color 0.25s ease, color 0.25s ease !important;
+}
+
+.speciality-card:hover .card-footer,
+.speciality-card:hover .card-title > h5 {
+  background: #004695 !important;
+  color: #ffffff !important;
+}
+
+/* Barra superior cuando se eligió una especialidad ("CARDIOLOGIA") */
+.speciality-header {
+  background: linear-gradient(90deg, #004695 0%, #0061a8 100%) !important;
+  color: #ffffff !important;
+  border-radius: 16px !important;
+  padding: 14px 22px !important;
+  margin-bottom: 20px !important;
+  box-shadow: 0 8px 20px rgba(0, 70, 149, 0.14) !important;
+}
+
+.speciality-header .navbar-brand {
+  color: #ffffff !important;
+  font-family: "DM Serif Display", serif !important;
+  font-size: 1.35rem !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   5. PASO 1: SELECCIÓN DE PROFESIONAL Y HORARIOS DISPONIBLES
+   ========================================================================== */
+app-virtualgroup .card {
+  border-radius: 20px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 28px rgba(0, 70, 149, 0.07) !important;
+  margin-bottom: 18px !important;
+  overflow: hidden !important;
+  background: #ffffff !important;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease !important;
+}
+
+app-virtualgroup .card:hover {
+  border-color: #bae6fd !important;
+  box-shadow: 0 16px 34px rgba(0, 70, 149, 0.12) !important;
+}
+
+.virtual-group-panel {
+  background: #ffffff !important;
+  padding: 20px 22px !important;
+  border-right: 1px solid #eef2f6 !important;
+}
+
+.virtual-group-panel h5 {
+  color: #004695 !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 1.08rem !important;
+  font-weight: 800 !important;
+  margin-bottom: 6px !important;
+}
+
+.virtual-group-panel p {
+  color: #475569 !important;
+  font-size: 0.88rem !important;
+  line-height: 1.45 !important;
+}
+
+.virtual-group-panel img {
+  border-radius: 14px !important;
+  object-fit: cover !important;
+  border: 2px solid #e0f2fe !important;
+}
+
+.virtual-group-datetime-selector {
+  background: #f8fafc !important;
+  padding: 18px !important;
+}
+
+.virtual-group-datetime-selector .select-day {
+  color: #004695 !important;
+  font-weight: 700 !important;
+  font-size: 0.95rem !important;
+}
+
+/* Pastillas de horarios disponibles (ej: 16:45, 17:00) */
+.virtual-group-datetime-selector .alert-success {
+  border-radius: 50px !important;
+  background-color: #ffffff !important;
+  color: #004695 !important;
+  border: 1.5px solid #009fe3 !important;
+  font-weight: 700 !important;
+  font-size: 0.88rem !important;
+  padding: 8px 16px !important;
+  margin: 4px !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 6px rgba(0, 159, 227, 0.1) !important;
+  transition: all 0.2s ease !important;
+  text-align: center !important;
+}
+
+.virtual-group-datetime-selector .alert-success:hover {
+  background-color: #fe5d37 !important;
+  border-color: #fe5d37 !important;
+  color: #ffffff !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 14px rgba(254, 93, 55, 0.3) !important;
+}
+
+/* ==========================================================================
+   6. PASO 2: FORMULARIO DE CONFIRMACIÓN Y BOTÓN "RESERVAR"
+   ========================================================================== */
+app-confirmation .container {
+  background: #ffffff !important;
+  border-radius: 22px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 14px 38px rgba(0, 70, 149, 0.08) !important;
+  padding: 32px !important;
+  margin-top: 10px !important;
+}
+
+.confirmation-description {
+  background: #f4f9fd !important;
+  border: 1px solid #dbeafe !important;
+  border-radius: 16px !important;
+  padding: 20px 22px !important;
+  margin-bottom: 20px !important;
+}
+
+.confirmation-description .text-success {
+  color: #059669 !important;
+  font-size: 1.15rem !important;
+  font-weight: 800 !important;
+}
+
+.confirmation-description .text-primary {
+  color: #004695 !important;
+  font-size: 1.12rem !important;
+  font-weight: 800 !important;
+}
+
+.confirmation-description h6 {
+  color: #475569 !important;
+  font-style: normal !important;
+  font-weight: 600 !important;
+  font-size: 0.92rem !important;
+}
+
+.confirmation-fields label,
+app-confirmation label {
+  color: #004695 !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+  margin-bottom: 6px !important;
+}
+
+app-confirmation .form-control {
+  border-radius: 12px !important;
+  border: 1.5px solid #cbd5e1 !important;
+  background-color: #f8fafc !important;
+  padding: 11px 15px !important;
+  height: auto !important;
+  font-size: 0.94rem !important;
+  font-weight: 500 !important;
+  color: #1e293b !important;
+  transition: all 0.2s ease !important;
+}
+
+app-confirmation .form-control:focus {
+  background-color: #ffffff !important;
+  border-color: #009fe3 !important;
+  border-left: 4px solid #009fe3 !important;
+  box-shadow: 0 0 0 4px rgba(0, 159, 227, 0.14) !important;
+}
+
+.ng-valid[required],
+.ng-valid.required {
+  border-left: 4px solid #2bc8ab !important;
+}
+
+.ng-invalid:not(form) {
+  border-left: 4px solid #fe5d37 !important;
+}
+
+/* Botón Principal "Reservar" estilo Sanatorio Argentino (.btn-orange / .btn-primary) */
+button.confirmation-button,
+.btn-success.confirmation-button {
+  border-radius: 50px !important;
+  background: linear-gradient(135deg, #fe5d37 0%, #e04823 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  padding: 14px 32px !important;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 24px rgba(254, 93, 55, 0.32) !important;
+  transition: all 0.25s ease !important;
+}
+
+button.confirmation-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e04823 0%, #c83715 100%) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 14px 30px rgba(254, 93, 55, 0.42) !important;
+}
+
+button.confirmation-button:disabled {
+  background: #cbd5e1 !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
+/* Botones secundarios y de filtro */
+.btn-secondary,
+.btn-outline-primary {
+  border-radius: 50px !important;
+  font-weight: 600 !important;
+}
+
+/* ==========================================================================
+   7. FOOTER INSTITUCIONAL SANATORIO ARGENTINO
+   ========================================================================== */
+.sa-footer {
+  background: #00336d;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 40px 24px;
+  margin-top: 60px;
+  border-top: 4px solid #009fe3;
+}
+
+.sa-footer-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.sa-footer-brand {
+  max-width: 320px;
+}
+
+.sa-footer-logo {
+  height: 44px;
+  width: auto;
+  margin-bottom: 12px;
+}
+
+.sa-footer-brand p {
+  color: rgba(255, 255, 255, 0.78) !important;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.sa-footer-sedes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 20px;
+  flex: 1;
+}
+
+.sa-footer-sede h6 {
+  font-family: "DM Serif Display", serif !important;
+  color: #ffffff !important;
+  font-size: 1.05rem !important;
+  margin: 0 0 4px 0 !important;
+}
+
+.sa-footer-sede p {
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: 12.5px !important;
+  margin: 0 0 6px 0 !important;
+}
+
+.sa-footer-sede a {
+  color: #2bc8ab !important;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.sa-footer-sede a:hover {
+  text-decoration: underline !important;
+}
+
+@media (max-width: 991px) {
+  .sa-hero-sedes {
+    grid-template-columns: repeat(2, 1fr);
+    width: 100%;
+  }
+  .sa-footer-sedes {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .sa-hero-title {
+    font-size: 1.65rem !important;
+  }
+  .sa-hero-sedes,
+  .sa-footer-sedes {
+    grid-template-columns: 1fr;
+  }
+  app-confirmation .container {
+    padding: 20px 16px !important;
+  }
+}
+
+.tooltip-campo-obligatorio {
+  position: absolute;
+}
