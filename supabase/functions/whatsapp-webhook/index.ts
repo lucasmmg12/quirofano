@@ -1618,6 +1618,7 @@ interface IntentDetectionResult {
         | 'saludo_en_flujo'
         | 'seleccion_medico'
         | 'consulta_arancel'
+        | 'consulta_sede_medico'
         | 'general';
     doctorCandidate: string | null;
     doctorRecord: any | null;
@@ -1980,6 +1981,171 @@ function getDoctorSearchVariants(word: string): string[] {
 function isArancelOrPriceQuery(text: string): boolean {
     const clean = (text || '').toLowerCase();
     return /\b(valor|precio|cuanto\s+(?:cuesta|sale|est[aá]|cobran?|cobra|es|sale\s+la|cuesta\s+la|vale)|arancel|aranceles|costo|costos|tarifa|tarifas|particular|particulares|sin\s+obra\s+social|privad[ao]|abono|cuanto\s+est[aá]\s+la\s+consulta|cuanto\s+cuesta\s+la\s+consulta|cuanto\s+sale\s+la\s+consulta|valor\s+de\s+la\s+consulta|precio\s+de\s+la\s+consulta|consulta\s+particular|adicional|plus)\b/i.test(clean);
+}
+
+/**
+ * Detecta si el paciente pregunta en qué sede, dirección, calle o consultorio atiende un profesional,
+ * o solicita que le pasen la dirección de su turno o del Sanatorio.
+ */
+function isLocationOrSedeQuery(text: string): boolean {
+    const clean = (text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    // Si solicita explícitamente sacar/pedir/agendar un nuevo turno, priorizar el flujo de turnos
+    if (/\b(quiero|quisiera|necesito|solicito|pedir|sacar|agendar|reservar|darme)\s+(?:un\s+|el\s+)?(?:nuevo\s+)?(?:turno|cita)\b/i.test(clean)) {
+        return false;
+    }
+
+    return /\b(donde\s+atiende|en\s+que\s+sede|cual\s+sede|que\s+sede|en\s+que\s+consultorio|cual\s+consultorio|que\s+consultorio|en\s+que\s+calle|por\s+que\s+calle|en\s+que\s+direccion|cual\s+es\s+la\s+direccion|me\s+pasa(?:s|n|rias)?\s+la\s+direccion|pasame\s+la\s+direccion|pasar\s+la\s+direccion|pasa\s+la\s+direccion|direccion\s+del?\s+(?:dr|dra|doctor|doctora|consultorio|sanatorio|turno)|sede\s+del?\s+(?:dr|dra|doctor|doctora|turno)|donde\s+queda|donde\s+esta\s+el\s+consultorio|donde\s+es\s+(?:el|mi)\s+turno|en\s+que\s+sede\s+tengo|donde\s+tengo\s+(?:el\s+|mi\s+)?turno|ubicacion\s+del?)\b/i.test(clean)
+        || /^(?:buen\s+dia\s*[,.\s]*|buenas(?:\s+tardes|\s+noches)?\s*[,.\s]*|hola\s*[,.\s]*)?(?:por\s+favor\s*[,.\s]*)?(?:me\s+(?:pasa(?:s|n)?|da(?:s|n)?|indica(?:s|n)?|dice(?:s|n)?)\s+)?(?:la\s+|las\s+)?(?:direccion|direcciones|ubicacion|sede|sedes)(?:\s+por\s+favor)?[?.\s!]*$/i.test(clean);
+}
+
+/**
+ * Normaliza una referencia de sede/consultorio de SALUS al nombre oficial y dirección exacta de calle.
+ */
+function formatCanonicalSedeWithAddress(rawInput?: string | null): {
+    code: string;
+    sedeLabel: string;
+    direccion: string;
+    consultorio: string | null;
+} | null {
+    if (!rawInput) return null;
+    const raw = String(rawInput).trim();
+    const upper = raw.toUpperCase();
+
+    // Extraer consultorio si viene concatenado con "·" o "-"
+    let consultorio: string | null = null;
+    if (raw.includes('·')) {
+        const parts = raw.split('·').map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+            consultorio = parts.slice(1).join(' · ');
+        }
+    } else {
+        const mCons = raw.match(/\b(Consultorio\s*(?:N[°º]?\s*)?[A-Za-z0-9]+|Recepci[oó]n\s*[A-Za-z0-9]*)\b/i);
+        if (mCons) consultorio = mCons[1].trim();
+    }
+
+    if (upper.includes('SANTA FE') || upper.includes('263')) {
+        return {
+            code: 'SANTA_FE',
+            sedeLabel: 'Sede Santa Fe',
+            direccion: 'Santa Fe 263 (Este), Capital, San Juan',
+            consultorio
+        };
+    }
+    if (upper.includes('SEDE 3') || upper.includes('SEDE 03') || upper.includes('SEDE3') || upper.includes('SSL3') || upper.includes('463')) {
+        return {
+            code: 'SEDE_3',
+            sedeLabel: 'Sede 03 (San Luis Sede 3)',
+            direccion: 'San Luis 463 (Oeste), Capital, San Juan',
+            consultorio
+        };
+    }
+    if (upper.includes('SAN LUIS NORTE') || upper.includes('SEDE 2') || upper.includes('SEDE 02') || upper.includes('SEDE2') || upper.includes('SSLN') || upper.includes('433')) {
+        return {
+            code: 'SEDE_2',
+            sedeLabel: 'Sede 02 (San Luis Norte)',
+            direccion: 'San Luis 433 (Oeste), Capital, San Juan',
+            consultorio
+        };
+    }
+    if (upper.includes('SAN LUIS SUR') || upper.includes('SEDE CENTRAL') || upper.includes('SEDE 1') || upper.includes('SEDE 01') || upper.includes('SEDE1') || upper.includes('SLS') || upper.includes('432')) {
+        return {
+            code: 'SEDE_1',
+            sedeLabel: 'Sede 01 Central (San Luis Sur)',
+            direccion: 'San Luis 432 (Oeste), Capital, San Juan',
+            consultorio
+        };
+    }
+    return null;
+}
+
+/**
+ * Extrae todas las sedes confirmadas, consultorio y horarios habituales de un profesional
+ * (incluyendo múltiples agendas si el mismo profesional atiende en más de un edificio).
+ */
+function extractDoctorLocationAndSchedule(docRecord: any): {
+    sedes: Array<{ code: string; sedeLabel: string; direccion: string; consultorio: string | null }>;
+    horarios: string[];
+} {
+    const agendas = Array.isArray(docRecord?.allMatchedAgendas) && docRecord.allMatchedAgendas.length > 0
+        ? docRecord.allMatchedAgendas
+        : (docRecord ? [docRecord] : []);
+
+    const sedesMap = new Map<string, { code: string; sedeLabel: string; direccion: string; consultorio: string | null }>();
+    const horariosSet = new Set<string>();
+
+    for (const ag of agendas) {
+        const cond = String(ag?.condiciones_consulta || '');
+        const consActual = String(ag?.consultorio_actual || '');
+
+        if (consActual) {
+            const parsedCons = formatCanonicalSedeWithAddress(consActual);
+            if (parsedCons) {
+                const existing = sedesMap.get(parsedCons.code);
+                if (!existing || (!existing.consultorio && parsedCons.consultorio)) {
+                    sedesMap.set(parsedCons.code, parsedCons);
+                }
+            }
+        }
+
+        const mSedes = cond.match(/•\s*Sedes?\s+de\s+Atenci[oó]n:\s*([^\r\n]+)/i);
+        if (mSedes && mSedes[1]) {
+            const parts = mSedes[1].split(/[\/|]/).map(s => s.trim()).filter(Boolean);
+            for (const p of parts) {
+                const parsed = formatCanonicalSedeWithAddress(p);
+                if (parsed && !sedesMap.has(parsed.code)) {
+                    sedesMap.set(parsed.code, parsed);
+                }
+            }
+        }
+
+        const mConsLine = cond.match(/•\s*Consultorio\s*\/\s*Sector:\s*([^\r\n]+)/i);
+        if (mConsLine && mConsLine[1]) {
+            const parsed = formatCanonicalSedeWithAddress(mConsLine[1].trim());
+            if (parsed) {
+                const existing = sedesMap.get(parsed.code);
+                if (!existing || (!existing.consultorio && parsed.consultorio)) {
+                    sedesMap.set(parsed.code, parsed);
+                }
+            }
+        }
+
+        const mHorarios = cond.match(/•\s*D[ií]as\s+y\s+Horarios\s+habituales\s+en\s+SALUS:\s*([^\r\n]+)/i);
+        if (mHorarios && mHorarios[1]) {
+            const hParts = mHorarios[1].split('|').map(h => h.trim()).filter(Boolean);
+            for (const hp of hParts) {
+                horariosSet.add(hp);
+            }
+        }
+    }
+
+    return {
+        sedes: Array.from(sedesMap.values()),
+        horarios: Array.from(horariosSet)
+    };
+}
+
+/**
+ * Mensaje institucional con las 4 sedes oficiales completas de Sanatorio Argentino.
+ */
+function getOfficialFourSedesDirectoryMessage(patientName?: string | null): string {
+    const greeting = patientName ? `¡Buen día, *${patientName.split(' ')[0]}*! 🏥` : `¡Hola! 🏥`;
+    return `${greeting}\n\n` +
+        `Te compartimos las direcciones exactas de nuestras *4 sedes en Capital, San Juan*:\n\n` +
+        `📍 *Sede 01 Central (San Luis Sur):* *San Luis 432 (Oeste)*\n` +
+        `_(Guardia Médica 24 hs, Internación, Maternidad, Quirófanos, Consultorios e Imágenes)_\n\n` +
+        `📍 *Sede 02 (San Luis Norte):* *San Luis 433 (Oeste)*\n` +
+        `_(Consultorios Externos, Vacunatorio, Fertilidad, Registro Civil y Administración)_\n\n` +
+        `📍 *Sede 03 (San Luis Sede 3):* *San Luis 463 (Oeste)*\n` +
+        `_(Consultorios Externos)_\n\n` +
+        `📍 *Sede Santa Fe:* *Santa Fe 263 (Este)*\n` +
+        `_(Consultorios Externos, Diagnóstico por Imágenes, Laboratorio, Citología y Chequeo Preventivo)_\n\n` +
+        `💡 *¿Buscás en qué sede atiende un médico en particular?*\n` +
+        `Escribinos por ejemplo: *"¿Dónde atiende el Dr. [Apellido]?"* y te informamos al instante su sede, dirección y consultorio exacto.\n\n` +
+        `🔙 *Volver:* Escribí *"Menú"* | 👤 *Agente:* Escribí *"Agente"*`;
 }
 
 /**
@@ -2525,9 +2691,12 @@ DIRECTIVAS PRINCIPALES:
 5. SOLICITUD DE NUEVOS TURNOS MÉDICOS:
    - Para agendar un nuevo turno, consulta qué especialidad o profesional busca, su cobertura/obra social y su preferencia horaria.
    - Si es para un hijo o familiar, solicita el Nombre y DNI del paciente a atender.
-6. INFORMACIÓN INSTITUCIONAL VERÍDICA:
-   - Sede San Luis (San Luis 432 Oeste, Capital): Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas (Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología). Por orden de llegada con triage de urgencia. Diagnóstico por Imágenes: RADIOGRAFÍAS / RAYOS X / RX se realizan en el Primer Piso por orden de llegada a la Guardia Pasiva (Lunes a Viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs) con pedido médico y se autoriza directamente en el momento (NO requieren turno previo).
-   - Sede Santa Fe (Santa Fe 263 Este, Capital): Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir (OSP), Diagnóstico por Imágenes (Ecografía, Tomografía, Resonancia, Mamografía), Kinesiología.
+6. INFORMACIÓN INSTITUCIONAL VERÍDICA (4 SEDES OFICIALES):
+   - Sede 01 - San Luis Sur (Central): San Luis 432 Oeste, Capital (Maternidad, Quirófanos, Internación, Consultorios externos, Guardias Médicas 24 horas: Clínica médica adultos, Pediatría 24hs activa, Ginecología/Obstetricia, Cardiología. RADIOGRAFÍAS / RAYOS X / RX se realizan en el Primer Piso por orden de llegada a la Guardia Pasiva de Lunes a Viernes de 8:00 a 20:00 hs y Sábados de 8:00 a 12:00 hs con pedido médico y sin turno previo).
+   - Sede 02 - San Luis Norte: San Luis 433 Oeste, Capital (Consultorios externos y especialidades médicas).
+   - Sede 03 - San Luis Sede 3: San Luis 463 Oeste, Capital (Consultorios externos y especialidades médicas).
+   - Sede Santa Fe: Santa Fe 263 Este, Capital (Consultorios externos, Vacunatorio, Chequeo Preventivo de Salud, Programa Prevenir OSP, Diagnóstico por Imágenes: Ecografía, Tomografía, Resonancia, Mamografía, Kinesiología).
+   - Si el paciente pregunta por la dirección en general sin especificar profesional y no tiene turnos activos, informa SIEMPRE las 4 sedes oficiales con sus direcciones exactas.
    - Laboratorio: Resultados online en la web oficial con usuario y contraseña entregados en la extracción.
    - Obras Sociales: Atendemos OSP, OSDE, Swiss Medical, Galeno, Medifé, Jerárquicos y la gran mayoría de prepagas y obras sociales, y atención Particular.
 7. VOLVER ATRÁS O MENÚ PRINCIPAL:
@@ -3130,6 +3299,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     let doctorCandidate: string | null = null;
     const docRegexes = [
         /(?:doctor|doctora|dr|dra)\.?\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i,
+        /(?:d[oó]nde\s+atiende|en\s+qu[eé]\s+(?:sede|lugar|direcci[oó]n|consultorio)\s+atiende|direcci[oó]n\s+del?|sede\s+del?|consultorio\s+del?)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)?\s*([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i,
         /(?:con|para)\s+(?:el\s+|la\s+)?(?:dr\.?|doctor|dra\.?|doctora)\s+([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i,
         /(?:turno\s+)?(?:con|para)\s+(?:el\s+|la\s+)?([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i,
         /(?:atenderse|atenderme|ver)\s+(?:con|al|a\s+la)\s+([a-záéíóúñ]{3,}(?:\s+[a-záéíóúñ]{3,})?)/i
@@ -3199,6 +3369,8 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'hola', 'buen', 'dia', 'dias', 'días', 'buenos', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
             'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre',
             'cualquier', 'horario', 'cuando', 'tiene',
+            'donde', 'dónde', 'atiende', 'atienden', 'sede', 'sedes', 'direccion', 'dirección', 'direcciones',
+            'ubicacion', 'ubicación', 'consultorio', 'consultorios', 'calle', 'queda', 'quedan', 'pasa', 'pasame', 'pásame',
             // Términos diagnósticos y administrativos
             'tomografia', 'computada', 'resonancia', 'magnetica', 'ecografia', 'mamografia', 'radiografia',
             'densitometria', 'alta', 'resolucion', 'adicional', 'otros', 'organos', 'regiones', 'estudio',
@@ -3310,16 +3482,20 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                     };
                 });
 
-                // Deduplicar registros homónimos idénticos (ej: misma doctora en diferentes sedes o agendas)
+                // Deduplicar registros homónimos idénticos (ej: misma doctora en diferentes sedes o agendas),
+                // preservando todas las agendas en `allMatchedAgendas` para informar sedes múltiples con exactitud
                 const uniqueDocsMap = new Map<string, any>();
                 for (const d of enrichedDocs) {
                     const key = d.displayName.toLowerCase();
                     if (!uniqueDocsMap.has(key)) {
-                        uniqueDocsMap.set(key, d);
+                        uniqueDocsMap.set(key, { ...d, allMatchedAgendas: [d] });
                     } else {
                         const existing = uniqueDocsMap.get(key);
+                        const mergedAgendas = [...(existing.allMatchedAgendas || [existing]), d];
                         if ((d.condiciones_consulta?.length || 0) > (existing.condiciones_consulta?.length || 0)) {
-                            uniqueDocsMap.set(key, d);
+                            uniqueDocsMap.set(key, { ...d, allMatchedAgendas: mergedAgendas });
+                        } else {
+                            existing.allMatchedAgendas = mergedAgendas;
                         }
                     }
                 }
@@ -3387,9 +3563,12 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     }
 
     const isPriceQuery = isArancelOrPriceQuery(clean);
+    const isSedeQuery = isLocationOrSedeQuery(clean);
     let intent: IntentDetectionResult['intent'] = 'general';
     if (isPriceQuery && (doctorRecord || doctorCandidate || isTurno || specialtyCandidate)) {
         intent = 'consulta_arancel';
+    } else if (isSedeQuery) {
+        intent = 'consulta_sede_medico';
     } else if (context?.botStage === 'esperando_datos_turno' || isTurno || doctorRecord) {
         intent = 'turno';
     } else if (context?.botStage === 'esperando_dni_turno') {
@@ -3445,6 +3624,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
 Analiza la intención del último mensaje del paciente considerando el hilo de la conversación previa con el Bot o con el Asesor Humano.
 Intenciones posibles:
 - "turno": solicitud o consulta sobre turnos médicos
+- "consulta_sede_medico": consulta sobre dónde atiende un médico, en qué sede, consultorio o dirección queda
 - "consulta_arancel": consulta sobre precio, valor de consulta particular o adicional sin/con obra social
 - "confirmar_turno_online": el paciente confirma su turno
 - "cancelar_turno_online": el paciente cancela su turno
@@ -4487,6 +4667,8 @@ async function handleChatbotTriage(
     };
 
     const isExplicitRestartToMenu = isNavigationBackOrMenu(cleanText);
+    const previousConvMedico = !isExplicitRestartToMenu ? (conv?.medico_o_especialidad || null) : null;
+    const previousPrestadorMatched = !isExplicitRestartToMenu ? ((conv?.ai_summary as any)?.prestador_matched || null) : null;
     if (wasClosed || isSessionExpiredByInactivity || isExplicitRestartToMenu) {
         updates.closed_at = null;
         updates.resolution_reason = null;
@@ -4935,6 +5117,40 @@ async function handleChatbotTriage(
             ? (analysis.doctorCandidate.charAt(0).toUpperCase() + analysis.doctorCandidate.slice(1).toLowerCase())
             : '';
         const isArancelQuery = analysis.intent === 'consulta_arancel' || isArancelOrPriceQuery(cleanText);
+        const isSedeQuery = analysis.intent === 'consulta_sede_medico' || isLocationOrSedeQuery(cleanText);
+
+        if (isSedeQuery) {
+            const lines = docList.map((d: any) => {
+                const info = d.formattedInfo || formatDoctorDisplay(d);
+                const agendas = Array.isArray(d.allMatchedAgendas) && d.allMatchedAgendas.length > 0 ? d.allMatchedAgendas : [d];
+                const uniqueLocations = new Map<string, { sedeFormatted: string; consultorio: string | null; diasHorarios: string | null }>();
+                for (const ag of agendas) {
+                    const loc = extractDoctorLocationAndSchedule(ag);
+                    const locKey = `${loc.sedeFormatted}|${loc.consultorio || ''}`;
+                    if (!uniqueLocations.has(locKey)) {
+                        uniqueLocations.set(locKey, loc);
+                    }
+                }
+                const locLines = Array.from(uniqueLocations.values()).map(loc => {
+                    const consPart = loc.consultorio ? `\n   🚪 *Consultorio:* ${loc.consultorio}` : '';
+                    const schedPart = loc.diasHorarios ? `\n   🕒 *Días y horarios habituales:* ${loc.diasHorarios}` : '';
+                    return `   📍 *Sede:* ${loc.sedeFormatted}${consPart}${schedPart}`;
+                }).join('\n');
+                return `👨‍⚕️ *${info.displayName}* (${info.specialty})\n${locLines}`;
+            }).join('\n\n');
+
+            replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 En *Sanatorio Argentino* contamos con los siguientes profesionales con el apellido *${capSurname || 'consultado'}*. Te detallamos la sede y dirección exacta de cada uno:\n\n` +
+                `${lines}\n\n` +
+                `Si deseás solicitar un turno con alguno de ellos o consultar tu cita, escribí su nombre completo.` +
+                getInfoResolutionFooter();
+
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'informacion_respondida';
+            nextStage = 'informacion_respondida';
+            updates.motivo_consulta = `Consulta de Sede / Ubicación (Homónimos: ${capSurname || 'Profesional'})`;
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
 
         if (isArancelQuery) {
             const prices = docList.map(d => extractParticularPrice(d.condiciones_consulta));
@@ -5913,6 +6129,7 @@ async function handleChatbotTriage(
         !lastBotContent.includes('en que podemos ayudarte hoy') &&
         currentStage !== 'menu_bienvenida' &&
         analysis.intent !== 'consultar_turno' &&
+        analysis.intent !== 'consulta_sede_medico' &&
         analysis.intent !== 'autorizacion' &&
         analysis.intent !== 'guardia' &&
         analysis.intent !== 'mas_informacion' &&
@@ -7166,6 +7383,206 @@ async function handleChatbotTriage(
         updates.closed_at = new Date().toISOString();
         updates.resolution_reason = 'Cierre cordial / Agradecimiento del paciente';
         nextStage = 'resuelto_bot';
+        return await finalizeAndSend(replyText, nextStage, updates);
+    }
+    // =============================================
+    // FLUJO: CONSULTA DE SEDE / DIRECCIÓN / DÓNDE ATIENDE UN MÉDICO (3 NIVELES DE PRECISIÓN)
+    // =============================================
+    else if (analysis.intent === 'consulta_sede_medico') {
+        // 1. Consolidar todos los turnos próximos del paciente o grupo familiar en la línea
+        let allTurnosCandidatos: any[] = Array.isArray(turnosActivosProximos) ? [...turnosActivosProximos] : [];
+        if (allTurnosCandidatos.length === 0 && Array.isArray(pacientesGrupoFamiliar) && pacientesGrupoFamiliar.length > 0) {
+            for (const fam of pacientesGrupoFamiliar.slice(0, 4)) {
+                if (fam?.dni && String(fam.dni) !== String(resolvedDni || '')) {
+                    try {
+                        const { data: famTurnos } = await supabase.rpc('buscar_turnos_proximos', {
+                            p_dni: String(fam.dni),
+                            p_telefono: null
+                        });
+                        if (Array.isArray(famTurnos) && famTurnos.length > 0) {
+                            allTurnosCandidatos.push(...famTurnos);
+                        }
+                    } catch (_) {}
+                }
+            }
+        }
+
+        // Determinar si el usuario preguntó por un médico específico o si había un médico en el contexto de la conversación
+        let targetDoc = analysis.doctorRecord || null;
+        const contextDocName = !targetDoc && !analysis.doctorCandidate
+            ? (
+                (conv?.ai_summary as any)?.prestador_matched?.profesional_nombre ||
+                previousPrestadorMatched?.profesional_nombre ||
+                conv?.medico_o_especialidad ||
+                previousConvMedico ||
+                null
+            )
+            : null;
+
+        if (!targetDoc && contextDocName && !/^Homónimos:/i.test(contextDocName)) {
+            const cleanCtxDoc = String(contextDocName)
+                .replace(/^(?:Dr\.?|Dra\.?|Doctor|Doctora)\s+/i, '')
+                .replace(/\([^)]*\)/g, '')
+                .trim();
+            const ctxTokens = cleanCtxDoc.split(/[\s,]+/).filter(t => t.length >= 4 && !STOPWORDS_MEDICOS.has(t.toLowerCase()));
+            if (ctxTokens.length > 0) {
+                try {
+                    let q = supabase
+                        .from('contact_center_doctor_parameters')
+                        .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta');
+                    for (const tk of ctxTokens.slice(0, 2)) {
+                        q = q.ilike('profesional_nombre', `%${tk}%`);
+                    }
+                    const { data: ctxDocs } = await q.limit(5);
+                    if (ctxDocs && ctxDocs.length > 0) {
+                        const info = formatDoctorDisplay(ctxDocs[0]);
+                        targetDoc = {
+                            ...ctxDocs[0],
+                            formattedInfo: info,
+                            displayName: info.displayName,
+                            cleanSpecialty: info.specialty,
+                            allMatchedAgendas: ctxDocs
+                        };
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // Filtrar si algún turno activo coincide con el médico consultado (o todos los turnos activos si preguntó genéricamente "me pasa la dirección")
+        const normToken = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const explicitDocFilterTokens: string[] = [];
+        if (analysis.doctorRecord?.profesional_nombre) {
+            normToken(analysis.doctorRecord.profesional_nombre)
+                .split(/[^a-z]+/)
+                .filter(w => w.length >= 4 && !STOPWORDS_MEDICOS.has(w))
+                .forEach(w => explicitDocFilterTokens.push(w));
+        } else if (analysis.doctorCandidate) {
+            normToken(analysis.doctorCandidate)
+                .split(/[^a-z]+/)
+                .filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w))
+                .forEach(w => explicitDocFilterTokens.push(w));
+        }
+
+        const matchingTurnos = explicitDocFilterTokens.length > 0
+            ? allTurnosCandidatos.filter(t => {
+                const medNorm = normToken(`${t.medico || ''} ${t.especialidad || ''}`);
+                return explicitDocFilterTokens.some(tk => medNorm.includes(tk));
+            })
+            : allTurnosCandidatos;
+
+        // NIVEL 1: El paciente tiene un turno activo agendado (con ese profesional o pregunta genéricamente por la dirección de su turno)
+        if (matchingTurnos.length > 0) {
+            const t = matchingTurnos[0];
+            const fechaParts = String(t.fecha || '').split('-');
+            const fechaFmt = fechaParts.length === 3 ? `${fechaParts[2]}/${fechaParts[1]}/${fechaParts[0]}` : String(t.fecha || '');
+            const horaFmt = String(t.hora || '').slice(0, 5);
+            const sedeExacta = formatCanonicalSedeWithAddress(t.sede);
+
+            // Buscar consultorio en contact_center_doctor_parameters si lo tenemos en targetDoc o buscando por nombre del médico del turno
+            let consultorioTurno: string | null = null;
+            if (targetDoc) {
+                consultorioTurno = extractDoctorLocationAndSchedule(targetDoc).consultorio;
+            } else if (t.medico) {
+                const surnameToken = normToken(t.medico).split(/[^a-z]+/).find(w => w.length >= 4);
+                if (surnameToken) {
+                    try {
+                        const { data: dTurno } = await supabase
+                            .from('contact_center_doctor_parameters')
+                            .select('consultorio_actual, condiciones_consulta')
+                            .ilike('profesional_nombre', `%${surnameToken}%`)
+                            .limit(3);
+                        if (dTurno && dTurno.length > 0) {
+                            consultorioTurno = extractDoctorLocationAndSchedule(dTurno[0]).consultorio;
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            const consLine = consultorioTurno ? `\n🚪 *Consultorio:* ${consultorioTurno}` : '';
+            const espLine = t.especialidad ? ` (${t.especialidad})` : '';
+
+            replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Según tu turno agendado en nuestro sistema, te confirmamos la ubicación exacta de atención:\n\n` +
+                `👨‍⚕️ *Profesional:* ${t.medico || 'Profesional asignado'}${espLine}\n` +
+                `📅 *Fecha y hora de tu turno:* ${fechaFmt}${horaFmt ? ` a las ${horaFmt} hs` : ''}\n` +
+                `📍 *Dirección / Sede:* ${sedeExacta}${consLine}\n\n` +
+                `ℹ️ *Recordá:* Presentarte 15 minutos antes con tu DNI físico y credencial de obra social.` +
+                getInfoResolutionFooter();
+
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'informacion_respondida';
+            nextStage = 'informacion_respondida';
+            updates.motivo_consulta = `Consulta de Dirección / Sede de Turno (${t.medico || 'Turno Activo'})`;
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
+        // NIVEL 2: No tiene turno activo con ese médico, pero identificamos al profesional (en el mensaje o en el contexto de la conversación)
+        if (targetDoc) {
+            const info = targetDoc.formattedInfo || formatDoctorDisplay(targetDoc);
+            const effDocDisplay = info.displayName || doctorDisplay || targetDoc.profesional_nombre;
+            const effSpec = info.specialty ? ` (${info.specialty})` : '';
+            const agendas = Array.isArray(targetDoc.allMatchedAgendas) && targetDoc.allMatchedAgendas.length > 0
+                ? targetDoc.allMatchedAgendas
+                : [targetDoc];
+
+            const uniqueLocations = new Map<string, { sedeFormatted: string; consultorio: string | null; diasHorarios: string | null }>();
+            for (const ag of agendas) {
+                const loc = extractDoctorLocationAndSchedule(ag);
+                const locKey = `${loc.sedeFormatted}|${loc.consultorio || ''}`;
+                if (!uniqueLocations.has(locKey)) {
+                    uniqueLocations.set(locKey, loc);
+                }
+            }
+
+            const locationsArr = Array.from(uniqueLocations.values());
+            if (locationsArr.length === 1) {
+                const loc = locationsArr[0];
+                const consLine = loc.consultorio ? `\n🚪 *Consultorio:* ${loc.consultorio}` : '';
+                const schedLine = loc.diasHorarios ? `\n🕒 *Días y horarios habituales:* ${loc.diasHorarios}` : '';
+
+                replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 Te informamos dónde atiende el/la *${effDocDisplay}*${effSpec} en *Sanatorio Argentino*:\n\n` +
+                    `📍 *Sede y Dirección:* ${loc.sedeFormatted}${consLine}${schedLine}\n\n` +
+                    `💬 Si deseás *solicitar un turno* con este profesional, escribí *"Quiero turno con ${effDocDisplay}"* o seleccioná una opción a continuación:` +
+                    getInfoResolutionFooter();
+            } else {
+                const multiLines = locationsArr.map((loc, idx) => {
+                    const consPart = loc.consultorio ? ` — *${loc.consultorio}*` : '';
+                    const schedPart = loc.diasHorarios ? `\n   🕒 *Días y horarios:* ${loc.diasHorarios}` : '';
+                    return `${idx + 1}. 📍 ${loc.sedeFormatted}${consPart}${schedPart}`;
+                }).join('\n\n');
+
+                replyText = `¡Hola${whatsappName ? ` *${whatsappName}*` : ''}! 🏥 El/la *${effDocDisplay}*${effSpec} atiende en las siguientes sedes de *Sanatorio Argentino* según el día de su agenda:\n\n` +
+                    `${multiLines}\n\n` +
+                    `💬 Si tenés un turno agendado y querés verificar en cuál de las sedes es tu cita, envianos el *DNI del paciente* (o escribí *"Quiero turno con ${effDocDisplay}"* para solicitar uno nuevo).` +
+                    getInfoResolutionFooter();
+            }
+
+            updates.status = 'bot';
+            updates.bot_active = true;
+            updates.bot_stage = 'informacion_respondida';
+            nextStage = 'informacion_respondida';
+            updates.motivo_consulta = `Consulta de Sede / Ubicación: ${effDocDisplay}${effSpec}`;
+            updates.medico_o_especialidad = `${effDocDisplay}${effSpec}`;
+            updates.ai_summary = {
+                ...(conv?.ai_summary || {}),
+                prestador_matched: {
+                    id: targetDoc.id,
+                    profesional_nombre: targetDoc.profesional_nombre,
+                    especialidad: targetDoc.especialidad,
+                    consultorio_actual: targetDoc.consultorio_actual,
+                    condiciones_consulta: targetDoc.condiciones_consulta
+                }
+            };
+            return await finalizeAndSend(replyText, nextStage, updates);
+        }
+
+        // NIVEL 3: Pregunta genérica de dirección/sedes sin profesional mencionado y sin turno activo
+        replyText = getOfficialFourSedesDirectoryMessage(whatsappName) + getInfoResolutionFooter();
+        updates.status = 'bot';
+        updates.bot_active = true;
+        updates.bot_stage = 'informacion_respondida';
+        nextStage = 'informacion_respondida';
+        updates.motivo_consulta = 'Consulta de Direcciones y Sedes (4 Sedes Oficiales)';
         return await finalizeAndSend(replyText, nextStage, updates);
     }
     // =============================================

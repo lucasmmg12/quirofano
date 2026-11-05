@@ -223,8 +223,12 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
                     a.NombreAbrev AS AgendaAbrev,
                     a.DuracionVisita AS DuracionVisita,
                     a.Observaciones AS ObservacionesAgenda,
-                    a.InformacionAdicional AS InfoAdicional
+                    a.InformacionAdicional AS InfoAdicional,
+                    a.IdCentroPropietario AS IdCentroPropietario,
+                    dcProp.Centro_Alias AS SedePropietaria,
+                    dcProp.Centro_Direccion AS DireccionPropietaria
                 FROM dbo.Agendas a
+                LEFT JOIN dbo.VLISE_DatosCentros dcProp ON dcProp.Centro_id = a.IdCentroPropietario
                 WHERE a.Activo = 1
                 ORDER BY a.Nombre ASC
             `),
@@ -248,9 +252,10 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
                 WHERE e.Activar = 1
             `),
             pool.request().query(`
-                SELECT ac.idAgenda AS IdAgenda, dc.Centro_Alias AS Sede, dc.Centro_Direccion AS Direccion
-                FROM dbo.AgendasCentros ac
-                INNER JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = ac.idBd
+                SELECT a.id AS IdAgenda, dc.Centro_Alias AS Sede, dc.Centro_Direccion AS Direccion
+                FROM dbo.Agendas a
+                INNER JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = a.IdCentroPropietario
+                WHERE a.Activo = 1
             `),
             pool.request().query(`
                 SELECT 
@@ -258,7 +263,8 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
                     MAX(LTRIM(RTRIM(v.NombreConsulta))) AS NombreConsulta,
                     MAX(dc.Centro_Alias) AS SedeHoy
                 FROM dbo.Visitas v
-                LEFT JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = v.idBd
+                INNER JOIN dbo.Agendas a ON a.id = v.idAgenda
+                LEFT JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = ISNULL(a.IdCentroPropietario, v.IdBdPropietario)
                 WHERE CAST(v.Data AS DATE) = CAST(GETDATE() AS DATE)
                   AND v.NombreConsulta IS NOT NULL AND LEN(LTRIM(RTRIM(v.NombreConsulta))) > 0
                 GROUP BY v.idAgenda
@@ -267,17 +273,19 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
                 SELECT 
                     v.idAgenda AS IdAgenda,
                     dc.Centro_Alias AS SedeReal,
+                    dc.Centro_Direccion AS DireccionReal,
                     MAX(CASE WHEN LEN(LTRIM(RTRIM(ISNULL(v.NombreConsulta, '')))) > 0 THEN LTRIM(RTRIM(v.NombreConsulta)) ELSE NULL END) AS ConsultorioHabitual,
                     DATEPART(dw, v.Data) AS DiaSemana,
                     MIN(CONVERT(VARCHAR(5), v.HoraInici, 108)) AS HoraMin,
                     MAX(CONVERT(VARCHAR(5), v.HoraFi, 108)) AS HoraMax,
                     COUNT(*) AS CantTurnos
                 FROM dbo.Visitas v
-                LEFT JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = v.idBd
+                INNER JOIN dbo.Agendas a ON a.id = v.idAgenda
+                LEFT JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = ISNULL(a.IdCentroPropietario, v.IdBdPropietario)
                 WHERE v.Data >= DATEADD(day, -60, GETDATE())
                   AND v.Data <= DATEADD(day, 60, GETDATE())
                   AND v.idAgenda IS NOT NULL
-                GROUP BY v.idAgenda, dc.Centro_Alias, DATEPART(dw, v.Data)
+                GROUP BY v.idAgenda, dc.Centro_Alias, dc.Centro_Direccion, DATEPART(dw, v.Data)
                 HAVING COUNT(*) >= 3
             `),
             pool.request().query(`
@@ -358,8 +366,11 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
             });
             if (h.SedeReal) {
                 if (!sedesRealesMap[h.IdAgenda]) sedesRealesMap[h.IdAgenda] = [];
-                if (!sedesRealesMap[h.IdAgenda].includes(h.SedeReal.trim())) {
-                    sedesRealesMap[h.IdAgenda].push(h.SedeReal.trim());
+                const sedeWithDir = h.DireccionReal
+                    ? `${h.SedeReal.trim()} (${h.DireccionReal.trim()})`
+                    : h.SedeReal.trim();
+                if (!sedesRealesMap[h.IdAgenda].includes(sedeWithDir)) {
+                    sedesRealesMap[h.IdAgenda].push(sedeWithDir);
                 }
             }
             if (h.ConsultorioHabitual && !consultorioHabitualMap[h.IdAgenda]) {
@@ -404,7 +415,8 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
 
             const practicasList = tiposVisitaMap[idAgenda] || [];
             const duracionMin = row.DuracionVisita ? `${row.DuracionVisita} min` : null;
-            const consultorio = consultoriosHoyMap[idAgenda] || consultorioHabitualMap[idAgenda] || (sedesReales[0] || null);
+            const sedePropShort = row.SedePropietaria ? row.SedePropietaria.trim() : null;
+            const consultorio = consultoriosHoyMap[idAgenda] || consultorioHabitualMap[idAgenda] || sedePropShort || (sedesReales[0] || null);
 
             // Construir bloque enriquecido para ADM-QUI y Simon IA
             const extraLines = [];

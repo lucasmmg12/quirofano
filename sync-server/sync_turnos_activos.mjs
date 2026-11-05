@@ -94,6 +94,27 @@ export async function syncTurnosActivos(pool, supabase) {
     try {
         const todayIso = new Date().toISOString().split('T')[0];
 
+        // 0. MAPA MAESTRO DE CENTROS PROPIETARIOS POR AGENDA (100% de exactitud en SALUS)
+        const agendaCentroById = new Map();
+        const agendaCentroByName = new Map();
+        try {
+            const agRes = await pool.request().query(`
+                SELECT a.id AS IdAgenda, LTRIM(RTRIM(a.Nombre)) AS NombreAgenda, dc.Centro_Alias AS CentroAlias
+                FROM dbo.Agendas a
+                INNER JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = a.IdCentroPropietario
+            `);
+            for (const row of (agRes.recordset || [])) {
+                if (row.IdAgenda && row.CentroAlias) {
+                    agendaCentroById.set(Number(row.IdAgenda), String(row.CentroAlias).trim());
+                }
+                if (row.NombreAgenda && row.CentroAlias) {
+                    agendaCentroByName.set(String(row.NombreAgenda).trim().toUpperCase(), String(row.CentroAlias).trim());
+                }
+            }
+        } catch (agMapErr) {
+            console.warn('⚠️ [SYNC-TURNOS] No se pudo cargar mapa de Centros por Agenda:', agMapErr.message);
+        }
+
         // 1. EXTRAER DE SALUS: Visitas con ASISTENCIA IS NULL y FECHA >= HOY
         const salusQuery = `
             SELECT 
@@ -158,7 +179,7 @@ export async function syncTurnosActivos(pool, supabase) {
                 medico,
                 especialidad: (r.ESPECIALIDAD || 'Consulta Médica').trim(),
                 sede: resolveSedeFromAgenda({
-                    centro: r.Centro,
+                    centro: r.Centro || agendaCentroByName.get(String(r.AgendaNombre || '').trim().toUpperCase()),
                     agendaNombre: r.AgendaNombre,
                     tipoAgenda: r['TIPO AGENDA']
                 }),
@@ -188,7 +209,7 @@ export async function syncTurnosActivos(pool, supabase) {
                     v.FechaCreacion,
                     v.Internet,
                     vn.Comentarios,
-                    vl.Centro,
+                    ISNULL(dc.Centro_Alias, vl.Centro) as Centro,
                     vl.[Tipo Visita] as TipoVisita,
                     vl.[Visita_Especialidad] as Especialidad,
                     vl.[Cliente] as Cliente
@@ -196,6 +217,7 @@ export async function syncTurnosActivos(pool, supabase) {
                 INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
                 LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
                 LEFT JOIN Agendas a ON v.idAgenda = a.id
+                LEFT JOIN dbo.VLISE_DatosCentros dc ON dc.Centro_id = a.IdCentroPropietario
                 LEFT JOIN Personal p ON v.idPersonal = p.id
                 WHERE v.Internet = 1
                   AND (vl.Asistencia IS NULL OR vl.Asistencia = '')
@@ -294,7 +316,10 @@ export async function syncTurnosActivos(pool, supabase) {
                                 medico,
                                 especialidad: subTurno.especialidad || subTurno.motivo || 'Consulta Online',
                                 sede: resolveSedeFromAgenda({
-                                    centro: subTurno.centro || to.centro,
+                                    centro: subTurno.centro
+                                        || to.centro
+                                        || agendaCentroById.get(Number(subTurno.idAgenda || to.agenda_id))
+                                        || agendaCentroByName.get(String(subTurno.agenda || to.agenda_nombre || '').trim().toUpperCase()),
                                     agendaNombre: subTurno.agenda || to.agenda_nombre,
                                     tipoAgenda: null
                                 }),
