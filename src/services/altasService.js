@@ -23,6 +23,59 @@ export const ALTA_ESTADOS = {
 
 };
 
+/**
+ * Calcula el estado efectivo de una ficha de alta administrativa (idéntica regla a AltasPanel).
+ * Devuelve el nombre del estado (ej. 'Alta Adm', 'Particular', 'Vacío', etc.).
+ */
+export function resolveEffectiveAltaEstado(alta, siblingEntries = null) {
+    if (!alta) return 'Vacío';
+    if (alta._effectiveEstado) return alta._effectiveEstado;
+
+    let cliente = alta.cliente;
+    let control_adm_finalizado = alta.control_adm_finalizado;
+    let observaciones = alta.observaciones;
+    let estado = alta.estado;
+
+    if (Array.isArray(siblingEntries) && siblingEntries.length > 0) {
+        for (const e of siblingEntries) {
+            if (!cliente && e.cliente) cliente = e.cliente;
+            if (!control_adm_finalizado && e.control_adm_finalizado) control_adm_finalizado = e.control_adm_finalizado;
+            if (!observaciones && e.observaciones) observaciones = e.observaciones;
+            if (!estado && e.estado && e.estado !== 'Vacío') estado = e.estado;
+        }
+    }
+
+    const rawCliente = (cliente || '').trim();
+    const isParticular = !rawCliente || !/^\d{2,3}/.test(rawCliente) || rawCliente.includes('042') || rawCliente.toUpperCase().includes('PARTICULAR');
+    const finalCtrlAdm = (control_adm_finalizado || '').trim().toLowerCase();
+    const isCtrlAdmSi = finalCtrlAdm === 'sí' || finalCtrlAdm === 'si' || finalCtrlAdm === 's'
+        || finalCtrlAdm === 'true' || finalCtrlAdm === '1' || finalCtrlAdm === 'yes';
+    const isCtrlAdmNo = finalCtrlAdm === 'no' || finalCtrlAdm === 'n' || finalCtrlAdm === 'false' || finalCtrlAdm === '0';
+    const obsHasAltaAdm = (observaciones || '').toLowerCase().includes('alta adm');
+
+    let effectiveEstado = estado;
+    if (effectiveEstado === 'Alta Adm' && isCtrlAdmNo) {
+        effectiveEstado = isParticular ? 'Particular' : 'Vacío';
+    } else if (!effectiveEstado) {
+        if (isCtrlAdmSi || (!isCtrlAdmNo && obsHasAltaAdm)) {
+            effectiveEstado = 'Alta Adm';
+        } else if (isParticular) {
+            effectiveEstado = 'Particular';
+        } else {
+            effectiveEstado = 'Vacío';
+        }
+    }
+    return effectiveEstado || 'Vacío';
+}
+
+/**
+ * Indica si una ficha tiene estado efectivo "Vacío" (o sin estado asignado).
+ */
+export function isAltaRowEstadoVacio(alta, siblingEntries = null) {
+    const eff = resolveEffectiveAltaEstado(alta, siblingEntries);
+    return !eff || eff === 'Vacío';
+}
+
 // IDs de duplicados accidentales generados por el desfase de zona horaria para CARRIZO DIAZ, MAXIMO
 export const STUCK_DUPLICATES_TO_PURGE = [
     'e1865294-b900-429b-82c3-6399315ce858', // P2
@@ -170,6 +223,19 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
         .single();
 
     let updatePayload = { estado, operador };
+    if (!estado || estado === 'Vacío') {
+        const isAlreadyTransferred = !!(current?.traspaso_id || current?.facturada || current?.estado_fac === 'Facturada');
+        const isDevueltaFac = !!(current?.devolucion_id && (current?.estado_fac === 'Devuelta' || (!current?.traspasada_at || (current?.devuelta_at && current?.devuelta_at > current?.traspasada_at))));
+        if (isAlreadyTransferred && !isDevueltaFac) {
+            throw new Error('No se puede colocar en estado "Vacío" una ficha que ya fue enviada/traspasada a Facturación.');
+        }
+        // Si estaba en el carrito de traspaso, quitarla automáticamente porque nada con estado "Vacío" puede enviarse
+        if (current?.en_carrito_traspaso) {
+            updatePayload.en_carrito_traspaso = false;
+            updatePayload.carrito_traspaso_por = null;
+            updatePayload.carrito_traspaso_at = null;
+        }
+    }
     if (current?.devolucion_id && current?.estado_fac === 'Devuelta') {
         updatePayload.devolucion_id = null;
         updatePayload.estado_fac = 'Pendiente';
@@ -555,14 +621,69 @@ export async function updateResponsableFac(id, responsable_fac) {
 
 /**
  * Marcar altas para traspaso (en_carrito_traspaso flag)
+ * Regla estricta: Ninguna ficha con estado efectivo "Vacío" puede enviarse al carrito de traspaso.
  */
 export async function marcarParaTraspaso(ids, usuario = 'sistema') {
+    if (!ids || ids.length === 0) return [];
+
+    // 1. Verificar estado de las fichas a enviar
+    const { data: targetRows, error: fetchErr } = await supabase
+        .from('altas_administrativas')
+        .select('*')
+        .in('id', ids);
+    if (fetchErr) throw fetchErr;
+
+    const rows = targetRows || [];
+    // Buscar admisiones hermanas (mismo paciente y fecha_ingreso) por si una fusión absorbió el Control ADM
+    const patients = [...new Set(rows.map(r => r.paciente).filter(Boolean))];
+    let siblingsByPatientDate = new Map();
+    if (patients.length > 0 && patients.length <= 100) {
+        const { data: allPatientRows } = await supabase
+            .from('altas_administrativas')
+            .select('*')
+            .in('paciente', patients);
+        for (const r of (allPatientRows || [])) {
+            const key = `${(r.paciente || '').trim().toUpperCase()}||${r.fecha_ingreso || 'sin-fecha'}`;
+            if (!siblingsByPatientDate.has(key)) siblingsByPatientDate.set(key, []);
+            siblingsByPatientDate.get(key).push(r);
+        }
+    }
+
+    const vacias = [];
+    const autoStateToPersist = new Map(); // estado -> [id, ...]
+
+    for (const row of rows) {
+        const key = `${(row.paciente || '').trim().toUpperCase()}||${row.fecha_ingreso || 'sin-fecha'}`;
+        const siblings = siblingsByPatientDate.get(key) || null;
+        const effectiveEstado = resolveEffectiveAltaEstado(row, siblings);
+        if (!effectiveEstado || effectiveEstado === 'Vacío') {
+            vacias.push(row.numero_admision || row.paciente || row.id);
+        } else if (!row.estado && effectiveEstado !== 'Vacío') {
+            if (!autoStateToPersist.has(effectiveEstado)) autoStateToPersist.set(effectiveEstado, []);
+            autoStateToPersist.get(effectiveEstado).push(row.id);
+        }
+    }
+
+    if (vacias.length > 0) {
+        throw new Error(`No se puede enviar al Carrito de Traspaso ninguna ficha con estado "Vacío" (${vacias.slice(0, 5).join(', ')}${vacias.length > 5 ? '...' : ''}). Asignales un estado primero.`);
+    }
+
+    const ahora = new Date().toISOString();
+
+    // Persistir el estado autodetectado (ej. 'Alta Adm' o 'Particular') si en DB figuraba null
+    for (const [est, groupIds] of autoStateToPersist.entries()) {
+        await supabase
+            .from('altas_administrativas')
+            .update({ estado: est })
+            .in('id', groupIds);
+    }
+
     const { data, error } = await supabase
         .from('altas_administrativas')
         .update({ 
             en_carrito_traspaso: true,
             carrito_traspaso_por: usuario,
-            carrito_traspaso_at: new Date().toISOString()
+            carrito_traspaso_at: ahora
         })
         .in('id', ids)
         .select();
@@ -615,6 +736,35 @@ export async function generarTraspaso({ responsableEntrega, responsableRecibe, n
     }
     
     if (cartItems.length === 0) throw new Error('No hay fichas seleccionadas en el carrito de traspaso');
+
+    // Regla estricta: Ninguna ficha con estado "Vacío" puede ser traspasada a Facturación
+    const patients = [...new Set(cartItems.map(r => r.paciente).filter(Boolean))];
+    let siblingsByPatientDate = new Map();
+    if (patients.length > 0 && patients.length <= 100) {
+        const { data: allPatientRows } = await supabase
+            .from('altas_administrativas')
+            .select('*')
+            .in('paciente', patients);
+        for (const r of (allPatientRows || [])) {
+            const key = `${(r.paciente || '').trim().toUpperCase()}||${r.fecha_ingreso || 'sin-fecha'}`;
+            if (!siblingsByPatientDate.has(key)) siblingsByPatientDate.set(key, []);
+            siblingsByPatientDate.get(key).push(r);
+        }
+    }
+
+    const vacias = [];
+    for (const item of cartItems) {
+        const key = `${(item.paciente || '').trim().toUpperCase()}||${item.fecha_ingreso || 'sin-fecha'}`;
+        const siblings = siblingsByPatientDate.get(key) || null;
+        const effectiveEstado = resolveEffectiveAltaEstado(item, siblings);
+        if (!effectiveEstado || effectiveEstado === 'Vacío') {
+            vacias.push(item.numero_admision || item.paciente || item.id);
+        }
+    }
+
+    if (vacias.length > 0) {
+        throw new Error(`No se puede generar el traspaso a Facturación porque hay ${vacias.length} ficha(s) con estado "Vacío" (${vacias.slice(0, 5).join(', ')}${vacias.length > 5 ? '...' : ''}). Asignales un estado válido o quitalas del carrito.`);
+    }
 
     // Get next code
     const year = new Date().getFullYear();

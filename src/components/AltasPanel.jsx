@@ -19,7 +19,7 @@ import {
     fetchCarritoTraspaso, marcarParaTraspaso, quitarDeCarritoTraspaso,
     generarTraspaso, fetchTraspasos, fetchTraspasoDetalle, firmarTraspaso,
     cerrarPeriodoFacturacion, reabrirPeriodoFacturacion, ejecutarCorteDeMesProlongadas,
-    setReingresoReal
+    setReingresoReal, resolveEffectiveAltaEstado, isAltaRowEstadoVacio
 } from '../services/altasService';
 import { devolverFichaARecepcion, cancelarDevolucionFicha } from '../services/fichasAdmisionesService';
 import { fetchAsignaciones, matchAsignacion } from '../services/asignacionService';
@@ -353,6 +353,11 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     // ── Carrito handlers ──
     const handleToggleSelect = (id) => {
+        const target = allProcessedAltas.find(a => a.id === id);
+        if (target && (!target._effectiveEstado || target._effectiveEstado === 'Vacío')) {
+            addToast?.('No podés seleccionar una ficha con estado "Vacío". Asignale un estado primero.', 'warning');
+            return;
+        }
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
@@ -363,8 +368,12 @@ export default function AltasPanel({ addToast, currentUser }) {
 
     const handleSelectAllSelectable = () => {
         const selectableIds = sortedAltas
-            .filter(a => !a.en_carrito_traspaso && a.ficha_estado !== 'devuelta_a_recepcion' && (!(a._isFacturada && !a._cruzaMes && !a._isDevueltaFac)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
+            .filter(a => !a.en_carrito_traspaso && a.ficha_estado !== 'devuelta_a_recepcion' && a._effectiveEstado && a._effectiveEstado !== 'Vacío' && (!(a._isFacturada && !a._cruzaMes && !a._isDevueltaFac)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)))
             .map(a => a.id);
+        if (selectableIds.length === 0) {
+            addToast?.('No hay fichas con estado válido (distinto de "Vacío") para seleccionar en esta vista', 'info');
+            return;
+        }
         setSelectedIds(new Set(selectableIds));
     };
 
@@ -377,6 +386,12 @@ export default function AltasPanel({ addToast, currentUser }) {
         const devueltas = altas.filter(a => selectedIds.has(a.id) && a.ficha_estado === 'devuelta_a_recepcion');
         if (devueltas.length > 0) {
             addToast?.(`No podés enviar al carrito ${devueltas.length} ficha(s) que están devueltas a Recepción. Deben ser subsanadas primero.`, 'warning');
+            return;
+        }
+
+        const vacias = allProcessedAltas.filter(a => selectedIds.has(a.id) && (!a._effectiveEstado || a._effectiveEstado === 'Vacío'));
+        if (vacias.length > 0) {
+            addToast?.(`No podés enviar al carrito ${vacias.length} ficha(s) con estado "Vacío". Asignales un estado primero.`, 'warning');
             return;
         }
 
@@ -626,6 +641,16 @@ export default function AltasPanel({ addToast, currentUser }) {
         try {
             setProcessing(true);
             await updateAltaEstado(id, nuevoEstado, currentUser?.nombre || 'operador', selectedMonth);
+            if (!nuevoEstado || nuevoEstado === 'Vacío') {
+                setSelectedIds(prev => {
+                    if (!prev.has(id)) return prev;
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                });
+                setSelectedCartIds(prev => prev.filter(cid => cid !== id));
+                loadCarrito();
+            }
             addToast?.(`Estado → ${ALTA_ESTADOS[nuevoEstado]?.label || nuevoEstado}`, 'success');
             setStatusDropdownId(null);
             setDropdownAnchor(null);
@@ -1446,6 +1471,12 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         addToast?.('Seleccioná al menos una ficha para traspasar', 'warning');
                                         return;
                                     }
+                                    const selectedItems = carritoItems.filter(a => selectedCartIds.includes(a.id));
+                                    const vaciasInSelection = selectedItems.filter(a => isAltaRowEstadoVacio(a));
+                                    if (vaciasInSelection.length > 0) {
+                                        addToast?.(`No se puede generar traspaso con ${vaciasInSelection.length} ficha(s) en estado "Vacío". Asignales un estado válido primero.`, 'warning');
+                                        return;
+                                    }
                                     setShowTraspasoModal(true);
                                 }}
                                     style={{
@@ -1467,14 +1498,22 @@ export default function AltasPanel({ addToast, currentUser }) {
                                             <th className="cart__th" style={{ width: '40px', textAlign: 'center' }}>
                                                 <input 
                                                     type="checkbox"
-                                                    checked={filteredCarrito.length > 0 && selectedCartIds.length === filteredCarrito.length}
+                                                    checked={(() => {
+                                                        const validCart = filteredCarrito.filter(a => !isAltaRowEstadoVacio(a));
+                                                        return validCart.length > 0 && validCart.every(a => selectedCartIds.includes(a.id));
+                                                    })()}
                                                     onChange={(e) => {
-                                                        if (e.target.checked) setSelectedCartIds(filteredCarrito.map(a => a.id));
-                                                        else setSelectedCartIds([]);
+                                                        if (e.target.checked) {
+                                                            const validIds = filteredCarrito.filter(a => !isAltaRowEstadoVacio(a)).map(a => a.id);
+                                                            setSelectedCartIds(validIds);
+                                                        } else {
+                                                            setSelectedCartIds([]);
+                                                        }
                                                     }}
                                                     style={{ cursor: 'pointer' }}
                                                 />
                                             </th>
+                                            <th className="cart__th">Estado</th>
                                             <th className="cart__th">N° Adm</th>
                                             <th className="cart__th">Paciente</th>
                                             <th className="cart__th">Obra Social</th>
@@ -1486,18 +1525,41 @@ export default function AltasPanel({ addToast, currentUser }) {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredCarrito.map(a => (
-                                            <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)', background: selectedCartIds.includes(a.id) ? '#EEF2FF' : 'transparent' }}>
+                                        {filteredCarrito.map(a => {
+                                            const effEst = resolveEffectiveAltaEstado(a);
+                                            const isVacia = !effEst || effEst === 'Vacío';
+                                            const estCfg = ALTA_ESTADOS[effEst] || ALTA_ESTADOS['Vacío'];
+                                            return (
+                                            <tr key={a.id} style={{ borderBottom: '1px solid var(--neutral-100)', background: isVacia ? '#FFF5F5' : (selectedCartIds.includes(a.id) ? '#EEF2FF' : 'transparent') }}>
                                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                                                     <input 
                                                         type="checkbox"
                                                         checked={selectedCartIds.includes(a.id)}
+                                                        disabled={isVacia}
+                                                        title={isVacia ? 'No se puede traspasar una ficha con estado "Vacío"' : 'Seleccionar para constancia de traspaso'}
                                                         onChange={(e) => {
+                                                            if (isVacia) {
+                                                                addToast?.('No se puede seleccionar para traspaso una ficha con estado "Vacío".', 'warning');
+                                                                return;
+                                                            }
                                                             if (e.target.checked) setSelectedCartIds(prev => [...prev, a.id]);
                                                             else setSelectedCartIds(prev => prev.filter(id => id !== a.id));
                                                         }}
-                                                        style={{ cursor: 'pointer' }}
+                                                        style={{ cursor: isVacia ? 'not-allowed' : 'pointer', opacity: isVacia ? 0.35 : 1 }}
                                                     />
+                                                </td>
+                                                <td style={{ padding: '8px 10px' }}>
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                        padding: '3px 9px', borderRadius: '999px',
+                                                        fontSize: '0.7rem', fontWeight: 700,
+                                                        background: isVacia ? '#FEE2E2' : estCfg.bg,
+                                                        color: isVacia ? '#DC2626' : estCfg.color,
+                                                        border: `1px solid ${isVacia ? '#FECACA' : `${estCfg.color}25`}`,
+                                                        whiteSpace: 'nowrap'
+                                                    }}>
+                                                        {isVacia ? '⚠️ Vacío (Bloqueado)' : `${estCfg.icon} ${estCfg.label}`}
+                                                    </span>
                                                 </td>
                                                 <td style={{ padding: '8px 10px' }}>
                                                     <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#EEF2FF', color: '#4338CA' }}>{a.numero_admision}</span>
@@ -1529,7 +1591,8 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                     </button>
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -2010,15 +2073,18 @@ export default function AltasPanel({ addToast, currentUser }) {
                         <table className="cart__table" style={{ width: '100%', tableLayout: 'auto' }}>
                             <thead>
                                 <tr>
-                                    <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso">
+                                    <th className="cart__th" style={{ width: '30px', textAlign: 'center' }} title="Seleccioná fichas para enviar al Carrito de Traspaso (excepto estado Vacío)">
                                         {!isReadOnly && (
                                             <input type="checkbox"
-                                                checked={selectedIds.size > 0 && sortedAltas.filter(a => !a.en_carrito_traspaso && (!(a._isFacturada && !a._cruzaMes && !a._isDevueltaFac)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac))).every(a => selectedIds.has(a.id))}
+                                                checked={(() => {
+                                                    const selectable = sortedAltas.filter(a => !a.en_carrito_traspaso && a.ficha_estado !== 'devuelta_a_recepcion' && a._effectiveEstado && a._effectiveEstado !== 'Vacío' && (!(a._isFacturada && !a._cruzaMes && !a._isDevueltaFac)) && (!(a.traspaso_id && !a._cruzaMes && !a._isDevueltaFac)));
+                                                    return selectable.length > 0 && selectable.every(a => selectedIds.has(a.id));
+                                                })()}
                                                 onChange={e => {
                                                     if (e.target.checked) handleSelectAllSelectable();
                                                     else setSelectedIds(new Set());
                                                 }}
-                                                title="Seleccionar todas las fichas para el carrito"
+                                                title="Seleccionar todas las fichas con estado válido (distinto de Vacío) para el carrito"
                                                 style={{ cursor: 'pointer', accentColor: '#6366F1' }}
                                             />
                                         )}
@@ -2141,15 +2207,29 @@ export default function AltasPanel({ addToast, currentUser }) {
                                                         <ShoppingCart size={13} style={{ color: '#4F46E5' }} />
                                                     </button>
                                                 ) : (
-                                                    !isReadOnly && (
-                                                        <input type="checkbox"
-                                                            checked={selectedIds.has(alta.id)}
-                                                            onChange={() => handleToggleSelect(alta.id)}
-                                                            disabled={alta.ficha_estado === 'devuelta_a_recepcion'}
-                                                            title={alta.ficha_estado === 'devuelta_a_recepcion' ? 'Ficha física devuelta a Recepción (debe ser subsanada primero)' : 'Seleccionar para enviar al carrito'}
-                                                            style={{ cursor: alta.ficha_estado === 'devuelta_a_recepcion' ? 'not-allowed' : 'pointer', accentColor: '#6366F1' }}
-                                                        />
-                                                    )
+                                                    !isReadOnly && (() => {
+                                                        const isEstadoVacio = !effectiveEstado || effectiveEstado === 'Vacío';
+                                                        const isCheckboxDisabled = alta.ficha_estado === 'devuelta_a_recepcion' || isEstadoVacio;
+                                                        return (
+                                                            <input type="checkbox"
+                                                                checked={selectedIds.has(alta.id)}
+                                                                onChange={() => handleToggleSelect(alta.id)}
+                                                                disabled={isCheckboxDisabled}
+                                                                title={
+                                                                    alta.ficha_estado === 'devuelta_a_recepcion'
+                                                                        ? 'Ficha física devuelta a Recepción (debe ser subsanada primero)'
+                                                                        : isEstadoVacio
+                                                                            ? 'No se puede enviar con estado "Vacío" — Asignale un estado primero'
+                                                                            : 'Seleccionar para enviar al carrito'
+                                                                }
+                                                                style={{
+                                                                    cursor: isCheckboxDisabled ? 'not-allowed' : 'pointer',
+                                                                    accentColor: '#6366F1',
+                                                                    opacity: isCheckboxDisabled ? 0.35 : 1
+                                                                }}
+                                                            />
+                                                        );
+                                                    })()
                                                 )}
                                             </td>
                                             {/* Chevron */}
@@ -2891,30 +2971,38 @@ export default function AltasPanel({ addToast, currentUser }) {
                                 Object.entries(ALTA_ESTADOS).map(([key, scfg]) => {
                                     const alta = sortedAltas.find(a => a.id === dropdownAnchor.id);
                                     if (!alta || key === 'Procesada') return null;
+                                    const isTransferredOrBilled = !!(alta.traspaso_id || alta._isFacturada) && !alta._isDevueltaFac;
+                                    const isVacioBlocked = key === 'Vacío' && isTransferredOrBilled;
                                     return (
                                         <button
                                             key={key}
                                             onClick={e => {
                                                 e.stopPropagation();
+                                                if (isVacioBlocked) {
+                                                    addToast?.('No se puede colocar en estado "Vacío" una ficha que ya fue enviada/traspasada a Facturación.', 'warning');
+                                                    return;
+                                                }
                                                 handleEstadoChange(dropdownAnchor.id, key);
                                             }}
-                                            disabled={processing}
+                                            disabled={processing || isVacioBlocked}
+                                            title={isVacioBlocked ? 'No permitido: esta ficha ya fue enviada a Facturación' : undefined}
                                             style={{
                                                 display: 'flex', alignItems: 'center', gap: '8px',
                                                 width: '100%', padding: '7px 12px',
                                                 border: 'none', borderRadius: '6px',
-                                                background: alta.estado === key ? scfg.bg : 'transparent',
-                                                color: scfg.color, cursor: 'pointer',
+                                                background: alta._effectiveEstado === key ? scfg.bg : 'transparent',
+                                                color: scfg.color, cursor: isVacioBlocked ? 'not-allowed' : 'pointer',
+                                                opacity: isVacioBlocked ? 0.4 : 1,
                                                 fontSize: '0.76rem', fontWeight: 600,
                                                 transition: 'background 0.1s',
                                                 textAlign: 'left',
                                             }}
-                                            onMouseOver={e => e.currentTarget.style.background = scfg.bg}
-                                            onMouseOut={e => e.currentTarget.style.background = alta.estado === key ? scfg.bg : 'transparent'}
+                                            onMouseOver={e => { if (!isVacioBlocked) e.currentTarget.style.background = scfg.bg; }}
+                                            onMouseOut={e => { e.currentTarget.style.background = alta._effectiveEstado === key ? scfg.bg : 'transparent'; }}
                                         >
                                             <span>{scfg.icon}</span>
                                             <span>{scfg.label}</span>
-                                            {alta.estado === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                            {alta._effectiveEstado === key && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
                                         </button>
                                     );
                                 })
