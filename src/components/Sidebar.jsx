@@ -20,6 +20,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
     const isModuleVisible = (id) => {
+        if (id === 'inicio') return true;
+
         if (isGobernanzaDashboardOnly) {
             return id === 'gobernanza_indicadores';
         }
@@ -33,8 +35,9 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
         }
 
         if (isContactCenterOnly) {
-            // Estricto: Únicamente Contact Center y el módulo Simon IA ENTERO (Chat, Documentos, Reglas, Analytics)
+            // Contact Center y el módulo Simon IA ENTERO (Chat, Documentos, Reglas, Analytics)
             return [
+                'inicio',
                 'contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config', 'contact_center_permisos',
                 'beto', 'simon', 'beto_rules', 'beto_analytics'
             ].includes(id);
@@ -406,6 +409,24 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             </div>
 
             <nav className="sidebar__nav">
+                {/* ─── Inicio (Habilitado para TODOS los usuarios) ─── */}
+                {(() => {
+                    const isActive = activeView === 'inicio';
+                    return (
+                        <Link
+                            to="/"
+                            className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
+                            onClick={() => onViewChange && onViewChange('inicio', true)}
+                            title={collapsed ? 'Inicio' : undefined}
+                            style={{ display: 'flex', textDecoration: 'none' }}
+                        >
+                            <Home size={20} className="sidebar__item-icon" />
+                            {!collapsed && <span className="sidebar__item-label">Inicio</span>}
+                            {isActive && <div className="sidebar__item-indicator" />}
+                        </Link>
+                    );
+                })()}
+
                 {isGobernanzaDashboardOnly ? (
                     <Link
                         to="/gobernanza_indicadores"
@@ -469,24 +490,6 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     </>
                 ) : (
                     <>
-                        {/* ─── Inicio ─── */}
-                {!isContactCenterOnly && (() => {
-                    const isActive = activeView === 'inicio';
-                    return (
-                        <Link
-                            to="/"
-                            className={`sidebar__item ${isActive ? 'sidebar__item--active' : ''}`}
-                            onClick={() => onViewChange && onViewChange('inicio', true)}
-                            title={collapsed ? 'Inicio' : undefined}
-                            style={{ display: 'flex', textDecoration: 'none' }}
-                        >
-                            <Home size={20} className="sidebar__item-icon" />
-                            {!collapsed && <span className="sidebar__item-label">Inicio</span>}
-                            {isActive && <div className="sidebar__item-indicator" />}
-                        </Link>
-                    );
-                })()}
-
                 {/* ─── Gobernanza ─── */}
                 {isModuleVisible('gobernanza') && renderGroup({
                     label: 'Gobernanza',

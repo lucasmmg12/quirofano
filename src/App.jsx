@@ -573,47 +573,48 @@ function App({ currentUser, onLogout, onUserUpdated }) {
             initActivity();
             
             if (isGobernanzaDashboardOnly) {
-                setSelectedModules(['gobernanza_indicadores']);
+                setSelectedModules(['inicio', 'gobernanza_indicadores']);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                if (activeView !== 'gobernanza_indicadores') {
+                if (!['inicio', 'gobernanza_indicadores'].includes(activeView)) {
                     navigate('/gobernanza_indicadores', { replace: true });
                 }
                 return;
             }
 
             if (isGobernanzaOnly) {
-                const GOB_ALLOWED_VIEWS = ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+                const GOB_ALLOWED_VIEWS = ['inicio', 'gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
                 setSelectedModules(GOB_ALLOWED_VIEWS);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                if (activeView === 'inicio' || !GOB_ALLOWED_VIEWS.includes(activeView)) {
+                if (!GOB_ALLOWED_VIEWS.includes(activeView)) {
                     navigate('/gobernanza_indicadores', { replace: true });
                 }
                 return;
             }
 
             if (isUciOnly) {
-                setSelectedModules(['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics']);
+                const UCI_ALLOWED_VIEWS = ['inicio', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+                setSelectedModules(UCI_ALLOWED_VIEWS);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
-                const UCI_ALLOWED_VIEWS = ['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
-                if (activeView === 'inicio' || !UCI_ALLOWED_VIEWS.includes(activeView)) {
+                if (!UCI_ALLOWED_VIEWS.includes(activeView)) {
                     navigate('/gobernanza_indicadores', { replace: true });
                 }
                 return;
             }
 
             if (isContactCenterOnly) {
-                // Módulo Contact Center y módulo Simon IA ENTERO (Chat, Reglas, Analytics)
-                setSelectedModules(['contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics']);
+                // Módulo Inicio, Contact Center y módulo Simon IA ENTERO (Chat, Reglas, Analytics)
+                setSelectedModules(['inicio', 'contact_center', 'turnos_online', 'beto', 'beto_rules', 'beto_analytics']);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
                 const CC_AND_SIMON_VIEWS = [
+                    'inicio',
                     'contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config',
                     'beto', 'simon', 'beto_rules', 'beto_analytics'
                 ];
-                if (activeView === 'inicio' || !CC_AND_SIMON_VIEWS.includes(activeView)) {
+                if (!CC_AND_SIMON_VIEWS.includes(activeView)) {
                     navigate('/contact_center', { replace: true });
                 }
                 return;
@@ -668,19 +669,22 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
     // Enforce module access control on activeView
     useEffect(() => {
+        // Todos los usuarios tienen habilitado el Inicio ('inicio')
+        if (activeView === 'inicio') return;
+
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
-        const CC_ALL_VIEWS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
+        const CC_ALL_VIEWS = ['inicio', 'contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'];
 
         if (isGobernanzaDashboardOnly) {
-            if (activeView !== 'gobernanza_indicadores') {
+            if (!['inicio', 'gobernanza_indicadores'].includes(activeView)) {
                 setActiveView('gobernanza_indicadores');
             }
             return;
         }
 
         if (isGobernanzaOnly) {
-            const GOB_ALLOWED_VIEWS = ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+            const GOB_ALLOWED_VIEWS = ['inicio', 'gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
             if (!GOB_ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('gobernanza_indicadores');
             }
@@ -688,7 +692,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         }
 
         if (isUciOnly) {
-            const UCI_ALLOWED_VIEWS = ['gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+            const UCI_ALLOWED_VIEWS = ['inicio', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
             if (!UCI_ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('gobernanza_indicadores');
             }
@@ -696,7 +700,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         }
 
         if (isContactCenterOnly) {
-            // Estricto: Contact Center y Simon IA ENTERO
+            // Inicio + Contact Center + Simon IA ENTERO
             const ALLOWED_VIEWS = [...CC_ALL_VIEWS, 'beto', 'simon', 'beto_rules', 'beto_analytics'];
             if (!ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('contact_center');
@@ -719,7 +723,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         let isVisible = true;
 
         if (selectedModules.length === 1 && selectedModules[0] === 'activos') {
-            isVisible = activeView === 'activos';
+            isVisible = activeView === 'activos' || activeView === 'inicio';
         } else {
             if (CC_ALL_VIEWS.includes(activeView)) isVisible = canUserAccessContactCenter(currentUser);
             else if (['config', 'manual'].includes(activeView)) isVisible = true;
