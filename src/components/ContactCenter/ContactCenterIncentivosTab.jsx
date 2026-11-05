@@ -100,6 +100,8 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                 defaultMsgs = rawData.conversacionesUnicas || 7820;
             } else if (p === '2026-09') {
                 defaultMsgs = rawData.conversacionesUnicas || 8587;
+            } else if (p === '2026-10') {
+                defaultMsgs = rawData.conversacionesUnicas || msgsSb || 9468;
             } else {
                 // Período actual o en curso: priorizar conteo real de conversaciones únicas
                 if (msgsSb && msgsSb > 0) {
@@ -709,7 +711,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
                                 <span style={{ color: '#64748B' }}>🎯 Objetivo Meta:</span>
-                                <strong style={{ color: '#0F2942' }}>7.500 convs <span style={{ color: '#64748B', fontWeight: 500 }}>(Tope 8.500)</span></strong>
+                                <strong style={{ color: '#0F2942' }}>10.500 convs <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 9.500 / Tope 11.500)</span></strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
                                 <span style={{ color: '#64748B' }}>📍 Real al Día ({currentDay}):</span>
@@ -747,7 +749,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
                                 <span style={{ color: '#64748B' }}>🎯 Meta por Operadora:</span>
-                                <strong style={{ color: '#0F2942' }}>922 turnos <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 763 / Grupal 3.687)</span></strong>
+                                <strong style={{ color: '#0F2942' }}>940 turnos <span style={{ color: '#64748B', fontWeight: 500 }}>(Piso 800 / Tope 1.115 • Grupal 3.760)</span></strong>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
                                 <span style={{ color: '#64748B' }}>📍 Real Total Equipo ({currentDay} d):</span>
@@ -756,15 +758,15 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                             <div style={{
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                 padding: '6px 8px', borderRadius: '8px',
-                                background: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#ECFDF5' : '#FFFBEB',
-                                border: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '1px solid #A7F3D0' : '1px solid #FCD34D',
+                                background: liquidacionProyectada.bolsaTurnos.total >= 3200 ? '#ECFDF5' : '#FFFBEB',
+                                border: liquidacionProyectada.bolsaTurnos.total >= 3200 ? '1px solid #A7F3D0' : '1px solid #FCD34D',
                                 marginTop: '4px'
                             }}>
-                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#065F46' : '#92400E' }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: liquidacionProyectada.bolsaTurnos.total >= 3200 ? '#065F46' : '#92400E' }}>
                                     📈 Tendencia Total Equipo:
                                 </span>
                                 <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontSize: '0.88rem', fontWeight: 900, color: liquidacionProyectada.bolsaTurnos.total >= 3052 ? '#059669' : '#D97706' }}>
+                                    <div style={{ fontSize: '0.88rem', fontWeight: 900, color: liquidacionProyectada.bolsaTurnos.total >= 3200 ? '#059669' : '#D97706' }}>
                                         {liquidacionProyectada.bolsaTurnos.total.toLocaleString('es-AR')} turnos
                                     </div>
                                     <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 700 }}>
@@ -1025,7 +1027,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                                     </div>
                                                     {isCurrentMonth && agReal.montoTurnos === 0 && (
                                                         <div style={{ fontSize: '0.60rem', color: '#94A3B8' }}>
-                                                            En curso ({agReal.turnos || 0} / 763 piso indiv.)
+                                                            En curso ({agReal.turnos || 0} / 800 piso indiv.)
                                                         </div>
                                                     )}
                                                 </div>
@@ -1264,7 +1266,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '6px' }}>
                         <span style={{ color: '#64748B' }}>
-                            Base: <strong>6.500</strong> | Meta: <strong>7.500</strong> | Tope: <strong>8.500</strong> conv.
+                            Base: <strong>9.500</strong> | Meta: <strong>10.500</strong> | Tope: <strong>11.500</strong> conv.
                         </span>
                         <span style={{ fontWeight: 800, color: '#0284C7' }}>
                             Escalón {liquidacion.bolsaMensajes.escalon}/10 (+{formatCurrency(liquidacion.bolsaMensajes.montoPorFte)})
@@ -1274,7 +1276,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     {/* Barra de Progreso */}
                     <div style={{ width: '100%', height: '10px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden', marginBottom: '14px' }}>
                         <div style={{
-                            width: `${Math.min(100, Math.max(0, (liquidacion.bolsaMensajes.total / 8500) * 100))}%`,
+                            width: `${Math.min(100, Math.max(0, (liquidacion.bolsaMensajes.total / 11500) * 100))}%`,
                             height: '100%',
                             background: 'linear-gradient(90deg, #38BDF8 0%, #0284C7 100%)',
                             borderRadius: '6px',
@@ -1355,7 +1357,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '6px' }}>
                         <span style={{ color: '#64748B' }}>
-                            Base: <strong>3.052</strong> | Meta: <strong>3.687</strong> | Tope: <strong>4.324</strong>
+                            Base: <strong>3.200</strong> | Meta: <strong>3.760</strong> | Tope: <strong>4.460</strong> (Indiv: 800 / 940 / 1.115)
                         </span>
                         <span style={{ fontWeight: 800, color: '#7C3AED' }}>
                             Escalón {liquidacion.bolsaTurnos.escalon}/10 (+{formatCurrency(liquidacion.bolsaTurnos.montoPorFte)})
@@ -1365,7 +1367,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                     {/* Barra de Progreso */}
                     <div style={{ width: '100%', height: '10px', background: '#F1F5F9', borderRadius: '6px', overflow: 'hidden', marginBottom: '14px' }}>
                         <div style={{
-                            width: `${Math.min(100, Math.max(0, (liquidacion.bolsaTurnos.total / 4324) * 100))}%`,
+                            width: `${Math.min(100, Math.max(0, (liquidacion.bolsaTurnos.total / 4460) * 100))}%`,
                             height: '100%',
                             background: 'linear-gradient(90deg, #A78BFA 0%, #7C3AED 100%)',
                             borderRadius: '6px',
@@ -1869,14 +1871,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 📊 Gráfico 1: Turnos Otorgados por Colaboradora vs. Demanda Exigida y Objetivos Individuales
                             </div>
                             <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: '10px' }}>
-                                Comparativa de producción real frente a Piso (Esc. 1), Meta (Esc. 5) y Tope (Esc. 10) según el % de Demanda Exigida de cada operadora (100% Senior vs. 50% Curva Érica Leal con cobro al 100%).
+                                Comparativa de producción real frente a Piso (Esc. 1: 800), Meta (Esc. 5: 940) y Tope (Esc. 10: 1.115) con 100% de exigencia equitativa para las 4 operadoras.
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 {liquidacion.agentes.map(ag => {
                                     const fDem = ag.factorDemanda || 1.0;
-                                    const pisoIndiv = Math.round(763 * fDem);
-                                    const metaIndiv = Math.round(922 * fDem);
-                                    const topeIndiv = Math.round(1081 * fDem);
+                                    const pisoIndiv = Math.round(800 * fDem);
+                                    const metaIndiv = Math.round(940 * fDem);
+                                    const topeIndiv = Math.round(1115 * fDem);
                                     const turnosVal = Number(ag.turnos || 0);
                                     const maxRef = Math.max(topeIndiv * 1.25, turnosVal * 1.08, 1);
                                     const pctWidth = Math.min(100, Math.round((turnosVal / maxRef) * 100));
@@ -2053,14 +2055,14 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
                                 📊 Gráfico 1: Turnos Otorgados por Colaboradora vs. Demanda Exigida y Objetivos Individuales
                             </div>
                             <div style={{ fontSize: '0.68rem', color: '#64748B', marginBottom: '10px' }}>
-                                Comparativa de producción real frente a Piso (Esc. 1), Meta (Esc. 5) y Tope (Esc. 10) según el % de Demanda Exigida de cada operadora (100% Senior vs. 50% Curva Érica Leal con cobro al 100%).
+                                Comparativa de producción real frente a Piso (Esc. 1: 800), Meta (Esc. 5: 940) y Tope (Esc. 10: 1.115) con 100% de exigencia equitativa para las 4 operadoras.
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 {liquidacion.agentes.map(ag => {
                                     const fDem = ag.factorDemanda || 1.0;
-                                    const pisoIndiv = Math.round(763 * fDem);
-                                    const metaIndiv = Math.round(922 * fDem);
-                                    const topeIndiv = Math.round(1081 * fDem);
+                                    const pisoIndiv = Math.round(800 * fDem);
+                                    const metaIndiv = Math.round(940 * fDem);
+                                    const topeIndiv = Math.round(1115 * fDem);
                                     const turnosVal = Number(ag.turnos || 0);
                                     const maxRef = Math.max(topeIndiv * 1.25, turnosVal * 1.08, 1);
                                     const pctWidth = Math.min(100, Math.round((turnosVal / maxRef) * 100));

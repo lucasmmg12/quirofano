@@ -84,7 +84,7 @@ export function exportIncentivosContactCenterPdf({
     doc.setTextColor(30, 41, 59);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.8);
-    const introText = `Se eleva a la Direccion de Recursos Humanos (Carolina Balaguer / Lic. Sergio Femenia) la certificacion de productividad del Contact Center para ${periodLabel} (${periodo}). Todas las operadoras activas perciben el 100% del Piso Historico Garantizado (${formatCurrency(BASE_GARANTIZADA_HISTORICA)}) y el 100% del valor de cada escalon alcanzado (Techo: ${formatCurrency(TECHO_MAXIMO_TOTAL)}). En el caso de Erica Leal (Curva de Aprendizaje), cobra el 100% de todas las bolsas con una demanda exigida del 50% respecto al objetivo individual del resto del equipo.`;
+    const introText = `Se eleva a la Direccion de Recursos Humanos (Carolina Balaguer / Lic. Sergio Femenia) la certificacion de productividad del Contact Center para ${periodLabel} (${periodo}). Todas las operadoras activas perciben el 100% del Piso Historico Garantizado (${formatCurrency(BASE_GARANTIZADA_HISTORICA)}) y el 100% del valor de cada escalon alcanzado (Techo: ${formatCurrency(TECHO_MAXIMO_TOTAL)}), con exigencia 100% equitativa para las 4 integrantes del equipo.`;
     const splitIntro = doc.splitTextToSize(introText, contentWidth - 6);
     doc.text(splitIntro, margin + 3, y + 4.5);
 
@@ -96,7 +96,7 @@ export function exportIncentivosContactCenterPdf({
         {
             title: 'BOLSA 1: CONVERSACIONES (50%)',
             value: `${Number(liquidacion.bolsaMensajes?.total || 0).toLocaleString('es-AR')} convs`,
-            sub: `Escalon ${liquidacion.bolsaMensajes?.escalon || 0}/10 (+${formatCurrency(liquidacion.bolsaMensajes?.montoPorFte || 0)}/ag.) | Meta: 7.500`,
+            sub: `Escalon ${liquidacion.bolsaMensajes?.escalon || 0}/10 (+${formatCurrency(liquidacion.bolsaMensajes?.montoPorFte || 0)}/ag.) | Meta: 10.500 (Piso 9.500)`,
             bg: [240, 249, 255],
             border: [186, 230, 253],
             color: [2, 132, 199]
@@ -104,7 +104,7 @@ export function exportIncentivosContactCenterPdf({
         {
             title: 'BOLSA 2: TURNOS SALUS (25%)',
             value: `${Number(liquidacion.bolsaTurnos?.total || 0).toLocaleString('es-AR')} turnos eq.`,
-            sub: `Meta Indiv. 100%: 922 (Piso 763) | Exig. 50%: 461 (Piso 382)`,
+            sub: `Meta Indiv. (100%): 940 turnos (Piso 800 / Tope 1.115)`,
             bg: [250, 245, 255],
             border: [233, 213, 255],
             color: [124, 58, 237]
@@ -152,9 +152,9 @@ export function exportIncentivosContactCenterPdf({
     const agentes = liquidacion.agentes || [];
     const tableBody = agentes.map((ag) => {
         const fDemanda = ag.factorDemanda || 1.0;
-        const pisoIndiv = Math.round(763 * fDemanda);
-        const metaIndiv = Math.round(922 * fDemanda);
-        const topeIndiv = Math.round(1081 * fDemanda);
+        const pisoIndiv = Math.round(800 * fDemanda);
+        const metaIndiv = Math.round(940 * fDemanda);
+        const topeIndiv = Math.round(1115 * fDemanda);
         const cobroPct = `${Math.round((ag.fte || 1) * 100)}%`;
         const demandaPct = `${Math.round(fDemanda * 100)}%`;
 
@@ -266,9 +266,9 @@ export function exportIncentivosContactCenterPdf({
     agentes.forEach((ag, idx) => {
         const rowY = y + 8 + idx * chart1RowH;
         const fDemanda = ag.factorDemanda || 1.0;
-        const pisoIndiv = Math.round(763 * fDemanda);
-        const metaIndiv = Math.round(922 * fDemanda);
-        const topeIndiv = Math.round(1081 * fDemanda);
+        const pisoIndiv = Math.round(800 * fDemanda);
+        const metaIndiv = Math.round(940 * fDemanda);
+        const topeIndiv = Math.round(1115 * fDemanda);
         const turnosVal = Number(ag.turnos || 0);
         const maxScale = Math.max(topeIndiv * 1.25, turnosVal * 1.08, 1);
 

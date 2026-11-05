@@ -13,8 +13,8 @@ const SALUS_AGENTS_MAP = {
     'AGUILERA, ANA DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
     'AGUILERA, DANIELA ROMINA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
     'AGUILERA, DANIELA': { id: 'daguilera', name: 'Daniela Aguilera', shortName: 'Daniela', role: 'Senior' },
-    'LEAL, ERICA': { id: 'eleal', name: 'Erica Leal', shortName: 'Erica', role: 'Curva 50%' },
-    'LEAL,ERICA': { id: 'eleal', name: 'Erica Leal', shortName: 'Erica', role: 'Curva 50%' }
+    'LEAL, ERICA': { id: 'eleal', name: 'Erica Leal', shortName: 'Erica', role: 'Senior' },
+    'LEAL,ERICA': { id: 'eleal', name: 'Erica Leal', shortName: 'Erica', role: 'Senior' }
 };
 
 export const INCENTIVO_TIERS = {
@@ -24,19 +24,19 @@ export const INCENTIVO_TIERS = {
         mensajes: {
             peso: 0.50,
             maxMonto: 69735.29,
-            base: 6500,
-            meta: 7500,
-            tope: 8500,
+            base: 9500,
+            meta: 10500,
+            tope: 11500,
             paso: 200,
             montoPaso: 6973.53
         },
         turnos: {
             peso: 0.25,
             maxMonto: 34867.65,
-            base: 3052,
-            meta: 3687,
-            tope: 4324,
-            paso: 127,
+            base: 3200,
+            meta: 3760,
+            tope: 4460,
+            paso: 140,
             montoPaso: 3486.76
         },
         asistencia: {
@@ -420,8 +420,8 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         let estado = 'ACTIVA';
         let fte = 1.0;
         if (ag.id === 'eleal') {
-            fte = 1.0; // Cobra el 100% de todo; su demanda exigida es el 50%
-            estado = 'CURVA_APRENDIZAJE';
+            fte = 1.0;
+            estado = periodoIso <= '2026-10' ? 'CURVA_APRENDIZAJE' : 'ACTIVA';
         } else if (ag.id === 'macosta') {
             if (periodoIso >= '2026-09') {
                 fte = periodoIso === '2026-09' ? 0.2 : 0;
@@ -430,7 +430,7 @@ export async function getIncentivosContactCenter(pool, { periodo = null } = {}) 
         }
 
         const dotacion = 4;
-        const factorDemanda = ag.id === 'eleal' ? 0.5 : 1.0;
+        const factorDemanda = (periodoIso <= '2026-10' && ag.id === 'eleal') ? 0.5 : 1.0;
         const escalonTurnosIndiv = calculateEscalon(ag.turnos, 'turnos', dotacion, factorDemanda);
         const turnosProyIndiv = Math.round(ag.turnos * factorHabiles);
         const escalonTurnosProyIndiv = calculateEscalon(turnosProyIndiv, 'turnos', dotacion, factorDemanda);

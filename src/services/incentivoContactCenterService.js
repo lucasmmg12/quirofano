@@ -20,9 +20,9 @@ export const INCENTIVO_CONFIG = {
             alcance: 'Grupal',
             ponderacion: 0.50,
             maxMonto: 69735.29,
-            base: 6500,
-            meta: 7500,
-            tope: 8500,
+            base: 9500,
+            meta: 10500,
+            tope: 11500,
             paso: 200,
             montoPaso: 6973.53,
             unidad: 'conversaciones'
@@ -32,10 +32,10 @@ export const INCENTIVO_CONFIG = {
             alcance: 'Individual (Obj. Grupal ÷ 4)',
             ponderacion: 0.25,
             maxMonto: 34867.65,
-            base: 3052,
-            meta: 3687,
-            tope: 4324,
-            paso: 127,
+            base: 3200,
+            meta: 3760,
+            tope: 4460,
+            paso: 140,
             montoPaso: 3486.76,
             unidad: 'turnos'
         },
@@ -278,16 +278,15 @@ export function calcularLiquidacionCompleta({
         const fte = Math.max(0, Math.min(1.0, Number(fteCustom)));
 
         // Piso Garantizado (Base):
-        // Érica Leal y todos los agentes activos / en curva de aprendizaje cobran el piso garantizado histórico inamovible ($139.470,59).
-        // El FTE proporcional (ej: 50% en curva de aprendizaje) aplica a las bolsas de incentivos variables (Msjs, Turnos, Asistencia).
-        // Únicamente se prorratea el piso garantizado por FTE en caso de bajas definitivas por días trabajados (ej: Antonella Acosta en septiembre).
-        const factorDemanda = ag.id === 'eleal' ? 0.5 : 1.0;
+        // Todas las agentes activas cobran el piso garantizado histórico inamovible ($139.470,59).
+        // A partir de Noviembre 2026 (>= 2026-11), Érica Leal tiene 100% de exigencia igual que todas las demás operadoras.
+        const factorDemanda = (periodo && periodo <= '2026-10' && ag.id === 'eleal') ? 0.5 : 1.0;
         const factorPago = (ag.id === 'eleal' || ag.estado !== 'BAJA') ? 1.0 : fte;
         const base = BASE_GARANTIZADA_HISTORICA * factorPago;
 
         const montoMensajes = escalonMensajes.monto * factorPago;
 
-        // Bolsa Turnos: individual pero con objetivo grupal dividido en las 4 operadoras (Piso 763 / Meta 922)
+        // Bolsa Turnos: individual pero con objetivo grupal dividido en las 4 operadoras (Piso 800 / Meta 940 / Tope 1.115)
         const escalonTurnosIndiv = calculateEscalon(ag.turnos || 0, 'turnos', dotacionEvaluada, factorDemanda);
         const montoTurnos = escalonTurnosIndiv.monto * factorPago;
 
@@ -491,7 +490,7 @@ export async function fetchHistoricoComparativoIncentivos(periodo = '2026-10') {
                 varCurr,
                 varDiff,
                 ftePrev: aPrev.fte ?? 1.0,
-                fteCurr: aCurr.fte ?? (id === 'macosta' ? 0 : id === 'eleal' ? 0.5 : 1.0),
+                fteCurr: aCurr.fte ?? (id === 'macosta' ? 0 : 1.0),
                 estadoPrev: aPrev.estado || 'ACTIVA',
                 estadoCurr: aCurr.estado || (id === 'macosta' ? 'BAJA' : 'ACTIVA')
             };
