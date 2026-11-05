@@ -14,7 +14,7 @@ import UserProfileModal from './components/UserProfileModal.jsx';
 import { getTodayISO } from './utils/searchUtils';
 import { sendWhatsAppMessage, formatOrderForWhatsApp } from './services/builderbotApi';
 import { createOrder, markOrderPrinted, markOrderSent, fetchOrderHistory } from './services/dataService';
-import { getCurrentUser, logout as authLogout, verifyActiveUserSession, reclaimCurrentUserSession } from './services/authService';
+import { getCurrentUser, logout as authLogout, verifyActiveUserSession, reclaimCurrentUserSession, DEFAULT_GEO_EXEMPT_USERS, getGeoExemptUsers, isUserGeoExempt } from './services/authService';
 import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
 import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor, MapPin, MapPinOff, ShieldCheck, RefreshCw, Lock } from 'lucide-react';
@@ -503,6 +503,13 @@ function App({ currentUser, onLogout, onUserUpdated }) {
     // Estado de geolocalización obligatoria por Ciberseguridad
     const [geoVerifyFeedback, setGeoVerifyFeedback] = useState(null);
     const [geoModalShake, setGeoModalShake] = useState(false);
+    const [geoExemptUsers, setGeoExemptUsers] = useState(DEFAULT_GEO_EXEMPT_USERS);
+
+    useEffect(() => {
+        getGeoExemptUsers().then(list => {
+            if (Array.isArray(list)) setGeoExemptUsers(list);
+        }).catch(() => {});
+    }, [currentUser?.usuario]);
 
     const handleManualVerifyGeolocation = useCallback(async () => {
         setGeoVerifyFeedback(null);
@@ -1082,7 +1089,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
     return (
         <div className="app">
             {/* Bloqueo obligatorio por Ciberseguridad si la ubicación del navegador no está habilitada */}
-            {telemetryState.geo_checked && telemetryState.geo_permission !== 'granted' && !['amedawar', 'amedawar@sanatorioargentino.com.ar', 'bromero', 'bromero@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim()) && (
+            {telemetryState.geo_checked && telemetryState.geo_permission !== 'granted' && !isUserGeoExempt(currentUser?.usuario, geoExemptUsers) && (
                 <div className="no-print" style={{
                     position: 'fixed', inset: 0, zIndex: 999998,
                     background: 'rgba(15, 23, 42, 0.84)', backdropFilter: 'blur(8px)',

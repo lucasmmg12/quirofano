@@ -7,7 +7,7 @@ import {
     ShieldCheck, Users, UserPlus, KeyRound, Smartphone, QrCode, Search,
     RefreshCw, CheckCircle2, AlertTriangle, Edit3, RotateCcw,
     Phone, Mail, Shield, Check, X, Loader2, ChevronDown, ChevronUp,
-    MapPin, Globe, Monitor, Activity, Clock, FileDown, Copy, Printer, ExternalLink,
+    MapPin, MapPinOff, Globe, Monitor, Activity, Clock, FileDown, Copy, Printer, ExternalLink,
     Camera, Inbox, CheckCircle, XCircle, Database
 } from 'lucide-react';
 import SalusSyncArchitectureTab from './SalusSyncArchitectureTab.jsx';
@@ -21,6 +21,10 @@ import {
     validateStrictCellphone,
     normalizeLegacyPhoneTo10Digits,
     uploadAvatarFileOnly,
+    DEFAULT_GEO_EXEMPT_USERS,
+    getGeoExemptUsers,
+    setUserGeoExempt,
+    isUserGeoExempt,
 } from '../services/authService';
 import { logAction, fetchUserCybersecurityProfile } from '../services/auditService';
 import { requestAndRecordGeolocation, subscribeTelemetry } from '../lib/activityTracker';
@@ -124,6 +128,14 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
     const [myTelemetry, setMyTelemetry] = useState(null);
     const [refreshingGeo, setRefreshingGeo] = useState(false);
 
+    // Usuarios exentos de geolocalización obligatoria (solo editable por rol admin / lmarinero)
+    const [geoExemptUsers, setGeoExemptUsers] = useState(DEFAULT_GEO_EXEMPT_USERS);
+    const [togglingGeoUser, setTogglingGeoUser] = useState(null);
+    const isCurrentAdmin = useMemo(() => {
+        const cleanU = (currentUser?.usuario || '').toLowerCase().trim().split('@')[0];
+        return currentUser?.rol === 'admin' || cleanU === 'lmarinero';
+    }, [currentUser]);
+
     // Modal Crear / Editar Usuario
     const [editingUser, setEditingUser] = useState(null);
     const [savingUser, setSavingUser] = useState(false);
@@ -149,12 +161,16 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
     const loadUsers = useCallback(async () => {
         try {
             setLoading(true);
-            const [usersData, reqsData] = await Promise.all([
+            const [usersData, reqsData, exemptData] = await Promise.all([
                 adminListUsers(),
                 adminListAccessRequests().catch(() => []),
+                getGeoExemptUsers().catch(() => DEFAULT_GEO_EXEMPT_USERS),
             ]);
             setUsers(usersData);
             setAccessRequests(reqsData || []);
+            if (Array.isArray(exemptData)) {
+                setGeoExemptUsers(exemptData);
+            }
         } catch (err) {
             console.error('[UserSecurityAdminPanel] Error cargando usuarios:', err);
             addToast?.('Error al cargar usuarios: ' + err.message, 'error');
@@ -252,6 +268,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
             if (statusFilter === 'active' && !u.activo) return false;
             if (statusFilter === 'inactive' && u.activo) return false;
             if (statusFilter === 'pending_pwd' && !u.must_change_password) return false;
+            if (statusFilter === 'geo_exempt' && !isUserGeoExempt(u.usuario, geoExemptUsers)) return false;
 
             if (!q) return true;
             return (
@@ -261,7 +278,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                 (u.telefono_whatsapp || '').toLowerCase().includes(q)
             );
         });
-    }, [users, search, roleFilter, statusFilter]);
+    }, [users, search, roleFilter, statusFilter, geoExemptUsers]);
 
     const handleOpenCreate = () => {
         setEditingUser({
@@ -276,6 +293,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
             activo: true,
             must_change_password: true,
             mfa_enabled: true,
+            geo_exempt: false,
             dni: '',
             area_sector: '',
             cargo: '',
@@ -296,11 +314,41 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
             activo: Boolean(u.activo),
             must_change_password: Boolean(u.must_change_password),
             mfa_enabled: Boolean(u.mfa_enabled),
+            geo_exempt: isUserGeoExempt(u.usuario, geoExemptUsers),
             dni: u.dni || '',
             area_sector: u.area_sector || '',
             cargo: u.cargo || '',
             avatar_url: u.avatar_url || '',
         });
+    };
+
+    const handleToggleGeoExempt = async (u) => {
+        if (!isCurrentAdmin) {
+            addToast?.('Solo los usuarios Administradores pueden modificar el permiso de ubicación', 'error');
+            return;
+        }
+        const currentlyExempt = isUserGeoExempt(u.usuario, geoExemptUsers);
+        const nextExempt = !currentlyExempt;
+        try {
+            setTogglingGeoUser(u.usuario);
+            const nextList = await setUserGeoExempt(u.usuario, nextExempt, currentUser?.usuario || 'admin');
+            setGeoExemptUsers(nextList);
+            await logAction('admin_toggle_geo_exempt', {
+                admin: currentUser?.usuario,
+                target_usuario: u.usuario,
+                geo_exempt: nextExempt,
+            });
+            addToast?.(
+                nextExempt
+                    ? `📍 Permiso sin ubicación ACTIVADO para ${u.nombre} (@${u.usuario})`
+                    : `🔒 Ubicación obligatoria REACTIVADA para ${u.nombre} (@${u.usuario})`,
+                nextExempt ? 'success' : 'info'
+            );
+        } catch (err) {
+            addToast?.('Error cambiando permiso de ubicación: ' + err.message, 'error');
+        } finally {
+            setTogglingGeoUser(null);
+        }
     };
 
     const handleEditAvatarChange = async (e) => {
@@ -339,12 +387,21 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                 mfa_enabled: Boolean(editingUser.mfa_enabled),
                 activo: Boolean(editingUser.activo),
             });
+            if (isCurrentAdmin && editingUser.geo_exempt !== undefined) {
+                const updatedExempt = await setUserGeoExempt(
+                    editingUser.usuario,
+                    Boolean(editingUser.geo_exempt),
+                    currentUser?.usuario || 'admin'
+                );
+                setGeoExemptUsers(updatedExempt);
+            }
             await logAction(editingUser.id ? 'admin_update_user' : 'admin_create_user', {
                 admin: currentUser?.usuario,
                 target_usuario: editingUser.usuario,
                 rol: editingUser.rol,
                 must_change_password: Boolean(editingUser.must_change_password),
                 mfa_enabled: Boolean(editingUser.mfa_enabled),
+                geo_exempt: Boolean(editingUser.geo_exempt),
                 activo: Boolean(editingUser.activo),
             });
             addToast?.(
@@ -726,6 +783,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                             <option value="active">Solo Usuarios Activos</option>
                             <option value="inactive">Usuarios Dados de Baja</option>
                             <option value="pending_pwd">Pendientes de Cambio de Clave</option>
+                            <option value="geo_exempt">Exentos de Ubicación ({geoExemptUsers.length})</option>
                         </select>
                     </div>
                 ) : (
@@ -840,6 +898,19 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                                                         BAJA
                                                                     </span>
                                                                 )}
+                                                                {isUserGeoExempt(u.usuario, geoExemptUsers) && (
+                                                                    <span
+                                                                        title="Habilitado para usar el sistema sin pedir ubicación en navegador/PC"
+                                                                        style={{
+                                                                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                                            fontSize: '0.65rem', padding: '2px 7px', borderRadius: '6px',
+                                                                            background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0',
+                                                                            fontWeight: 700,
+                                                                        }}
+                                                                    >
+                                                                        <MapPinOff size={11} /> Sin Ubicación
+                                                                    </span>
+                                                                )}
                                                                 <span style={{
                                                                     display: 'inline-flex', alignItems: 'center', gap: '3px',
                                                                     fontSize: '0.68rem', padding: '2px 7px', borderRadius: '999px',
@@ -951,7 +1022,35 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                                     style={{ padding: '12px 16px', textAlign: 'right' }}
                                                     onClick={e => e.stopPropagation()}
                                                 >
-                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                                        {isCurrentAdmin && (() => {
+                                                            const exempt = isUserGeoExempt(u.usuario, geoExemptUsers);
+                                                            const isBusy = togglingGeoUser === u.usuario;
+                                                            return (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isBusy}
+                                                                    onClick={() => handleToggleGeoExempt(u)}
+                                                                    title={
+                                                                        exempt
+                                                                            ? 'Permiso activo: Puede entrar sin pedir ubicación (ej. PC de Box sin GPS). Clic para desactivar y exigir ubicación.'
+                                                                            : 'Activar permiso para entrar sin pedir ubicación en navegador/PC'
+                                                                    }
+                                                                    style={{
+                                                                        padding: '6px 10px', borderRadius: '8px',
+                                                                        border: `1px solid ${exempt ? '#A7F3D0' : '#CBD5E1'}`,
+                                                                        background: exempt ? '#ECFDF5' : '#F8FAFC',
+                                                                        color: exempt ? '#047857' : '#475569',
+                                                                        fontSize: '0.73rem', fontWeight: 700,
+                                                                        cursor: isBusy ? 'wait' : 'pointer',
+                                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                                    }}
+                                                                >
+                                                                    {exempt ? <MapPinOff size={13} /> : <MapPin size={13} />}
+                                                                    {exempt ? 'Sin Ubicación: SÍ' : 'Sin Ubicación'}
+                                                                </button>
+                                                            );
+                                                        })()}
                                                         <button
                                                             onClick={() => handleOpenEdit(u)}
                                                             title="Editar usuario, rol y teléfono WhatsApp"
@@ -1972,6 +2071,16 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                     />
                                     <span>Requerir Autenticación Multifactor 2FA (WhatsApp / Google Authenticator)</span>
                                 </label>
+                                {isCurrentAdmin && (
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', fontWeight: 600, color: '#047857', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(editingUser.geo_exempt)}
+                                            onChange={e => setEditingUser(prev => ({ ...prev, geo_exempt: e.target.checked }))}
+                                        />
+                                        <span>Permitir acceso sin pedir Ubicación GPS (Exento para PCs de Box / sin servicio de ubicación)</span>
+                                    </label>
+                                )}
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', fontWeight: 600, color: '#1E293B', cursor: 'pointer' }}>
                                     <input
                                         type="checkbox"

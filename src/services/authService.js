@@ -650,6 +650,71 @@ export function logout() {
 // USER MANAGEMENT & ADMIN ABM
 // =============================================
 
+export const DEFAULT_GEO_EXEMPT_USERS = ['amedawar', 'bromero'];
+
+export function normalizeUsernameKey(usuario) {
+    return String(usuario || '').toLowerCase().trim().split('@')[0];
+}
+
+export function isUserGeoExempt(usuario, exemptList = DEFAULT_GEO_EXEMPT_USERS) {
+    const key = normalizeUsernameKey(usuario);
+    if (!key) return false;
+    const list = Array.isArray(exemptList) ? exemptList.map(normalizeUsernameKey) : DEFAULT_GEO_EXEMPT_USERS;
+    return list.includes(key);
+}
+
+export async function getGeoExemptUsers() {
+    try {
+        const { data, error } = await supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', 'geo_exempt_users')
+            .maybeSingle();
+
+        if (!error && data && data.value) {
+            const parsed = JSON.parse(data.value);
+            if (Array.isArray(parsed)) {
+                return Array.from(new Set(parsed.map(normalizeUsernameKey).filter(Boolean)));
+            }
+        }
+    } catch (e) {
+        console.warn('[AuthService] Error leyendo geo_exempt_users:', e);
+    }
+    return [...DEFAULT_GEO_EXEMPT_USERS];
+}
+
+export async function setUserGeoExempt(usuario, isExempt, adminUsername = 'admin') {
+    const targetKey = normalizeUsernameKey(usuario);
+    if (!targetKey) throw new Error('Usuario inválido');
+
+    const currentList = await getGeoExemptUsers();
+    const set = new Set(currentList.map(normalizeUsernameKey).filter(Boolean));
+    if (isExempt) {
+        set.add(targetKey);
+    } else {
+        set.delete(targetKey);
+    }
+    const nextList = Array.from(set);
+
+    const { error } = await supabase
+        .from('app_config')
+        .upsert(
+            {
+                key: 'geo_exempt_users',
+                value: JSON.stringify(nextList),
+                label: 'Usuarios exentos de geolocalización obligatoria',
+                category: 'security',
+                is_secret: false,
+                updated_at: new Date().toISOString(),
+                updated_by: adminUsername || 'admin',
+            },
+            { onConflict: 'key' }
+        );
+
+    if (error) throw new Error(error.message);
+    return nextList;
+}
+
 export async function adminListUsers() {
     const { data, error } = await supabase.rpc('admin_list_users');
     if (error) throw new Error(error.message);
