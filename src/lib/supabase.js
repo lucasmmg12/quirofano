@@ -34,7 +34,12 @@ const secureFetch = async (url, options = {}) => {
     if (isRestOrRpc) {
         try {
             const headers = new Headers(options.headers || {});
-            const rawSession = window.localStorage?.getItem('admqui_session') || window.sessionStorage?.getItem('admqui_session');
+            const rawSession =
+                window.localStorage?.getItem('admqui_session') ||
+                window.sessionStorage?.getItem('admqui_session') ||
+                window.sessionStorage?.getItem('labportal_session_aguero') ||
+                window.sessionStorage?.getItem('labportal_session_cedap') ||
+                window.sessionStorage?.getItem('labportal_session_cuyo');
             const deviceToken = window.localStorage?.getItem('admqui_trusted_device_token') || '';
             let sessionToken = '';
             if (rawSession) {

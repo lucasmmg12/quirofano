@@ -11,6 +11,7 @@
  */
 import React, { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { encodeTransportPassword, getOrCreateDeviceToken, generateSessionToken, checkOrClaimUserSession } from '../services/authService';
 import { Microscope, Lock, User, Eye, EyeOff, LogOut, Loader2 } from 'lucide-react';
 import PublicLabView from './PublicLabView';
 
@@ -178,12 +179,17 @@ function LabLoginScreen({ config, onLogin }) {
         setError('');
 
         try {
-            const { data, error: rpcError } = await supabase.rpc('verify_login', {
+            const deviceToken = getOrCreateDeviceToken();
+            const encodedPassword = await encodeTransportPassword(password);
+
+            const { data, error: rpcError } = await supabase.rpc('verify_login_v2', {
                 p_usuario: config.usuario,
-                p_password: password,
+                p_password: encodedPassword,
+                p_device_token: deviceToken,
             });
 
             if (rpcError) {
+                console.error('[LabPortal] RPC verify_login_v2 error:', rpcError);
                 setError('Error de conexión. Intente nuevamente.');
                 triggerShake();
                 setLoading(false);
@@ -199,11 +205,26 @@ function LabLoginScreen({ config, onLogin }) {
             }
 
             const user = data[0];
+            if (user.activo === false) {
+                setError('Esta cuenta de laboratorio se encuentra deshabilitada.');
+                triggerShake();
+                setLoading(false);
+                return;
+            }
+
+            const newSessionToken = generateSessionToken();
+            try {
+                await checkOrClaimUserSession(user.id, newSessionToken, true);
+            } catch {
+                // No bloquear login del laboratorio si falla el registro opcional de sesión
+            }
+
             const session = {
                 id: user.id,
                 usuario: user.usuario,
                 nombre: user.nombre,
                 iniciales: user.iniciales || config.shortName.charAt(0),
+                sessionToken: newSessionToken,
                 loginAt: new Date().toISOString(),
             };
 
