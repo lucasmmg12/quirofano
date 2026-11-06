@@ -1010,7 +1010,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
             });
             // Realtime se encarga de agregar al state
             setMessageText('');
-            addToast?.('Imagen enviada', 'success');
+
         } catch (err) {
             console.error('Error sending image:', err);
             addToast?.('Error enviando imagen', 'error');
@@ -1080,7 +1080,7 @@ export default function MessagingPanel({ addToast, currentUser }) {
                 senderName: currentUser?.nombre || currentUser?.usuario || 'Sistema ADM-QUI',
             });
             // Realtime se encarga de agregar al state
-            addToast?.('Audio enviado', 'success');
+
         } catch (err) {
             console.error('Error sending audio:', err);
             addToast?.('Error enviando audio', 'error');

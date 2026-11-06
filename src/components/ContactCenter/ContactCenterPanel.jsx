@@ -600,19 +600,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     return String(b.id || '').localeCompare(String(a.id || ''));
                 });
             });
-
-            if (addToast) {
-                const label = isNote 
-                    ? `Nota interna registrada por ${activeAgent.name}` 
-                    : mediaType === 'audio' 
-                        ? `Audio enviado por ${activeAgent.name}` 
-                        : mediaType === 'image' 
-                            ? `Imagen enviada por ${activeAgent.name}` 
-                            : mediaUrl 
-                                ? `Archivo enviado por ${activeAgent.name}` 
-                                : `Mensaje WhatsApp enviado por ${activeAgent.name}`;
-                addToast(label, 'success');
-            }
         } catch (err) {
             console.error(err);
             if (addToast) addToast(err.message || 'Error al enviar', 'error');
@@ -672,9 +659,6 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 });
             });
 
-            if (addToast) {
-                addToast(`Plantilla "${template?.name || 'Meta'}" enviada por ${activeAgent.name} ✅`, 'success');
-            }
             return { success: true, newMsg };
         } catch (err) {
             console.error('Error enviando plantilla en Contact Center:', err);

@@ -1106,7 +1106,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
 
                 handleRemoveSelectedFile();
                 setInputText('');
-                addToast?.('Archivo enviado con éxito', 'success');
+
             } catch (err) {
                 console.error('Error enviando archivo adjunto:', err);
                 addToast?.(`Error al enviar adjunto: ${err.message || 'Error'}`, 'error');
@@ -1226,7 +1226,7 @@ export default function ChatWindow({ open, onClose, patientName, patientPhone, d
                 lineId: effectiveLine,
             });
             // Realtime se encarga de agregar al state
-            addToast?.('Audio enviado', 'success');
+
         } catch (err) {
             console.error('Error sending audio:', err);
             addToast?.('Error enviando audio', 'error');
