@@ -255,17 +255,33 @@ function extractCleanConsultationMotive(text: string | null | undefined): string
 }
 
 // =============================================
-// DETECCIÓN INFALIBLE DE MENÚ / VOLVER ATRÁS (TOLERANTE A TILDES Y RÁFAGAS)
+// LIMPIEZA DE PLANTILLAS COPIADAS DEL BOT Y DETECCIÓN DE MENÚ / VOLVER ATRÁS
 // =============================================
+export function stripBotTemplatePrompts(text: string | null | undefined): string {
+    if (!text) return '';
+    return String(text)
+        .replace(/¡?hola!?[^\r\n]*te\s+ayudamos\s+a\s+coordinar\s+tu\s+(?:nuevo\s+)?turno\s+m[eé]dico[^\r\n]*/gi, ' ')
+        .replace(/ind[ií]queme\s+los\s+siguientes\s+datos\s+del\s+paciente\s*:/gi, ' ')
+        .replace(/[•\-*]?\s*¿?con\s+qu[eé]\s+\*?profesional\*?\s+o\s+para\s+qu[eé]\s+\*?especialidad\s+m[eé]dica\*?\s+solicit[aá]s\s+la\s+atenci[oó]n\??/gi, ' ')
+        .replace(/[•\-*]?\s*¿?el\s+turno\s+es\s+para\s+vos\s+o\s+para\s+un\s+familiar\s*\/\s*otra\s+persona\??/gi, ' ')
+        .replace(/[•\-*]?\s*preferencia\s+de\s+\*?d[ií]as\s+y\s+horarios\*?\s*\(ma[nñ]ana\s+o\s+tarde\)/gi, ' ')
+        .replace(/🔙\s*\*?volver:\*?[^\r\n]*/gi, ' ')
+        .replace(/👤\s*\*?agente:\*?[^\r\n]*/gi, ' ')
+        .trim();
+}
+
 export function isNavigationBackOrMenu(text: string | null | undefined): boolean {
     if (!text) return false;
-    const clean = text.toLowerCase().trim();
-    const norm = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const stripped = stripBotTemplatePrompts(text).toLowerCase().trim();
+    if (!stripped) return false;
+    const norm = stripped.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const wordCount = norm.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 6) {
+        return /\b(?:volver|regresar|ir)\s+(?:al\s+|a\s+)?(?:menu\s+principal|menu|inicio)\b/i.test(norm);
+    }
     return (
-        /\b(menu|atras|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar)\b/i.test(norm) ||
-        /^(volver|atras|atrs|regresar|menu|inicio|reiniciar|cancelar|opciones|salir)[!.\s]*$/im.test(norm) ||
-        /\b(?:volver|regresar|ir)\s+(?:al\s+|a\s+)?(?:menu|inicio|atras)\b/i.test(norm) ||
-        clean.includes('menú') || clean.includes('menu') || clean.includes('atrás') || clean.includes('atras') || clean.includes('volver')
+        /^(?:menu|menu\s+principal|atras|atrs|volver|regresar|inicio|reiniciar|comenzar|empezar|opciones|salir)[!.,?\s]*$/i.test(norm) ||
+        /\b(?:volver|regresar|ir)\s+(?:al\s+|a\s+)?(?:menu|inicio|atras)\b/i.test(norm)
     );
 }
 
@@ -879,6 +895,27 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
             content = docFileName;
         }
 
+        // Filtrar mensajes sintéticos placeholder de BuilderBot Cloud / Meta Cloud API
+        // ("\uFEFFMmm, entiendo. Continúa." / "\uFEFFHmm, I see. Go on.")
+        // Se disparan cuando el paciente envía un álbum de múltiples fotos (contenedor albumMessage)
+        // o una reacción / evento sin cuerpo de texto estándar en Meta Cloud API.
+        const isSyntheticBuilderBotPlaceholder =
+            typeof content === 'string' &&
+            !mediaUrl &&
+            mediaType === 'text' &&
+            (
+                content.charCodeAt(0) === 0xFEFF ||
+                /^\uFEFF?\s*(mmm,\s*entiendo\.\s*contin[uú]a\.|hmm,\s*i\s*see\.\s*go\s*on\.)\s*$/i.test(content)
+            );
+
+        if (isSyntheticBuilderBotPlaceholder) {
+            console.log(`[webhook] ⏭️ Ignorando placeholder sintético de BuilderBot (${JSON.stringify(content)}) de ${phone} en ${lineId}`);
+            return new Response(
+                JSON.stringify({ ok: true, skipped: true, reason: 'builderbot_synthetic_placeholder', phone, lineId }),
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         // =============================================
         // PERSISTIR MEDIA EN SUPABASE STORAGE
         // Descarga el archivo temporal y lo sube al bucket
@@ -1160,9 +1197,11 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                     .limit(1)
                     .maybeSingle();
 
-                const lastOutgoingTime = lastOutgoing?.created_at 
-                    ? new Date(lastOutgoing.created_at).toISOString() 
-                    : new Date(Date.now() - 60000).toISOString();
+                const lastOutgoingMs = lastOutgoing?.created_at ? new Date(lastOutgoing.created_at).getTime() : (Date.now() - 60000);
+                const isBumpOnlyMsg = /^[\.\?\!\s]+$|^(hola\??|buenas\??|hay\s+alguien\??)$/i.test((content || '').trim());
+                // Ventana de ráfaga: 10 minutos para mensajes normales; si el paciente envía un "." recordatorio y había mensajes sin responder tras el último outgoing, incluirlos.
+                const burstWindowMs = isBumpOnlyMsg ? lastOutgoingMs : Math.max(lastOutgoingMs, Date.now() - 10 * 60 * 1000);
+                const lastOutgoingTime = new Date(burstWindowMs).toISOString();
 
                 const { data: burstMessages } = await supabase
                     .from('whatsapp_messages')
@@ -1183,6 +1222,10 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                         if (m.id === currentMsgId && audioTranscriptionText) {
                             fragments.push(audioTranscriptionText);
                         } else if (t && !t.startsWith('[image]') && !t.startsWith('[document]') && !t.startsWith('[audio]') && !t.startsWith('[voice]')) {
+                            // Omitir puntos aislados de recordatorio si ya hay un fragmento previo con texto real
+                            if (fragments.length > 0 && /^[\.\?\!\s]+$/.test(t)) {
+                                continue;
+                            }
                             fragments.push(t);
                         }
                         if (m.media_url && !consolidatedMediaUrl) {
@@ -1191,7 +1234,7 @@ DIRECTIVAS CLÍNICAS OBLIGATORIAS:
                         }
                     }
                     const lastFragment = fragments[fragments.length - 1] || '';
-                    if (isNavigationBackOrMenu(lastFragment) || fragments.some(f => isNavigationBackOrMenu(f))) {
+                    if (isNavigationBackOrMenu(lastFragment)) {
                         consolidatedText = 'Menú';
                     } else {
                         consolidatedText = fragments.join('\n').trim();
@@ -2284,6 +2327,35 @@ let cachedInactivityTimeoutMinutes = 15;
 let currentQueueCount = 0;
 let lastQueueCheck = 0;
 
+let cachedDoctorParameters: {
+    rows: any[];
+    timestamp: number;
+} | null = null;
+
+/**
+ * Obtiene y cachea en memoria el padrón de profesionales de contact_center_doctor_parameters (TTL 5 min).
+ * Evita realizar decenas de consultas HTTP secuenciales por cada palabra de un mensaje largo.
+ */
+async function getCachedDoctorParameters(supabaseClient: any): Promise<any[]> {
+    const now = Date.now();
+    if (cachedDoctorParameters && (now - cachedDoctorParameters.timestamp < 300000) && cachedDoctorParameters.rows.length > 0) {
+        return cachedDoctorParameters.rows;
+    }
+    if (!supabaseClient) return cachedDoctorParameters?.rows || [];
+    try {
+        const { data, error } = await supabaseClient
+            .from('contact_center_doctor_parameters')
+            .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta');
+        if (!error && Array.isArray(data)) {
+            cachedDoctorParameters = { rows: data, timestamp: now };
+            return data;
+        }
+    } catch (e) {
+        console.warn('[doctor-cache] Error cargando contact_center_doctor_parameters:', e);
+    }
+    return cachedDoctorParameters?.rows || [];
+}
+
 /**
  * Consulta la cantidad de conversaciones sin asignar en la cola y la configuración de avisos de demora
  */
@@ -3290,10 +3362,11 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     }
 
     // 15. DETECCIÓN DE TURNO / DOCTOR / AUTORIZACIÓN / ESPECIALIDAD
-    const specialtyCandidate = detectSpecialty(clean);
-    const isTurno = Boolean(specialtyCandidate) || /\b(turno|turnos|cita|citas|reprogramar|reprogramacion|atencion|consulta|consultar|agendar|doctor|doctora|dr\b|dra\b|medico|medica|especialista|clinico|cardiolog|pediatr|ginecolog|traumatolog|dermatolog|neurolog|urolog|oftalmolog)\b/i.test(clean);
-    const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria)\b/i.test(clean);
-    const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|web|portal|cartilla|servicios)\b/i.test(clean);
+    const strippedClean = stripBotTemplatePrompts(clean) || clean;
+    const specialtyCandidate = detectSpecialty(strippedClean) || detectSpecialty(clean);
+    const isTurno = Boolean(specialtyCandidate) || /\b(turno|turnos|cita|citas|reprogramar|reprogramacion|atencion|consulta|consultar|agendar|doctor|doctora|dr\b|dra\b|medico|medica|especialista|clinico|cardiolog|pediatr|ginecolog|traumatolog|dermatolog|neurolog|urolog|oftalmolog)\b/i.test(strippedClean);
+    const isAutoriz = /\b(autoriz|autorizar|orden|ordenes|pedido|pedidos|receta|recetas|cobertura|coseguro|auditoria)\b/i.test(strippedClean);
+    const isInfo = /\b(informacion|donde\s+queda|ubicacion|direccion|sede|sedes|web|portal|cartilla|servicios)\b/i.test(strippedClean);
 
     // Extracción inteligente de nombre de doctor/médico (soporta nombre y apellido, ej: "dra Cintia Pons")
     let doctorCandidate: string | null = null;
@@ -3306,7 +3379,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
     ];
 
     for (const reg of docRegexes) {
-        const m = clean.match(reg);
+        const m = strippedClean.match(reg);
         if (m && m[1]) {
             const rawCand = m[1].toLowerCase().trim();
             const candParts = rawCand.split(/\s+/).filter(p => !STOPWORDS_MEDICOS.has(p) && p.length >= 3);
@@ -3317,6 +3390,11 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         }
     }
 
+    // Cache en memoria de médicos (1 sola consulta en vez de N+1 consultas por palabra/bigrama)
+    const allDoctorsCache = await getCachedDoctorParameters(supabase);
+    const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorios?|guardias?|vacunatorios?|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
+    const validDoctorsList = allDoctorsCache.filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
+
     // Si no se detectó por regex con prefijo "Dr./con/para", buscar si alguna palabra o bigrama del mensaje coincide con la cartilla de médicos
     if (!doctorCandidate) {
         // Palabras del nombre del propio paciente (para NUNCA confundir el apellido o nombre del paciente con el de un médico)
@@ -3325,16 +3403,22 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             context.patientName.toLowerCase().split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3).forEach((w: string) => patientNameWords.add(w));
         }
 
+        // 0. Extraer explícitamente cuando el paciente usa formato con etiqueta "Nombre y Apellido: ..."
+        const labeledNameInMsg = clean.match(/(?:nombre\s*y\s*apellido|apellido\s*y\s*nombre)\s*:\s*([^\r\n]+)/i);
+        if (labeledNameInMsg && labeledNameInMsg[1]) {
+            labeledNameInMsg[1].toLowerCase().split(/[\s,.\-_/]+/).filter((w: string) => w.length >= 3).forEach((w: string) => patientNameWords.add(w));
+        }
+
         // 1. Extraer palabras inmediatamente contiguas al DNI (formato frecuente: "Alejandra castillo 32632518" o "Castillo Alejandra 32632518")
         const dniInMsg = extractDniFromText(clean);
         if (dniInMsg) {
-            const normClean = clean.replace(/[\.,\-_/]+/g, ' ').replace(/\s+/g, ' ');
+            const normClean = strippedClean.replace(/[\.,\-_/]+/g, ' ').replace(/\s+/g, ' ');
             const dniIdx = normClean.indexOf(dniInMsg);
             if (dniIdx >= 0) {
                 const beforeDni = normClean.substring(0, dniIdx).trim();
                 const afterDni = normClean.substring(dniIdx + dniInMsg.length).trim();
 
-                const nonNameTokens = new Set(['dni', 'documento', 'doc', 'nro', 'hola', 'buenas', 'buen', 'dia', 'tardes', 'noches', 'favor', 'por', 'poseo', 'tengo', 'obra', 'social', 'osde', 'osp', 'plan', 'particular', 'sancor', 'swiss', 'medife', 'galeno']);
+                const nonNameTokens = new Set(['dni', 'documento', 'doc', 'nro', 'hola', 'buenas', 'buen', 'dia', 'tardes', 'noches', 'favor', 'por', 'poseo', 'tengo', 'obra', 'social', 'osde', 'osp', 'plan', 'particular', 'sancor', 'swiss', 'medife', 'galeno', 'sin', 'puntos', 'espacios']);
                 const beforeTokens = beforeDni.split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w) && !nonNameTokens.has(w));
                 // Los últimos 2-3 tokens antes del DNI representan el nombre y apellido del paciente
                 beforeTokens.slice(-3).forEach(w => patientNameWords.add(w));
@@ -3352,23 +3436,24 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             /^(?:hola|buenas(?: tardes| noches)?|buen d[ií]a)?\s*([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+){1,3})\s*(?:,|\bdni\b|\bdoc\b|\bdocumento\b)?\s*[:\s]*\b\d{6,8}\b/i
         ];
         for (const p of selfNamePatterns) {
-            const sm = clean.match(p);
+            const sm = strippedClean.match(p);
             if (sm && sm[1]) {
                 sm[1].trim().split(/\s+/).filter((w: string) => w.length >= 3).forEach((w: string) => patientNameWords.add(w.toLowerCase()));
             }
         }
 
-        const detectedStudyInMsg = detectEstudioConOrden(clean);
+        const detectedStudyInMsg = detectEstudioConOrden(strippedClean);
         const hasStudyInMsg = Boolean(detectedStudyInMsg);
+        const hasExplicitHonorificInMsg = /\b(?:doctor|doctora|dr|dra)\.?/i.test(strippedClean);
 
-        const wordsInText = clean.split(/[\s,.\-_/]+/).map(w => w.trim()).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
+        const wordsInText = strippedClean.split(/[\s,.\-_/]+/).map(w => w.trim()).filter(w => w.length >= 3 && !STOPWORDS_MEDICOS.has(w));
         const nonDoctorWords = new Set([
             'turno', 'turnos', 'cita', 'citas', 'para', 'por', 'con', 'del', 'las', 'los', 'una', 'uno',
             'mañana', 'tarde', 'siesta', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado',
-            'sancor', 'osde', 'osp', 'omint', 'swiss', 'medical', 'particular', 'provincia', 'damsup',
+            'sancor', 'osde', 'osp', 'ospaca', 'omint', 'swiss', 'medical', 'particular', 'provincia', 'damsup',
             'hola', 'buen', 'dia', 'dias', 'días', 'buenos', 'buenas', 'tardes', 'noches', 'favor', 'gracias', 'atencion', 'consulta',
-            'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre',
-            'cualquier', 'horario', 'cuando', 'tiene',
+            'solicito', 'quiero', 'necesito', 'agendar', 'pedir', 'sacar', 'familiar', 'tercero', 'nombre', 'apellido',
+            'cualquier', 'horario', 'cuando', 'tiene', 'departamento', 'fecha', 'nacimiento', 'salud', 'obra', 'social',
             'donde', 'dónde', 'atiende', 'atienden', 'sede', 'sedes', 'direccion', 'dirección', 'direcciones',
             'ubicacion', 'ubicación', 'consultorio', 'consultorios', 'calle', 'queda', 'quedan', 'pasa', 'pasame', 'pásame',
             // Términos diagnósticos y administrativos
@@ -3379,96 +3464,77 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
             'representante', 'asesor', 'asesora', 'operador', 'operadora'
         ]);
 
-        const INSTITUTION_FILTER = /\b(escuela|colegio|instituto|lab\b|laboratorios?|guardias?|vacunatorios?|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i;
-
-        // 1. Prioridad: Buscar bigramas consecutivos (ej. "daniela saldivar")
+        // 1. Prioridad: Buscar bigramas consecutivos (ej. "daniela saldivar") en memoria
         for (let i = 0; i < wordsInText.length - 1; i++) {
             const w1 = wordsInText[i];
             const w2 = wordsInText[i + 1];
             if (!nonDoctorWords.has(w1) && !nonDoctorWords.has(w2) && w1.length >= 3 && w2.length >= 3) {
-                // Si alguna de las palabras pertenece al nombre del paciente, no tomar como médico salvo prefijo explícito Dr/Dra
-                if ((patientNameWords.has(w1) || patientNameWords.has(w2)) && !/(?:doctor|doctora|dr|dra)\.?/i.test(clean)) {
+                if ((patientNameWords.has(w1) || patientNameWords.has(w2)) && !hasExplicitHonorificInMsg) {
                     continue;
                 }
-                if (hasStudyInMsg && !/(?:doctor|doctora|dr|dra)\.?/i.test(clean)) {
+                if (hasStudyInMsg && !hasExplicitHonorificInMsg) {
                     continue;
                 }
-                try {
-                    const { data: bMatch } = await supabase
-                        .from('contact_center_doctor_parameters')
-                        .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                        .ilike('profesional_nombre', `%${w1}%`)
-                        .ilike('profesional_nombre', `%${w2}%`)
-                        .limit(5);
-
-                    const validBigram = (bMatch || []).filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
-                    if (validBigram.length > 0) {
-                        doctorCandidate = `${w1} ${w2}`;
-                        break;
-                    }
-                } catch (_) {}
+                const nw1 = normalizeDoctorSearchStr(w1);
+                const nw2 = normalizeDoctorSearchStr(w2);
+                const validBigram = validDoctorsList.filter((d: any) => {
+                    const normDoc = normalizeDoctorSearchStr(d.profesional_nombre || '');
+                    return normDoc.includes(nw1) && normDoc.includes(nw2);
+                });
+                if (validBigram.length > 0) {
+                    doctorCandidate = `${w1} ${w2}`;
+                    break;
+                }
             }
         }
 
-        // 2. Si no hubo match por bigrama, buscar por palabra individual (longitud >= 4)
-        if (!doctorCandidate) {
+        // 2. Si no hubo match por bigrama y no hay ya una especialidad clara sin mención explícita de Dr/Dra,
+        // buscar por palabra individual (longitud >= 4) que coincida con el APELLIDO del profesional
+        if (!doctorCandidate && (!specialtyCandidate || hasExplicitHonorificInMsg)) {
             for (const w of wordsInText) {
                 if (!nonDoctorWords.has(w) && !STOPWORDS_MEDICOS.has(w) && w.length >= 4) {
-                    // Exclusión obligatoria: NUNCA inferir médico a partir del apellido o nombre del propio paciente
                     const isPatientSelfName = patientNameWords.has(w);
-                    const hasExplicitHonorific = new RegExp(`\\b(?:doctor|doctora|dr|dra)\\.?\\s+${w}\\b`, 'i').test(clean);
+                    const hasExplicitHonorific = new RegExp(`\\b(?:doctor|doctora|dr|dra)\\.?\\s+${w}\\b`, 'i').test(strippedClean);
                     if (isPatientSelfName && !hasExplicitHonorific) {
                         continue;
                     }
-                    // Si el paciente está pidiendo un estudio diagnóstico (ej. Tomografía), no buscar médicos por palabras sueltas
                     if (hasStudyInMsg && !hasExplicitHonorific) {
                         continue;
                     }
-                    try {
-                        const { data: dMatch } = await supabase
-                            .from('contact_center_doctor_parameters')
-                            .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                            .ilike('profesional_nombre', `%${w}%`)
-                            .limit(10);
-
-                        const validMatch = (dMatch || []).filter((d: any) => !INSTITUTION_FILTER.test(d.profesional_nombre || ''));
-
-                        if (validMatch.length > 0) {
-                            doctorCandidate = w;
-                            break;
+                    const nw = normalizeDoctorSearchStr(w);
+                    const validMatch = validDoctorsList.filter((d: any) => {
+                        const rawProf = (d.profesional_nombre || '').replace(/^\([^)]+\)\s*/, '').trim();
+                        const normDoc = normalizeDoctorSearchStr(rawProf);
+                        if (hasExplicitHonorific) {
+                            return normDoc.includes(nw);
                         }
-                    } catch (_) {}
+                        // Sin prefijo Dr/Dra: exigir que la palabra coincida con el apellido (primer token del registro en SALUS)
+                        const docTokens = normDoc.split(/\s+/).filter(Boolean);
+                        return docTokens.length > 0 && docTokens[0] === nw;
+                    });
+
+                    if (validMatch.length > 0) {
+                        doctorCandidate = w;
+                        break;
+                    }
                 }
             }
         }
     }
 
-    // Buscar en la base de datos de parámetros médicos de Sanatorio Argentino
+    // Buscar en la base de datos de parámetros médicos de Sanatorio Argentino (usando cache en memoria)
     let doctorRecord: any = null;
     let multipleDoctors: any[] | null = null;
     if (doctorCandidate) {
         try {
-            const isDoctorFemale = /\b(doctora|dra\.?|la\s+doctora)\b/i.test(clean);
-            const isDoctorMale = /\b(doctor|dr\.?|el\s+doctor)\b/i.test(clean) && !isDoctorFemale;
-
-            let docQuery = supabase
-                .from('contact_center_doctor_parameters')
-                .select('id, profesional_nombre, especialidad, consultorio_actual, condiciones_consulta');
-
             const candWords = doctorCandidate.split(/\s+/).filter(Boolean);
-            for (const cw of candWords) {
-                const variants = getDoctorSearchVariants(cw);
-                if (variants.length > 1) {
-                    const orClause = variants.map(v => `profesional_nombre.ilike.%${v}%`).join(',');
-                    docQuery = docQuery.or(orClause);
-                } else {
-                    docQuery = docQuery.ilike('profesional_nombre', `%${cw}%`);
-                }
-            }
-
-            const { data: rawDocs } = await docQuery.limit(15);
-
-            const docs = (rawDocs || []).filter((d: any) => !/\b(escuela|colegio|instituto|lab\b|laboratorios?|guardias?|vacunatorios?|preadmision|admisiones|curaciones|citologia|tamberias|barreal|sarmiento|chimbas|albardon|jachal|astica|rivadavia|calingasta|santa lucia|encon|ullum|zonda|caucete|rawson|pocito|capital|hemodinamia|radiologia|tomografia)\b/i.test(d.profesional_nombre || ''));
+            const docs = validDoctorsList.filter((d: any) => {
+                const normDoc = normalizeDoctorSearchStr(d.profesional_nombre || '');
+                return candWords.every(cw => {
+                    const variants = getDoctorSearchVariants(cw).map(v => normalizeDoctorSearchStr(v));
+                    return variants.some(v => normDoc.includes(v));
+                });
+            }).slice(0, 15);
 
             if (docs && docs.length > 0) {
                 // Formatear y asociar metadata de presentación clara a cada doctor
@@ -3504,7 +3570,7 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
                 // Verificar si en el texto del paciente se incluye además un nombre de pila o especialidad específica
                 const matchingByNameOrSpec = uniqueDocs.find((d: any) => {
                     const docText = `${d.profesional_nombre} ${d.displayName} ${d.cleanSpecialty} ${d.formattedInfo?.cleanSurnameAndName || ''}`.toLowerCase();
-                    const words = clean.split(/[\s,]+/);
+                    const words = strippedClean.split(/[\s,]+/);
                     return words.some((w: string) => w.length >= 4 && docText.includes(w) && w !== doctorCandidate?.toLowerCase());
                 });
 
@@ -3543,9 +3609,9 @@ async function detectIntentAndEntities(supabase: any, text: string, context?: Co
         }
     }
 
-    const isGestionFamiliar = /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|mi\s+marido|mi\s+se[nñ]ora|para\s+alguien\s+mas|tercero|tercera\s+persona)\b/i.test(clean);
+    const isGestionPropia = /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(strippedClean);
+    const isGestionFamiliar = !isGestionPropia && /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|mi\s+marido|mi\s+se[nñ]ora|para\s+alguien\s+mas|tercero|tercera\s+persona)\b/i.test(strippedClean);
     const isForOtherPatient = isGestionFamiliar;
-    const isGestionPropia = /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(clean);
     const isConfirmingOrCanceling = context?.botStage === 'esperando_confirmacion_turno' || context?.botStage === 'turno_consultado' || (context?.lastBotMessage?.content?.includes('confirmar, reprogramar o cancelar') || context?.lastBotMessage?.content?.includes('confirmar la asistencia') || context?.lastBotMessage?.content?.includes('confirmar tu asistencia') || context?.lastBotMessage?.content?.includes('Asistencia confirmada'));
     if (isConfirmingOrCanceling) {
         if (clean === '1' || /^(1|s[ií]+|confirmar?|confirmado|asistir[eé]?|voy\s+a\s+ir|voy|gracias|muchas\s+gracias|ok|listo|perfecto|joya|de\s+diez|todo\s+claro)[!.\s]*$/i.test(clean) || /\b(confirmar|confirmo|confirmado|asisto|voy\s+a\s+ir|si\s+confirmo|dale\s+confirmo|asistencia\s+confirmada)\b/i.test(clean)) {
@@ -5066,11 +5132,15 @@ async function handleChatbotTriage(
     // y en el mensaje NO hubo mención explícita ("Dr.", "Dra.", "Doctor", "turno con", "atenderme con"),
     // se descarta el médico para evitar asignar el turno al apellido del propio paciente.
     if (rawDocName) {
-        const cleanDocSurname = rawDocName.replace(/^Dr[a]?\.\s*/i, '').trim().split(/[\s,]+/)[0].toLowerCase();
+        const docTokens = rawDocName.replace(/^Dr[a]?\.\s*/i, '').trim().toLowerCase().split(/[\s,]+/).filter(w => w.length >= 3);
+        const candTokens = (analysis.doctorCandidate || '').toLowerCase().split(/[\s,]+/).filter(w => w.length >= 3);
+        const allDocTokens = Array.from(new Set([...docTokens, ...candTokens]));
         const hasExplicitDoctorMention = /\b(?:doctor|doctora|dr|dra)\.?/i.test(cleanText) ||
             /\b(?:turno\s+con|atenderme\s+con|atencion\s+con|verme\s+con|cita\s+con)\b/i.test(cleanText);
 
+        const labeledNameInText = cleanText.match(/(?:nombre\s*y\s*apellido|apellido\s*y\s*nombre)\s*:\s*([^\r\n]+)/i)?.[1] || '';
         const allPatientNames = [
+            labeledNameInText,
             extractedNameFromMsg,
             patientLegalName,
             paciente?.nombre,
@@ -5080,7 +5150,7 @@ async function handleChatbotTriage(
         ].filter(Boolean).join(' ').toLowerCase();
 
         const patientTokens = allPatientNames.split(/[\s,.\-_/]+/).filter(w => w.length >= 3 && !['paciente', 'usuario', 'whatsapp', 'user'].includes(w));
-        const isCollision = patientTokens.some(pt => pt === cleanDocSurname || (cleanDocSurname.length >= 4 && pt.includes(cleanDocSurname)));
+        const isCollision = patientTokens.some(pt => allDocTokens.some(dt => pt === dt || (dt.length >= 4 && pt.includes(dt))));
 
         if (isCollision && !hasExplicitDoctorMention) {
             console.warn(`[triage-bot] ⚠️ Colisión evitada: médico inferido "${rawDocName}" coincide con apellido/nombre del paciente "${allPatientNames}". Descartando.`);
@@ -6344,6 +6414,58 @@ async function handleChatbotTriage(
             return await finalizeAndSend(replyText, nextStage, updates);
         }
 
+        const strippedCleanTurno = stripBotTemplatePrompts(cleanText) || cleanText;
+        const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(strippedCleanTurno) || detectSpecialty(cleanText);
+        const isGestionPropiaInTurno = Boolean(analysis.isGestionPropia) || /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(strippedCleanTurno);
+        const isForOtherPatient = !isGestionPropiaInTurno && (
+            Boolean(analysis.isForOtherPatient) ||
+            /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|tercero|tercera\s+persona|alguien\s+m[aá]s)\b/i.test(strippedCleanTurno) ||
+            Boolean(conv?.motivo_consulta?.toLowerCase().includes('familiar') || conv?.motivo_consulta?.toLowerCase().includes('tercero'))
+        );
+
+        // Detección de rechazo o cambio de profesional ("no quiero turno esa doctora quiero con otra", "otra doctora", "otro médico", "cambiar de médico")
+        const isRechazoOCambioDoc = 
+            /\b(no\s+(?:la\s+|lo\s+)?quiero|no\s+con\s+(?:esa|ese|ella|el|este|esta)|con\s+otr[ao]|otr[ao]\s+(?:doctor[ao]?|m[eé]dic[ao]|profesional)|cambiar\s+(?:de\s+)?(?:doctor[ao]?|m[eé]dic[ao]|profesional)|no\s+deseo\s+(?:con\s+)?(?:esa|ese|ella|el)|no\s+(?:es\s+)?con\s+esa|otra\s+opci[oó]n|buscar\s+otr[ao]|alg[uú]n\s+otr[ao]|otra\s+profesional|otro\s+profesional|con\s+otra|con\s+otro)\b/i.test(strippedCleanTurno);
+
+        if (isRechazoOCambioDoc) {
+            console.log(`[triage-bot] Chat ${phone}: Paciente solicitó cambio o rechazo del profesional previo.`);
+            const newDoc = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : null;
+            const newSpec = specialtyFromMsg;
+
+            if (newDoc || newSpec) {
+                updates.medico_o_especialidad = newDoc || newSpec;
+                if (conv) conv.medico_o_especialidad = updates.medico_o_especialidad;
+            } else {
+                updates.medico_o_especialidad = null;
+                if (conv) conv.medico_o_especialidad = null;
+                
+                const pFirstName = fullName ? ` *${fullName}*` : (whatsappName ? ` *${whatsappName}*` : '');
+                replyText = `¡Entendido${pFirstName}! 🏥 Con gusto te ayudamos a coordinar con otra profesional o médico.\n\n` +
+                    `Por favor indícanos:\n` +
+                    `• ¿Con qué *profesional* o para qué *especialidad médica* preferís tu atención?\n` +
+                    `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
+                    `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
+                updates.status = 'bot';
+                updates.bot_active = true;
+                updates.bot_stage = 'esperando_datos_turno';
+                nextStage = 'esperando_datos_turno';
+                updates.motivo_consulta = 'Solicitud de Turno: Cambio de profesional requerido';
+                return await finalizeAndSend(replyText, nextStage, updates);
+            }
+        }
+
+        // Acumulación de médico/especialidad: si vino en este mensaje o ya estaba guardado en la conversación previa dentro de este mismo flujo
+        const effectiveDocOrSpec = 
+            (!isRechazoOCambioDoc && doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase()) ? doctorDisplay : null) || 
+            specialtyFromMsg || 
+            updates.medico_o_especialidad || 
+            (!isRechazoOCambioDoc && conv?.bot_stage === 'esperando_datos_turno' && conv?.medico_o_especialidad ? conv.medico_o_especialidad : null) ||
+            null;
+
+        if (effectiveDocOrSpec) {
+            updates.medico_o_especialidad = effectiveDocOrSpec;
+        }
+
         // 1. Si el paciente incluyó DNI en la respuesta, verificar en SALUS (Bifurcación de los Dos Caminos)
         if (candidateDni && isValidArgentineDni(candidateDni) && (!paciente || String(paciente.dni) !== String(candidateDni))) {
             const { data: pFound } = await supabase
@@ -6381,7 +6503,7 @@ async function handleChatbotTriage(
                 updates,
                 'turno',
                 analysis.doctorRecord,
-                doctorDisplay,
+                effectiveDocOrSpec || doctorDisplay,
                 undefined,
                 whatsappName
             );
@@ -6389,55 +6511,6 @@ async function handleChatbotTriage(
             replyText = res.replyText;
             return await finalizeAndSend(replyText, nextStage, updates);
         }
-            // 2. Extraer o preservar especialidad o doctor
-            const specialtyFromMsg = analysis.specialtyCandidate || detectSpecialty(cleanText);
-            const isForOtherPatient = 
-                Boolean(analysis.isForOtherPatient) ||
-                /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+bebe|mi\s+mam[aá]|mi\s+pap[aá]|mi\s+espos[oa]|tercero|tercera\s+persona|alguien\s+m[aá]s)\b/i.test(cleanText) ||
-                Boolean(conv?.motivo_consulta?.toLowerCase().includes('familiar') || conv?.motivo_consulta?.toLowerCase().includes('tercero'));
-
-            // Detección de rechazo o cambio de profesional ("no quiero turno esa doctora quiero con otra", "otra doctora", "otro médico", "cambiar de médico")
-            const isRechazoOCambioDoc = 
-                /\b(no\s+(?:la\s+|lo\s+)?quiero|no\s+con\s+(?:esa|ese|ella|el|este|esta)|con\s+otr[ao]|otr[ao]\s+(?:doctor[ao]?|m[eé]dic[ao]|profesional)|cambiar\s+(?:de\s+)?(?:doctor[ao]?|m[eé]dic[ao]|profesional)|no\s+deseo\s+(?:con\s+)?(?:esa|ese|ella|el)|no\s+(?:es\s+)?con\s+esa|otra\s+opci[oó]n|buscar\s+otr[ao]|alg[uú]n\s+otr[ao]|otra\s+profesional|otro\s+profesional|con\s+otra|con\s+otro)\b/i.test(cleanText);
-
-            if (isRechazoOCambioDoc) {
-                console.log(`[triage-bot] Chat ${phone}: Paciente solicitó cambio o rechazo del profesional previo.`);
-                const newDoc = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : null;
-                const newSpec = specialtyFromMsg;
-
-                if (newDoc || newSpec) {
-                    updates.medico_o_especialidad = newDoc || newSpec;
-                    if (conv) conv.medico_o_especialidad = updates.medico_o_especialidad;
-                } else {
-                    updates.medico_o_especialidad = null;
-                    if (conv) conv.medico_o_especialidad = null;
-                    
-                    const pFirstName = fullName ? ` *${fullName}*` : (whatsappName ? ` *${whatsappName}*` : '');
-                    replyText = `¡Entendido${pFirstName}! 🏥 Con gusto te ayudamos a coordinar con otra profesional o médico.\n\n` +
-                        `Por favor indícanos:\n` +
-                        `• ¿Con qué *profesional* o para qué *especialidad médica* preferís tu atención?\n` +
-                        `• Preferencia de *días y horarios* (mañana o tarde)\n\n` +
-                        `🔙 *Volver:* Escribí *"Menú"* o *"Atrás"* | 👤 *Agente:* Escribí *"Agente"*`;
-                    updates.status = 'bot';
-                    updates.bot_active = true;
-                    updates.bot_stage = 'esperando_datos_turno';
-                    nextStage = 'esperando_datos_turno';
-                    updates.motivo_consulta = 'Solicitud de Turno: Cambio de profesional requerido';
-                    return await finalizeAndSend(replyText, nextStage, updates);
-                }
-            }
-
-            // Acumulación de médico/especialidad: si vino en este mensaje o ya estaba guardado en la conversación previa dentro de este mismo flujo
-            const effectiveDocOrSpec = 
-                (!isRechazoOCambioDoc && doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase()) ? doctorDisplay : null) || 
-                specialtyFromMsg || 
-                updates.medico_o_especialidad || 
-                (!isRechazoOCambioDoc && conv?.bot_stage === 'esperando_datos_turno' && conv?.medico_o_especialidad ? conv.medico_o_especialidad : null) ||
-                null;
-
-            if (effectiveDocOrSpec) {
-                updates.medico_o_especialidad = effectiveDocOrSpec;
-            }
 
 
             // 3. Extraer obra social y plan si vino en el texto o preservar de la previa
@@ -7686,9 +7759,12 @@ async function handleChatbotTriage(
             }
         }
 
-        const isAskingOtherInTurno = 
+        const strippedTurnoText = stripBotTemplatePrompts(cleanText) || cleanText;
+        const isGestionPropiaInTurnoFlow = Boolean(analysis.isGestionPropia) || /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(strippedTurnoText);
+        const isAskingOtherInTurno = !isGestionPropiaInTurnoFlow && (
             Boolean(analysis.isForOtherPatient) ||
-            /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s|tercero|tercera\s+persona)\b/i.test(cleanText);
+            /\b(otro\s+paciente|otra\s+persona|no\s+es\s+para\s+m[ií]|para\s+otro|para\s+otra|para\s+un\s+familiar|es\s+para\s+un\s+familiar|un\s+paciente|del\s+paciente|de\s+un\s+paciente|de\s+otro\s+paciente|otros?\s+pacientes?|algun\s+paciente|familiar|familiares|mi\s+hijo|mi\s+hija|mi\s+mama|mi\s+mamá|mi\s+papa|mi\s+papá|mi\s+madre|mi\s+padre|mi\s+esposo|mi\s+esposa|mi\s+bebe|mi\s+bebé|mi\s+abuelo|mi\s+abuela|alguien\s+m[aá]s|tercero|tercera\s+persona)\b/i.test(strippedTurnoText)
+        );
 
         const isAskingNewTurno = 
             analysis.isExplicitNumberOption === '1' ||
@@ -7774,7 +7850,7 @@ async function handleChatbotTriage(
             updates.bot_active = true;
             nextStage = 'esperando_confirmacion_turno';
             updates.ai_summary = buildTriageSummary(updates, 'turno', analysis.doctorRecord, true, paciente?.edad);
-        } else if (lastBotContent.includes('te ayudamos a coordinar tu turno') || lastBotContent.includes('¿el turno es para vos') || currentStage === 'esperando_datos_turno') {
+        } else if (lastBotContent.includes('te ayudamos a coordinar tu turno') || lastBotContent.includes('te ayudamos a coordinar tu nuevo turno') || lastBotContent.includes('¿el turno es para vos') || currentStage === 'esperando_datos_turno' || Boolean(candidateDni && isValidArgentineDni(candidateDni))) {
             const validDisplay = (doctorDisplay && !STOPWORDS_MEDICOS.has(doctorDisplay.replace(/^Dr[a]?\.\s*/i, '').toLowerCase())) ? doctorDisplay : '';
             const targetForMsg = updates.medico_o_especialidad || validDisplay || null;
             const docMsg = formatTurnoTargetPhrase(targetForMsg);
@@ -8692,31 +8768,22 @@ async function detectIfCandidateIsDoctor(
         }
     }
 
-    // 3. Verificación exhaustiva contra contact_center_doctor_parameters
+    // 3. Verificación exhaustiva contra contact_center_doctor_parameters (usando cache en memoria)
     if (supabaseClient) {
         const normCand = normalizeDoctorSearchStr(cleanCand);
         const parts = normCand.split(/\s+/).filter(p => p.length >= 3);
         if (parts.length > 0) {
-            for (const part of parts) {
-                try {
-                    const { data: docs } = await supabaseClient
-                        .from('contact_center_doctor_parameters')
-                        .select('profesional_nombre, especialidad, consultorio_actual, condiciones_consulta')
-                        .ilike('profesional_nombre', `%${part}%`)
-                        .limit(10);
-
-                    if (docs && docs.length > 0) {
-                        for (const d of docs) {
-                            const normDoc = normalizeDoctorSearchStr(d.profesional_nombre);
-                            const docWords = normDoc.split(/\s+/).filter((w: string) => w.length >= 3);
-                            // Si todas las palabras del médico están en el nombre candidato
-                            if (docWords.length >= 2 && docWords.every((w: string) => parts.includes(w))) {
-                                return { isDoctor: true, matchedDoctor: d, specialty: d.especialidad };
-                            }
-                        }
+            try {
+                const docs = await getCachedDoctorParameters(supabaseClient);
+                for (const d of docs) {
+                    const normDoc = normalizeDoctorSearchStr(d.profesional_nombre);
+                    const docWords = normDoc.split(/\s+/).filter((w: string) => w.length >= 3);
+                    // Si todas las palabras del médico están en el nombre candidato
+                    if (docWords.length >= 2 && docWords.every((w: string) => parts.includes(w))) {
+                        return { isDoctor: true, matchedDoctor: d, specialty: d.especialidad };
                     }
-                } catch (_) {}
-            }
+                }
+            } catch (_) {}
         }
     }
 
@@ -8818,7 +8885,7 @@ async function extractPatientVariables(
         'Medifé', 'Medife', 'Galeno', 'Sancor Salud', 'Sancor', 'OMINT', 'Jerárquicos', 'Jerarquicos', 'Particular',
         'Poder Judicial', 'Prevención Salud', 'Prevencion Salud', 'Andar', 'Bramed', 'Osdepym', 'Unión Personal', 'Union Personal', 'Accord',
         'Red de Seguro Médico', 'Red de Seguros Médicos', 'Red de Seguro Medico', 'Red de Seguros Medicos',
-        'Nobis', 'CIMYN', 'IOSFA', 'OSECAC', 'OSPEDYC', 'OSPRERA', 'Bancarios', 'Federada', 'Medicus', 'Colmed', 'ASOG'
+        'Nobis', 'CIMYN', 'IOSFA', 'OSECAC', 'OSPEDYC', 'OSPRERA', 'OSPACA Salud', 'OSPACA', 'Bancarios', 'Federada', 'Medicus', 'Colmed', 'ASOG'
     ];
     if (!vars.obra_social) {
         for (const o of commonOs) {
@@ -8841,9 +8908,17 @@ async function extractPatientVariables(
         vars.telefono_contacto = phoneMatch[1].replace(/\D/g, '');
     }
 
+    // Detección heurística de especialidad en el texto (sin consumir llamadas a OpenAI)
+    const strippedForVars = stripBotTemplatePrompts(text) || text;
+    const heuristicSpec = detectSpecialty(strippedForVars) || detectSpecialty(text);
+    if (heuristicSpec && !vars.medico_o_especialidad) {
+        vars.medico_o_especialidad = heuristicSpec;
+    }
+
     // Detección heurística de gestión para tercero / familiar
+    const isSelfGestionInVars = /\b(para\s+m[ií]|es\s+para\s+m[ií]|tr[aá]mite\s+para\s+m[ií]|a\s+mi\s+nombre|para\s+mi\s+persona)\b/i.test(strippedForVars);
     const thirdPartyRegex = /\b(?:para\s+mi\s+(hijo|hija|nene|nena|mama|mamá|papa|papá|esposo|esposa|marido|mujer|pareja|abuelo|abuela|hermano|hermana|familiar|sobrino|sobrina)|para\s+otra\s+persona|para\s+un\s+familiar|es\s+para\s+mi\s+(hijo|hija|mama|mamá|papa|papá)|es\s+para\s+otra\s+persona|a\s+nombre\s+de\s+mi\s+(hijo|hija|mama|mamá|papa|papá))\b/i;
-    const thirdPartyMatch = text.match(thirdPartyRegex);
+    const thirdPartyMatch = !isSelfGestionInVars ? strippedForVars.match(thirdPartyRegex) : null;
     if (thirdPartyMatch) {
         vars.es_gestion_tercero = true;
         vars.parentesco = (thirdPartyMatch[1] || thirdPartyMatch[2] || thirdPartyMatch[3] || 'familiar').toLowerCase();
