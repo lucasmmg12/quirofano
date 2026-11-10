@@ -4359,16 +4359,18 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
                 try {
                     const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
                     const cacheDesde = parsed?.rango?.fechaDesde || '2026-01-01';
-                    if (!desde || desde >= cacheDesde) {
+                    const hasEcocardio = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO');
+                    if (hasEcocardio && (!desde || desde >= cacheDesde)) {
                         return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
                     }
                 } catch (_) {}
             }
         }
 
-        const data = await getDxIAnalytics({
-            fechaDesde: desde || '2026-01-01',
-            fechaHasta: hasta || new Date().toISOString().substring(0, 10)
+        const modDxi = await import(`./sync_dxi.mjs?t=${Date.now()}`);
+        const data = await modDxi.getDxIAnalytics({
+            fechaDesde: forceRefresh ? '2025-01-01' : (desde || '2025-01-01'),
+            fechaHasta: forceRefresh ? '2026-12-31' : (hasta || '2026-12-31')
         });
 
         res.json({ success: true, fromCache: false, data, updated_at: new Date().toISOString() });
@@ -4381,7 +4383,8 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
 // ── Casos Nominales de Diagnóstico por Imágenes (Bajo Demanda — Capa 2) ──
 app.get('/api/salus/dxi-casos', async (req, res) => {
     try {
-        const rows = await getDxICasosNominales({
+        const modDxi = await import(`./sync_dxi.mjs?t=${Date.now()}`);
+        const rows = await modDxi.getDxICasosNominales({
             fechaDesde: req.query.desde || req.query.fechaDesde,
             fechaHasta: req.query.hasta || req.query.fechaHasta,
             modalidad: req.query.modalidad || 'TODAS',
@@ -4404,9 +4407,10 @@ app.get('/api/salus/dxi-casos', async (req, res) => {
 app.get('/api/salus/sync/dxi', async (req, res) => {
     try {
         const { desde, hasta } = req.query;
-        const data = await getDxIAnalytics({
-            fechaDesde: desde || '2026-01-01',
-            fechaHasta: hasta || new Date().toISOString().substring(0, 10)
+        const modDxi = await import(`./sync_dxi.mjs?t=${Date.now()}`);
+        const data = await modDxi.getDxIAnalytics({
+            fechaDesde: desde || '2025-01-01',
+            fechaHasta: hasta || '2026-12-31'
         });
         res.json({ success: true, results: data });
     } catch (err) {

@@ -93,6 +93,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                     WHEN v.[Grupo Agenda] = 'RADIOLOGIA' THEN 'RADIOLOGIA'
                     ELSE 'OTRAS'
                 END AS Modalidad,
+                ISNULL(RTRIM(LTRIM(v.[Grupo Agenda])), 'SIN GRUPO') AS GrupoAgenda,
                 ISNULL(v.[Tipo Visita], 'SIN AGENDA') AS Agenda,
                 ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'CENTRO NO ESPECIFICADO')) AS Centro,
                 ISNULL(v.Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS Responsable,
@@ -133,11 +134,11 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
 
             -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia e Informe (con PeriodoMes para filtrado en caché)
             -- Nota: Informados y PendientesInforme se contabilizan estrictamente sobre estudios efectivamente realizados
-            SELECT PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
+            SELECT PeriodoMes, Modalidad, GrupoAgenda, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
                    SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 1 THEN 1 ELSE 0 END) AS Informados,
                    SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
+            GROUP BY PeriodoMes, Modalidad, GrupoAgenda, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
 
             -- Set 1: Prestadores que la Realizan (por PeriodoMes y Modalidad para resumen general ultrarrápido)
             SELECT PeriodoMes, Modalidad, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad

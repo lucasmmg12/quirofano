@@ -63,9 +63,9 @@ const MODALIDADES_TABS = [
     { id: 'TODAS', label: 'Todas las Modalidades', icon: Layers, badgeColor: '#3B82F6' },
     { id: 'ECOGRAFIA', label: 'Ecografía (ECO)', icon: Activity, badgeColor: '#06B6D4' },
     { id: 'RADIOLOGIA', label: 'Radiología (RX)', icon: Activity, badgeColor: '#6366F1' },
-    { id: 'MAMOGRAFIA', label: 'Mamografía', icon: Activity, badgeColor: '#EC4899' },
+    { id: 'MAMOGRAFIA', label: 'Mamografía', icon: Activity, badgeColor: '#EC4899', note: 'Sin Densitometría' },
     { id: 'TOMOGRAFIA', label: 'Tomografía (TC)', icon: Activity, badgeColor: '#F59E0B', note: 'Sin contrastes' },
-    { id: 'DENSITOMETRIA', label: 'Densitometría Ósea', icon: Activity, badgeColor: '#10B981' },
+    { id: 'DENSITOMETRIA', label: 'Densitometría Ósea', icon: Activity, badgeColor: '#10B981', note: 'Separada de Mamo' },
     { id: 'ECOCARDIO', label: 'Ecocardiograma', icon: Activity, badgeColor: '#E11D48' }
 ];
 
@@ -252,7 +252,8 @@ export default function DiagnosticoImagenesDashboard({
                 if (cfg?.value) {
                     try {
                         const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
-                        if (parsed && Array.isArray(parsed.agendas)) {
+                        const hasEcocardio = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO');
+                        if (parsed && Array.isArray(parsed.agendas) && hasEcocardio) {
                             setData(parsed);
                             setLastUpdated(cfg.updated_at || parsed.ultima_actualizacion || new Date().toISOString());
                             setDataSource('supabase_cache');
@@ -264,12 +265,12 @@ export default function DiagnosticoImagenesDashboard({
                 }
             }
 
-            // 2. Solo consultar SALUS Sync Server si el usuario pidió Sincronizar SALUS (forceRefresh) o si no había caché fija
+            // 2. Solo consultar SALUS Sync Server si el usuario pidió Sincronizar SALUS (forceRefresh) o si no había caché fija válida con ECOCARDIO
             if (!loaded || forceRefresh) {
                 const qs = new URLSearchParams({
-                    desde: '2026-01-01',
-                    hasta: new Date().toISOString().substring(0, 10),
-                    ...(forceRefresh ? { refresh: 'true' } : {})
+                    desde: '2025-01-01',
+                    hasta: '2026-12-31',
+                    refresh: 'true'
                 });
                 const candidates = [
                     `/api/salus/dxi-analytics?${qs.toString()}`,
@@ -831,6 +832,49 @@ export default function DiagnosticoImagenesDashboard({
     }, [scopedData, ESTADOS_EFECTIVOS]);
     const modalidadTotals = modalidadCounts;
 
+    // 1.b Desglose conciliado de los Grupos de Agenda SALUS "MAMOGRAFIA" vs "DENSITOMETRIA Y MAMOGRAFIA"
+    const mamoDensitoBreakdown = useMemo(() => {
+        if (!scopedData?.agendas) return null;
+        let mamoGrupoMamografia = 0; // Sede San Luis Sur (Grupo Agenda = MAMOGRAFIA)
+        let mamoGrupoMixto = 0;      // Sede Santa Fe (Grupo Agenda = DENSITOMETRIA Y MAMOGRAFIA, práctica Mamografía)
+        let densitoGrupoMixto = 0;   // Sede Santa Fe (Grupo Agenda = DENSITOMETRIA Y MAMOGRAFIA, práctica Densitometría)
+
+        scopedData.agendas.forEach(r => {
+            if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
+            if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return;
+            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return;
+
+            const cant = r.Cantidad || 0;
+            const grp = (r.GrupoAgenda || '').toUpperCase();
+            const centro = (r.Centro || '').toUpperCase();
+
+            if (r.Modalidad === 'MAMOGRAFIA') {
+                if (grp === 'MAMOGRAFIA' || (!grp && centro.includes('SAN LUIS'))) {
+                    mamoGrupoMamografia += cant;
+                } else {
+                    mamoGrupoMixto += cant;
+                }
+            } else if (r.Modalidad === 'DENSITOMETRIA') {
+                densitoGrupoMixto += cant;
+            }
+        });
+
+        const totalMamoPura = mamoGrupoMamografia + mamoGrupoMixto;
+        const totalDensitoPura = densitoGrupoMixto;
+        const totalGrupoMixtoSalus = mamoGrupoMixto + densitoGrupoMixto; // Todo el Grupo "DENSITOMETRIA Y MAMOGRAFIA" en Santa Fe
+        const totalAmbosGruposSalus = mamoGrupoMamografia + totalGrupoMixtoSalus; // Ej: 851 en Oct/26 (667 Mamo + 184 Densito)
+
+        return {
+            mamoGrupoMamografia,
+            mamoGrupoMixto,
+            densitoGrupoMixto,
+            totalMamoPura,
+            totalDensitoPura,
+            totalGrupoMixtoSalus,
+            totalAmbosGruposSalus
+        };
+    }, [scopedData, filterAmbito, filterAsistencia, ESTADOS_EFECTIVOS]);
+
     // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
     const filteredAgendasRows = useMemo(() => {
         if (!scopedData?.agendas) return [];
@@ -842,7 +886,8 @@ export default function DiagnosticoImagenesDashboard({
                 const term = searchTerm.toLowerCase();
                 const ag = (r.Agenda || '').toLowerCase();
                 const c = (r.Centro || '').toLowerCase();
-                if (!ag.includes(term) && !c.includes(term)) return false;
+                const grp = (r.GrupoAgenda || '').toLowerCase();
+                if (!ag.includes(term) && !c.includes(term) && !grp.includes(term)) return false;
             }
             return true;
         });
@@ -869,7 +914,8 @@ export default function DiagnosticoImagenesDashboard({
                     sinRegistrar: 0,
                     informados: 0,
                     pendientes: 0,
-                    centros: new Set()
+                    centros: new Set(),
+                    gruposAgenda: new Set()
                 });
             }
             const item = map.get(key);
@@ -894,6 +940,7 @@ export default function DiagnosticoImagenesDashboard({
                 item.pendientes += r.PendientesInforme || 0;
             }
             if (r.Centro) item.centros.add(r.Centro);
+            if (r.GrupoAgenda) item.gruposAgenda.add(r.GrupoAgenda);
         });
 
         // Ordenar priorizando volumen de estudios efectivamente realizados
@@ -1702,6 +1749,88 @@ export default function DiagnosticoImagenesDashboard({
                     );
                 })}
             </div>
+
+            {/* ─── CONCILIACIÓN DE AGENDA COMPARTIDA SALUS: DENSITOMETRÍA Y MAMOGRAFÍA ─── */}
+            {!loading && mamoDensitoBreakdown && (selectedModalidad === 'TODAS' || selectedModalidad === 'MAMOGRAFIA' || selectedModalidad === 'DENSITOMETRIA') && (
+                <div style={{
+                    background: 'linear-gradient(90deg, #FDF2F8 0%, #F0FDF4 50%, #F8FAFC 100%)',
+                    borderRadius: '12px',
+                    border: '1px solid #FBCFE8',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 320px' }}>
+                        <div style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '8px',
+                            background: '#FCE7F3',
+                            color: '#DB2777',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: '0.85rem',
+                            flexShrink: 0
+                        }}>
+                            ℹ️
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                Desglose de Agenda Compartida en SALUS: <span style={{ color: '#BE185D' }}>DENSITOMETRIA Y MAMOGRAFIA</span> vs <span style={{ color: '#047857' }}>MAMOGRAFIA</span>
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '2px' }}>
+                                En Sede <strong>Santa Fe</strong>, SALUS agrupa ambos estudios bajo el mismo <em>Grupo Agenda</em> (<strong>{mamoDensitoBreakdown.totalGrupoMixtoSalus.toLocaleString('es-AR')}</strong> efectivos = <strong>{mamoDensitoBreakdown.mamoGrupoMixto.toLocaleString('es-AR')}</strong> Mamografías + <strong>{mamoDensitoBreakdown.densitoGrupoMixto.toLocaleString('es-AR')}</strong> Densitometrías). En este tablero se muestran separados por práctica real para no duplicar las Densitometrías.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        <div style={{
+                            background: '#FFFFFF',
+                            border: '1px solid #FBCFE8',
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            fontSize: '0.72rem'
+                        }}>
+                            <div style={{ color: '#9D174D', fontWeight: 700 }}>Mamografía Pura ({mamoDensitoBreakdown.totalMamoPura.toLocaleString('es-AR')})</div>
+                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                S. Fe: <strong>{mamoDensitoBreakdown.mamoGrupoMixto.toLocaleString('es-AR')}</strong> + S. Luis Sur: <strong>{mamoDensitoBreakdown.mamoGrupoMamografia.toLocaleString('es-AR')}</strong>
+                            </div>
+                        </div>
+
+                        <div style={{
+                            background: '#FFFFFF',
+                            border: '1px solid #A7F3D0',
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            fontSize: '0.72rem'
+                        }}>
+                            <div style={{ color: '#065F46', fontWeight: 700 }}>Densitometría Pura ({mamoDensitoBreakdown.totalDensitoPura.toLocaleString('es-AR')})</div>
+                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                S. Fe (Agenda Mixta): <strong>{mamoDensitoBreakdown.densitoGrupoMixto.toLocaleString('es-AR')}</strong>
+                            </div>
+                        </div>
+
+                        <div style={{
+                            background: '#F8FAFC',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '8px',
+                            padding: '6px 10px',
+                            fontSize: '0.72rem'
+                        }}>
+                            <div style={{ color: '#334155', fontWeight: 700 }}>Suma Grupos SALUS ({mamoDensitoBreakdown.totalAmbosGruposSalus.toLocaleString('es-AR')})</div>
+                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                Mamo ({mamoDensitoBreakdown.totalMamoPura.toLocaleString('es-AR')}) + Densito ({mamoDensitoBreakdown.totalDensitoPura.toLocaleString('es-AR')})
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ─── INDICADORES EJECUTIVOS (KPI CARDS) ─── */}
             <div style={{
@@ -2825,11 +2954,26 @@ export default function DiagnosticoImagenesDashboard({
                                             </div>
                                         </div>
 
-                                        {/* Sedes involucradas y Acceso a Casos Nominales */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#64748B' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <MapPin size={12} />
-                                                {Array.from(item.centros).slice(0, 3).join(', ') || 'Centro general'}
+                                        {/* Sedes involucradas, Grupo Agenda SALUS y Acceso a Casos Nominales */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#64748B', flexWrap: 'wrap', gap: '6px' }}>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    <MapPin size={12} />
+                                                    {Array.from(item.centros).slice(0, 3).join(', ') || 'Centro general'}
+                                                </span>
+                                                {item.gruposAgenda && item.gruposAgenda.size > 0 && (
+                                                    <span style={{
+                                                        fontSize: '0.65rem',
+                                                        fontWeight: 700,
+                                                        color: '#475569',
+                                                        background: '#F1F5F9',
+                                                        border: '1px solid #CBD5E1',
+                                                        padding: '1px 6px',
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        Grupo SALUS: {Array.from(item.gruposAgenda).join(' + ')}
+                                                    </span>
+                                                )}
                                             </span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <button
