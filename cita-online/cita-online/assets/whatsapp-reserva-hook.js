@@ -1,29 +1,29 @@
 /**
- * Sanatorio Argentino — Hook de Confirmación por WhatsApp (Contact Center) para CitaOnline
+ * Sanatorio Argentino — Hook de Confirmación por WhatsApp (Contact Center) para CitaOnline (PRODUCCIÓN)
  * Archivo: assets/whatsapp-reserva-hook.js
  *
  * Funcionamiento:
- * 1. Captura los datos del formulario de reserva (#phone, #name, #surname, #lastname, #nif, #email)
+ * 1. Guía al paciente para ingresar su número con formato 2645438114 (sin 0 ni 15) y limpia
+ *    automáticamente cualquier 0 inicial (ej. 02645438114 -> 2645438114) o 15 intermedio.
+ * 2. Captura los datos del formulario de reserva (#phone, #name, #surname, #lastname, #nif, #email)
  *    y los datos del turno seleccionado (fecha/hora, profesional, especialidad) cuando el paciente
  *    presiona el botón "Reservar".
- * 2. Intercepta la respuesta de /api/citaonline/AddReservation (y cuenta con modo de prueba local
- *    cuando corre en localhost) para disparar la notificación por WhatsApp desde la línea del Contact Center
- *    (5492645825637) a través de la Edge Function segura de Supabase.
- * 3. No bloquea ni altera el flujo nativo de SALUS CitaOnline ante cualquier falla de red externa.
+ * 3. Intercepta la respuesta exitosa de /api/citaonline/AddReservation para disparar la Plantilla Oficial
+ *    de Meta WhatsApp desde la línea del Contact Center (5492645825637) a través de Supabase Edge Functions.
+ * 4. No bloquea ni altera el flujo nativo de SALUS CitaOnline ante cualquier falla de red externa.
  */
 (function () {
     'use strict';
 
     // Proteger las variables CSS del diseño institucional Sanatorio Argentino 2026
-    // para que la respuesta de /api/citaonline/GetConfiguration de SALUS no las pise
-    // con los colores antiguos (rojo #ff0000, celeste viejo, etc.).
+    // para que la respuesta de /api/citaonline/GetConfiguration de SALUS no las pise.
     try {
         var rootStyle = document.documentElement.style;
         var origSetProperty = rootStyle.setProperty;
         if (origSetProperty) {
             rootStyle.setProperty = function (prop, value, priority) {
                 if (typeof prop === 'string' && prop.indexOf('--') === 0) {
-                    return; // Mantener la paleta oficial definida en assets/forms.css
+                    return;
                 }
                 return origSetProperty.call(this, prop, value, priority);
             };
@@ -31,60 +31,142 @@
     } catch (e) {}
 
     var SUPABASE_FUNCTION_URL = 'https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/send-whatsapp';
-    var IS_LOCAL_TEST = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    var simulateSalusInLocal = IS_LOCAL_TEST; // En localhost por defecto simula el OK de SALUS para no ensuciar agendas reales
     var sentSignatures = {};
     var lastCapturedForm = null;
 
-    function showToast(msg, bg) {
-        if (!IS_LOCAL_TEST) return;
-        try {
-            var el = document.getElementById('__sa_wa_toast');
-            if (!el) {
-                el = document.createElement('div');
-                el.id = '__sa_wa_toast';
-                el.style.cssText = 'position:fixed;top:16px;right:16px;z-index:999999;padding:12px 18px;border-radius:10px;color:#fff;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.22);transition:all 0.25s ease;';
-                document.body.appendChild(el);
+    /**
+     * Normaliza el número ingresado por el paciente al formato local de 10 dígitos sin 0 ni 15
+     * Ejemplo:
+     *   "02645438114"    -> "2645438114"
+     *   "0264 155438114" -> "2645438114"
+     *   "+54 9 264 543-8114" -> "2645438114"
+     *   "155438114"      -> "2645438114"
+     */
+    function normalizeLocalPhoneDigits(raw) {
+        var clean = String(raw || '').replace(/\D/g, '');
+        if (!clean) return '';
+
+        // Si puso prefijo internacional 549 o 54 al principio
+        if (clean.indexOf('549') === 0 && clean.length >= 13) {
+            clean = clean.slice(3);
+        } else if (clean.indexOf('54') === 0 && clean.length >= 12) {
+            clean = clean.slice(2);
+        }
+
+        // Eliminar siempre el primer cero (o ceros iniciales, ej: 02645438114 -> 2645438114)
+        clean = clean.replace(/^0+/, '');
+
+        // Si ingresó solo "15xxxxxxx" (9 dígitos, sin característica de San Juan)
+        if (clean.indexOf('15') === 0 && clean.length === 9) {
+            clean = '264' + clean.slice(2);
+        }
+
+        // Si ingresó característica + 15 + número (ej: 264155438114 -> 12 dígitos)
+        if (clean.length === 12) {
+            var idx15 = clean.indexOf('15');
+            if (idx15 >= 2 && idx15 <= 4) {
+                clean = clean.slice(0, idx15) + clean.slice(idx15 + 2);
             }
-            el.style.background = bg || '#0284c7';
-            el.style.display = 'block';
-            el.textContent = msg;
+        }
+
+        if (clean.length > 10) {
+            clean = clean.slice(0, 10);
+        }
+
+        return clean;
+    }
+
+    /**
+     * Convierte cualquier teléfono argentino al formato internacional WhatsApp 549XXXXXXXXXX (13 dígitos)
+     */
+    function formatPhoneForWhatsApp(raw) {
+        var local10 = normalizeLocalPhoneDigits(raw);
+        if (!local10) return '';
+        if (local10.length === 10) {
+            return '549' + local10;
+        }
+        return local10;
+    }
+
+    /**
+     * Inyecta la ayuda visual en el campo #phone de CitaOnline y formatea automáticamente el número
+     * eliminando el 0 inicial si el paciente escribe ej. 02645438114.
+     */
+    function enhancePhoneInput() {
+        try {
+            var phoneInput = document.getElementById('phone');
+            if (!phoneInput || phoneInput.getAttribute('data-sa-wa-enhanced') === '1') return;
+
+            phoneInput.setAttribute('data-sa-wa-enhanced', '1');
+            phoneInput.setAttribute('placeholder', 'Ej: 2645438114 (sin 0 ni 15)');
+            phoneInput.setAttribute('inputmode', 'numeric');
+            phoneInput.setAttribute('autocomplete', 'tel-national');
+
+            // Agregar leyenda clara debajo del input #phone
+            var parent = phoneInput.parentElement;
+            if (parent && !document.getElementById('__sa_phone_format_hint')) {
+                var hint = document.createElement('small');
+                hint.id = '__sa_phone_format_hint';
+                hint.style.cssText = 'display:block;margin-top:5px;font-size:12px;font-weight:600;color:#004695;line-height:1.35;';
+                hint.innerHTML = '📱 Ingresá tu WhatsApp <strong>sin 0 y sin 15</strong> (ejemplo: <strong>2645438114</strong>) para recibir la confirmación del turno.';
+                parent.appendChild(hint);
+            }
+
+            // Si ya tenía un valor precargado (ej. de paciente logueado con 0264...), limpiarlo de inmediato
+            if (phoneInput.value) {
+                var initialClean = normalizeLocalPhoneDigits(phoneInput.value);
+                if (initialClean && initialClean !== phoneInput.value) {
+                    phoneInput.value = initialClean;
+                    phoneInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+
+            // En tiempo real: si empieza con 0 o tiene caracteres no numéricos, limpiarlo sin mover el cursor bruscamente
+            phoneInput.addEventListener('input', function (ev) {
+                if (ev && ev.__saInternal) return;
+                var rawVal = phoneInput.value || '';
+                var digitsOnly = rawVal.replace(/\D/g, '');
+                // Eliminar ceros al inicio inmediatamente (ej: 02645438114 -> 2645438114)
+                if (/^0+/.test(digitsOnly)) {
+                    digitsOnly = digitsOnly.replace(/^0+/, '');
+                }
+                if (digitsOnly !== rawVal) {
+                    phoneInput.value = digitsOnly;
+                    var evt = new Event('input', { bubbles: true });
+                    evt.__saInternal = true;
+                    phoneInput.dispatchEvent(evt);
+                }
+            });
+
+            // Al salir del campo (blur / change): aplicar normalización completa a 10 dígitos (ej: 2645438114)
+            var onBlurNormalize = function () {
+                var normalized = normalizeLocalPhoneDigits(phoneInput.value);
+                if (normalized && normalized !== phoneInput.value) {
+                    phoneInput.value = normalized;
+                    var evt = new Event('input', { bubbles: true });
+                    evt.__saInternal = true;
+                    phoneInput.dispatchEvent(evt);
+                }
+            };
+            phoneInput.addEventListener('blur', onBlurNormalize);
+            phoneInput.addEventListener('change', onBlurNormalize);
         } catch (e) {}
     }
 
-    function mountLocalTestBanner() {
-        if (!IS_LOCAL_TEST) return;
-        try {
-            if (document.getElementById('__sa_local_test_bar')) return;
-            var bar = document.createElement('div');
-            bar.id = '__sa_local_test_bar';
-            bar.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:999998;background:#0f172a;color:#f8fafc;padding:10px 14px;border-radius:10px;font-family:Poppins,sans-serif;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,0.28);border:1px solid #334155;max-width:360px;';
-            bar.innerHTML =
-                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:700;color:#38bdf8;">' +
-                '<span>🧪 Modo Prueba Local — WhatsApp CitaOnline</span>' +
-                '</div>' +
-                '<div style="font-size:11px;color:#cbd5e1;margin-bottom:8px;">' +
-                'Envía mensaje directo por ventana abierta 24h (sin consumir plantilla Meta).' +
-                '</div>' +
-                '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:11px;color:#e2e8f0;">' +
-                '<input type="checkbox" id="__sa_sim_salus_chk" checked style="cursor:pointer;" />' +
-                '<span>Simular reserva SALUS (no agendar turno real en SALUS)</span>' +
-                '</label>';
-            document.body.appendChild(bar);
-            var chk = document.getElementById('__sa_sim_salus_chk');
-            if (chk) {
-                chk.addEventListener('change', function () {
-                    simulateSalusInLocal = Boolean(chk.checked);
-                });
-            }
-        } catch (e) {}
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', mountLocalTestBanner);
-    } else {
-        mountLocalTestBanner();
-    }
+    // Observar el DOM de Angular para detectar cuando se monta el paso de confirmación (<app-confirmation>)
+    try {
+        var domObserver = new MutationObserver(function () {
+            enhancePhoneInput();
+        });
+        if (document.documentElement) {
+            domObserver.observe(document.documentElement, { childList: true, subtree: true });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', enhancePhoneInput);
+        } else {
+            enhancePhoneInput();
+        }
+    } catch (e) {}
 
     function getInputValue(id) {
         var el = document.getElementById(id);
@@ -119,8 +201,10 @@
     }
 
     function captureCurrentFormState() {
+        enhancePhoneInput();
         var header = getHeaderInfo();
-        var phone = getInputValue('phone');
+        var rawPhone = getInputValue('phone');
+        var cleanPhone = normalizeLocalPhoneDigits(rawPhone) || rawPhone;
         var name = getInputValue('name');
         var surname = getInputValue('surname');
         var lastname = getInputValue('lastname');
@@ -128,9 +212,9 @@
         var email = getInputValue('email');
         var reason = getInputValue('reason');
 
-        if (phone || name || nif) {
+        if (cleanPhone || name || nif) {
             lastCapturedForm = {
-                phone: phone,
+                phone: cleanPhone,
                 nombre: name,
                 apellido: surname,
                 segundoApellido: lastname,
@@ -148,11 +232,13 @@
     function dispatchWhatsAppConfirmation(payload) {
         try {
             if (!payload) return;
-            var rawPhone = String(payload.phone || payload.PatientPhone || '').replace(/\D/g, '');
+            var rawInputPhone = String(payload.phone || payload.PatientPhone || '');
+            var cleanLocalPhone = normalizeLocalPhoneDigits(rawInputPhone);
+            var formattedWaPhone = formatPhoneForWhatsApp(rawInputPhone);
             var dni = String(payload.dni || payload.NIF || '').replace(/\D/g, '');
-            if (!rawPhone && !dni) return;
+            if (!cleanLocalPhone && !dni) return;
 
-            var signatureKey = (rawPhone || dni) + '|' + (payload.fechaHora || payload.Date || '') + '|' + (payload.profesional || '');
+            var signatureKey = (formattedWaPhone || dni) + '|' + (payload.fechaHora || payload.Date || '') + '|' + (payload.profesional || '');
             if (sentSignatures[signatureKey]) {
                 return; // Evitar duplicados para la misma reserva
             }
@@ -161,8 +247,8 @@
             var bodyData = {
                 action: 'notify_cita_online_reservation',
                 lineId: 'contact_center',
-                useFreeText: IS_LOCAL_TEST || rawPhone.indexOf('2645438114') !== -1,
-                phone: payload.phone || payload.PatientPhone || '',
+                phone: cleanLocalPhone || rawInputPhone,
+                whatsappPhone: formattedWaPhone,
                 nombre: payload.nombre || payload.PatientName || '',
                 apellido: payload.apellido || payload.PatientSurname || '',
                 segundoApellido: payload.segundoApellido || payload.PatientSecondSurname || '',
@@ -175,8 +261,6 @@
                 visitId: payload.visitId || payload.VisitId || null
             };
 
-            showToast('⏳ Enviando confirmación WhatsApp a ' + (bodyData.phone || dni) + '...', '#0284c7');
-
             fetch(SUPABASE_FUNCTION_URL, {
                 method: 'POST',
                 headers: {
@@ -184,19 +268,9 @@
                 },
                 body: JSON.stringify(bodyData),
                 keepalive: true
-            })
-                .then(function (r) { return r.json(); })
-                .then(function (res) {
-                    if (res && res.success) {
-                        showToast('✅ WhatsApp enviado a ' + (res.phone || bodyData.phone) + ' (' + (res.mode || 'template') + ')', '#16a34a');
-                    } else {
-                        showToast('⚠️ Error enviando WhatsApp: ' + JSON.stringify(res), '#dc2626');
-                    }
-                })
-                .catch(function (err) {
-                    console.warn('[CitaOnline WhatsApp Hook] No se pudo enviar la notificación:', err);
-                    showToast('❌ Error de red enviando WhatsApp', '#dc2626');
-                });
+            }).catch(function (err) {
+                console.warn('[CitaOnline WhatsApp Hook] No se pudo enviar la notificación:', err);
+            });
         } catch (err) {
             console.warn('[CitaOnline WhatsApp Hook] Error interno:', err);
         }
@@ -205,13 +279,23 @@
     // Exponer función global por si se invoca también desde main.js
     window.__sendCitaOnlineWhatsApp = dispatchWhatsAppConfirmation;
 
-    // 1. Capturar datos cuando el usuario hace clic en el botón "Reservar"
+    // 1. Capturar datos y normalizar teléfono cuando el usuario hace clic en el botón "Reservar"
     document.addEventListener('click', function (ev) {
         try {
             var target = ev.target;
             if (!target) return;
             var btn = target.closest ? target.closest('button.confirmation-button') : target;
             if (btn && btn.classList && btn.classList.contains('confirmation-button')) {
+                var phoneInput = document.getElementById('phone');
+                if (phoneInput && phoneInput.value) {
+                    var norm = normalizeLocalPhoneDigits(phoneInput.value);
+                    if (norm && norm !== phoneInput.value) {
+                        phoneInput.value = norm;
+                        var evt = new Event('input', { bubbles: true });
+                        evt.__saInternal = true;
+                        phoneInput.dispatchEvent(evt);
+                    }
+                }
                 var snap = captureCurrentFormState();
                 setTimeout(function () {
                     var successAlert = document.querySelector('app-confirmation .alert-success');
@@ -238,7 +322,17 @@
             var formSnap = captureCurrentFormState() || {};
             var parsedReq = {};
             try {
-                if (typeof body === 'string') parsedReq = JSON.parse(body);
+                if (typeof body === 'string') {
+                    parsedReq = JSON.parse(body);
+                    // Asegurar que también a SALUS se envíe el teléfono limpio sin 0 inicial (ej: 2645438114)
+                    if (parsedReq && parsedReq.PatientPhone) {
+                        var cleanedForSalus = normalizeLocalPhoneDigits(parsedReq.PatientPhone);
+                        if (cleanedForSalus) {
+                            parsedReq.PatientPhone = cleanedForSalus;
+                            body = JSON.stringify(parsedReq);
+                        }
+                    }
+                }
             } catch (e) {}
 
             var statusObj = {};
@@ -247,47 +341,6 @@
                     statusObj = JSON.parse(parsedReq.Status);
                 }
             } catch (e) {}
-
-            // Si estamos en localhost y el modo "Simular reserva SALUS" está activo:
-            // no golpeamos la base de datos de SALUS para no ocupar un turno real del médico,
-            // simulamos la respuesta exitosa de AddReservation y disparamos el WhatsApp real.
-            if (IS_LOCAL_TEST && simulateSalusInLocal) {
-                setTimeout(function () {
-                    var fakeResp = JSON.stringify({
-                        VisitId: 999999,
-                        Charge: false,
-                        UploadFoto: false,
-                        ErrorLimitPlannedVisits: false,
-                        ErrorLimitSpecialityVisits: false
-                    });
-                    try {
-                        Object.defineProperty(xhr, 'status', { value: 200, configurable: true });
-                        Object.defineProperty(xhr, 'statusText', { value: 'OK', configurable: true });
-                        Object.defineProperty(xhr, 'readyState', { value: 4, configurable: true });
-                        Object.defineProperty(xhr, 'responseText', { value: fakeResp, configurable: true });
-                        Object.defineProperty(xhr, 'response', { value: fakeResp, configurable: true });
-                    } catch (e) {}
-
-                    dispatchWhatsAppConfirmation({
-                        phone: parsedReq.PatientPhone || formSnap.phone || '',
-                        nombre: parsedReq.PatientName || formSnap.nombre || '',
-                        apellido: parsedReq.PatientSurname || formSnap.apellido || '',
-                        segundoApellido: parsedReq.PatientSecondSurname || formSnap.segundoApellido || '',
-                        dni: parsedReq.NIF || formSnap.dni || '',
-                        email: parsedReq.PatientEMail || formSnap.email || '',
-                        fechaHora: formSnap.fechaHora || parsedReq.Date || parsedReq.Hour || '',
-                        profesional: (statusObj.selectedvirtualgroup && statusObj.selectedvirtualgroup.name) || formSnap.profesional || '',
-                        especialidad: (statusObj.selectedSpeciality && statusObj.selectedSpeciality.name) || formSnap.especialidad || '',
-                        obraSocial: statusObj.insurancepayer || '',
-                        visitId: 999999
-                    });
-
-                    xhr.dispatchEvent(new Event('readystatechange'));
-                    xhr.dispatchEvent(new ProgressEvent('load'));
-                    xhr.dispatchEvent(new ProgressEvent('loadend'));
-                }, 400);
-                return;
-            }
 
             xhr.addEventListener('load', function () {
                 try {

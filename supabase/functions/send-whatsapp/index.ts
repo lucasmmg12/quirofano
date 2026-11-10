@@ -76,36 +76,38 @@ Deno.serve(async (req) => {
     };
 
     // Helper para formatear teléfono para WhatsApp (Argentina 549...)
+    // Limpia ceros iniciales (ej: 02645438114 -> 2645438114 -> 5492645438114) y 15 intermedio
     function formatPhoneForWhatsApp(rawPhone: string): string {
         let clean = String(rawPhone || '').replace(/\D/g, '');
         if (!clean) return '';
-        if (clean.startsWith('549') && clean.length === 13) return clean;
-        if (clean.startsWith('549') && clean.length > 13) {
-            const inner = clean.slice(3);
-            const idx15 = inner.indexOf('15');
-            if (idx15 >= 2 && idx15 <= 4) {
-                const cleaned = inner.slice(0, idx15) + inner.slice(idx15 + 2);
-                if (cleaned.length === 10) return '549' + cleaned;
-            }
-            return '549' + inner.slice(0, 10);
-        }
-        if (clean.startsWith('54') && !clean.startsWith('549')) {
+
+        // Quitar prefijo internacional 549 o 54 si viene al inicio para normalizar los 10 dígitos locales
+        if (clean.startsWith('549') && clean.length >= 13) {
+            clean = clean.slice(3);
+        } else if (clean.startsWith('54') && clean.length >= 12) {
             clean = clean.slice(2);
         }
-        if (clean.startsWith('0')) clean = clean.substring(1);
-        if (clean.startsWith('15') && clean.length <= 10) {
+
+        // Eliminar siempre el primer cero (o ceros iniciales, ej: 02645438114 -> 2645438114)
+        clean = clean.replace(/^0+/, '');
+
+        // Si ingresó solo "15xxxxxxx" (9 dígitos, sin característica de San Juan)
+        if (clean.startsWith('15') && clean.length === 9) {
             clean = '264' + clean.substring(2);
-            return '549' + clean;
         }
+
+        // Si ingresó característica + 15 + número (ej: 264155438114 -> 12 dígitos)
         if (clean.length > 10 && clean.includes('15')) {
             const idx = clean.indexOf('15');
             if (idx >= 2 && idx <= 4) {
                 clean = clean.slice(0, idx) + clean.slice(idx + 2);
             }
         }
+
         if (clean.length > 10) {
             clean = clean.slice(0, 10);
         }
+
         if (clean.length === 10 && !clean.startsWith('54')) {
             clean = '549' + clean;
         }
@@ -399,9 +401,8 @@ Deno.serve(async (req) => {
 
             const targetLine = 'contact_center';
             const config = await getBuilderBotConfig(targetLine);
-            const useFreeText = Boolean(body.useFreeText) || targetPhone === '5492645438114';
+            const useFreeText = Boolean(body.useFreeText);
 
-            // Si useFreeText es true (ej. ventana 24h abierta / prueba sin plantilla Meta), enviar mensaje directo por la línea contact_center
             if (useFreeText) {
                 const directUrl = `https://app.builderbot.cloud/api/v2/${config.projectId}/messages`;
                 const directTextMessage =
@@ -474,45 +475,95 @@ Deno.serve(async (req) => {
             }
 
             const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
-
-            const requestedTemplate = String(body.templateName || 'ojonoscobran').trim();
+            const requestedTemplate = String(body.templateName || 'confirmacion_turno_web').trim();
             const requestedLang = String(body.languageCode || 'es_AR').trim();
 
-            const templatePayload = {
-                to: targetPhone,
-                templateName: requestedTemplate,
-                languageCode: requestedLang,
-                components: [
-                    {
-                        type: 'body',
-                        parameters: [
-                            { type: 'text', text: cleanFirstName },
-                            { type: 'text', text: param2Confirmacion }
+            const profCleanForVar = (profesional || 'Profesional asignado').replace(/\s*\([^)]*\)\s*/g, '').trim();
+            const espCleanForVar = (especialidad || '').replace(/\s*\([^)]*\)\s*/g, '').trim();
+            const profAndEspVar = espCleanForVar ? `${profCleanForVar} (${espCleanForVar})` : profCleanForVar;
+            const fechaHoraVar = (fechaHora || 'Fecha y hora seleccionadas').replace(/[\r\n\t]+/g, ' ').trim();
+
+            // Intentar primero con la plantilla específica 'confirmacion_turno_web' (3 variables: {{1}} Paciente, {{2}} Profesional/Especialidad, {{3}} Fecha y Hora)
+            // Si aún no está aprobada en Meta, hacer fallback automático e inmediato a 'ojonoscobran'
+            let usedTemplate = requestedTemplate;
+            let response: Response;
+            let data: any;
+
+            const buildPayloadForTemplate = (tplName: string) => {
+                if (tplName === 'confirmacion_turno_web') {
+                    return {
+                        to: targetPhone,
+                        templateName: 'confirmacion_turno_web',
+                        languageCode: requestedLang,
+                        components: [
+                            {
+                                type: 'body',
+                                parameters: [
+                                    { type: 'text', text: cleanFirstName },
+                                    { type: 'text', text: profAndEspVar },
+                                    { type: 'text', text: fechaHoraVar }
+                                ]
+                            }
                         ]
-                    }
-                ]
+                    };
+                }
+                return {
+                    to: targetPhone,
+                    templateName: tplName,
+                    languageCode: requestedLang,
+                    components: [
+                        {
+                            type: 'body',
+                            parameters: [
+                                { type: 'text', text: cleanFirstName },
+                                { type: 'text', text: param2Confirmacion }
+                            ]
+                        }
+                    ]
+                };
             };
 
-            console.log(`[send-whatsapp] notify_cita_online_reservation → ${targetPhone} | Paciente: ${fullPatientName} | Turno: ${turnoSummary}`);
+            console.log(`[send-whatsapp] notify_cita_online_reservation → ${targetPhone} | Paciente: ${fullPatientName} | Turno: ${turnoSummary} | Plantilla: ${usedTemplate}`);
 
-            const response = await fetch(url, {
+            response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'x-api-builderbot': config.apiKey,
                 },
-                body: JSON.stringify(templatePayload),
+                body: JSON.stringify(buildPayloadForTemplate(usedTemplate)),
             });
 
             const rawText = await response.text();
-            let data;
             try {
                 data = JSON.parse(rawText);
             } catch {
                 data = { rawResponse: rawText };
             }
 
-            const resolvedDisplayMessage = `📋 [Plantilla Meta CitaOnline: ${requestedTemplate}] Hola ${cleanFirstName} soy ${param2Confirmacion} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
+            // Fallback automático a 'ojonoscobran' si 'confirmacion_turno_web' aún no está activa/aprobada en Meta
+            if ((!response.ok || data?.success === false || data?.error) && usedTemplate === 'confirmacion_turno_web') {
+                console.warn(`[send-whatsapp] Plantilla confirmacion_turno_web aún no disponible (${rawText}). Usando fallback 'ojonoscobran'...`);
+                usedTemplate = 'ojonoscobran';
+                response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-builderbot': config.apiKey,
+                    },
+                    body: JSON.stringify(buildPayloadForTemplate('ojonoscobran')),
+                });
+                const rawFallback = await response.text();
+                try {
+                    data = JSON.parse(rawFallback);
+                } catch {
+                    data = { rawResponse: rawFallback };
+                }
+            }
+
+            const resolvedDisplayMessage = usedTemplate === 'confirmacion_turno_web'
+                ? `📋 [Plantilla Meta: confirmacion_turno_web] ¡Hola ${cleanFirstName}! ✅ Te confirmamos que tu turno en Sanatorio Argentino con ${profAndEspVar} para el día ${fechaHoraVar} ya quedó reservado con éxito. ⚠️ IMPORTANTE: Si ya tenés tu turno asignado, por favor NO saques más turnos adicionales en la web.`
+                : `📋 [Plantilla Meta CitaOnline: ${usedTemplate}] Hola ${cleanFirstName} soy ${param2Confirmacion} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
             const nowIso = new Date().toISOString();
 
             // Registrar en whatsapp_messages para trazabilidad en la consola del Contact Center
@@ -529,7 +580,7 @@ Deno.serve(async (req) => {
                         source: 'cita_online_web',
                         line: targetLine,
                         type: 'meta_template',
-                        templateName: requestedTemplate,
+                        templateName: usedTemplate,
                         visitId,
                         dni: dni || null,
                         paciente: fullPatientName,
@@ -549,7 +600,7 @@ Deno.serve(async (req) => {
                 JSON.stringify({
                     success: response.ok && data?.success !== false,
                     phone: targetPhone,
-                    templateName: requestedTemplate,
+                    templateName: usedTemplate,
                     visitId,
                     data
                 }),
