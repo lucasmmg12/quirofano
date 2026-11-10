@@ -428,7 +428,74 @@ function renderBotTags(chat, theme) {
 }
 
 /**
- * Formatea texto con sintaxis WhatsApp: *bold*, _italic_, ~strikethrough~
+ * Formatea un fragmento de texto sin URLs aplicando sintaxis WhatsApp: *bold*, _italic_, ~strikethrough~
+ */
+function formatWhatsAppInlineTokens(segment, keyPrefix = 'tok') {
+    if (!segment) return null;
+    const parts = segment.split(/(\*[^*]+\*|_[^_]+_|~[^~]+~)/g);
+    return parts.map((part, i) => {
+        const k = `${keyPrefix}_${i}`;
+        if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+            return <strong key={k}>{part.slice(1, -1)}</strong>;
+        }
+        if (part.startsWith('_') && part.endsWith('_') && part.length > 2) {
+            return <em key={k}>{part.slice(1, -1)}</em>;
+        }
+        if (part.startsWith('~') && part.endsWith('~') && part.length > 2) {
+            return <s key={k}>{part.slice(1, -1)}</s>;
+        }
+        return part;
+    });
+}
+
+/**
+ * Detecta enlaces (https://, http://, www.) dentro de una línea y los convierte en <a> clicables,
+ * preservando el formato WhatsApp en el resto del texto.
+ */
+function formatLineWithLinksAndWhatsApp(line, keyPrefix = 'ln') {
+    if (!line) return line;
+    const urlRegex = /((?:https?:\/\/|www\.)[^\s<>"]+)/gi;
+    const tokens = line.split(urlRegex);
+    return tokens.map((token, idx) => {
+        if (!token) return null;
+        if (/^(?:https?:\/\/|www\.)/i.test(token)) {
+            // Separar puntuación final accidental (ej: punto o cierre de paréntesis al final de oración)
+            const trailingMatch = token.match(/([.,;:!?)]+)$/);
+            const cleanUrl = trailingMatch ? token.slice(0, -trailingMatch[1].length) : token;
+            const trailingPunct = trailingMatch ? trailingMatch[1] : '';
+            const href = /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
+            return (
+                <React.Fragment key={`${keyPrefix}_url_${idx}`}>
+                    <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Abrir enlace en nueva pestaña: ${href}`}
+                        style={{
+                            color: '#1D4ED8',
+                            textDecoration: 'underline',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            wordBreak: 'break-all'
+                        }}
+                    >
+                        {cleanUrl}
+                    </a>
+                    {trailingPunct}
+                </React.Fragment>
+            );
+        }
+        return (
+            <React.Fragment key={`${keyPrefix}_txt_${idx}`}>
+                {formatWhatsAppInlineTokens(token, `${keyPrefix}_${idx}`)}
+            </React.Fragment>
+        );
+    });
+}
+
+/**
+ * Formatea texto con enlaces clicables y sintaxis WhatsApp: *bold*, _italic_, ~strikethrough~
  * Devuelve array de elementos React con los estilos aplicados.
  */
 function formatWhatsAppText(text) {
@@ -451,25 +518,13 @@ function formatWhatsAppText(text) {
                     wordBreak: 'break-word',
                     overflowWrap: 'anywhere'
                 }}>
-                    {quoteContent}
+                    {formatLineWithLinksAndWhatsApp(quoteContent, `q_${lineIdx}`)}
                 </div>
             );
         }
-        const parts = line.split(/(\*[^*]+\*|_[^_]+_|~[^~]+~)/g);
         return (
             <React.Fragment key={`line_${lineIdx}`}>
-                {parts.map((part, i) => {
-                    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-                        return <strong key={i}>{part.slice(1, -1)}</strong>;
-                    }
-                    if (part.startsWith('_') && part.endsWith('_') && part.length > 2) {
-                        return <em key={i}>{part.slice(1, -1)}</em>;
-                    }
-                    if (part.startsWith('~') && part.endsWith('~') && part.length > 2) {
-                        return <s key={i}>{part.slice(1, -1)}</s>;
-                    }
-                    return part;
-                })}
+                {formatLineWithLinksAndWhatsApp(line, `l_${lineIdx}`)}
                 {lineIdx < lines.length - 1 && '\n'}
             </React.Fragment>
         );

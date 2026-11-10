@@ -136,8 +136,11 @@ function extractDniFromText(text: string | null | undefined): string | null {
         return strippedMsg;
     }
 
-    // Remover fechas de nacimiento con barras o guiones para que sus dígitos (ej: 04/07/2002 -> 04072002) nunca se confundan con un DNI
-    const textWithoutDates = clean.replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, ' ');
+    // Remover URLs, tokens y números de orden médica ("Órden Nro: 2630708731551") y fechas de nacimiento para que nunca se confundan con un DNI
+    const textWithoutDates = clean
+        .replace(/https?:\/\/\S+/gi, ' ')
+        .replace(/\b[oó]rden\s*(?:nro|n[uú]mero|n°)?\s*[:.#]*\s*\d+/gi, ' ')
+        .replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, ' ');
 
     // 1. Buscar si hay una etiqueta explícita de DNI (ej: "DNI: 44316298", "dni 44.316.298", "documento: 44316298")
     const explicitTagMatch = textWithoutDates.match(/\b(?:dni|documento|doc|nro)\s*[:.\s#]*([1-9]\d{1,2}\.?\d{3}\.?\d{3}|[1-9]\d{6,7})\b/i);
@@ -5031,9 +5034,25 @@ async function handleChatbotTriage(
         return await finalizeAndSend(replyText, nextStage, updates);
     }
 
-    // Detectar si el paciente envió recientemente una imagen o documento (en este mensaje o en los últimos 2)
-    const patientSentImageRecently = isIncomingMedia || recentHistory.slice(-3).some((m: any) => 
-        m.direction === 'incoming' && (m.media_type === 'image' || m.content === '[image]' || (m.raw_payload && m.raw_payload.media_type === 'image'))
+    // Detectar si el mensaje contiene un link de receta / orden médica digital (ej: misrx.com.ar, rcta.me, prestacion?token=, Órden Nro: ... https://...)
+    const DIGITAL_ORDER_LINK_REGEX = /https?:\/\/(?:[\w.-]*misrx\.com(?:\.ar)?|[\w.-]*rcta\.me|[\w.-]*receta|[^\s]+\/(?:prestacion|receta|orden)[^\s]*)/i;
+    const isIncomingOrderLink = DIGITAL_ORDER_LINK_REGEX.test(cleanText) ||
+        (/\b[oó]rden\s*(?:nro|n[uú]mero|n°)?\s*[:.#]?\s*\d+/i.test(cleanText) && /https?:\/\//i.test(cleanText));
+    if (isIncomingOrderLink) {
+        isIncomingMedia = true;
+    }
+
+    // Detectar si el paciente envió recientemente una imagen, documento o link de orden médica digital (en este mensaje o en los últimos 4)
+    const patientSentImageRecently = isIncomingMedia || recentHistory.slice(-4).some((m: any) => 
+        m.direction === 'incoming' && (
+            m.media_type === 'image' ||
+            m.media_type === 'document' ||
+            m.content === '[image]' ||
+            m.content === '[document]' ||
+            (m.raw_payload && (m.raw_payload.media_type === 'image' || m.raw_payload.media_type === 'document')) ||
+            DIGITAL_ORDER_LINK_REGEX.test(m.content || '') ||
+            (/\b[oó]rden\s*(?:nro|n[uú]mero|n°)?\s*[:.#]?\s*\d+/i.test(m.content || '') && /https?:\/\//i.test(m.content || ''))
+        )
     );
 
     // Detectar si un asesor humano intervino previamente en el chat
@@ -5061,12 +5080,20 @@ async function handleChatbotTriage(
         lastBotContent.includes('foto de la orden médica') ||
         (lastBotContent.includes('envíanos:') && lastBotContent.includes('orden'));
 
-    // ¿La imagen fue enviada de la nada (sin contexto previo del bot ni indicación de trámite en el texto)?
+    // ¿La imagen o link de orden médica fue enviada de la nada (sin contexto previo del bot ni indicación de trámite en el texto)?
+    const isStandaloneOrderLinkText = isIncomingOrderLink &&
+        cleanText
+            .replace(/https?:\/\/\S+/gi, '')
+            .replace(/\b[oó]rden\s*(?:nro|n[uú]mero|n°)?\s*[:.#]*\s*\d+/gi, '')
+            .replace(/[\s,.;:\-_*]+/g, ' ')
+            .trim().length < 15;
+
     const isImageWithoutContext = !wasWaitingForPhoto && (
         (isIncomingMedia && (
             cleanText === '[image]' || 
             cleanText === '[document]' || 
             cleanText === '' ||
+            isStandaloneOrderLinkText ||
             /^(hola|buenas|buen\s+dia|buenas\s+tardes|buenas\s+noches|doc|doctor|hola\s+buenas|foto|orden|aca\s+esta|te\s+paso)[!.\s]*$/i.test(cleanText)
         )) ||
         (patientSentImageRecently && /^(hola|buenas|buen\s+dia|buenas\s+tardes|buenas\s+noches|doc|doctor|hola\s+buenas)[!.\s]*$/i.test(cleanText) && (conv?.bot_stage === 'inicio' || wasClosed || !conv))
