@@ -20,21 +20,30 @@ export const ASOCIACION_COLORS = {
     'Asociación de Traumatólogos': '#F59E0B',
     'Asociación de Cirujanos Pediatras': '#10B981',
     'ORL (Particular)': '#8B5CF6',
+    'Sin Asignar': '#64748B',
 };
 
 export const ASOCIACION_LIST = Object.values(ASOCIACION_MAP);
 
-// ─── Cirugías ───
+// ─── Cirugías, Suturas y Admisiones ───
 
 /**
- * Fetches all synced surgeries, optionally filtered.
+ * Fetches all synced surgeries/admissions/suturas, optionally filtered.
  */
-export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaHasta, search, soloSinConstancia = true, soloSinCarrito = false } = {}) {
+export async function fetchAsociacionesCirugias({
+    asociacion,
+    fechaDesde,
+    fechaHasta,
+    search,
+    soloSinConstancia = false,
+    soloSinCarrito = false,
+    soloSuturas = false,
+} = {}) {
     let query = supabase
         .from('asociaciones_cirugias')
         .select('*')
-        .order('nombre_paciente', { ascending: true })
-        .order('fecha_realizacion', { ascending: false });
+        .order('fecha_realizacion', { ascending: false })
+        .order('nombre_paciente', { ascending: true });
 
     if (soloSinConstancia) {
         query = query.is('constancia_id', null);
@@ -45,6 +54,9 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
     if (asociacion) {
         query = query.eq('asociacion', asociacion);
     }
+    if (soloSuturas) {
+        query = query.eq('es_sutura', true);
+    }
     if (fechaDesde) {
         query = query.gte('fecha_realizacion', fechaDesde);
     }
@@ -52,11 +64,10 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
         query = query.lte('fecha_realizacion', fechaHasta);
     }
     if (search) {
-        // En Supabase/PostgREST, las comas dentro del string de un .or() se interpretan como separadores de condiciones.
-        // Si el usuario busca "Morales, Ma", la coma rompe la consulta y da error 400.
-        // Reemplazamos la coma por un comodín "%" o un espacio para evitar el error.
         const safeSearch = search.trim().replace(/[\s,]+/g, '%');
-        query = query.or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+        query = query.or(
+            `numero_admision.ilike.%${safeSearch}%,nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%,nombre_cirugia.ilike.%${safeSearch}%`
+        );
     }
 
     const PAGE_SIZE = 1000;
@@ -76,13 +87,31 @@ export async function fetchAsociacionesCirugias({ asociacion, fechaDesde, fechaH
 }
 
 /**
- * Toggle the docs_completos flag for a surgery.
+ * Update the target association for one or multiple records manually.
  */
-export async function toggleDocsCompletos(id, operador) {
+export async function cambiarAsociacionExpedientes(ids, nuevaAsociacion) {
+    const idList = Array.isArray(ids) ? ids : [ids];
+    const { data, error } = await supabase
+        .from('asociaciones_cirugias')
+        .update({
+            asociacion: nuevaAsociacion,
+            asociacion_manual: true,
+        })
+        .in('id', idList)
+        .select();
+
+    if (error) throw error;
+    return data;
+}
+
+/**
+ * Toggle the docs_completos flag for a surgery/admission.
+ */
+export async function toggleDocsCompletos(id, operador, asociacionOverride = null) {
     // First get current state
     const { data: current, error: fetchErr } = await supabase
         .from('asociaciones_cirugias')
-        .select('docs_completos')
+        .select('docs_completos, asociacion')
         .eq('id', id)
         .single();
 
@@ -93,6 +122,7 @@ export async function toggleDocsCompletos(id, operador) {
         docs_completos: newVal,
         operador: newVal ? operador : null,
         checked_at: newVal ? new Date().toISOString() : null,
+        ...(asociacionOverride ? { asociacion: asociacionOverride, asociacion_manual: true } : {}),
         // If unchecking docs, also remove from carrito
         ...(newVal ? {} : { en_carrito: false }),
     };
@@ -109,18 +139,24 @@ export async function toggleDocsCompletos(id, operador) {
 }
 
 /**
- * Move checked surgeries to the delivery cart.
+ * Move selected surgeries/admissions to the delivery cart, optionally assigning their target association.
  */
-export async function enviarAlCarrito(ids, usuario = 'sistema') {
+export async function enviarAlCarrito(ids, usuario = 'sistema', asociacionDestino = null) {
+    const ahora = new Date().toISOString();
+    const updatePayload = {
+        docs_completos: true,
+        operador: usuario,
+        checked_at: ahora,
+        en_carrito: true,
+        carrito_por: usuario,
+        carrito_at: ahora,
+        ...(asociacionDestino ? { asociacion: asociacionDestino, asociacion_manual: true } : {}),
+    };
+
     const { data, error } = await supabase
         .from('asociaciones_cirugias')
-        .update({ 
-            en_carrito: true,
-            carrito_por: usuario,
-            carrito_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .in('id', ids)
-        .eq('docs_completos', true) // Safety: only checked items
         .is('constancia_id', null)  // Safety: not already delivered
         .select();
 
@@ -279,13 +315,13 @@ export async function fetchConstancias({ asociacion, limit = 1000, search } = {}
             .from('asociaciones_cirugias')
             .select('constancia_id')
             .not('constancia_id', 'is', null)
-            .or(`nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
+            .or(`numero_admision.ilike.%${safeSearch}%,nombre_paciente.ilike.%${safeSearch}%,dni.ilike.%${safeSearch}%,cirujano.ilike.%${safeSearch}%`);
         
         const matchedIds = [...new Set((matchedDetalle || []).map(a => a.constancia_id))];
         if (matchedIds.length > 0) {
             query = query.in('id', matchedIds);
         } else {
-            return [];
+            query = query.ilike('codigo', `%${safeSearch}%`);
         }
     } else {
         query = query.limit(limit);

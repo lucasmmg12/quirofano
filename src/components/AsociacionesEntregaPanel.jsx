@@ -17,6 +17,7 @@ import { SkeletonTable } from './SkeletonLoader';
 import * as XLSX from 'xlsx';
 import {
     fetchAsociacionesCirugias,
+    cambiarAsociacionExpedientes,
     toggleDocsCompletos,
     enviarAlCarrito,
     quitarDelCarrito,
@@ -127,10 +128,12 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const [activeTab, setActiveTab] = useState('pendientes');
     const [loading, setLoading] = useState(true);
 
-    // Pendientes state
+    // Pendientes / Buscador por Admisión state
     const [cirugias, setCirugias] = useState([]);
     const [filtroAsociacion, setFiltroAsociacion] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [soloSuturas, setSoloSuturas] = useState(false);
+    const [asociacionDestinoLote, setAsociacionDestinoLote] = useState('');
     const [estadoEntregaFilter, setEstadoEntregaFilter] = useState('pendientes'); // 'all', 'entregados', 'pendientes'
     const [resumen, setResumen] = useState({});
 
@@ -181,12 +184,15 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     const loadPendientes = useCallback(async () => {
         setLoading(true);
         try {
+            // Si el usuario está buscando por N° Admisión / DNI / Paciente, buscamos en TODO SALUS sin bloquear por Asociación
+            const effectiveAsociacion = searchTerm.trim() ? undefined : filtroAsociacion;
             const [data, res] = await Promise.all([
                 fetchAsociacionesCirugias({
-                    asociacion: filtroAsociacion,
+                    asociacion: effectiveAsociacion,
                     search: searchTerm || undefined,
                     soloSinConstancia: false,
                     soloSinCarrito: false,
+                    soloSuturas,
                 }),
                 fetchResumenAsociaciones(),
             ]);
@@ -197,7 +203,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         } finally {
             setLoading(false);
         }
-    }, [filtroAsociacion, searchTerm, addToast]);
+    }, [filtroAsociacion, searchTerm, soloSuturas, addToast]);
 
     const loadCarrito = useCallback(async () => {
         setCarritoLoading(true);
@@ -222,7 +228,6 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
     useEffect(() => {
         if (activeTab === 'pendientes') {
-            // ✅ FIX: load carrito in parallel so badge count is accurate from the start
             loadPendientes();
             loadCarrito();
         }
@@ -233,25 +238,56 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     // ─── Handlers ───
     const handleToggleDocs = async (id) => {
         try {
-            const updated = await toggleDocsCompletos(id, currentUser?.nombre || 'Sistema');
+            const updated = await toggleDocsCompletos(
+                id,
+                currentUser?.nombre || 'Sistema',
+                asociacionDestinoLote || null
+            );
             setCirugias(prev => prev.map(c => c.id === id ? updated : c));
-            // Refresh resumen
             fetchResumenAsociaciones().then(setResumen);
         } catch (err) {
             addToast?.('Error al actualizar documentación: ' + err.message, 'error');
         }
     };
 
+    const handleCambiarAsociacion = async (id, nuevaAsociacion, fromCarrito = false) => {
+        try {
+            const [updated] = await cambiarAsociacionExpedientes(id, nuevaAsociacion);
+            if (updated) {
+                setCirugias(prev => prev.map(c => c.id === id ? updated : c));
+            }
+            addToast?.(`Asociación actualizada a ${nuevaAsociacion}`, 'success');
+            if (fromCarrito) {
+                await Promise.all([loadCarrito(), loadPendientes()]);
+            } else {
+                fetchResumenAsociaciones().then(setResumen);
+            }
+        } catch (err) {
+            addToast?.('Error al cambiar asociación: ' + err.message, 'error');
+        }
+    };
+
     const handleEnviarAlCarrito = async () => {
         const conDocs = cirugias.filter(c => c.docs_completos && !c.en_carrito && !c.constancia_id);
         if (conDocs.length === 0) {
-            addToast?.('No hay cirugías con documentación completa para enviar', 'info');
+            addToast?.('Seleccione al menos una admisión/cirugía para enviar al carrito', 'info');
+            return;
+        }
+        const sinAsociacion = conDocs.filter(c => (!c.asociacion || c.asociacion === 'Sin Asignar') && !asociacionDestinoLote);
+        if (sinAsociacion.length > 0) {
+            addToast?.('Seleccione a qué Asociación se rinde en el selector "Rendir a Asociación" antes de enviar al carrito', 'error');
             return;
         }
         try {
-            await enviarAlCarrito(conDocs.map(c => c.id));
-            addToast?.(`${conDocs.length} expediente(s) enviados al carrito`, 'success');
-            // ✅ FIX: reload both pendientes AND carrito so badge + tab update instantly
+            await enviarAlCarrito(
+                conDocs.map(c => c.id),
+                currentUser?.nombre || 'Sistema',
+                asociacionDestinoLote || null
+            );
+            addToast?.(
+                `${conDocs.length} expediente(s) enviados al carrito${asociacionDestinoLote ? ` (${asociacionDestinoLote})` : ''}`,
+                'success'
+            );
             await Promise.all([loadPendientes(), loadCarrito()]);
         } catch (err) {
             addToast?.('Error al enviar al carrito: ' + err.message, 'error');
@@ -452,44 +488,46 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                     : '—';
                 return [
                     String(idx + 1),
+                    item.numero_admision || '—',
                     fecha,
                     item.nombre_paciente || '—',
                     item.dni || '—',
                     item.cliente || '—',
-                    (item.nombre_cirugia || '—').substring(0, 35),
-                    (item.cirujano || '—').substring(0, 20),
+                    (item.nombre_cirugia || '—').substring(0, 32),
+                    (item.cirujano || '—').substring(0, 18),
                 ];
             });
 
             autoTable(doc, {
                 startY: y,
-                head: [['#', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Cirugía', 'Cirujano']],
+                head: [['#', 'Admisión', 'Fecha', 'Paciente', 'DNI', 'Obra Social', 'Cirugía / Práctica', 'Cirujano']],
                 body: tableBody,
                 theme: 'grid',
                 headStyles: {
                     fillColor: [13, 59, 102], // #0D3B66
                     textColor: [255, 255, 255],
-                    fontSize: 7.5,
+                    fontSize: 7.2,
                     fontStyle: 'bold',
                     halign: 'left',
-                    cellPadding: 3,
+                    cellPadding: 2.5,
                 },
                 bodyStyles: {
-                    fontSize: 7.5,
-                    cellPadding: 2.5,
+                    fontSize: 7.2,
+                    cellPadding: 2.2,
                     textColor: [30, 30, 30],
                 },
                 alternateRowStyles: {
                     fillColor: [248, 250, 252], // #F8FAFC
                 },
                 columnStyles: {
-                    0: { cellWidth: 8, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
-                    1: { cellWidth: 18 },
-                    2: { fontStyle: 'bold', cellWidth: 38 },
-                    3: { cellWidth: 22, font: 'courier' },
-                    4: { cellWidth: 30 },
-                    5: { cellWidth: 42 },
-                    6: { cellWidth: 24 },
+                    0: { cellWidth: 7, halign: 'center', fontStyle: 'bold', textColor: [148, 163, 184] },
+                    1: { cellWidth: 16, font: 'courier', fontStyle: 'bold' },
+                    2: { cellWidth: 16 },
+                    3: { fontStyle: 'bold', cellWidth: 34 },
+                    4: { cellWidth: 19, font: 'courier' },
+                    5: { cellWidth: 26 },
+                    6: { cellWidth: 40 },
+                    7: { cellWidth: 24 },
                 },
                 margin: { left: margin, right: margin },
                 didDrawPage: () => {
@@ -640,6 +678,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                     const localeMes = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
                     cellValue = localeMes.charAt(0).toUpperCase() + localeMes.slice(1);
                 }
+                else if (col === 'admision') cellValue = c.numero_admision || 'Sin Admisión';
                 else if (col === 'paciente') cellValue = c.nombre_paciente || '';
                 else if (col === 'dni') cellValue = c.dni || '';
                 else if (col === 'os') cellValue = c.cliente || '';
@@ -659,7 +698,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
     // ─── Unique values for column filter dropdowns ───
     const columnUniqueValues = useMemo(() => {
-        const cols = ['fecha', 'paciente', 'dni', 'os', 'cirugia', 'cirujano', 'asociacion'];
+        const cols = ['fecha', 'admision', 'paciente', 'dni', 'os', 'cirugia', 'cirujano', 'asociacion'];
         const result = {};
         cols.forEach(col => {
             const vals = new Set();
@@ -670,11 +709,11 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                         const d = new Date(c.fecha_realizacion + 'T12:00:00');
                         const localeMes = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
                         v = localeMes.charAt(0).toUpperCase() + localeMes.slice(1);
-                        // Store the raw sortable value string mapped to the display label
                         if (!result.fechaSort) result.fechaSort = {};
                         result.fechaSort[v] = c.fecha_realizacion.substring(0, 7); // 'YYYY-MM'
                     }
                 }
+                else if (col === 'admision') v = c.numero_admision || 'Sin Admisión';
                 else if (col === 'paciente') v = c.nombre_paciente || '';
                 else if (col === 'dni') v = c.dni || '';
                 else if (col === 'os') v = c.cliente || '';
@@ -868,11 +907,13 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         );
     };
 
+    const selectedForCartCount = cirugias.filter(c => c.docs_completos && !c.en_carrito && !c.constancia_id).length;
+
     // Tab config
     const tabs = [
-        { id: 'pendientes', label: 'Cirugías Pendientes', icon: FileCheck, count: pendientesCirugias.length },
+        { id: 'pendientes', label: 'Buscador por Admisión / Rendición', icon: FileCheck, count: pendientesCirugias.length },
         { id: 'carrito', label: 'Carrito de Entrega', icon: ShoppingCart, count: Object.values(carrito).flat().length },
-        { id: 'historial', label: 'Historial', icon: History, count: constancias.length },
+        { id: 'historial', label: 'Historial de Constancias', icon: History, count: constancias.length },
     ];
 
     return (
@@ -895,7 +936,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             Entrega Asociaciones
                         </h2>
                         <p style={{ fontSize: '0.78rem', color: '#9CA3AF', margin: 0 }}>
-                            Control de documentación quirúrgica para asociaciones médicas
+                            Búsqueda directa por Admisión, Cirugía o Sutura · Selección y asignación de Asociación para rendir
                         </p>
                     </div>
                 </div>
@@ -974,7 +1015,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             </div>
 
             {/* ════════════════════════════════════════ */}
-            {/* TAB 1: Cirugías Pendientes              */}
+            {/* TAB 1: Buscador por Admisión / Rendición */}
             {/* ════════════════════════════════════════ */}
             {activeTab === 'pendientes' && (
                 <div>
@@ -988,27 +1029,29 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                     {/* Search + Actions */}
                     <div style={{
                         display: 'flex', gap: '10px', marginBottom: '14px',
-                        alignItems: 'center',
+                        alignItems: 'center', flexWrap: 'wrap',
                     }}>
                         <div style={{
-                            flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
-                            padding: '8px 14px', borderRadius: '8px',
-                            border: '1px solid #E5E7EB', background: '#fff',
+                            flex: '1 1 320px', display: 'flex', alignItems: 'center', gap: '8px',
+                            padding: '9px 14px', borderRadius: '8px',
+                            border: searchTerm ? '2px solid #2563EB' : '1px solid #CBD5E1',
+                            background: '#fff',
+                            boxShadow: searchTerm ? '0 0 0 3px rgba(37, 99, 235, 0.1)' : 'none',
                         }}>
-                            <Search size={15} color="#9CA3AF" />
+                            <Search size={16} color={searchTerm ? '#2563EB' : '#9CA3AF'} />
                             <input
                                 type="text"
-                                placeholder="Buscar paciente, DNI, cirujano..."
+                                placeholder="Buscar por Nº Admisión (ej. I104587), DNI, Apellido y Nombre o Cirujano..."
                                 value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(0); }}
                                 style={{
                                     border: 'none', outline: 'none', flex: 1,
-                                    fontSize: '0.82rem', color: '#374151',
+                                    fontSize: '0.84rem', color: '#1F2937', fontWeight: searchTerm ? 600 : 400,
                                     background: 'transparent',
                                 }}
                             />
                             {searchTerm && (
-                                <button onClick={() => setSearchTerm('')} style={{
+                                <button onClick={() => { setSearchTerm(''); setCurrentPage(0); }} style={{
                                     background: 'none', border: 'none', cursor: 'pointer',
                                     color: '#9CA3AF', padding: '2px',
                                 }}>
@@ -1017,65 +1060,108 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             )}
                         </div>
 
+                        {/* Filtro Rápido: Solo Suturas */}
+                        <button
+                            onClick={() => { setSoloSuturas(v => !v); setCurrentPage(0); }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '8px 13px', borderRadius: '8px',
+                                border: soloSuturas ? '2px solid #0D9488' : '1px solid #E5E7EB',
+                                background: soloSuturas ? '#CCFBF1' : '#fff',
+                                color: soloSuturas ? '#0F766E' : '#4B5563',
+                                fontWeight: soloSuturas ? 700 : 600,
+                                fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s',
+                            }}
+                            title="Filtrar todas las suturas de guardia, pediatría, cirugía y consultorio"
+                        >
+                            🧵 Solo Suturas
+                        </button>
+
                         {/* Filter by Entregados / Pendientes */}
                         <select
                             value={estadoEntregaFilter}
-                            onChange={e => setEstadoEntregaFilter(e.target.value)}
+                            onChange={e => { setEstadoEntregaFilter(e.target.value); setCurrentPage(0); }}
                             style={{
                                 padding: '8px 12px', borderRadius: '8px', border: '1px solid #E5E7EB',
-                                background: '#fff', fontSize: '0.82rem', color: '#374151',
+                                background: '#fff', fontSize: '0.8rem', color: '#374151',
                                 cursor: 'pointer', outline: 'none'
                             }}
                         >
-                            <option value="all">Todas las cirugías</option>
-                            <option value="pendientes">Pendientes (No Entregados)</option>
-                            <option value="entregados">Entregados (En Constancia)</option>
+                            <option value="all">Todas (Disponibles + Entregadas)</option>
+                            <option value="pendientes">Disponibles para Rendir</option>
+                            <option value="entregados">Ya Rendidas (En Constancia)</option>
                         </select>
+
+                        {/* Selector de Asociación de Destino para el lote seleccionado */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                            padding: '4px 6px 4px 10px', borderRadius: '8px',
+                            background: '#EFF6FF', border: '1px solid #BFDBFE',
+                        }}>
+                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E40AF', whiteSpace: 'nowrap' }}>
+                                Rendir a:
+                            </span>
+                            <select
+                                value={asociacionDestinoLote}
+                                onChange={e => setAsociacionDestinoLote(e.target.value)}
+                                style={{
+                                    padding: '5px 8px', borderRadius: '6px', border: '1px solid #93C5FD',
+                                    background: '#fff', fontSize: '0.78rem', fontWeight: 600, color: '#0D3B66',
+                                    cursor: 'pointer', outline: 'none',
+                                }}
+                            >
+                                <option value="">Según cada fila (Automático)</option>
+                                {ASOCIACION_LIST.map(asoc => (
+                                    <option key={asoc} value={asoc}>{asoc}</option>
+                                ))}
+                            </select>
+                        </div>
 
                         <button
                             onClick={handleEnviarAlCarrito}
-                            disabled={!cirugias.some(c => c.docs_completos && !c.en_carrito && !c.constancia_id)}
+                            disabled={selectedForCartCount === 0}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '6px',
                                 padding: '8px 16px', borderRadius: '8px',
-                                background: cirugias.some(c => c.docs_completos && !c.en_carrito && !c.constancia_id)
+                                background: selectedForCartCount > 0
                                     ? 'linear-gradient(135deg, #10B981, #059669)' : '#E5E7EB',
-                                color: cirugias.some(c => c.docs_completos && !c.en_carrito && !c.constancia_id)
+                                color: selectedForCartCount > 0
                                     ? '#fff' : '#9CA3AF',
                                 border: 'none', fontWeight: 700, fontSize: '0.78rem',
-                                cursor: cirugias.some(c => c.docs_completos && !c.en_carrito && !c.constancia_id)
+                                cursor: selectedForCartCount > 0
                                     ? 'pointer' : 'not-allowed',
                                 transition: 'all 0.2s',
-                                boxShadow: cirugias.some(c => c.docs_completos && !c.en_carrito && !c.constancia_id)
+                                boxShadow: selectedForCartCount > 0
                                     ? '0 2px 8px rgba(16, 185, 129, 0.3)' : 'none',
                             }}
                         >
                             <ShoppingCart size={14} />
-                            Enviar al Carrito
+                            Enviar al Carrito {selectedForCartCount > 0 ? `(${selectedForCartCount})` : ''}
                         </button>
 
                         <button
                             onClick={() => {
                                 const rows = filteredPendientes.map(c => ({
+                                    'Nº Admisión': c.numero_admision || '',
                                     'Fecha': fmtFecha(c.fecha_realizacion),
                                     'Paciente': c.nombre_paciente || '',
                                     'DNI': c.dni || '',
                                     'Obra Social': c.cliente || '',
-                                    'Cirugía': c.nombre_cirugia || '',
-                                    'Cirujano': c.cirujano || '',
+                                    'Cirugía / Práctica': c.nombre_cirugia || '',
+                                    'Es Sutura': c.es_sutura ? 'Sí' : 'No',
+                                    'Cirujano / Médico': c.cirujano || '',
                                     'Asociación': c.asociacion || '',
-                                    'Docs Completos': c.docs_completos ? 'Sí' : 'No',
+                                    'Seleccionado': c.docs_completos ? 'Sí' : 'No',
                                     'En Carrito': c.en_carrito ? 'Sí' : 'No',
                                 }));
                                 const ws = XLSX.utils.json_to_sheet(rows);
-                                // Auto-width columns
                                 const colWidths = Object.keys(rows[0] || {}).map(key => ({
                                     wch: Math.max(key.length, ...rows.map(r => String(r[key] || '').length)) + 2,
                                 }));
                                 ws['!cols'] = colWidths;
                                 const wb = XLSX.utils.book_new();
                                 XLSX.utils.book_append_sheet(wb, ws, 'Asociaciones');
-                                XLSX.writeFile(wb, `Asociaciones_Pendientes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                                XLSX.writeFile(wb, `Asociaciones_Admisiones_${new Date().toISOString().slice(0, 10)}.xlsx`);
                             }}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '6px',
@@ -1093,17 +1179,21 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
                     {/* Table */}
                     {loading ? (
-                        <SkeletonTable rows={8} cols={8} />
+                        <SkeletonTable rows={8} cols={9} />
                     ) : pendientesCirugias.length === 0 ? (
                         <div style={{
                             textAlign: 'center', padding: '60px 20px', color: '#9CA3AF',
                         }}>
                             <CheckCircle2 size={48} strokeWidth={1.2} style={{ margin: '0 auto 12px', display: 'block' }} />
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#6B7280', margin: '0 0 4px' }}>
-                                No hay cirugías pendientes
+                                No se encontraron admisiones ni cirugías
                             </h3>
                             <p style={{ fontSize: '0.82rem' }}>
-                                {filtroAsociacion ? `No hay cirugías pendientes para ${filtroAsociacion}` : 'Todas las cirugías han sido procesadas'}
+                                {searchTerm
+                                    ? `Sin resultados para "${searchTerm}"`
+                                    : filtroAsociacion
+                                        ? `No hay registros pendientes para ${filtroAsociacion}`
+                                        : 'Pruebe buscando por Nº de Admisión, DNI o Apellido'}
                             </p>
                         </div>
                     ) : (
@@ -1114,18 +1204,19 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                                 <thead>
                                     <tr style={{ background: '#F9FAFB' }}>
-                                        <FilterableHeader label="Fecha" colKey="fecha" />
+                                        <FilterableHeader label="Admisión" colKey="admision" width="95px" />
+                                        <FilterableHeader label="Fecha" colKey="fecha" width="90px" />
                                         <FilterableHeader label="Paciente" colKey="paciente" />
-                                        <FilterableHeader label="DNI" colKey="dni" />
+                                        <FilterableHeader label="DNI" colKey="dni" width="95px" />
                                         <FilterableHeader label="Obra Social" colKey="os" />
-                                        <FilterableHeader label="Cirugía" colKey="cirugia" />
-                                        <FilterableHeader label="Cirujano" colKey="cirujano" />
-                                        <FilterableHeader label="Asociación" colKey="asociacion" />
-                                        <th style={{ ...thStyle, textAlign: 'center', width: '80px' }}>Docs ✓</th>
+                                        <FilterableHeader label="Cirugía / Práctica" colKey="cirugia" />
+                                        <FilterableHeader label="Cirujano / Médico" colKey="cirujano" />
+                                        <FilterableHeader label="Asociación a Rendir" colKey="asociacion" width="190px" />
+                                        <th style={{ ...thStyle, textAlign: 'center', width: '90px' }}>Rendir ✓</th>
                                     </tr>
                                     {activeFilterCount > 0 && (
                                         <tr>
-                                            <td colSpan={8} style={{
+                                            <td colSpan={9} style={{
                                                 padding: '4px 10px', background: '#EFF6FF',
                                                 borderBottom: '1px solid #DBEAFE',
                                             }}>
@@ -1154,40 +1245,92 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                 </thead>
                                 <tbody>
                                     {pagedPendientes.map(c => {
-                                        const color = ASOCIACION_COLORS[c.asociacion] || '#6B7280';
+                                        const color = ASOCIACION_COLORS[c.asociacion] || '#64748B';
                                         const isExcluded = !!(c.constancia_id || c.en_carrito);
-                                        const rowOpacity = isExcluded ? 0.4 : 1;
+                                        const rowOpacity = isExcluded ? 0.55 : 1;
                                         const excludedLabel = c.constancia_id ? '📦 Entregada' : c.en_carrito ? '🛒 En carrito' : null;
                                         return (
                                             <tr key={c.id} style={{
                                                 borderBottom: '1px solid #F3F4F6',
                                                 transition: 'background 0.15s',
                                                 opacity: rowOpacity,
-                                                pointerEvents: isExcluded ? 'none' : 'auto',
+                                                background: c.docs_completos && !isExcluded ? '#F0FDF4' : 'transparent',
                                             }}
-                                                onMouseOver={e => { if (!isExcluded) e.currentTarget.style.background = '#FAFBFF'; }}
-                                                onMouseOut={e => { if (!isExcluded) e.currentTarget.style.background = 'transparent'; }}
+                                                onMouseOver={e => { if (!isExcluded && !c.docs_completos) e.currentTarget.style.background = '#FAFBFF'; }}
+                                                onMouseOut={e => { if (!isExcluded && !c.docs_completos) e.currentTarget.style.background = 'transparent'; }}
                                             >
+                                                <td style={tdStyle}>
+                                                    {c.numero_admision ? (
+                                                        <span style={{
+                                                            fontFamily: 'monospace', fontWeight: 700, fontSize: '0.76rem',
+                                                            background: '#F1F5F9', color: '#0D3B66',
+                                                            padding: '2px 7px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                        }}>
+                                                            {c.numero_admision}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#CBD5E1', fontSize: '0.75rem' }}>—</span>
+                                                    )}
+                                                </td>
                                                 <td style={tdStyle}>
                                                     {fmtFecha(c.fecha_realizacion)}
                                                 </td>
                                                 <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
                                                 <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.78rem' }}>{c.dni || '—'}</td>
                                                 <td style={tdStyle}>{c.cliente || '—'}</td>
-                                                <td style={{ ...tdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {c.nombre_cirugia || '—'}
+                                                <td style={{ ...tdStyle, maxWidth: '220px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                        {c.es_sutura && (
+                                                            <span style={{
+                                                                fontSize: '0.65rem', fontWeight: 800,
+                                                                padding: '1px 6px', borderRadius: '6px',
+                                                                background: '#CCFBF1', color: '#0F766E',
+                                                                border: '1px solid #99F6E4', whiteSpace: 'nowrap',
+                                                            }}>
+                                                                🧵 SUTURA
+                                                            </span>
+                                                        )}
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '175px' }} title={c.nombre_cirugia || ''}>
+                                                            {c.nombre_cirugia || '—'}
+                                                        </span>
+                                                    </div>
                                                 </td>
                                                 <td style={tdStyle}>{c.cirujano || '—'}</td>
                                                 <td style={tdStyle}>
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                        padding: '2px 10px', borderRadius: '12px',
-                                                        background: `${color}15`, color: color,
-                                                        fontSize: '0.72rem', fontWeight: 600,
-                                                    }}>
-                                                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: color }} />
-                                                        {c.asociacion.replace('Asociación de ', '').replace(' (Particular)', '')}
-                                                    </span>
+                                                    {isExcluded ? (
+                                                        <span style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                            padding: '2px 10px', borderRadius: '12px',
+                                                            background: `${color}15`, color: color,
+                                                            fontSize: '0.72rem', fontWeight: 600,
+                                                        }}>
+                                                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: color }} />
+                                                            {(c.asociacion || 'Sin Asignar').replace('Asociación de ', '').replace(' (Particular)', '')}
+                                                        </span>
+                                                    ) : (
+                                                        <select
+                                                            value={ASOCIACION_LIST.includes(c.asociacion) ? c.asociacion : ''}
+                                                            onChange={(e) => {
+                                                                if (e.target.value) handleCambiarAsociacion(c.id, e.target.value, false);
+                                                            }}
+                                                            style={{
+                                                                padding: '4px 8px', borderRadius: '8px',
+                                                                border: `1.5px solid ${color}55`,
+                                                                background: `${color}10`, color: color,
+                                                                fontSize: '0.73rem', fontWeight: 700,
+                                                                cursor: 'pointer', outline: 'none', width: '100%',
+                                                            }}
+                                                        >
+                                                            {!ASOCIACION_LIST.includes(c.asociacion) && (
+                                                                <option value="">Elegir Asociación...</option>
+                                                            )}
+                                                            {ASOCIACION_LIST.map(asoc => (
+                                                                <option key={asoc} value={asoc} style={{ color: '#1F2937', background: '#fff' }}>
+                                                                    {asoc.replace('Asociación de ', '')}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    )}
                                                 </td>
                                                 <td style={{ ...tdStyle, textAlign: 'center' }}>
                                                     {isExcluded ? (
@@ -1209,7 +1352,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                 transition: 'all 0.2s',
                                                                 margin: '0 auto',
                                                             }}
-                                                            title={c.docs_completos ? `Marcado por ${c.operador}` : 'Marcar documentación completa'}
+                                                            title={c.docs_completos ? `Seleccionado por ${c.operador || 'operador'}` : 'Seleccionar para rendir'}
                                                         >
                                                             {c.docs_completos && <CheckCircle2 size={18} color="#10B981" />}
                                                         </button>
@@ -1507,12 +1650,14 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                                                     <thead>
                                                         <tr style={{ background: '#F9FAFB' }}>
+                                                            <th style={thStyle}>Admisión</th>
                                                             <th style={thStyle}>Fecha</th>
                                                             <th style={thStyle}>Paciente</th>
                                                             <th style={thStyle}>DNI</th>
                                                             <th style={thStyle}>OS</th>
-                                                            <th style={thStyle}>Cirugía</th>
+                                                            <th style={thStyle}>Cirugía / Práctica</th>
                                                             <th style={thStyle}>Cirujano</th>
+                                                            <th style={thStyle}>Asociación</th>
                                                             <th style={thStyle}>Enviado por</th>
                                                             <th style={{ ...thStyle, width: '60px', textAlign: 'center' }}></th>
                                                         </tr>
@@ -1521,13 +1666,59 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                         {items.map(c => (
                                                             <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                                                                 <td style={tdStyle}>
+                                                                    {c.numero_admision ? (
+                                                                        <span style={{
+                                                                            fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem',
+                                                                            background: '#F1F5F9', color: '#0D3B66',
+                                                                            padding: '2px 7px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                                        }}>
+                                                                            {c.numero_admision}
+                                                                        </span>
+                                                                    ) : '—'}
+                                                                </td>
+                                                                <td style={tdStyle}>
                                                                     {fmtFecha(c.fecha_realizacion)}
                                                                 </td>
                                                                 <td style={{ ...tdStyle, fontWeight: 600 }}>{c.nombre_paciente}</td>
                                                                 <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.76rem' }}>{c.dni || '—'}</td>
                                                                 <td style={tdStyle}>{c.cliente || '—'}</td>
-                                                                <td style={tdStyle}>{c.nombre_cirugia || '—'}</td>
+                                                                <td style={tdStyle}>
+                                                                    {c.es_sutura && (
+                                                                        <span style={{
+                                                                            fontSize: '0.64rem', fontWeight: 800, marginRight: '5px',
+                                                                            padding: '1px 5px', borderRadius: '5px',
+                                                                            background: '#CCFBF1', color: '#0F766E', border: '1px solid #99F6E4',
+                                                                        }}>
+                                                                            🧵 SUTURA
+                                                                        </span>
+                                                                    )}
+                                                                    {c.nombre_cirugia || '—'}
+                                                                </td>
                                                                 <td style={tdStyle}>{c.cirujano || '—'}</td>
+                                                                <td style={tdStyle}>
+                                                                    <select
+                                                                        value={ASOCIACION_LIST.includes(c.asociacion) ? c.asociacion : ''}
+                                                                        onChange={(e) => {
+                                                                            if (e.target.value) handleCambiarAsociacion(c.id, e.target.value, true);
+                                                                        }}
+                                                                        style={{
+                                                                            padding: '3px 6px', borderRadius: '6px',
+                                                                            border: `1px solid ${color}55`,
+                                                                            background: '#fff', color: '#1F2937',
+                                                                            fontSize: '0.72rem', fontWeight: 600,
+                                                                            cursor: 'pointer', outline: 'none',
+                                                                        }}
+                                                                    >
+                                                                        {!ASOCIACION_LIST.includes(c.asociacion) && (
+                                                                            <option value="">Elegir...</option>
+                                                                        )}
+                                                                        {ASOCIACION_LIST.map(asoc => (
+                                                                            <option key={asoc} value={asoc}>
+                                                                                {asoc.replace('Asociación de ', '')}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                </td>
                                                                 <td style={tdStyle}>
                                                                     {c.carrito_por ? (
                                                                         <div style={{ fontSize: '0.65rem', color: '#6B7280', whiteSpace: 'nowrap' }}>
@@ -1770,30 +1961,44 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                                                                     <thead>
                                                                         <tr>
                                                                             <th style={thSmall}>#</th>
+                                                                            <th style={thSmall}>Admisión</th>
                                                                             <th style={thSmall}>Fecha</th>
                                                                             <th style={thSmall}>Paciente</th>
                                                                             <th style={thSmall}>DNI</th>
                                                                             <th style={thSmall}>OS</th>
-                                                                            <th style={thSmall}>Cirugía</th>
+                                                                            <th style={thSmall}>Cirugía / Práctica</th>
                                                                             <th style={thSmall}>Cirujano</th>
                                                                             <th style={thSmall}>Enviado por</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
                                                                         {(historialSearch ? detalle.filter(item => 
+                                                                            (item.numero_admision || '').toLowerCase().includes(historialSearch.toLowerCase()) ||
                                                                             (item.nombre_paciente || '').toLowerCase().includes(historialSearch.toLowerCase()) ||
                                                                             (item.cirujano || '').toLowerCase().includes(historialSearch.toLowerCase()) ||
                                                                             (item.cliente || '').toLowerCase().includes(historialSearch.toLowerCase())
                                                                         ) : detalle).map((item, idx) => (
                                                                             <tr key={item.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                                                 <td style={{ ...tdSmall, textAlign: 'center', fontWeight: 700, color: '#9CA3AF' }}>{idx + 1}</td>
+                                                                                <td style={{ ...tdSmall, fontFamily: 'monospace', fontWeight: 700, color: '#0D3B66' }}>{item.numero_admision || '—'}</td>
                                                                                 <td style={tdSmall}>
                                                                                     {fmtFecha(item.fecha_realizacion)}
                                                                                 </td>
                                                                                 <td style={{ ...tdSmall, fontWeight: 600 }}>{item.nombre_paciente}</td>
                                                                                 <td style={{ ...tdSmall, fontFamily: 'monospace' }}>{item.dni || '—'}</td>
                                                                                 <td style={tdSmall}>{item.cliente || '—'}</td>
-                                                                                <td style={tdSmall}>{item.nombre_cirugia || '—'}</td>
+                                                                                <td style={tdSmall}>
+                                                                                    {item.es_sutura && (
+                                                                                        <span style={{
+                                                                                            fontSize: '0.62rem', fontWeight: 800, marginRight: '5px',
+                                                                                            padding: '1px 5px', borderRadius: '4px',
+                                                                                            background: '#CCFBF1', color: '#0F766E',
+                                                                                        }}>
+                                                                                            🧵 SUTURA
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {item.nombre_cirugia || '—'}
+                                                                                </td>
                                                                                 <td style={tdSmall}>{item.cirujano || '—'}</td>
                                                                                 <td style={tdSmall}>
                                                                                     {item.carrito_por ? (

@@ -2694,12 +2694,17 @@ async function syncVisitasSede(db) {
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // ═══════════════════════════════════════════════════
-// SYNC CIRUGÍAS ASOCIACIONES — SQL Server → Supabase
-// Fuente: TABLEAU_Cirugias (especialidades con asociación)
+// SYNC CIRUGÍAS, SUTURAS Y ADMISIONES ASOCIACIONES — SQL Server → Supabase
+// Fuentes: TABLEAU_Cirugias + VLISE_Visitas (Todas las Suturas) + TABLEAU_Admisiones
 // ═══════════════════════════════════════════════════
 const ESPECIALIDAD_ASOCIACION = {
     'CIRUGIA': 'Asociación de Cirujanos',
+    'CIRUGIA PLASTICA': 'Asociación de Cirujanos',
+    'CIRUGIA CARDIOVASCULAR': 'Asociación de Cirujanos',
+    'CIRUGIA MAXILOFACIAL': 'Asociación de Cirujanos',
     'GINECOLOGIA': 'Asociación de Ginecólogos',
+    'OBSTETRICIA': 'Asociación de Ginecólogos',
+    'FERTILIDAD': 'Asociación de Ginecólogos',
     'ORTOPEDIA / TRAUMATOLOGIA': 'Asociación de Traumatólogos',
     'CIRUGIA PEDIATRICA': 'Asociación de Cirujanos Pediatras',
     'PEDIATRIA': 'Asociación de Cirujanos Pediatras',
@@ -2707,36 +2712,33 @@ const ESPECIALIDAD_ASOCIACION = {
 };
 
 async function syncAsociacionesCirugias(db, fastSync = false) {
-    console.log(`📦 [7/7] Extrayendo cirugías para asociaciones de SALUS... (fastSync: ${fastSync})`);
+    console.log(`📦 [7/7] Extrayendo cirugías, suturas y admisiones para asociaciones de SALUS... (fastSync: ${fastSync})`);
 
-    const dateFilter = fastSync
-        ? "CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
-        : "CONVERT(DATE, LEFT([Fecha realización], 10), 103) >= '20260301'";
+    const dateFilterCx = fastSync
+        ? "CONVERT(DATE, LEFT(TC.[Fecha realización], 10), 103) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
+        : "CONVERT(DATE, LEFT(TC.[Fecha realización], 10), 103) >= '20260301'";
 
-    const result = await db.request().query(`
+    // 1. Todas las Cirugías realizadas (vinculadas con su Número de Admisión si existe)
+    const resultCx = await db.request().query(`
         SELECT 
-            CONVERT(VARCHAR(10), CONVERT(DATE, LEFT([Fecha realización], 10), 103), 23) AS [Fecha realización],
-            [Nombre Paciente],
-            [Cliente],
-            [DNI],
-            [Especialidad],
-            [Nombre cirugía],
-            [Estado],
-            [Cirujano]
-        FROM [SALUS].[dbo].[TABLEAU_Cirugias]
+            CONVERT(VARCHAR(10), CONVERT(DATE, LEFT(TC.[Fecha realización], 10), 103), 23) AS [Fecha realización],
+            TC.[Nombre Paciente],
+            TC.[Cliente],
+            TC.[DNI],
+            TC.[Especialidad],
+            TC.[Nombre cirugía],
+            TC.[Estado],
+            TC.[Cirujano],
+            LTRIM(RTRIM(TA.[Número admisión])) AS [Número admisión],
+            'CIRUGIA' AS [Fuente]
+        FROM [SALUS].[dbo].[TABLEAU_Cirugias] TC
+        LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] V ON V.idVisita = TC.idvisita
+        LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] TA ON TA.idAdmision = V.IdHospitalizacion
         WHERE 
-            [Fecha realización] IS NOT NULL
-            AND LEN([Fecha realización]) >= 10 
-            AND ${dateFilter}
-            AND [Especialidad] IN (
-                'CIRUGIA', 
-                'GASTROENTEROLOGIA',
-                'OTORRINOLARINGOLOGIA', 
-                'CIRUGIA PEDIATRICA', 
-                'ORTOPEDIA / TRAUMATOLOGIA',
-                'GINECOLOGIA'
-            )
-            AND [Estado] IN (
+            TC.[Fecha realización] IS NOT NULL
+            AND LEN(TC.[Fecha realización]) >= 10 
+            AND ${dateFilterCx}
+            AND TC.[Estado] IN (
                 'Presente', 
                 'NO PROGRAMADA', 
                 'No Programada',
@@ -2750,34 +2752,74 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
                 'Finalizada',
                 'Finalizado'
             )
-        ORDER BY CONVERT(DATE, LEFT([Fecha realización], 10), 103) ASC
+        ORDER BY CONVERT(DATE, LEFT(TC.[Fecha realización], 10), 103) ASC
     `);
-    console.log(`   📥 ${result.recordset.length} registros extraídos`);
+    console.log(`   📥 ${resultCx.recordset.length} cirugías extraídas de TABLEAU_Cirugias`);
 
-    const pediatriaDateFilter = fastSync
-        ? "CAST([Fecha Visita] AS DATE) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
-        : "CAST([Fecha Visita] AS DATE) >= '2026-05-01'";
+    // 2. TODAS las Suturas en VLISE_Visitas (sin restringir por especialidad ni texto exacto)
+    const suturasDateFilter = fastSync
+        ? "CAST(V.[Fecha Visita] AS DATE) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
+        : "CAST(V.[Fecha Visita] AS DATE) >= '2026-03-01'";
 
-    const resultPediatria = await db.request().query(`
+    const resultSuturas = await db.request().query(`
         SELECT 
-            CAST([Fecha Visita] AS DATE) AS [Fecha realización],
-            [Paciente] AS [Nombre Paciente],
-            [Cliente] AS [Cliente],
-            [NIF] AS [DNI],
-            [Visita_Especialidad] AS [Especialidad],
-            [Tipo Visita] AS [Nombre cirugía],
-            [Asistencia] AS [Estado],
-            [Responsable] AS [Cirujano]
-        FROM [SALUS].[dbo].[VLISE_Visitas]
+            CONVERT(VARCHAR(10), CAST(V.[Fecha Visita] AS DATE), 23) AS [Fecha realización],
+            V.[Paciente] AS [Nombre Paciente],
+            V.[Cliente] AS [Cliente],
+            V.[NIF] AS [DNI],
+            V.[Visita_Especialidad] AS [Especialidad],
+            V.[Tipo Visita] AS [Nombre cirugía],
+            V.[Asistencia] AS [Estado],
+            V.[Responsable] AS [Cirujano],
+            LTRIM(RTRIM(TA.[Número admisión])) AS [Número admisión],
+            'SUTURA' AS [Fuente]
+        FROM [SALUS].[dbo].[VLISE_Visitas] V
+        LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] TA ON TA.idAdmision = V.IdHospitalizacion
         WHERE 
-            [Tipo Visita] = '(cx) sutura de herida'
-            AND [Visita_Especialidad] IN ('CIRUGIA PEDIATRICA', 'PEDIATRIA')
-            AND [Asistencia] = 'Presente'
-            AND ${pediatriaDateFilter}
+            V.[Tipo Visita] LIKE '%sutura%'
+            AND V.[Asistencia] = 'Presente'
+            AND ${suturasDateFilter}
     `);
-    console.log(`   📥 ${resultPediatria.recordset.length} registros pediátricos (suturas) extraídos`);
+    console.log(`   📥 ${resultSuturas.recordset.length} suturas extraídas de VLISE_Visitas`);
 
-    const combinedRecords = [...result.recordset, ...resultPediatria.recordset];
+    // 3. Admisiones en TABLEAU_Admisiones (para poder buscar cualquier admisión aunque no esté en TABLEAU_Cirugias)
+    const admDateFilter = fastSync
+        ? "CAST(TA.[Fecha ingreso] AS DATE) >= DATEADD(DAY, -15, CAST(GETDATE() AS DATE))"
+        : "CAST(TA.[Fecha ingreso] AS DATE) >= '2026-03-01'";
+
+    const resultAdm = await db.request().query(`
+        SELECT 
+            CONVERT(VARCHAR(10), CAST(TA.[Fecha ingreso] AS DATE), 23) AS [Fecha realización],
+            TA.[Paciente] AS [Nombre Paciente],
+            TA.[Cliente] AS [Cliente],
+            TA.[NIF] AS [DNI],
+            TA.[Especialidad] AS [Especialidad],
+            ISNULL(NULLIF(LTRIM(RTRIM(TA.[Proceso])), ''), ISNULL(NULLIF(LTRIM(RTRIM(TA.[Tipo ingreso])), ''), 'ADMISIÓN')) AS [Nombre cirugía],
+            ISNULL(NULLIF(LTRIM(RTRIM(TA.[Motivo de alta])), ''), 'Admisión') AS [Estado],
+            TA.[Doctor] AS [Cirujano],
+            LTRIM(RTRIM(TA.[Número admisión])) AS [Número admisión],
+            'ADMISION' AS [Fuente]
+        FROM [SALUS].[dbo].[TABLEAU_Admisiones] TA
+        WHERE 
+            ${admDateFilter}
+            AND TA.[Fecha ingreso] < DATEADD(DAY, 1, CAST(GETDATE() AS DATE))
+    `);
+    console.log(`   📥 ${resultAdm.recordset.length} admisiones extraídas de TABLEAU_Admisiones`);
+
+    // Evitar duplicar admisiones que ya tienen su cirugía o sutura detallada en Fuente 1 o 2
+    const admConCirugiaOSutura = new Set();
+    for (const r of [...resultCx.recordset, ...resultSuturas.recordset]) {
+        const numAdm = r['Número admisión']?.trim();
+        if (numAdm) admConCirugiaOSutura.add(numAdm);
+    }
+
+    const admisionesSinCirugia = resultAdm.recordset.filter(r => {
+        const numAdm = r['Número admisión']?.trim();
+        return !numAdm || !admConCirugiaOSutura.has(numAdm);
+    });
+    console.log(`   📥 ${admisionesSinCirugia.length} admisiones adicionales sin fila previa en Cirugías/Suturas`);
+
+    const combinedRecords = [...resultCx.recordset, ...resultSuturas.recordset, ...admisionesSinCirugia];
 
     if (combinedRecords.length === 0) {
         return { total: 0, inserted: 0, updated: 0, skipped: 0 };
@@ -2787,28 +2829,29 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
     const FIELDS_TO_PRESERVE = [
         'docs_completos', 'en_carrito', 'constancia_id',
         'operador', 'checked_at', 'entregado_at',
+        'carrito_por', 'carrito_at', 'asociacion_manual',
     ];
 
     // Transformar filas
     const records = [];
     let skippedSinNombre = 0;
     let skippedFecha = 0;
-    const skippedEspecialidades = new Map(); // especialidad → count
 
     for (const r of combinedRecords) {
         const nombre = r['Nombre Paciente']?.trim();
-        const especialidad = r.Especialidad?.trim();
-        if (!nombre || !especialidad) { skippedSinNombre++; continue; }
+        const especialidad = r.Especialidad?.trim() || 'GENERAL';
+        if (!nombre) { skippedSinNombre++; continue; }
 
-        const asociacion = ESPECIALIDAD_ASOCIACION[especialidad];
-        if (!asociacion) {
-            skippedEspecialidades.set(especialidad, (skippedEspecialidades.get(especialidad) || 0) + 1);
-            continue;
-        }
+        const asociacion = ESPECIALIDAD_ASOCIACION[especialidad] || 'Sin Asignar';
 
         const fechaRaw = r['Fecha realización'];
         const fecha = formatDate(fechaRaw);
         if (!fecha) { skippedFecha++; continue; }
+
+        const nombreCirugia = r['Nombre cirugía']?.trim() || 'ADMISIÓN';
+        const esSutura = r.Fuente === 'SUTURA' || nombreCirugia.toUpperCase().includes('SUTURA');
+        const tipoOrigen = esSutura ? 'SUTURA' : (r.Fuente || 'CIRUGIA');
+        const numeroAdmision = r['Número admisión'] ? String(r['Número admisión']).trim() : null;
 
         records.push({
             fecha_realizacion: fecha,
@@ -2816,51 +2859,56 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
             cliente: r.Cliente?.trim() || null,
             dni: r.DNI ? String(r.DNI).trim() : null,
             especialidad,
-            nombre_cirugia: r['Nombre cirugía']?.trim() || null,
+            nombre_cirugia: nombreCirugia,
             estado: r.Estado?.trim() || null,
             cirujano: r.Cirujano?.trim() || null,
             asociacion,
+            numero_admision: numeroAdmision,
+            es_sutura: esSutura,
+            tipo_origen: tipoOrigen,
         });
     }
 
-    // Log de exclusiones
-    const totalExcluidos = skippedSinNombre + skippedFecha + [...skippedEspecialidades.values()].reduce((a, b) => a + b, 0);
-    if (totalExcluidos > 0) {
-        console.log(`   ⚠️  ${totalExcluidos} registros excluidos:`);
-        if (skippedSinNombre > 0) console.log(`      - Sin nombre/especialidad: ${skippedSinNombre}`);
-        if (skippedFecha > 0) console.log(`      - Fecha inválida: ${skippedFecha}`);
-        if (skippedEspecialidades.size > 0) {
-            console.log(`      - Especialidad no mapeada:`);
-            for (const [esp, cnt] of skippedEspecialidades.entries()) {
-                console.log(`        • "${esp}": ${cnt} registros`);
-            }
-        }
-    }
-
-    // Deduplicar (último gana por key: fecha+nombre_paciente+cirugia)
+    // Deduplicar (priorizando registros que tengan numero_admision o sean CIRUGIA/SUTURA sobre ADMISION genérica)
     const makeKey = (f, n, c) => `${f}|${(n || '').replace(/\s+/g, ' ').trim()}|${(c || '').replace(/\s+/g, ' ').trim()}`;
 
-    // IMPORTANTE: usar nombre_paciente en vez de dni porque dni puede ser NULL
-    // y en PostgreSQL NULL != NULL en constraints UNIQUE
     const deduped = new Map();
     for (const row of records) {
         const key = makeKey(row.fecha_realizacion, row.nombre_paciente, row.nombre_cirugia);
-        deduped.set(key, row);
+        const prev = deduped.get(key);
+        if (!prev) {
+            deduped.set(key, row);
+        } else {
+            // Conservar numero_admision y cirujano si el nuevo o el anterior lo tienen
+            deduped.set(key, {
+                ...prev,
+                ...row,
+                numero_admision: row.numero_admision || prev.numero_admision || null,
+                cirujano: row.cirujano || prev.cirujano || null,
+                es_sutura: row.es_sutura || prev.es_sutura || false,
+            });
+        }
     }
     const uniqueRecords = [...deduped.values()];
-    console.log(`   📦 ${uniqueRecords.length} registros únicos`);
+    console.log(`   📦 ${uniqueRecords.length} registros únicos listos para sincronizar`);
 
-    // Obtener estados existentes para preservarlos
+    // Obtener estados existentes para preservarlos (paginado sobre todos los registros con gestión manual)
     const existingMap = new Map();
-    const FETCH_BATCH_SIZE = 500;
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
 
-    const fechas = [...new Set(uniqueRecords.map(r => r.fecha_realizacion))];
-    for (let i = 0; i < fechas.length; i += FETCH_BATCH_SIZE) {
-        const batchFechas = fechas.slice(i, i + FETCH_BATCH_SIZE);
-        const { data: existing } = await supabase
+    while (hasMore) {
+        const { data: existing, error: fetchExistingErr } = await supabase
             .from('asociaciones_cirugias')
-            .select(`fecha_realizacion, nombre_paciente, nombre_cirugia, ${FIELDS_TO_PRESERVE.join(', ')}`)
-            .in('fecha_realizacion', batchFechas);
+            .select(`fecha_realizacion, nombre_paciente, nombre_cirugia, asociacion, ${FIELDS_TO_PRESERVE.join(', ')}`)
+            .or('docs_completos.eq.true,en_carrito.eq.true,constancia_id.not.is.null,asociacion_manual.eq.true')
+            .range(from, from + PAGE_SIZE - 1);
+
+        if (fetchExistingErr) {
+            console.error('   ⚠️ Error obteniendo estados previos:', fetchExistingErr.message);
+            break;
+        }
 
         if (existing) {
             for (const row of existing) {
@@ -2869,9 +2917,14 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
                 for (const f of FIELDS_TO_PRESERVE) {
                     if (row[f] != null) preserved[f] = row[f];
                 }
+                if (row.asociacion && (row.asociacion_manual || row.docs_completos || row.en_carrito || row.constancia_id)) {
+                    preserved.asociacion = row.asociacion;
+                }
                 if (Object.keys(preserved).length > 0) existingMap.set(key, preserved);
             }
         }
+        hasMore = (existing || []).length === PAGE_SIZE;
+        from += PAGE_SIZE;
     }
     console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
 
