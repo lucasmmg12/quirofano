@@ -4359,7 +4359,7 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
                 try {
                     const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
                     const cacheDesde = parsed?.rango?.fechaDesde || '2026-01-01';
-                    const hasEcocardio = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO');
+                    const hasEcocardio = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO' && Boolean(r.AgendaSalus) && (r.GrupoAgenda || '').includes('GERBEC'));
                     if (hasEcocardio && (!desde || desde >= cacheDesde)) {
                         return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
                     }

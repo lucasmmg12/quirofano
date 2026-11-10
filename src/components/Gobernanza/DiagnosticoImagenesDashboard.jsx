@@ -253,7 +253,7 @@ export default function DiagnosticoImagenesDashboard({
                 if (cfg?.value) {
                     try {
                         const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
-                        const hasUpdatedSchema = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO' && Boolean(r.AgendaSalus));
+                        const hasUpdatedSchema = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO' && Boolean(r.AgendaSalus) && (r.GrupoAgenda || '').includes('GERBEC'));
                         if (parsed && Array.isArray(parsed.agendas) && hasUpdatedSchema) {
                             setData(parsed);
                             setLastUpdated(cfg.updated_at || parsed.ultima_actualizacion || new Date().toISOString());
@@ -883,6 +883,10 @@ export default function DiagnosticoImagenesDashboard({
         let gerbecFromAgenda = 0;
         let hasTaggedGrupo = false;
 
+        // Desglose nominal de estudios realizados por Dra. Gerbec dentro de ECOCARDIO
+        const gerbecStudiesMap = new Map();
+        const cardiologosAgendasMap = new Map();
+
         scopedData.agendas.forEach(r => {
             if (r.Modalidad !== 'ECOCARDIO') return;
             if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
@@ -892,11 +896,18 @@ export default function DiagnosticoImagenesDashboard({
             const cant = r.Cantidad || 0;
             totalEcocardio += cant;
             const grp = (r.GrupoAgenda || '').toUpperCase();
-            if (grp.includes('GERBEC') || grp.includes('CARDI')) {
+            const agSalus = (r.AgendaSalus || '').toUpperCase();
+            const isGerbecRow = grp.includes('GERBEC') || agSalus.includes('GERBEC');
+
+            if (grp.includes('GERBEC') || grp.includes('CARDI') || agSalus.includes('GERBEC')) {
                 hasTaggedGrupo = true;
             }
-            if (grp.includes('GERBEC')) {
+            if (isGerbecRow) {
                 gerbecFromAgenda += cant;
+                const studyName = r.Agenda || 'Eco Doppler Vascular';
+                gerbecStudiesMap.set(studyName, (gerbecStudiesMap.get(studyName) || 0) + cant);
+            } else if (r.AgendaSalus) {
+                cardiologosAgendasMap.set(r.AgendaSalus, (cardiologosAgendasMap.get(r.AgendaSalus) || 0) + cant);
             }
         });
 
@@ -917,21 +928,35 @@ export default function DiagnosticoImagenesDashboard({
         }
 
         const cardiologosCount = Math.max(0, totalEcocardio - gerbecCount);
+        const gerbecStudies = Array.from(gerbecStudiesMap.entries())
+            .map(([estudio, cantidad]) => ({ estudio, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad);
+        const cardiologosAgendas = Array.from(cardiologosAgendasMap.entries())
+            .map(([agenda, cantidad]) => ({ agenda, cantidad }))
+            .sort((a, b) => b.cantidad - a.cantidad);
 
         return {
             cardiologos: cardiologosCount,
             gerbec: gerbecCount,
-            totalGrupoSalus: totalEcocardio
+            totalGrupoSalus: totalEcocardio,
+            hasTaggedGrupo,
+            gerbecStudies,
+            cardiologosAgendas
         };
     }, [scopedData, filterAmbito, filterAsistencia, ESTADOS_EFECTIVOS]);
 
     // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
     const filteredAgendasRows = useMemo(() => {
         if (!scopedData?.agendas) return [];
+        const hasTaggedEcocardio = scopedData.agendas.some(r =>
+            r.Modalidad === 'ECOCARDIO' &&
+            ((r.GrupoAgenda || '').toUpperCase().includes('GERBEC') || (r.AgendaSalus || '').toUpperCase().includes('GERBEC'))
+        );
+
         return scopedData.agendas.filter(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (r.Modalidad === 'ECOCARDIO' && ecocardioSubFilter !== 'TODOS') {
-                const isGerbec = (r.GrupoAgenda || '').toUpperCase().includes('GERBEC');
+            if (r.Modalidad === 'ECOCARDIO' && ecocardioSubFilter !== 'TODOS' && hasTaggedEcocardio) {
+                const isGerbec = (r.GrupoAgenda || '').toUpperCase().includes('GERBEC') || (r.AgendaSalus || '').toUpperCase().includes('GERBEC');
                 if (ecocardioSubFilter === 'CARDIOLOGOS' && isGerbec) return false;
                 if (ecocardioSubFilter === 'GERBEC' && !isGerbec) return false;
             }
@@ -942,7 +967,8 @@ export default function DiagnosticoImagenesDashboard({
                 const ag = (r.Agenda || '').toLowerCase();
                 const c = (r.Centro || '').toLowerCase();
                 const grp = (r.GrupoAgenda || '').toLowerCase();
-                if (!ag.includes(term) && !c.includes(term) && !grp.includes(term)) return false;
+                const agSalus = (r.AgendaSalus || '').toLowerCase();
+                if (!ag.includes(term) && !c.includes(term) && !grp.includes(term) && !agSalus.includes(term)) return false;
             }
             return true;
         });
@@ -1882,6 +1908,29 @@ export default function DiagnosticoImagenesDashboard({
                             <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '2px' }}>
                                 En SALUS, el <em>Grupo Agenda</em> <strong>ECOCARDIO</strong> incluye las <strong>4 agendas de Cardiólogos</strong> (Dr. López Ignacio, Dr. Villalba Carlos, Dra. Robles Carolina y Dra. Ruarte Celina = <strong>{ecocardioBreakdown.cardiologos.toLocaleString('es-AR')}</strong>) más la agenda de Doppler Vascular de la <strong>Dra. Gerbec Daniela</strong> (<strong>+{ecocardioBreakdown.gerbec.toLocaleString('es-AR')}</strong>). Haga clic en cualquiera de las cajas para verlas por separado:
                             </div>
+                            {ecocardioBreakdown.gerbecStudies && ecocardioBreakdown.gerbecStudies.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '6px', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.67rem', fontWeight: 800, color: '#B45309' }}>
+                                        Estudios Dra. Gerbec en ECOCARDIO ({ecocardioBreakdown.gerbec}):
+                                    </span>
+                                    {ecocardioBreakdown.gerbecStudies.map((st, idx) => (
+                                        <span
+                                            key={idx}
+                                            style={{
+                                                fontSize: '0.66rem',
+                                                fontWeight: 700,
+                                                background: '#FEF3C7',
+                                                color: '#92400E',
+                                                border: '1px solid #FDE68A',
+                                                padding: '2px 7px',
+                                                borderRadius: '6px'
+                                            }}
+                                        >
+                                            {st.cantidad} {st.estudio}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
