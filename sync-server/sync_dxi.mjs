@@ -62,59 +62,80 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
         const t0 = Date.now();
 
         const batchQuery = `
-            -- 1. Filtrar una sola vez al espacio temporal indexado
+            -- 1. Pre-agregar informes LIS por idVisita usando el índice de [Fecha Solicitud]
             SELECT 
-                CONVERT(VARCHAR(10), [Fecha Solicitud], 120) AS FechaDia,
-                CONVERT(VARCHAR(7), [Fecha Solicitud], 120) AS PeriodoMes,
+                idVisita,
+                MAX(CASE WHEN [Fecha Informado] IS NOT NULL OR [Fecha Firma] IS NOT NULL THEN 1 ELSE 0 END) AS EstaInformado,
+                MAX(NULLIF(RTRIM(LTRIM(Solicitante)), '')) AS SolicitanteLIS
+            INTO #InformesVisitas
+            FROM [SALUS].[dbo].[VLIS_PeticionesPruebas_ARGENTINA] WITH (NOLOCK)
+            WHERE [Fecha Solicitud] >= DATEADD(day, -45, CAST(@desde AS DATETIME))
+              AND [Fecha Solicitud] <= DATEADD(day, 15, CAST(@hasta AS DATETIME))
+              AND idVisita IS NOT NULL
+              AND ISNULL(Prueba, '') NOT LIKE '%*** PETICION RADIOLOGÍA%'
+              AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
+              AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%'
+            GROUP BY idVisita;
+
+            CREATE CLUSTERED INDEX IX_InfVis ON #InformesVisitas(idVisita);
+
+            -- 2. Universo maestro de Estudios DxI en VLISE_Visitas (1 fila = 1 estudio por [Fecha Visita])
+            SELECT 
+                CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS FechaDia,
+                CONVERT(VARCHAR(7), v.[Fecha Visita], 120) AS PeriodoMes,
                 CASE 
-                    WHEN [Tipo Visita] LIKE '(ECO)%' OR Prueba LIKE '%ECOGRAF%' OR Prueba LIKE '%DOPPLER%' THEN 'ECOGRAFIA'
-                    WHEN [Tipo Visita] LIKE '(RX) MA%' OR Prueba LIKE '%MAMOGRAF%' THEN 'MAMOGRAFIA'
-                    WHEN [Tipo Visita] LIKE '(RX) DE%' OR Prueba LIKE '%DENSITO%' THEN 'DENSITOMETRIA'
-                    WHEN [Tipo Visita] LIKE '(TC)%' OR Prueba LIKE '%TOMOGRAF%' OR Prueba LIKE '%TC %' OR Prueba LIKE '%TAC%' THEN 'TOMOGRAFIA'
-                    WHEN [Tipo Visita] LIKE '(RX)%' OR [Tipo Visita] LIKE '(CX) RA%' OR Prueba LIKE '%RADIOGRAF%' OR Prueba LIKE '%RAYOS%' THEN 'RADIOLOGIA'
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO'
+                    WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
+                    WHEN v.[Grupo Agenda] = 'GUARDIAS ' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
+                    WHEN v.[Grupo Agenda] = 'TOMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '(TC)%' THEN 'TOMOGRAFIA'
+                    WHEN v.[Grupo Agenda] = 'DENSITOMETRIA Y MAMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '%DENSITOMETR%' THEN 'DENSITOMETRIA'
+                    WHEN v.[Grupo Agenda] IN ('MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA') AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%DENSITOMETR%' AND ISNULL(v.[Tipo Visita], '') LIKE '(RX)%' THEN 'MAMOGRAFIA'
+                    WHEN v.[Grupo Agenda] = 'RADIOLOGIA' THEN 'RADIOLOGIA'
                     ELSE 'OTRAS'
                 END AS Modalidad,
-                ISNULL([Tipo Visita], 'SIN AGENDA') AS Agenda,
-                ISNULL(VIS_Centro, 'CENTRO NO ESPECIFICADO') AS Centro,
-                ISNULL(Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS Responsable,
-                ISNULL(Solicitante, 'NO ESPECIFICADO / EXTERNO') AS Solicitante,
-                ISNULL(Cliente, 'PARTICULAR / SIN FINANCIADOR') AS ObraSocial,
-                ISNULL(NULLIF(RTRIM(LTRIM(Asistencia)), ''), 'SIN REGISTRAR') AS AsistenciaOriginal,
+                ISNULL(v.[Tipo Visita], 'SIN AGENDA') AS Agenda,
+                ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'CENTRO NO ESPECIFICADO')) AS Centro,
+                ISNULL(v.Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS Responsable,
+                ISNULL(i.SolicitanteLIS, ISNULL(NULLIF(RTRIM(LTRIM(v.[Persona referidora])), ''), 'NO ESPECIFICADO / EXTERNO')) AS Solicitante,
+                ISNULL(v.Cliente, 'PARTICULAR / SIN FINANCIADOR') AS ObraSocial,
+                ISNULL(NULLIF(RTRIM(LTRIM(v.Asistencia)), ''), 'SIN REGISTRAR') AS AsistenciaOriginal,
                 CASE 
-                    WHEN Asistencia = 'Presente' THEN 'Presente'
-                    WHEN Asistencia = 'INTERNADO' THEN 'Internado'
-                    WHEN Asistencia = 'URGENCIA' THEN 'Urgencia'
-                    WHEN Asistencia = 'SOBRETURNO' THEN 'Sobreturno'
-                    WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada') THEN 'Ausente'
-                    WHEN Asistencia LIKE '%SUSPENDIDA%' OR Asistencia LIKE '%Anulación%' OR Asistencia LIKE '%CANCEL%' THEN 'Cancelada'
-                    WHEN Asistencia IS NULL OR RTRIM(LTRIM(Asistencia)) = '' THEN 'Sin Registrar'
-                    ELSE Asistencia
+                    WHEN v.Asistencia = 'Presente' THEN 'Presente'
+                    WHEN v.Asistencia = 'INTERNADO' THEN 'Internado'
+                    WHEN v.Asistencia = 'URGENCIA' THEN 'Urgencia'
+                    WHEN v.Asistencia = 'SOBRETURNO' THEN 'Sobreturno'
+                    WHEN v.Asistencia IN ('Ausencia justificada', 'Ausencia injustificada') THEN 'Ausente'
+                    WHEN v.Asistencia LIKE '%SUSPENDIDA%' OR v.Asistencia LIKE '%Anulación%' OR v.Asistencia LIKE '%CANCEL%' THEN 'Cancelada'
+                    WHEN v.Asistencia IS NULL OR RTRIM(LTRIM(v.Asistencia)) = '' THEN 'Sin Registrar'
+                    ELSE v.Asistencia
                 END AS EstadoAsistencia,
                 CASE 
-                    WHEN Asistencia IN ('Presente', 'URGENCIA', 'SOBRETURNO') THEN 'Ambulatorio'
-                    WHEN Asistencia = 'INTERNADO' THEN 'Hospitalización'
-                    WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
+                    WHEN v.Asistencia IN ('Presente', 'URGENCIA', 'SOBRETURNO') THEN 'Ambulatorio'
+                    WHEN v.Asistencia = 'INTERNADO' THEN 'Hospitalización'
+                    WHEN v.Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
                     ELSE 'Ambulatorio'
                 END AS Ambito,
-                CASE WHEN [Fecha Informado] IS NOT NULL THEN 1 ELSE 0 END AS EstaInformado
+                ISNULL(i.EstaInformado, 0) AS EstaInformado
             INTO #TempDxI
-            FROM VLIS_PeticionesPruebas_ARGENTINA WITH (NOLOCK)
-            WHERE [Fecha Solicitud] >= @desde AND [Fecha Solicitud] <= @hasta
-              AND Prueba NOT LIKE '%*** PETICION RADIOLOGÍA%'
+            FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
+            LEFT JOIN #InformesVisitas i ON i.idVisita = v.idVisita
+            WHERE v.[Fecha Visita] >= @desde AND v.[Fecha Visita] <= @hasta
               AND (
-                  [Tipo Visita] LIKE '(ECO)%' 
-                  OR [Tipo Visita] LIKE '(RX)%' 
-                  OR [Tipo Visita] LIKE '(TC)%'
-                  OR [Tipo Visita] LIKE '(CX) RA%'
+                  v.[Grupo Agenda] IN ('ECOGRAFIAS', 'ECOCARDIO', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'RADIOLOGIA')
+                  OR (v.[Grupo Agenda] = 'GUARDIAS ' AND (v.[Tipo Visita] LIKE '(ECO)%' OR v.[Tipo Visita] LIKE '%ECOGRAF%' OR v.[Tipo Visita] LIKE '%DOPPLER%'))
               )
-              AND ([Tipo Visita] NOT LIKE '%(TC) MEDIO DE CONTRASTE%' OR [Tipo Visita] IS NULL)
-              AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
-              AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%';
+              AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDIO DE CONTRASTE%'
+              AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%ADICIONAL POR%ANESTESIA%'
+              AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDICI%N DE ESCOLIOSIS%'
+              AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDICI%N DE MIEMBROS INFERIORES%';
+
+            DELETE FROM #TempDxI WHERE Modalidad = 'OTRAS';
 
             -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia e Informe (con PeriodoMes para filtrado en caché)
+            -- Nota: Informados y PendientesInforme se contabilizan estrictamente sobre estudios efectivamente realizados
             SELECT PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
-                   SUM(EstaInformado) AS Informados,
-                   SUM(CASE WHEN EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
+                   SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 1 THEN 1 ELSE 0 END) AS Informados,
+                   SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
 
@@ -128,10 +149,11 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, Solicitante, EstadoAsistencia;
 
-            -- Set 3: Prestadores que la Informan (solo estudios firmados/informados, con PeriodoMes)
+            -- Set 3: Prestadores que la Informan (solo estudios efectivamente realizados y firmados/informados, con PeriodoMes)
             SELECT PeriodoMes, Modalidad, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
             FROM #TempDxI
             WHERE EstaInformado = 1
+              AND EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno')
             GROUP BY PeriodoMes, Modalidad, Responsable;
 
             -- Set 4: Obras Sociales (por PeriodoMes y Modalidad)
@@ -152,6 +174,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             ORDER BY Cantidad DESC;
 
             DROP TABLE #TempDxI;
+            DROP TABLE #InformesVisitas;
         `;
 
         const res = await pool.request()
@@ -289,68 +312,90 @@ export async function getDxICasosNominales({
             .input('search', sql.VarChar, search ? `%${search}%` : '');
 
         const query = `
+            SELECT 
+                idVisita,
+                MAX(IdPeticionDePrueba) AS id_peticion,
+                MAX(CASE WHEN [Fecha Informado] IS NOT NULL OR [Fecha Firma] IS NOT NULL THEN 1 ELSE 0 END) AS EstaInformado,
+                MAX(CONVERT(VARCHAR(16), COALESCE([Fecha Informado], [Fecha Firma]), 120)) AS FechaInformadoStr,
+                MAX(NULLIF(RTRIM(LTRIM(Solicitante)), '')) AS SolicitanteLIS,
+                MAX(NULLIF(RTRIM(LTRIM(Prueba)), '')) AS PruebaLIS,
+                MAX(NULLIF(RTRIM(LTRIM(HOSP_Habitacion)), '')) AS HabitacionLIS
+            INTO #InformesCasos
+            FROM [SALUS].[dbo].[VLIS_PeticionesPruebas_ARGENTINA] WITH (NOLOCK)
+            WHERE [Fecha Solicitud] >= DATEADD(day, -45, CAST(@desde AS DATETIME))
+              AND [Fecha Solicitud] <= DATEADD(day, 15, CAST(@hasta AS DATETIME))
+              AND idVisita IS NOT NULL
+              AND ISNULL(Prueba, '') NOT LIKE '%*** PETICION RADIOLOGÍA%'
+              AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
+              AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%'
+            GROUP BY idVisita;
+
+            CREATE CLUSTERED INDEX IX_InfCasos ON #InformesCasos(idVisita);
+
             WITH BaseCasos AS (
                 SELECT 
-                    IdPeticionDePrueba AS id_peticion,
-                    idVisita AS id_visita,
-                    CONVERT(VARCHAR(10), [Fecha Solicitud], 120) AS fecha_solicitud,
-                    CONVERT(VARCHAR(5), [Fecha Solicitud], 108) AS hora_solicitud,
-                    ISNULL(Paciente, 'SIN NOMBRE') AS paciente,
-                    ISNULL(NHC, '') AS nhc,
-                    ISNULL([Paciente NIF], '') AS dni,
-                    [Paciente Edad] AS edad,
-                    ISNULL(Sexo, '') AS sexo,
+                    ISNULL(i.id_peticion, v.idVisita) AS id_peticion,
+                    v.idVisita AS id_visita,
+                    CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS fecha_solicitud,
+                    ISNULL(LEFT(v.[Hora Inicio Visita Formato Texto], 5), '00:00') AS hora_solicitud,
+                    ISNULL(v.Paciente, 'SIN NOMBRE') AS paciente,
+                    ISNULL(v.NHC, '') AS nhc,
+                    ISNULL(v.NIF, '') AS dni,
+                    v.Edad AS edad,
+                    ISNULL(v.Sexo, '') AS sexo,
                     CASE 
-                        WHEN [Tipo Visita] LIKE '(ECO)%' OR Prueba LIKE '%ECOGRAF%' OR Prueba LIKE '%DOPPLER%' THEN 'ECOGRAFIA'
-                        WHEN [Tipo Visita] LIKE '(RX) MA%' OR Prueba LIKE '%MAMOGRAF%' THEN 'MAMOGRAFIA'
-                        WHEN [Tipo Visita] LIKE '(RX) DE%' OR Prueba LIKE '%DENSITO%' THEN 'DENSITOMETRIA'
-                        WHEN [Tipo Visita] LIKE '(TC)%' OR Prueba LIKE '%TOMOGRAF%' OR Prueba LIKE '%TC %' OR Prueba LIKE '%TAC%' THEN 'TOMOGRAFIA'
-                        WHEN [Tipo Visita] LIKE '(RX)%' OR [Tipo Visita] LIKE '(CX) RA%' OR Prueba LIKE '%RADIOGRAF%' OR Prueba LIKE '%RAYOS%' THEN 'RADIOLOGIA'
+                        WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO'
+                        WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
+                        WHEN v.[Grupo Agenda] = 'GUARDIAS ' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
+                        WHEN v.[Grupo Agenda] = 'TOMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '(TC)%' THEN 'TOMOGRAFIA'
+                        WHEN v.[Grupo Agenda] = 'DENSITOMETRIA Y MAMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '%DENSITOMETR%' THEN 'DENSITOMETRIA'
+                        WHEN v.[Grupo Agenda] IN ('MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA') AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%DENSITOMETR%' AND ISNULL(v.[Tipo Visita], '') LIKE '(RX)%' THEN 'MAMOGRAFIA'
+                        WHEN v.[Grupo Agenda] = 'RADIOLOGIA' THEN 'RADIOLOGIA'
                         ELSE 'OTRAS'
                     END AS modalidad,
-                    ISNULL([Tipo Visita], 'SIN AGENDA') AS agenda,
-                    ISNULL(Prueba, 'SIN ESPECIFICAR') AS estudio,
-                    ISNULL(VIS_Centro, 'SAN LUIS SUR') AS centro,
-                    ISNULL(Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS realizador,
-                    ISNULL(Solicitante, 'NO ESPECIFICADO / EXTERNO') AS solicitante,
-                    ISNULL(Cliente, 'PARTICULAR / SIN FINANCIADOR') AS obra_social,
-                    ISNULL(NULLIF(RTRIM(LTRIM(Asistencia)), ''), 'SIN REGISTRAR') AS asistencia_original,
+                    ISNULL(v.[Tipo Visita], 'SIN AGENDA') AS agenda,
+                    ISNULL(i.PruebaLIS, ISNULL(v.[Tipo Visita], 'SIN ESPECIFICAR')) AS estudio,
+                    ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'SAN LUIS SUR')) AS centro,
+                    ISNULL(v.Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS realizador,
+                    ISNULL(i.SolicitanteLIS, ISNULL(NULLIF(RTRIM(LTRIM(v.[Persona referidora])), ''), 'NO ESPECIFICADO / EXTERNO')) AS solicitante,
+                    ISNULL(v.Cliente, 'PARTICULAR / SIN FINANCIADOR') AS obra_social,
+                    ISNULL(NULLIF(RTRIM(LTRIM(v.Asistencia)), ''), 'SIN REGISTRAR') AS asistencia_original,
                     CASE 
-                        WHEN Asistencia = 'Presente' THEN 'Presente'
-                        WHEN Asistencia = 'INTERNADO' THEN 'Internado'
-                        WHEN Asistencia = 'URGENCIA' THEN 'Urgencia'
-                        WHEN Asistencia = 'SOBRETURNO' THEN 'Sobreturno'
-                        WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada') THEN 'Ausente'
-                        WHEN Asistencia LIKE '%SUSPENDIDA%' OR Asistencia LIKE '%Anulación%' OR Asistencia LIKE '%CANCEL%' THEN 'Cancelada'
-                        WHEN Asistencia IS NULL OR RTRIM(LTRIM(Asistencia)) = '' THEN 'Sin Registrar'
-                        ELSE Asistencia
+                        WHEN v.Asistencia = 'Presente' THEN 'Presente'
+                        WHEN v.Asistencia = 'INTERNADO' THEN 'Internado'
+                        WHEN v.Asistencia = 'URGENCIA' THEN 'Urgencia'
+                        WHEN v.Asistencia = 'SOBRETURNO' THEN 'Sobreturno'
+                        WHEN v.Asistencia IN ('Ausencia justificada', 'Ausencia injustificada') THEN 'Ausente'
+                        WHEN v.Asistencia LIKE '%SUSPENDIDA%' OR v.Asistencia LIKE '%Anulación%' OR v.Asistencia LIKE '%CANCEL%' THEN 'Cancelada'
+                        WHEN v.Asistencia IS NULL OR RTRIM(LTRIM(v.Asistencia)) = '' THEN 'Sin Registrar'
+                        ELSE v.Asistencia
                     END AS estado_asistencia,
                     CASE 
-                        WHEN Asistencia IN ('Presente', 'URGENCIA', 'SOBRETURNO') THEN 'Ambulatorio'
-                        WHEN Asistencia = 'INTERNADO' THEN 'Hospitalización'
-                        WHEN Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
+                        WHEN v.Asistencia IN ('Presente', 'URGENCIA', 'SOBRETURNO') THEN 'Ambulatorio'
+                        WHEN v.Asistencia = 'INTERNADO' THEN 'Hospitalización'
+                        WHEN v.Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
                         ELSE 'Ambulatorio'
                     END AS ambito,
-                    CASE WHEN [Fecha Informado] IS NOT NULL THEN 1 ELSE 0 END AS informado,
-                    CONVERT(VARCHAR(16), [Fecha Informado], 120) AS fecha_informado,
-                    ISNULL(HOSP_Habitacion, '') AS habitacion,
-                    [Fecha Solicitud] AS raw_fecha
-                FROM VLIS_PeticionesPruebas_ARGENTINA WITH (NOLOCK)
-                WHERE [Fecha Solicitud] >= @desde AND [Fecha Solicitud] <= @hasta
-                  AND Prueba NOT LIKE '%*** PETICION RADIOLOGÍA%'
+                    ISNULL(i.EstaInformado, 0) AS informado,
+                    i.FechaInformadoStr AS fecha_informado,
+                    ISNULL(i.HabitacionLIS, '') AS habitacion,
+                    v.[Fecha Visita] AS raw_fecha
+                FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
+                LEFT JOIN #InformesCasos i ON i.idVisita = v.idVisita
+                WHERE v.[Fecha Visita] >= @desde AND v.[Fecha Visita] <= @hasta
                   AND (
-                      [Tipo Visita] LIKE '(ECO)%' 
-                      OR [Tipo Visita] LIKE '(RX)%' 
-                      OR [Tipo Visita] LIKE '(TC)%'
-                      OR [Tipo Visita] LIKE '(CX) RA%'
+                      v.[Grupo Agenda] IN ('ECOGRAFIAS', 'ECOCARDIO', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'RADIOLOGIA')
+                      OR (v.[Grupo Agenda] = 'GUARDIAS ' AND (v.[Tipo Visita] LIKE '(ECO)%' OR v.[Tipo Visita] LIKE '%ECOGRAF%' OR v.[Tipo Visita] LIKE '%DOPPLER%'))
                   )
-                  AND ([Tipo Visita] NOT LIKE '%(TC) MEDIO DE CONTRASTE%' OR [Tipo Visita] IS NULL)
-                  AND ISNULL(Prueba, '') NOT LIKE '%CONTRASTE%'
-                  AND ISNULL(Prueba, '') NOT LIKE '%AGUJA%'
+                  AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDIO DE CONTRASTE%'
+                  AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%ADICIONAL POR%ANESTESIA%'
+                  AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDICI%N DE ESCOLIOSIS%'
+                  AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDICI%N DE MIEMBROS INFERIORES%'
             )
             SELECT TOP (${safeLimit}) *
             FROM BaseCasos
-            WHERE (@modalidad = 'TODAS' OR modalidad = @modalidad)
+            WHERE modalidad <> 'OTRAS'
+              AND (@modalidad = 'TODAS' OR modalidad = @modalidad)
               AND (@agenda = 'TODAS' OR agenda = @agenda)
               AND (@ambito = 'TODOS' OR ambito = @ambito)
               AND (@estadoAsistencia = 'TODOS' OR estado_asistencia = @estadoAsistencia)
@@ -369,6 +414,8 @@ export async function getDxICasosNominales({
                   OR obra_social LIKE @search
               )
             ORDER BY raw_fecha DESC;
+
+            DROP TABLE #InformesCasos;
         `;
 
         const res = await req.query(query);

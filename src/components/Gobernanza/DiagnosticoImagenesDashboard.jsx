@@ -65,7 +65,8 @@ const MODALIDADES_TABS = [
     { id: 'RADIOLOGIA', label: 'Radiología (RX)', icon: Activity, badgeColor: '#6366F1' },
     { id: 'MAMOGRAFIA', label: 'Mamografía', icon: Activity, badgeColor: '#EC4899' },
     { id: 'TOMOGRAFIA', label: 'Tomografía (TC)', icon: Activity, badgeColor: '#F59E0B', note: 'Sin contrastes' },
-    { id: 'DENSITOMETRIA', label: 'Densitometría Ósea', icon: Activity, badgeColor: '#10B981' }
+    { id: 'DENSITOMETRIA', label: 'Densitometría Ósea', icon: Activity, badgeColor: '#10B981' },
+    { id: 'ECOCARDIO', label: 'Ecocardiograma', icon: Activity, badgeColor: '#E11D48' }
 ];
 
 export default function DiagnosticoImagenesDashboard({
@@ -117,6 +118,7 @@ export default function DiagnosticoImagenesDashboard({
         MAMOGRAFIA: true,
         TOMOGRAFIA: true,
         DENSITOMETRIA: true,
+        ECOCARDIO: true,
         ambulatorio: true,
         hospitalizacion: true
     });
@@ -392,7 +394,8 @@ export default function DiagnosticoImagenesDashboard({
                         const tv = (p.tipo_visita || '').toUpperCase();
                         const est = (p.estudio || '').toUpperCase();
                         let mod = 'OTRAS';
-                        if (tv.startsWith('(ECO)') || est.includes('ECOGRAF') || est.includes('DOPPLER')) mod = 'ECOGRAFIA';
+                        if (tv.includes('ECOCARDIO') || tv.includes('DOPPLER CARDIACO') || tv.includes('CARDIOPATIA') || est.includes('ECOCARDIO')) mod = 'ECOCARDIO';
+                        else if (tv.startsWith('(ECO)') || est.includes('ECOGRAF') || est.includes('DOPPLER')) mod = 'ECOGRAFIA';
                         else if (tv.startsWith('(RX) MA') || est.includes('MAMOGRAF')) mod = 'MAMOGRAFIA';
                         else if (tv.startsWith('(RX) DE') || est.includes('DENSITO')) mod = 'DENSITOMETRIA';
                         else if (tv.startsWith('(TC)') || est.includes('TOMOGRAF') || est.includes('TAC')) mod = 'TOMOGRAFIA';
@@ -709,14 +712,15 @@ export default function DiagnosticoImagenesDashboard({
                     const jitter = itemJitter(`${mObj.key}_${keyFn(r)}`);
                     const newCant = Math.max(1, Math.round((r.Cantidad || 0) * factor * jitter));
                     if (isAgenda) {
-                        const infRatio = (r.Cantidad > 0 && r.Informados !== undefined) ? (r.Informados / r.Cantidad) : 0.92;
-                        const newInf = Math.min(newCant, Math.round(newCant * infRatio));
+                        const isEfectivo = ESTADOS_EFECTIVOS.has(r.EstadoAsistencia);
+                        const infRatio = (r.Cantidad > 0 && r.Informados !== undefined) ? (r.Informados / r.Cantidad) : (isEfectivo ? 0.92 : 0);
+                        const newInf = isEfectivo ? Math.min(newCant, Math.round(newCant * infRatio)) : 0;
                         result.push({
                             ...r,
                             PeriodoMes: mObj.key,
                             Cantidad: newCant,
                             Informados: newInf,
-                            PendientesInforme: Math.max(0, newCant - newInf)
+                            PendientesInforme: isEfectivo ? Math.max(0, newCant - newInf) : 0
                         });
                     } else {
                         result.push({
@@ -812,7 +816,7 @@ export default function DiagnosticoImagenesDashboard({
     // 1. Resumen de conteos globales por modalidad (priorizando estudios efectivamente realizados)
     const modalidadCounts = useMemo(() => {
         if (!scopedData?.agendas) return {};
-        const counts = { TODAS: 0, ECOGRAFIA: 0, RADIOLOGIA: 0, MAMOGRAFIA: 0, TOMOGRAFIA: 0, DENSITOMETRIA: 0 };
+        const counts = { TODAS: 0, ECOGRAFIA: 0, RADIOLOGIA: 0, MAMOGRAFIA: 0, TOMOGRAFIA: 0, DENSITOMETRIA: 0, ECOCARDIO: 0 };
         scopedData.agendas.forEach(row => {
             const cant = row.Cantidad || 0;
             // Priorizar conteo de estudios efectivamente realizados
@@ -885,8 +889,10 @@ export default function DiagnosticoImagenesDashboard({
             // Efectivamente realizados: Presente + Internado + Urgencia + Sobreturno
             item.realizados = item.presente + item.internado + item.urgencia + item.sobreturno;
 
-            item.informados += r.Informados || 0;
-            item.pendientes += r.PendientesInforme || 0;
+            if (ESTADOS_EFECTIVOS.has(estado)) {
+                item.informados += r.Informados || 0;
+                item.pendientes += r.PendientesInforme || 0;
+            }
             if (r.Centro) item.centros.add(r.Centro);
         });
 
@@ -896,7 +902,7 @@ export default function DiagnosticoImagenesDashboard({
             if (filterAsistencia === 'Sin Registrar') return b.sinRegistrar - a.sinRegistrar;
             return b.realizados !== a.realizados ? b.realizados - a.realizados : b.total - a.total;
         });
-    }, [filteredAgendasRows, filterAsistencia]);
+    }, [filteredAgendasRows, filterAsistencia, ESTADOS_EFECTIVOS]);
 
     // 4. Totales del filtro activo (priorizando estudios efectivamente realizados)
     const totals = useMemo(() => {
@@ -1148,6 +1154,7 @@ export default function DiagnosticoImagenesDashboard({
                     MAMOGRAFIA: 0,
                     TOMOGRAFIA: 0,
                     DENSITOMETRIA: 0,
+                    ECOCARDIO: 0,
                     OTRAS: 0,
                     ambulatorio: 0,
                     hospitalizacion: 0
@@ -1193,6 +1200,7 @@ export default function DiagnosticoImagenesDashboard({
                     MAMOGRAFIA: 0,
                     TOMOGRAFIA: 0,
                     DENSITOMETRIA: 0,
+                    ECOCARDIO: 0,
                     OTRAS: 0,
                     ambulatorio: 0,
                     hospitalizacion: 0
@@ -1357,6 +1365,7 @@ export default function DiagnosticoImagenesDashboard({
                     'Mamografía': p.MAMOGRAFIA || 0,
                     'Tomografía (TC)': p.TOMOGRAFIA || 0,
                     'Densitometría': p.DENSITOMETRIA || 0,
+                    'Ecocardiograma': p.ECOCARDIO || 0,
                     'Otras Pruebas': p.OTRAS || 0,
                     'Ambulatorio': p.ambulatorio || 0,
                     'Hospitalización': p.hospitalizacion || 0
@@ -1471,6 +1480,7 @@ export default function DiagnosticoImagenesDashboard({
                 'Mamografía': p.MAMOGRAFIA || 0,
                 'Tomografía (TC)': p.TOMOGRAFIA || 0,
                 'Densitometría': p.DENSITOMETRIA || 0,
+                'Ecocardiograma': p.ECOCARDIO || 0,
                 'Otras Pruebas': p.OTRAS || 0,
                 'Ambulatorio': p.ambulatorio || 0,
                 'Hospitalización': p.hospitalizacion || 0
@@ -2368,7 +2378,8 @@ export default function DiagnosticoImagenesDashboard({
                                         { key: 'RADIOLOGIA', label: 'Radiología (RX)', color: '#6366F1' },
                                         { key: 'MAMOGRAFIA', label: 'Mamografía', color: '#EC4899' },
                                         { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', color: '#F59E0B' },
-                                        { key: 'DENSITOMETRIA', label: 'Densitometría', color: '#10B981' }
+                                        { key: 'DENSITOMETRIA', label: 'Densitometría', color: '#10B981' },
+                                        { key: 'ECOCARDIO', label: 'Ecocardiograma', color: '#E11D48' }
                                     ].map(s => (
                                         <button
                                             key={s.key}
@@ -2571,6 +2582,17 @@ export default function DiagnosticoImagenesDashboard({
                                                         dataKey="DENSITOMETRIA" 
                                                         name="Densitometría" 
                                                         stroke="#10B981" 
+                                                        strokeWidth={1.8} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5 }} 
+                                                    />
+                                                )}
+                                                {visibleSeries.ECOCARDIO && (
+                                                    <Line 
+                                                        type="monotone" 
+                                                        dataKey="ECOCARDIO" 
+                                                        name="Ecocardiograma" 
+                                                        stroke="#E11D48" 
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
@@ -3453,6 +3475,7 @@ export default function DiagnosticoImagenesDashboard({
                                 <option value="MAMOGRAFIA">Mamografía</option>
                                 <option value="TOMOGRAFIA">Tomografía (TC)</option>
                                 <option value="DENSITOMETRIA">Densitometría</option>
+                                <option value="ECOCARDIO">Ecocardiograma</option>
                             </select>
 
                             <select
