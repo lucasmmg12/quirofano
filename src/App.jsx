@@ -66,6 +66,8 @@ import GobernanzaIndicadoresPanel from './components/Gobernanza/GobernanzaIndica
 import BetoGuidePopup from './components/Gobernanza/BetoGuidePopup.jsx';
 import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
 import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
+import RecetarioElectronicoPanel from './components/RecetarioElectronicoPanel.jsx';
+import PublicRecetaPrestacionView from './components/Recetario/PublicRecetaPrestacionView.jsx';
 import ContactCenterPanel from './components/ContactCenter/ContactCenterPanel.jsx';
 import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from './services/contactCenterService';
 import { startSession, endSession, trackModuleChange, subscribeTelemetry, requestAndRecordGeolocation } from './lib/activityTracker';
@@ -327,6 +329,9 @@ export default function AppRoot() {
             <Route path="/recepcion/fichas" element={<PublicFichasAdmisionesView />} />
             <Route path="/entrega-fichas-publico" element={<PublicFichasAdmisionesView />} />
             <Route path="/recepcion/equipo/:equipoId" element={<EquipoAuditoriaViewWrapper />} />
+            <Route path="/prestacion" element={<PublicRecetaPrestacionView />} />
+            <Route path="/prestacion/:token" element={<PublicRecetaPrestacionView />} />
+            <Route path="/receta/:token" element={<PublicRecetaPrestacionView />} />
             <Route path="/share/*" element={<PublicRecordView />} />
             <Route path="/lab/:labSlug" element={<LabPortalWrapper />} />
             <Route path="/publico/laboratorio/:hash" element={<LegacyLabRedirect />} />
@@ -357,6 +362,7 @@ export default function AppRoot() {
 const VIEW_LABELS = {
     inicio: 'Inicio',
     pedidos: 'Pedidos',
+    recetario: 'Recetario Electrónico (ReNaPDiS)',
     mensajeria: 'Mensajería',
     cirugias: 'Control de Cirugías',
     nomenclador: 'Nomenclador',
@@ -745,6 +751,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
             else if (['beto', 'simon', 'beto_rules', 'beto_analytics'].includes(activeView)) isVisible = true;
             else if (['gobernanza', 'gobernanza_indicadores'].includes(activeView)) isVisible = selectedModules.includes('gobernanza') || selectedModules.includes('gobernanza_indicadores');
             else if (activeView === 'entrega_fichas') isVisible = selectedModules.includes('altas') || selectedModules.includes('facturacion') || selectedModules.includes('entrega_fichas');
+            else if (activeView === 'recetario') isVisible = selectedModules.includes('pedidos') || selectedModules.includes('recetario') || selectedModules.includes('consultas') || selectedModules.includes('pacientes');
             else if (ALWAYS_VISIBLE.includes(activeView)) isVisible = true;
             else isVisible = selectedModules.includes(activeView);
         }
@@ -1719,6 +1726,10 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
                 {activeView === 'pedidos_marcela' && (
                     <PedidosMarcela addToast={addToast} />
+                )}
+
+                {activeView === 'recetario' && (
+                    <RecetarioElectronicoPanel addToast={addToast} currentUser={currentUser} />
                 )}
 
                 {activeView === 'cirugias' && (

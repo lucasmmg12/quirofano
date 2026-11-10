@@ -89,6 +89,11 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
             return selectedModules.includes('altas') || selectedModules.includes('facturacion') || selectedModules.includes('entrega_fichas');
         }
 
+        // Recetario Electrónico — visible para todos los que tienen Pedidos o Consultas
+        if (id === 'recetario') {
+            return selectedModules.includes('pedidos') || selectedModules.includes('recetario') || selectedModules.includes('consultas') || selectedModules.includes('pacientes');
+        }
+
         return selectedModules.includes(id);
     };
     const [pedidosOpen, setPedidosOpen] = useState(false);
@@ -128,6 +133,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     // Sub-items dentro de "Emisión de Pedidos"
     const pedidosSubItems = [
         { id: 'pedidos', label: 'Nuevo Pedido', icon: ClipboardList },
+        { id: 'recetario', label: 'Recetario Electrónico', icon: FileCheck, badge: 'ReNaPDiS', badgeColor: '#059669' },
         { id: 'historial', label: 'Historial', icon: History },
         { id: 'nomenclador', label: 'Nomenclador', icon: BookOpen },
         { id: 'pedidos_marcela', label: 'Pedidos Marcela', icon: ClipboardPlus },
