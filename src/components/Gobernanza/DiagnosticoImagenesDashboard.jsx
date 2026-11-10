@@ -103,6 +103,7 @@ export default function DiagnosticoImagenesDashboard({
     // Filtros de navegación
     const [selectedModalidad, setSelectedModalidad] = useState('TODAS');
     const [selectedAgenda, setSelectedAgenda] = useState('TODAS');
+    const [ecocardioSubFilter, setEcocardioSubFilter] = useState('TODOS'); // 'TODOS' | 'CARDIOLOGOS' | 'GERBEC'
     const [filterAmbito, setFilterAmbito] = useState('TODOS'); // 'TODOS' | 'Ambulatorio' | 'Hospitalización'
     const [filterAsistencia, setFilterAsistencia] = useState('TODOS'); // 'TODOS' | 'Presente' | 'Internado' | 'Urgencia' | 'Sobreturno' | 'Ausente' | 'Sin Registrar'
     const [searchTerm, setSearchTerm] = useState('');
@@ -875,11 +876,65 @@ export default function DiagnosticoImagenesDashboard({
         };
     }, [scopedData, filterAmbito, filterAsistencia, ESTADOS_EFECTIVOS]);
 
+    // 1.c Desglose conciliado del Grupo Agenda SALUS "ECOCARDIO": 4 Agendas Cardiólogos vs Agenda Dra. Gerbec Daniela
+    const ecocardioBreakdown = useMemo(() => {
+        if (!scopedData?.agendas) return null;
+        let totalEcocardio = 0;
+        let gerbecFromAgenda = 0;
+        let hasTaggedGrupo = false;
+
+        scopedData.agendas.forEach(r => {
+            if (r.Modalidad !== 'ECOCARDIO') return;
+            if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
+            if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return;
+            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return;
+
+            const cant = r.Cantidad || 0;
+            totalEcocardio += cant;
+            const grp = (r.GrupoAgenda || '').toUpperCase();
+            if (grp.includes('GERBEC') || grp.includes('CARDI')) {
+                hasTaggedGrupo = true;
+            }
+            if (grp.includes('GERBEC')) {
+                gerbecFromAgenda += cant;
+            }
+        });
+
+        let gerbecCount = gerbecFromAgenda;
+        if (!hasTaggedGrupo && Array.isArray(scopedData.realizadores)) {
+            gerbecCount = 0;
+            scopedData.realizadores.forEach(r => {
+                if (r.Modalidad !== 'ECOCARDIO') return;
+                if (filterAsistencia !== 'TODOS') {
+                    if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
+                } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                    return;
+                }
+                if ((r.PrestadorRealiza || '').toUpperCase().includes('GERBEC')) {
+                    gerbecCount += (r.Cantidad || 0);
+                }
+            });
+        }
+
+        const cardiologosCount = Math.max(0, totalEcocardio - gerbecCount);
+
+        return {
+            cardiologos: cardiologosCount,
+            gerbec: gerbecCount,
+            totalGrupoSalus: totalEcocardio
+        };
+    }, [scopedData, filterAmbito, filterAsistencia, ESTADOS_EFECTIVOS]);
+
     // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
     const filteredAgendasRows = useMemo(() => {
         if (!scopedData?.agendas) return [];
         return scopedData.agendas.filter(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
+            if (r.Modalidad === 'ECOCARDIO' && ecocardioSubFilter !== 'TODOS') {
+                const isGerbec = (r.GrupoAgenda || '').toUpperCase().includes('GERBEC');
+                if (ecocardioSubFilter === 'CARDIOLOGOS' && isGerbec) return false;
+                if (ecocardioSubFilter === 'GERBEC' && !isGerbec) return false;
+            }
             if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return false;
             if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return false;
             if (searchTerm.trim()) {
@@ -891,7 +946,7 @@ export default function DiagnosticoImagenesDashboard({
             }
             return true;
         });
-    }, [scopedData, selectedModalidad, filterAmbito, filterAsistencia, searchTerm]);
+    }, [scopedData, selectedModalidad, ecocardioSubFilter, filterAmbito, filterAsistencia, searchTerm]);
 
     // 3. Agrupación por Agenda Única (sumando centros, ámbitos y asistencias)
     const agendasSummaryList = useMemo(() => {
@@ -1011,6 +1066,13 @@ export default function DiagnosticoImagenesDashboard({
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
 
+            const prest = r.PrestadorRealiza || 'SIN ASIGNAR';
+            if (r.Modalidad === 'ECOCARDIO' && ecocardioSubFilter !== 'TODOS') {
+                const isGerbec = prest.toUpperCase().includes('GERBEC');
+                if (ecocardioSubFilter === 'CARDIOLOGOS' && isGerbec) return false;
+                if (ecocardioSubFilter === 'GERBEC' && !isGerbec) return false;
+            }
+
             // Si hay filtro puntual de asistencia se respeta; si es TODOS, priorizar efectivamente realizados
             if (filterAsistencia !== 'TODOS') {
                 if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
@@ -1018,7 +1080,6 @@ export default function DiagnosticoImagenesDashboard({
                 return false;
             }
 
-            const prest = r.PrestadorRealiza || 'SIN ASIGNAR';
             map.set(prest, (map.get(prest) || 0) + (r.Cantidad || 0));
         });
 
@@ -1030,7 +1091,7 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalRealizadores > 0 ? ((cantidad / totalRealizadores) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, ESTADOS_EFECTIVOS]);
+    }, [scopedData, selectedModalidad, selectedAgenda, ecocardioSubFilter, filterAsistencia, ESTADOS_EFECTIVOS]);
 
     // 6. Ranking de Prestadores Solicitantes (priorizando estudios efectivamente realizados)
     const solicitantesRanking = useMemo(() => {
@@ -1698,6 +1759,7 @@ export default function DiagnosticoImagenesDashboard({
                             onClick={() => {
                                 setSelectedModalidad(tab.id);
                                 setSelectedAgenda('TODAS'); // Resetear agenda al cambiar modalidad
+                                setEcocardioSubFilter('TODOS');
                             }}
                             style={{
                                 flex: 1,
@@ -1730,9 +1792,17 @@ export default function DiagnosticoImagenesDashboard({
                                     <div style={{ fontSize: '0.82rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? '#0F172A' : '#475569' }}>
                                         {tab.label}
                                     </div>
-                                    {tab.note && (
+                                    {tab.id === 'ECOCARDIO' && ecocardioBreakdown ? (
+                                        <div style={{ fontSize: '0.67rem', color: '#E11D48', fontWeight: 700 }}>
+                                            Cardio: {ecocardioBreakdown.cardiologos} + Gerbec: {ecocardioBreakdown.gerbec}
+                                        </div>
+                                    ) : tab.id === 'MAMOGRAFIA' && mamoDensitoBreakdown ? (
+                                        <div style={{ fontSize: '0.67rem', color: '#DB2777', fontWeight: 700 }}>
+                                            S.Fe: {mamoDensitoBreakdown.mamoGrupoMixto} + S.Luis: {mamoDensitoBreakdown.mamoGrupoMamografia}
+                                        </div>
+                                    ) : tab.note ? (
                                         <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{tab.note}</div>
-                                    )}
+                                    ) : null}
                                 </div>
                             </div>
                             <span style={{
@@ -1749,6 +1819,124 @@ export default function DiagnosticoImagenesDashboard({
                     );
                 })}
             </div>
+
+            {/* ─── CONCILIACIÓN DE AGENDA SALUS: ECOCARDIO (4 CARDIÓLOGOS vs DRA. GERBEC) ─── */}
+            {!loading && ecocardioBreakdown && (selectedModalidad === 'TODAS' || selectedModalidad === 'ECOCARDIO') && (
+                <div style={{
+                    background: 'linear-gradient(90deg, #FFF1F2 0%, #FFFBEB 55%, #F8FAFC 100%)',
+                    borderRadius: '12px',
+                    border: '1px solid #FECDD3',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 320px' }}>
+                        <div style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '8px',
+                            background: '#FFE4E6',
+                            color: '#E11D48',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: '0.85rem',
+                            flexShrink: 0
+                        }}>
+                            ❤️
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
+                                Desglose de Agenda en SALUS: <span style={{ color: '#E11D48' }}>Grupo ECOCARDIO ({ecocardioBreakdown.totalGrupoSalus.toLocaleString('es-AR')} estudios)</span>
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '2px' }}>
+                                En SALUS, el <em>Grupo Agenda</em> <strong>ECOCARDIO</strong> incluye las <strong>4 agendas de Cardiólogos</strong> (Dr. López Ignacio, Dr. Villalba Carlos, Dra. Robles Carolina y Dra. Ruarte Celina = <strong>{ecocardioBreakdown.cardiologos.toLocaleString('es-AR')}</strong>) más la agenda de Doppler Vascular de la <strong>Dra. Gerbec Daniela</strong> (<strong>+{ecocardioBreakdown.gerbec.toLocaleString('es-AR')}</strong>). Haga clic en cualquiera de las cajas para verlas por separado:
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedModalidad('ECOCARDIO');
+                                setSelectedAgenda('TODAS');
+                                setEcocardioSubFilter(ecocardioSubFilter === 'CARDIOLOGOS' ? 'TODOS' : 'CARDIOLOGOS');
+                            }}
+                            style={{
+                                background: selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'CARDIOLOGOS' ? '#FFE4E6' : '#FFFFFF',
+                                border: `1.5px solid ${selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'CARDIOLOGOS' ? '#E11D48' : '#FECDD3'}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.72rem',
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <div style={{ color: '#BE123C', fontWeight: 800 }}>
+                                4 Agendas Cardiólogos ({ecocardioBreakdown.cardiologos.toLocaleString('es-AR')})
+                            </div>
+                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                López + Villalba + Robles + Ruarte
+                            </div>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedModalidad('ECOCARDIO');
+                                setSelectedAgenda('TODAS');
+                                setEcocardioSubFilter(ecocardioSubFilter === 'GERBEC' ? 'TODOS' : 'GERBEC');
+                            }}
+                            style={{
+                                background: selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'GERBEC' ? '#FEF3C7' : '#FFFFFF',
+                                border: `1.5px solid ${selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'GERBEC' ? '#D97706' : '#FDE68A'}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.72rem',
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <div style={{ color: '#B45309', fontWeight: 800 }}>
+                                Agenda Dra. Gerbec (+{ecocardioBreakdown.gerbec.toLocaleString('es-AR')})
+                            </div>
+                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                Doppler Vasos de Cuello / Miembros
+                            </div>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSelectedModalidad('ECOCARDIO');
+                                setSelectedAgenda('TODAS');
+                                setEcocardioSubFilter('TODOS');
+                            }}
+                            style={{
+                                background: selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'TODOS' ? '#EFF6FF' : '#F8FAFC',
+                                border: `1.5px solid ${selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'TODOS' ? '#2563EB' : '#CBD5E1'}`,
+                                borderRadius: '8px',
+                                padding: '6px 10px',
+                                fontSize: '0.72rem',
+                                textAlign: 'left',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <div style={{ color: '#1E293B', fontWeight: 800 }}>
+                                Total Grupo ECOCARDIO ({ecocardioBreakdown.totalGrupoSalus.toLocaleString('es-AR')})
+                            </div>
+                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
+                                {ecocardioBreakdown.cardiologos.toLocaleString('es-AR')} Cardiólogos + {ecocardioBreakdown.gerbec.toLocaleString('es-AR')} Dra. Gerbec
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* ─── CONCILIACIÓN DE AGENDA COMPARTIDA SALUS: DENSITOMETRÍA Y MAMOGRAFÍA ─── */}
             {!loading && mamoDensitoBreakdown && (selectedModalidad === 'TODAS' || selectedModalidad === 'MAMOGRAFIA' || selectedModalidad === 'DENSITOMETRIA') && (

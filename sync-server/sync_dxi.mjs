@@ -93,7 +93,11 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                     WHEN v.[Grupo Agenda] = 'RADIOLOGIA' THEN 'RADIOLOGIA'
                     ELSE 'OTRAS'
                 END AS Modalidad,
-                ISNULL(RTRIM(LTRIM(v.[Grupo Agenda])), 'SIN GRUPO') AS GrupoAgenda,
+                CASE 
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOCARDIO (DRA. GERBEC)'
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO (CARDIÓLOGOS)'
+                    ELSE ISNULL(RTRIM(LTRIM(v.[Grupo Agenda])), 'SIN GRUPO')
+                END AS GrupoAgenda,
                 ISNULL(v.[Tipo Visita], 'SIN AGENDA') AS Agenda,
                 ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'CENTRO NO ESPECIFICADO')) AS Centro,
                 ISNULL(v.Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS Responsable,
