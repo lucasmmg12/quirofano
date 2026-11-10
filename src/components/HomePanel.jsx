@@ -254,13 +254,17 @@ export default function HomePanel({
     const canSeeModule = useMemo(() => {
         const username = (currentUser?.usuario || '').toLowerCase().trim();
         const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
-        const isUciOnly = username === 'naguilera';
-        const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes(username);
-        const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username);
+        const isUciOnly = username === 'naguilera' || currentUser?.rol === 'uci';
+        const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes(username) || currentUser?.rol === 'gobernanza_dashboard';
+        const isGobernanzaStrictOnly = ['franciscoromano89', 'franciscoromano89@gmail.com', 'fromano'].includes(username);
+        const isGobernanzaOnly = isGobernanzaStrictOnly || ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username) || currentUser?.rol === 'gobernanza';
         const isMaster = MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin';
 
         return (id) => {
             if (isGobernanzaDashboardOnly) return id === 'gobernanza_indicadores';
+            if (isGobernanzaStrictOnly) {
+                return ['gobernanza', 'gobernanza_indicadores'].includes(id);
+            }
             if (isGobernanzaOnly) {
                 return ['gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'].includes(id);
             }

@@ -456,9 +456,11 @@ function App({ currentUser, onLogout, onUserUpdated }) {
     const navigate = useNavigate();
 
     // Restricted viewer check (soporta tanto usuario histórico como rol en base de datos)
-    const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera' || currentUser?.rol === 'uci';
-    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim()) || currentUser?.rol === 'gobernanza_dashboard';
-    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes((currentUser?.usuario || '').toLowerCase().trim()) || currentUser?.rol === 'gobernanza';
+    const cleanUsernameLower = (currentUser?.usuario || '').toLowerCase().trim();
+    const isUciOnly = cleanUsernameLower === 'naguilera' || currentUser?.rol === 'uci';
+    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes(cleanUsernameLower) || currentUser?.rol === 'gobernanza_dashboard';
+    const isGobernanzaStrictOnly = ['franciscoromano89', 'franciscoromano89@gmail.com', 'fromano'].includes(cleanUsernameLower);
+    const isGobernanzaOnly = isGobernanzaStrictOnly || ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(cleanUsernameLower) || currentUser?.rol === 'gobernanza';
 
     // Derive activeView directly from the URL pathname
     // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)
@@ -590,7 +592,9 @@ function App({ currentUser, onLogout, onUserUpdated }) {
             }
 
             if (isGobernanzaOnly) {
-                const GOB_ALLOWED_VIEWS = ['inicio', 'gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+                const GOB_ALLOWED_VIEWS = isGobernanzaStrictOnly
+                    ? ['inicio', 'gobernanza', 'gobernanza_indicadores']
+                    : ['inicio', 'gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
                 setSelectedModules(GOB_ALLOWED_VIEWS);
                 setNeedsModuleOnboarding(false);
                 setShowModuleOnboarding(false);
@@ -691,7 +695,9 @@ function App({ currentUser, onLogout, onUserUpdated }) {
         }
 
         if (isGobernanzaOnly) {
-            const GOB_ALLOWED_VIEWS = ['inicio', 'gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
+            const GOB_ALLOWED_VIEWS = isGobernanzaStrictOnly
+                ? ['inicio', 'gobernanza', 'gobernanza_indicadores']
+                : ['inicio', 'gobernanza', 'gobernanza_indicadores', 'beto', 'simon', 'beto_rules', 'beto_analytics'];
             if (!GOB_ALLOWED_VIEWS.includes(activeView)) {
                 setActiveView('gobernanza_indicadores');
             }

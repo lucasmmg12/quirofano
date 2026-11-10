@@ -12,9 +12,10 @@ import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMIN
 export default function Sidebar({ collapsed, onToggle, activeView, onViewChange, unreadMessageCount = 0, className = '', onOpenBeto, currentUser, selectedModules }) {
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     const isContactCenterOnly = isContactCenterExclusiveAgent(currentUser);
-    const isUciOnly = username === 'naguilera';
-    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes(username);
-    const isGobernanzaOnly = ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username);
+    const isUciOnly = username === 'naguilera' || currentUser?.rol === 'uci';
+    const isGobernanzaDashboardOnly = ['pgarcia', 'pgarcia@sanatorioargentino.com.ar'].includes(username) || currentUser?.rol === 'gobernanza_dashboard';
+    const isGobernanzaStrictOnly = ['franciscoromano89', 'franciscoromano89@gmail.com', 'fromano'].includes(username);
+    const isGobernanzaOnly = isGobernanzaStrictOnly || ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username) || currentUser?.rol === 'gobernanza';
     const isLMarinero = ['lmarinero', 'lucas marinero'].includes(username) || MASTER_ADMINS.includes(username);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
@@ -24,6 +25,10 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
         if (isGobernanzaDashboardOnly) {
             return id === 'gobernanza_indicadores';
+        }
+
+        if (isGobernanzaStrictOnly) {
+            return ['gobernanza', 'gobernanza_indicadores'].includes(id);
         }
 
         if (isGobernanzaOnly) {
@@ -454,8 +459,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                             ],
                         })}
 
-                        {/* Simon IA para consultas */}
-                        {renderGroup({
+                        {/* Simon IA para consultas (oculto para cuentas estrictamente exclusivas de Gobernanza) */}
+                        {!isGobernanzaStrictOnly && renderGroup({
                             label: 'Simon IA',
                             icon: Brain,
                             isOpen: simonOpen,
