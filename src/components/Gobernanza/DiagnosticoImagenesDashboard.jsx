@@ -253,8 +253,8 @@ export default function DiagnosticoImagenesDashboard({
                 if (cfg?.value) {
                     try {
                         const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
-                        const hasEcocardio = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO');
-                        if (parsed && Array.isArray(parsed.agendas) && hasEcocardio) {
+                        const hasUpdatedSchema = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO' && Boolean(r.AgendaSalus));
+                        if (parsed && Array.isArray(parsed.agendas) && hasUpdatedSchema) {
                             setData(parsed);
                             setLastUpdated(cfg.updated_at || parsed.ultima_actualizacion || new Date().toISOString());
                             setDataSource('supabase_cache');
@@ -1005,6 +1005,32 @@ export default function DiagnosticoImagenesDashboard({
             return b.realizados !== a.realizados ? b.realizados - a.realizados : b.total - a.total;
         });
     }, [filteredAgendasRows, filterAsistencia, ESTADOS_EFECTIVOS]);
+
+    // 3.b Agrupación por Agenda Médica SALUS real (v.Agenda: ej. DRA RUARTE CELINA, DR LOPEZ IGNACIO, DRA GERBEC DANIELA, DENSITOMETRIA Y MAMOGRAFIA (CE), etc.)
+    const agendasSalusList = useMemo(() => {
+        const map = new Map();
+        filteredAgendasRows.forEach(r => {
+            const key = r.AgendaSalus || r.GrupoAgenda || r.Modalidad;
+            if (!key) return;
+            if (!map.has(key)) {
+                map.set(key, {
+                    agendaSalus: key,
+                    grupoAgenda: r.GrupoAgenda || '',
+                    modalidad: r.Modalidad,
+                    centro: r.Centro || '',
+                    realizados: 0,
+                    total: 0
+                });
+            }
+            const item = map.get(key);
+            const cant = r.Cantidad || 0;
+            item.total += cant;
+            if (ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                item.realizados += cant;
+            }
+        });
+        return Array.from(map.values()).sort((a, b) => b.realizados - a.realizados);
+    }, [filteredAgendasRows, ESTADOS_EFECTIVOS]);
 
     // 4. Totales del filtro activo (priorizando estudios efectivamente realizados)
     const totals = useMemo(() => {
@@ -3049,6 +3075,57 @@ export default function DiagnosticoImagenesDashboard({
                                     <div>{totals.total.toLocaleString('es-AR')} turnos</div>
                                     <div style={{ color: '#0284C7', fontSize: '0.66rem' }}>{totals.informados.toLocaleString('es-AR')} informados</div>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Desglose directo por Agenda SALUS (v.Agenda) */}
+                    {!loading && agendasSalusList.length > 0 && (
+                        <div style={{
+                            background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '10px',
+                            padding: '10px 12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                        }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                Agendas en SALUS (Columna Agenda):
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {agendasSalusList.map(ag => {
+                                    const isGerbec = ag.agendaSalus.toUpperCase().includes('GERBEC');
+                                    return (
+                                        <div
+                                            key={ag.agendaSalus}
+                                            style={{
+                                                background: isGerbec ? '#FFFBEB' : '#FFFFFF',
+                                                border: `1px solid ${isGerbec ? '#FDE68A' : '#CBD5E1'}`,
+                                                borderRadius: '8px',
+                                                padding: '5px 9px',
+                                                fontSize: '0.72rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            <span style={{ fontWeight: 700, color: isGerbec ? '#B45309' : '#0F172A' }}>
+                                                {ag.agendaSalus}
+                                            </span>
+                                            <span style={{
+                                                fontWeight: 800,
+                                                color: isGerbec ? '#92400E' : '#047857',
+                                                background: isGerbec ? '#FEF3C7' : '#ECFDF5',
+                                                padding: '1px 6px',
+                                                borderRadius: '999px',
+                                                fontSize: '0.7rem'
+                                            }}>
+                                                {ag.realizados.toLocaleString('es-AR')}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

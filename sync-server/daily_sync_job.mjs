@@ -524,8 +524,9 @@ export async function runDailySync({ skipDoctors = false } = {}) {
         const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const fHoy = `${dHoy.getFullYear()}-${String(dHoy.getMonth() + 1).padStart(2, '0')}-${String(dHoy.getDate()).padStart(2, '0')}`;
         const f30 = `${d30.getFullYear()}-${String(d30.getMonth() + 1).padStart(2, '0')}-${String(d30.getDate()).padStart(2, '0')}`;
-        await getDxIAnalytics({ fechaDesde: '2026-01-01', fechaHasta: fHoy });
-        await getDxICasosNominales({ fechaDesde: f30, fechaHasta: fHoy, limit: 600, saveDefaultCache: true });
+        const modDxi = await import(`./sync_dxi.mjs?t=${Date.now()}`);
+        await modDxi.getDxIAnalytics({ fechaDesde: '2025-01-01', fechaHasta: fHoy });
+        await modDxi.getDxICasosNominales({ fechaDesde: f30, fechaHasta: fHoy, limit: 600, saveDefaultCache: true });
         log('Paso 11 completado: Caché fija y casos recientes de Diagnóstico por Imágenes actualizados.');
     } catch (eDxi) {
         log(`⚠️ Error no bloqueante en Paso 11 (DxI): ${eDxi.message}`);
