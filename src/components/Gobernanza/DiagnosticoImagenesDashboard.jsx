@@ -1891,17 +1891,6 @@ export default function DiagnosticoImagenesDashboard({
                         </div>
                         <div style={{ fontSize: '0.85rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span>Período Telar: <strong style={{ color: '#1E293B' }}>{effectiveDesde}</strong> al <strong style={{ color: '#1E293B' }}>{effectiveHasta}</strong></span>
-                            <span style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 700,
-                                padding: '2px 8px',
-                                borderRadius: '999px',
-                                background: dataSource === 'salus_live' ? '#ECFDF5' : '#EFF6FF',
-                                color: dataSource === 'salus_live' ? '#047857' : '#1D4ED8',
-                                border: `1px solid ${dataSource === 'salus_live' ? '#A7F3D0' : '#BFDBFE'}`
-                            }}>
-                                ⚡ Resumen Fijo Precalculado ({dataSource === 'salus_live' ? 'SALUS Directo' : 'Supabase Instantáneo'})
-                            </span>
                         </div>
                     </div>
                 </div>
