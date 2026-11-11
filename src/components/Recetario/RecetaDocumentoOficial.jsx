@@ -48,7 +48,7 @@ export function Code128BarcodeSVG({
                 height={barHeight}
                 viewBox={`0 0 ${totalUnits} ${barHeight}`}
                 preserveAspectRatio="none"
-                style={{ display: 'block', background: '#FFFFFF', maxWidth: '100%' }}
+                style={{ display: 'block', background: 'transparent', maxWidth: '100%' }}
             >
                 {rects.map((r, idx) => (
                     <rect
@@ -163,17 +163,112 @@ export default function RecetaDocumentoOficial({ receta, compact = false, idDom 
                 lineHeight: 1.35,
             }}
         >
-            {/* Canvas oculto para exportación instantánea de QR en PDF */}
-            <div style={{ display: 'none' }} aria-hidden="true">
-                <QRCodeCanvas
-                    data-receta-qr="true"
-                    data-qr-url={validationUrl}
-                    value={validationUrl}
-                    size={260}
-                    level="M"
-                    includeMargin={true}
+            {/* Fondo de ondas institucionales en azul con alta transparencia (detrás de todo el contenido) */}
+            <svg
+                aria-hidden="true"
+                viewBox="0 0 680 960"
+                preserveAspectRatio="none"
+                style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                }}
+            >
+                <defs>
+                    <linearGradient id="saWaveGradTop" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#005BB5" stopOpacity="0.065" />
+                        <stop offset="50%" stopColor="#1E4078" stopOpacity="0.035" />
+                        <stop offset="100%" stopColor="#38BDF8" stopOpacity="0.015" />
+                    </linearGradient>
+                    <linearGradient id="saWaveGradMid" x1="100%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#0284C7" stopOpacity="0.045" />
+                        <stop offset="50%" stopColor="#005BB5" stopOpacity="0.03" />
+                        <stop offset="100%" stopColor="#1E4078" stopOpacity="0.01" />
+                    </linearGradient>
+                    <linearGradient id="saWaveGradBottom" x1="0%" y1="100%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#1E4078" stopOpacity="0.06" />
+                        <stop offset="60%" stopColor="#005BB5" stopOpacity="0.03" />
+                        <stop offset="100%" stopColor="#0284C7" stopOpacity="0.01" />
+                    </linearGradient>
+                </defs>
+
+                {/* Onda suave superior */}
+                <path
+                    d="M0,0 L680,0 L680,155 C540,210 420,95 260,145 C140,182 60,150 0,120 Z"
+                    fill="url(#saWaveGradTop)"
                 />
-            </div>
+                <path
+                    d="M-20,95 C150,165 330,45 510,115 C590,145 645,130 700,105"
+                    fill="none"
+                    stroke="#005BB5"
+                    strokeOpacity="0.075"
+                    strokeWidth="1.6"
+                />
+                <path
+                    d="M-20,125 C170,190 350,70 530,140 C605,168 655,150 700,128"
+                    fill="none"
+                    stroke="#0284C7"
+                    strokeOpacity="0.055"
+                    strokeWidth="1.2"
+                />
+
+                {/* Ondas diagonales centrales (estilo marca de agua clínica sutil) */}
+                <path
+                    d="M0,360 C180,295 340,430 520,365 C600,336 645,350 680,375 L680,585 C510,645 340,515 160,575 C80,602 30,590 0,565 Z"
+                    fill="url(#saWaveGradMid)"
+                />
+                <path
+                    d="M-20,430 C160,355 340,505 520,425 C600,390 650,410 700,435"
+                    fill="none"
+                    stroke="#005BB5"
+                    strokeOpacity="0.06"
+                    strokeWidth="1.5"
+                />
+                <path
+                    d="M-20,462 C180,385 360,535 540,455 C615,422 660,440 700,465"
+                    fill="none"
+                    stroke="#1E4078"
+                    strokeOpacity="0.045"
+                    strokeWidth="1.1"
+                />
+
+                {/* Onda suave inferior */}
+                <path
+                    d="M0,785 C145,730 310,845 485,785 C580,752 635,770 680,795 L680,960 L0,960 Z"
+                    fill="url(#saWaveGradBottom)"
+                />
+                <path
+                    d="M-20,815 C150,750 330,870 510,805 C595,775 650,795 700,820"
+                    fill="none"
+                    stroke="#005BB5"
+                    strokeOpacity="0.07"
+                    strokeWidth="1.5"
+                />
+                <path
+                    d="M-20,842 C175,780 350,895 535,832 C610,806 655,822 700,845"
+                    fill="none"
+                    stroke="#0284C7"
+                    strokeOpacity="0.05"
+                    strokeWidth="1.1"
+                />
+            </svg>
+
+            {/* Contenedor de primer plano por encima de las ondas */}
+            <div style={{ position: 'relative', zIndex: 1 }}>
+                {/* Canvas oculto para exportación instantánea de QR en PDF */}
+                <div style={{ display: 'none' }} aria-hidden="true">
+                    <QRCodeCanvas
+                        data-receta-qr="true"
+                        data-qr-url={validationUrl}
+                        value={validationUrl}
+                        size={260}
+                        level="M"
+                        includeMargin={true}
+                    />
+                </div>
 
             {/* Sello de agua si está Anulada o Dispensada */}
             {estadoUpper !== 'VIGENTE' && (
@@ -460,7 +555,7 @@ export default function RecetaDocumentoOficial({ receta, compact = false, idDom 
                 Emitida: {fechaEmitidaHora}
             </div>
 
-            {/* ─── 7. SELLO INSTITUCIONAL SANATORIO ARGENTINO (IZQ) + FIRMA ELECTRÓNICA QR (DER) ─── */}
+            {/* ─── 7. LOGO INSTITUCIONAL SANATORIO ARGENTINO (IZQ) + FIRMA ELECTRÓNICA QR (DER) ─── */}
             <div
                 style={{
                     display: 'flex',
@@ -470,56 +565,24 @@ export default function RecetaDocumentoOficial({ receta, compact = false, idDom 
                     gap: '16px',
                 }}
             >
-                {/* Emblema circular institucional Sanatorio Argentino (reemplaza MRx Digital) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div
+                {/* Solo el logo de Sanatorio Argentino */}
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <img
+                        src="/logosanatorio.png"
+                        alt="Sanatorio Argentino"
                         style={{
-                            width: '78px',
-                            height: '78px',
-                            borderRadius: '50%',
-                            background: '#1E4078',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '8px',
-                            boxSizing: 'border-box',
-                            boxShadow: '0 2px 6px rgba(30, 64, 120, 0.22)',
+                            width: '66px',
+                            height: '66px',
+                            objectFit: 'contain',
                         }}
-                    >
-                        <img
-                            src="/logosanatorio.png"
-                            alt="Sanatorio Argentino"
-                            style={{
-                                width: '36px',
-                                height: '36px',
-                                objectFit: 'contain',
-                                background: '#FFFFFF',
-                                borderRadius: '6px',
-                                padding: '2px',
-                            }}
-                        />
-                        <span
-                            style={{
-                                color: '#FFFFFF',
-                                fontSize: '0.46rem',
-                                fontWeight: 800,
-                                letterSpacing: '0.04em',
-                                marginTop: '3px',
-                                textAlign: 'center',
-                                lineHeight: 1.05,
-                            }}
-                        >
-                            RECETA DIGITAL
-                        </span>
-                    </div>
+                    />
                 </div>
 
                 {/* Derecha: Firma Electrónica + Código QR */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <span style={{ fontSize: '1rem', color: '#1F2937' }}>Firma Electrónica:</span>
-                    <div style={{ background: '#FFFFFF', padding: '2px' }}>
-                        <QRCodeSVG value={validationUrl} size={78} level="M" />
+                    <div style={{ background: 'rgba(255,255,255,0.85)', padding: '2px', borderRadius: '4px' }}>
+                        <QRCodeSVG value={validationUrl} size={78} level="M" bgColor="transparent" />
                     </div>
                 </div>
             </div>
@@ -549,6 +612,7 @@ export default function RecetaDocumentoOficial({ receta, compact = false, idDom 
                 Esta receta fue creada por un emisor inscripto y validado en el Registro de Recetarios Electrónicos del
                 Ministerio de Salud de la Nación (Resolución RL-2024-91317760-APN-SSVEIYES#MS —{' '}
                 {RENAPDIS_INSTITUTION_CONFIG.entidadRazonSocial} — CUIR: {receta.cuir})
+            </div>
             </div>
         </div>
     );

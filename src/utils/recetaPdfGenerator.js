@@ -146,7 +146,7 @@ async function renderQRCodeDataUrl(url, sizePx = 280) {
 }
 
 /**
- * Carga una imagen estática (como /logosanatorio.png) y la convierte a DataURL PNG
+ * Carga una imagen estática (como /logosanatorio.png) y la convierte a DataURL PNG preservando transparencia
  */
 function loadImageAsDataUrl(src) {
     return new Promise((resolve) => {
@@ -158,8 +158,7 @@ function loadImageAsDataUrl(src) {
                 canvas.width = img.naturalWidth || 200;
                 canvas.height = img.naturalHeight || 200;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, 0, 0);
                 resolve(canvas.toDataURL('image/png'));
             } catch {
@@ -169,6 +168,97 @@ function loadImageAsDataUrl(src) {
         img.onerror = () => resolve(null);
         img.src = src;
     });
+}
+
+/**
+ * Genera el fondo de ondas institucionales en azul con alta transparencia para la hoja A4 PDF
+ */
+function renderWavesBackgroundDataUrl() {
+    try {
+        const w = 1050;
+        const h = 1485;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
+
+        // Onda superior muy tenue
+        const gradTop = ctx.createLinearGradient(0, 0, w, 260);
+        gradTop.addColorStop(0, 'rgba(0, 91, 181, 0.055)');
+        gradTop.addColorStop(0.5, 'rgba(30, 64, 120, 0.03)');
+        gradTop.addColorStop(1, 'rgba(56, 189, 248, 0.012)');
+        ctx.fillStyle = gradTop;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(w, 0);
+        ctx.lineTo(w, 240);
+        ctx.bezierCurveTo(w * 0.78, 320, w * 0.6, 145, w * 0.38, 225);
+        ctx.bezierCurveTo(w * 0.2, 280, w * 0.08, 230, 0, 185);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0, 91, 181, 0.075)';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(-20, 150);
+        ctx.bezierCurveTo(w * 0.22, 255, w * 0.48, 70, w * 0.75, 180);
+        ctx.bezierCurveTo(w * 0.87, 225, w * 0.95, 200, w + 20, 165);
+        ctx.stroke();
+
+        // Onda diagonal central muy tenue
+        const gradMid = ctx.createLinearGradient(w, 520, 0, 920);
+        gradMid.addColorStop(0, 'rgba(2, 132, 199, 0.042)');
+        gradMid.addColorStop(0.5, 'rgba(0, 91, 181, 0.026)');
+        gradMid.addColorStop(1, 'rgba(30, 64, 120, 0.01)');
+        ctx.fillStyle = gradMid;
+        ctx.beginPath();
+        ctx.moveTo(0, 560);
+        ctx.bezierCurveTo(w * 0.26, 460, w * 0.5, 660, w * 0.76, 565);
+        ctx.bezierCurveTo(w * 0.88, 520, w * 0.95, 540, w, 580);
+        ctx.lineTo(w, 900);
+        ctx.bezierCurveTo(w * 0.75, 990, w * 0.5, 795, w * 0.24, 885);
+        ctx.bezierCurveTo(w * 0.12, 925, w * 0.04, 910, 0, 875);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0, 91, 181, 0.06)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-20, 665);
+        ctx.bezierCurveTo(w * 0.24, 550, w * 0.5, 780, w * 0.76, 655);
+        ctx.bezierCurveTo(w * 0.88, 600, w * 0.95, 635, w + 20, 675);
+        ctx.stroke();
+
+        // Onda inferior suave
+        const gradBot = ctx.createLinearGradient(0, h, w, h - 280);
+        gradBot.addColorStop(0, 'rgba(30, 64, 120, 0.055)');
+        gradBot.addColorStop(0.6, 'rgba(0, 91, 181, 0.028)');
+        gradBot.addColorStop(1, 'rgba(2, 132, 199, 0.01)');
+        ctx.fillStyle = gradBot;
+        ctx.beginPath();
+        ctx.moveTo(0, 1215);
+        ctx.bezierCurveTo(w * 0.22, 1130, w * 0.45, 1310, w * 0.72, 1215);
+        ctx.bezierCurveTo(w * 0.85, 1165, w * 0.93, 1190, w, 1230);
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0, 91, 181, 0.07)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-20, 1260);
+        ctx.bezierCurveTo(w * 0.22, 1160, w * 0.48, 1345, w * 0.75, 1245);
+        ctx.bezierCurveTo(w * 0.87, 1200, w * 0.95, 1230, w + 20, 1270);
+        ctx.stroke();
+
+        return canvas.toDataURL('image/png');
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -185,9 +275,15 @@ export async function construirDocumentoPDFReceta(receta) {
     });
 
     const pageW = 210;
+    const pageH = 297;
     const centerX = pageW / 2;
     const marginX = 18;
     const contentW = pageW - marginX * 2;
+
+    const wavesBgUrl = renderWavesBackgroundDataUrl();
+    if (wavesBgUrl) {
+        doc.addImage(wavesBgUrl, 'PNG', 0, 0, pageW, pageH);
+    }
 
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://quirofano.vercel.app';
     const validationUrl = `${origin}/prestacion?token=${receta.token || '98234cc9-fdd4-4e2c-97cf-8f140c098ac4'}`;
@@ -444,21 +540,11 @@ export async function construirDocumentoPDFReceta(receta) {
 
     y += 4;
 
-    // ─── 7. EMBLEMA SANATORIO ARGENTINO (IZQ) + FIRMA ELECTRÓNICA QR (DER) ───
-    const badgeCenterX = marginX + 13;
+    // ─── 7. LOGO SANATORIO ARGENTINO (IZQ) + FIRMA ELECTRÓNICA QR (DER) ───
     const badgeCenterY = y + 13;
-    doc.setFillColor(30, 64, 120); // #1E4078
-    doc.circle(badgeCenterX, badgeCenterY, 12.5, 'F');
-
     if (logoDataUrl) {
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(badgeCenterX - 5.5, badgeCenterY - 8, 11, 11, 1.5, 1.5, 'F');
-        doc.addImage(logoDataUrl, 'PNG', badgeCenterX - 4.8, badgeCenterY - 7.3, 9.6, 9.6);
+        doc.addImage(logoDataUrl, 'PNG', marginX + 1, y + 2, 22, 22);
     }
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.2);
-    doc.setTextColor(255, 255, 255);
-    doc.text('RECETA DIGITAL', badgeCenterX, badgeCenterY + 6.5, { align: 'center' });
 
     // Derecha: "Firma Electrónica:" + QR
     const qrSize = 24;
