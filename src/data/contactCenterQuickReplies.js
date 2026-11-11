@@ -755,7 +755,8 @@ export function interpolateQuickReplyVariables(text, context = {}) {
     if (!text) return '';
     let result = text;
     const name = context.patientName || 'Paciente';
-    const agentName = context.agentName || 'Atención al Paciente';
+    const rawAgent = String(context.agentName || '').trim();
+    const agentName = rawAgent ? (rawAgent.split(/\s+/)[0] || rawAgent) : 'Atención al Paciente';
     const queryType = context.queryType || 'por turnos y consultas médicas';
     const fechaTurno = context.fechaTurno || context.fecha_turno || '[Fecha y hora]';
     const medico = context.medico || '[Profesional]';

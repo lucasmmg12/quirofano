@@ -722,8 +722,11 @@ Deno.serve(async (req) => {
                     const pacienteNombre = bodyParams[0] || 'Paciente';
                     const fechaTexto = bodyParams[1] || 'los próximos días';
                     const detalleTurnos = bodyParams[2] || 'más de un horario reservado';
-                    const agentLabel = body.agentName
-                        ? `${String(body.agentName).trim()} del Contact Center`
+                    const rawAgentFirst = body.agentName
+                        ? String(body.agentName).trim().split(/\s+/)[0]
+                        : '';
+                    const agentLabel = rawAgentFirst
+                        ? `${rawAgentFirst} del Contact Center`
                         : 'el equipo de Contact Center';
 
                     const fallbackParam2 = `${agentLabel} (registramos más de un turno agendado para el ${fechaTexto}: ${detalleTurnos}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`

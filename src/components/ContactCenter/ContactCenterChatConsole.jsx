@@ -269,6 +269,7 @@ import {
     fetchOlderMessagesForPhone,
     fetchArchivedChats,
     getPatientNameForTemplate,
+    getAgentFirstName,
     CONTACT_CENTER_FALLBACK_TEMPLATES,
     sendContactCenterTemplate,
     searchContactCenterConversations
@@ -1319,7 +1320,7 @@ export default function ContactCenterChatConsole({
     const resolveQuickReplyText = (content) => {
         return interpolateQuickReplyVariables(content, {
             patientName: selectedChat?.contactName && !selectedChat.contactName.startsWith('+') ? selectedChat.contactName : (crmForm?.pacienteNombre || 'Paciente'),
-            agentName: activeAgent?.name || currentUser?.nombre || 'Sanatorio Argentino',
+            agentName: getAgentFirstName(activeAgent?.name || currentUser?.nombre || 'Sanatorio Argentino'),
             queryType: selectedChat?.customFields?.motivoConsulta || 'por tu consulta',
             medico: selectedChat?.customFields?.medicoOEspecialidad || 'el profesional',
             sede: 'Sede 1 (San Luis 432 Oeste)'
@@ -1905,16 +1906,17 @@ export default function ContactCenterChatConsole({
         if (selectedChat?.id) {
             const pName = getPatientNameForTemplate(selectedChat);
             setTemplateVar1(pName);
-            setTemplateVar2(activeAgent?.name || '');
+            setTemplateVar2(getAgentFirstName(activeAgent));
         }
-    }, [selectedChat?.id, selectedChat?.patientFields, selectedChat?.contactName, activeAgent?.name]);
+    }, [selectedChat?.id, selectedChat?.patientFields, selectedChat?.contactName, activeAgent?.name, activeAgent?.shortName]);
 
     // Ejecutar envío de plantilla oficial de Meta
     const handleExecuteSendTemplate = async (templateToUse, v1, v2) => {
         if (!selectedChat?.id) return;
         const targetTpl = templateToUse || selectedTemplate || CONTACT_CENTER_FALLBACK_TEMPLATES[0];
         const finalVar1 = (v1 !== undefined ? v1 : templateVar1).trim();
-        const finalVar2 = (v2 !== undefined ? v2 : templateVar2).trim() || activeAgent.name;
+        const rawVar2 = (v2 !== undefined ? v2 : templateVar2).trim() || getAgentFirstName(activeAgent);
+        const finalVar2 = getAgentFirstName(rawVar2) || rawVar2;
 
         if (!finalVar1) {
             alert('Por favor ingresa el nombre del paciente para la variable {{1}} de la plantilla.');

@@ -97,13 +97,14 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
     const now = new Date().toISOString();
     const agenteId = agente?.id || 'daniela';
     const agenteNombre = agente?.fullName || agente?.name || 'Contact Center';
+    const agenteFirstName = String(agente?.shortName || agente?.name || agente?.fullName || '').trim().split(/\s+/)[0] || 'Contact Center';
 
     const tpl = META_TEMPLATE_TURNOS_MISMO_DIA;
     let metaResult;
     let templateUsedName = tpl.name;
     let resolvedText = renderTemplateBody(tpl.body, vars);
 
-    const fallbackParam2 = `${agenteNombre} del Contact Center (registramos más de un turno agendado para el ${vars[1]}: ${vars[2]}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`
+    const fallbackParam2 = `${agenteFirstName} del Contact Center (registramos más de un turno agendado para el ${vars[1]}: ${vars[2]}; por favor respondé a este mensaje confirmando a cuál vas a asistir para liberar el otro lugar)`
         .replace(/[\r\n\t]+/g, ' ')
         .replace(/\s{2,}/g, ' ')
         .trim();
@@ -117,7 +118,7 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
             languageCode: tpl.language,
             components: [{ type: 'body', parameters: vars.map(text => ({ type: 'text', text })) }],
             lineId: 'contact_center',
-            agentName: agenteNombre
+            agentName: agenteFirstName
         });
         if (metaResult?.fallbackUsed) {
             templateUsedName = metaResult.fallbackUsed;
@@ -141,7 +142,7 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
                     }
                 ],
                 lineId: 'contact_center',
-                agentName: agenteNombre
+                agentName: agenteFirstName
             });
             templateUsedName = 'ojonoscobran';
             resolvedText = fallbackResolvedText;

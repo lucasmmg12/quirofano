@@ -163,6 +163,7 @@ export const CONTACT_CENTER_AGENTS = [
         id: 'daguilera', 
         username: 'daguilera', 
         legacyId: 'daniela', 
+        shortName: 'Daniela',
         name: 'Daniela Aguilera', 
         fullName: 'Daniela Aguilera', 
         aliases: [
@@ -178,6 +179,7 @@ export const CONTACT_CENTER_AGENTS = [
         id: 'solivier', 
         username: 'solivier', 
         legacyId: 'sofia', 
+        shortName: 'Sofia',
         name: 'Sofia Olivier', 
         fullName: 'Sofia Olivier', 
         aliases: ['solivier', 'sofia', 'olivier', 'olivieri', 'sofia olivier', 'sofia olivieri', 'sofia fernanda olivier', 'sofia fernanda olivieri'],
@@ -189,6 +191,7 @@ export const CONTACT_CENTER_AGENTS = [
         id: 'vjacques', 
         username: 'vjacques', 
         legacyId: 'virginia', 
+        shortName: 'Virginia',
         name: 'Virginia Jacques', 
         fullName: 'Virginia Jacques', 
         aliases: ['vjacques', 'virginia', 'jacques', 'virginia jacques'],
@@ -200,6 +203,7 @@ export const CONTACT_CENTER_AGENTS = [
         id: 'eleal', 
         username: 'eleal', 
         legacyId: 'erica', 
+        shortName: 'Erica',
         name: 'Erica Leal', 
         fullName: 'Erica Leal', 
         aliases: ['eleal', 'erica', 'leal', 'erica leal'],
@@ -211,6 +215,7 @@ export const CONTACT_CENTER_AGENTS = [
         id: 'lmarinero', 
         username: 'lmarinero', 
         legacyId: 'lucas', 
+        shortName: 'Lucas',
         name: 'Lucas Marinero', 
         fullName: 'Lucas Marinero', 
         aliases: ['lmarinero', 'lucas', 'marinero', 'lucas marinero'],
@@ -219,6 +224,27 @@ export const CONTACT_CENTER_AGENTS = [
         avatar: 'LM' 
     },
 ];
+
+/**
+ * Obtiene únicamente el nombre de pila de la agente (ej: "Erica Leal" -> "Erica")
+ * para el envío de plantillas oficiales de Meta WhatsApp.
+ */
+export function getAgentFirstName(agentOrName) {
+    if (!agentOrName) return '';
+    if (typeof agentOrName === 'object') {
+        if (agentOrName.shortName) return String(agentOrName.shortName).trim();
+        const rawObj = String(agentOrName.name || agentOrName.fullName || agentOrName.nombre || '').trim();
+        return rawObj.split(/\s+/)[0] || '';
+    }
+    let raw = String(agentOrName).trim();
+    if (!raw) return '';
+    if (raw.includes(',')) {
+        const afterComma = raw.split(',')[1]?.trim() || raw.split(',')[0]?.trim() || '';
+        raw = afterComma;
+    }
+    const first = raw.split(/\s+/)[0] || '';
+    return first ? first.charAt(0).toUpperCase() + first.slice(1) : '';
+}
 
 export const CONTACT_CENTER_AUTHORIZED_USERNAMES = [
     'lmarinero', 'admin', 'mrodriguez', 'dsantaella', 'jcorrea', 'sfemenia', 'paraya',
@@ -1680,10 +1706,33 @@ export async function sendContactCenterTemplate({
     const normalizedPhone = normalizeArgentinePhone(chat.phone);
     if (!normalizedPhone) throw new Error('Número de teléfono del paciente no válido.');
 
+    // Normalizar Variable {{2}} (Agente) para que lleve únicamente el nombre de pila (ej: "Erica" y no "Erica Leal")
+    const sanitizedVariables = variables.map((val, idx) => {
+        const cleanVal = String(val || '').trim();
+        if (idx === 1) {
+            const matchedAgent = CONTACT_CENTER_AGENTS.find(a =>
+                a.fullName.toLowerCase() === cleanVal.toLowerCase() ||
+                a.name.toLowerCase() === cleanVal.toLowerCase()
+            );
+            if (matchedAgent) {
+                return getAgentFirstName(matchedAgent);
+            }
+            // Si empieza con el nombre completo de una agente (ej: "Erica Leal del Contact Center"), reemplazar por solo el nombre de pila
+            for (const ag of CONTACT_CENTER_AGENTS) {
+                const fnRegex = new RegExp(`^${ag.fullName}\\b`, 'i');
+                if (fnRegex.test(cleanVal)) {
+                    return cleanVal.replace(fnRegex, getAgentFirstName(ag));
+                }
+            }
+            return getAgentFirstName(cleanVal) || cleanVal;
+        }
+        return cleanVal;
+    });
+
     const components = [
         {
             type: 'body',
-            parameters: variables.map(val => ({
+            parameters: sanitizedVariables.map(val => ({
                 type: 'text',
                 text: String(val || '').trim()
             }))
@@ -1699,7 +1748,8 @@ export async function sendContactCenterTemplate({
         templateName,
         languageCode,
         components,
-        lineId: 'contact_center'
+        lineId: 'contact_center',
+        agentName: getAgentFirstName(activeAgent)
     });
 
     const now = new Date();
@@ -1711,7 +1761,7 @@ export async function sendContactCenterTemplate({
         `Hola {{1}} soy {{2}} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
     
     let resolvedText = rawBody;
-    variables.forEach((val, idx) => {
+    sanitizedVariables.forEach((val, idx) => {
         resolvedText = resolvedText.replace(new RegExp(`\\{\\{${idx + 1}\\}\\}`, 'g'), val);
     });
 
