@@ -4,10 +4,12 @@ import {
     Send, CheckCircle2, XCircle, Search, RefreshCw, ChevronDown, 
     ChevronUp, MessageSquare, ShieldAlert, FileText, Check,
     ExternalLink, Sparkles, Filter, Info, ArrowLeft, HelpCircle, BookOpen,
-    Copy, Columns, List
+    Copy, Columns, List, Database, Download
 } from 'lucide-react';
 import { 
     fetchTurnosOnlineDuplicados, 
+    fetchBaseDatosTurnosOnline,
+    sendConfirmacionTurnoOnlineIndividual,
     saveGestionTurnoOnline, 
     sendWhatsappAvisoTurno,
     sendTemplateTurnosMismoDia,
@@ -146,6 +148,11 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         totalResueltos: 0
     });
     const [casos, setCasos] = useState([]);
+    const [activeSubTab, setActiveSubTab] = useState('duplicados'); // 'duplicados' | 'base_datos'
+    const [reservasDb, setReservasDb] = useState([]);
+    const [loadingDb, setLoadingDb] = useState(false);
+    const [filtroAsistenciaDb, setFiltroAsistenciaDb] = useState('todos'); // 'todos' | 'pendientes' | 'asistidos' | 'cancelados'
+    const [sendingReservaId, setSendingReservaId] = useState(null);
     const [expandedKey, setExpandedKey] = useState(null);
     const [viewMode, setViewMode] = useState('split'); // 'split' (Master-Detail por defecto) | 'list' (Acordeón)
     const [inlineVarsMap, setInlineVarsMap] = useState({}); // { [casoKey]: [v1, v2, v3] }
@@ -171,13 +178,25 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
 
     const loadData = async (days = filtroDias, customDate = fechaCustom, forceSync = false) => {
         setLoading(true);
+        setLoadingDb(true);
         if (forceSync) setSyncStatus('syncing');
         try {
-            const res = await fetchTurnosOnlineDuplicados({
-                days,
-                date: customDate || null,
-                forceSync
-            });
+            const [res, dbRes] = await Promise.all([
+                fetchTurnosOnlineDuplicados({
+                    days,
+                    date: customDate || null,
+                    forceSync
+                }),
+                fetchBaseDatosTurnosOnline({
+                    days,
+                    date: customDate || null,
+                    limit: 2500
+                })
+            ]);
+
+            if (dbRes && dbRes.success && Array.isArray(dbRes.reservas)) {
+                setReservasDb(dbRes.reservas);
+            }
 
             if (res && res.success && Array.isArray(res.casos)) {
                 setLoadError(null);
@@ -220,6 +239,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             }
         } finally {
             setLoading(false);
+            setLoadingDb(false);
             if (forceSync) setTimeout(() => setSyncStatus(null), 3000);
         }
     };
@@ -497,6 +517,129 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
         return Math.min(100, Math.round((gestionados / totalCasosActivos) * 100));
     }, [totalCasosActivos, stats.totalContactados, stats.totalResueltos]);
 
+    // Filtrado y métricas de la Base de Datos Maestra de Turnos Online (public.cita_online_reservas)
+    const reservasFiltradas = useMemo(() => {
+        return (reservasDb || []).filter(r => {
+            const asist = String(r.asistencia || 'Pendiente').toLowerCase();
+            if (filtroAsistenciaDb === 'pendientes' && asist !== 'pendiente' && asist !== '') return false;
+            if (filtroAsistenciaDb === 'asistidos' && !asist.includes('presente') && !asist.includes('internado') && !asist.includes('urgencia')) return false;
+            if (filtroAsistenciaDb === 'cancelados' && !asist.includes('ausencia') && !asist.includes('anul') && !asist.includes('suspend')) return false;
+            if (filtroAsistenciaDb === 'confirmados_wa' && !r.whatsapp_enviado) return false;
+
+            if (searchTerm.trim()) {
+                const term = searchTerm.toLowerCase().trim();
+                const matchDni = String(r.dni || '').toLowerCase().includes(term);
+                const matchNombre = String(r.paciente_nombre || '').toLowerCase().includes(term);
+                const matchTel = String(r.telefono || r.whatsapp_phone || '').toLowerCase().includes(term);
+                const matchProf = String(r.profesional || '').toLowerCase().includes(term);
+                const matchAgenda = String(r.agenda || r.especialidad || '').toLowerCase().includes(term);
+                const matchOs = String(r.obra_social || '').toLowerCase().includes(term);
+                if (!matchDni && !matchNombre && !matchTel && !matchProf && !matchAgenda && !matchOs) return false;
+            }
+            return true;
+        });
+    }, [reservasDb, filtroAsistenciaDb, searchTerm]);
+
+    const dbStats = useMemo(() => {
+        const total = reservasDb.length;
+        let pendientes = 0;
+        let asistidos = 0;
+        let cancelados = 0;
+        let confirmadosWa = 0;
+        for (const r of reservasDb) {
+            if (r.whatsapp_enviado) confirmadosWa++;
+            const asist = String(r.asistencia || 'Pendiente').toLowerCase();
+            if (asist.includes('presente') || asist.includes('internado') || asist.includes('urgencia')) asistidos++;
+            else if (asist.includes('ausencia') || asist.includes('anul') || asist.includes('suspend')) cancelados++;
+            else pendientes++;
+        }
+        return { total, pendientes, asistidos, cancelados, confirmadosWa };
+    }, [reservasDb]);
+
+    const handleSendConfirmacionIndividual = async (reserva) => {
+        if (!reserva || sendingReservaId) return;
+        setSendingReservaId(reserva.id);
+        try {
+            const res = await sendConfirmacionTurnoOnlineIndividual(reserva);
+            const nowIso = new Date().toISOString();
+            setReservasDb(prev => prev.map(r => r.id === reserva.id ? {
+                ...r,
+                whatsapp_enviado: true,
+                whatsapp_plantilla: res?.templateName || 'confirmacion_turno_online',
+                whatsapp_enviado_at: nowIso
+            } : r));
+            if (addToast) addToast(`Confirmación (${res?.templateName || 'confirmacion_turno_online'}) enviada a ${reserva.paciente_nombre}`, 'success');
+        } catch (err) {
+            console.error('Error enviando confirmación individual:', err);
+            if (addToast) addToast(err.message || 'No se pudo enviar la confirmación por WhatsApp', 'error');
+        } finally {
+            setSendingReservaId(null);
+        }
+    };
+
+    const handleExportReservasCsv = () => {
+        if (!reservasFiltradas.length) {
+            if (addToast) addToast('No hay turnos online en la vista actual para exportar', 'warning');
+            return;
+        }
+        const headers = [
+            'ID Visita SALUS',
+            'Fecha Reserva',
+            'DNI',
+            'Paciente',
+            'Telefono',
+            'WhatsApp Internacional',
+            'Email',
+            'Profesional',
+            'Especialidad',
+            'Agenda',
+            'Tipo Visita',
+            'Fecha Turno',
+            'Hora Turno',
+            'Obra Social',
+            'Sede / Centro',
+            'Estado SALUS',
+            'WhatsApp Confirmado',
+            'Plantilla Meta'
+        ];
+        const escapeCsv = (val) => {
+            const s = String(val ?? '').replace(/"/g, '""');
+            return `"${s}"`;
+        };
+        const rows = reservasFiltradas.map(r => [
+            r.id_visita || '',
+            r.fecha_creacion_salus ? new Date(r.fecha_creacion_salus).toLocaleString('es-AR') : '',
+            r.dni || '',
+            r.paciente_nombre || '',
+            r.telefono || '',
+            r.whatsapp_phone || '',
+            r.email || '',
+            r.profesional || '',
+            r.especialidad || '',
+            r.agenda || '',
+            r.tipo_visita || '',
+            r.fecha_turno || '',
+            r.hora_inicio || '',
+            r.obra_social || '',
+            r.centro || '',
+            r.asistencia || 'Pendiente',
+            r.whatsapp_enviado ? 'SI' : 'NO',
+            r.whatsapp_plantilla || ''
+        ].map(escapeCsv).join(';'));
+
+        const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Base_Datos_Turnos_Online_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (addToast) addToast(`Exportados ${reservasFiltradas.length} turnos online a CSV/Excel`, 'success');
+    };
+
     return (
         <div style={{ padding: '16px 22px', maxWidth: '1460px', margin: '0 auto' }}>
             
@@ -673,6 +816,70 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             >
                                 Últimos 7 días
                             </button>
+                            <button
+                                onClick={() => { setFiltroDias(15); setFechaCustom(''); }}
+                                style={{
+                                    padding: '5px 12px', borderRadius: '7px', border: 'none',
+                                    fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                    background: filtroDias === 15 && !fechaCustom ? '#0F2942' : 'transparent',
+                                    color: filtroDias === 15 && !fechaCustom ? '#FFFFFF' : '#475569',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                15 días
+                            </button>
+                        </div>
+
+                        {/* Selector principal: Auditoría de Duplicados vs Base de Datos de TODOS los Turnos Online */}
+                        <div style={{
+                            display: 'flex',
+                            background: '#EFF6FF',
+                            borderRadius: '10px',
+                            padding: '3px',
+                            border: '1.5px solid #BFDBFE'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setActiveSubTab('duplicados')}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 12px',
+                                    borderRadius: '7px',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    background: activeSubTab === 'duplicados' ? '#1D4ED8' : 'transparent',
+                                    color: activeSubTab === 'duplicados' ? '#FFFFFF' : '#1E40AF',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                <ShieldAlert size={14} />
+                                Auditoría Duplicados ({casos.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveSubTab('base_datos')}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '5px 12px',
+                                    borderRadius: '7px',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    background: activeSubTab === 'base_datos' ? '#1D4ED8' : 'transparent',
+                                    color: activeSubTab === 'base_datos' ? '#FFFFFF' : '#1E40AF',
+                                    transition: 'all 0.15s'
+                                }}
+                            >
+                                <Database size={14} />
+                                Base de Datos Turnos Online ({reservasDb.length})
+                            </button>
                         </div>
 
                         <button
@@ -726,6 +933,281 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 </div>
             </div>
 
+            {activeSubTab === 'base_datos' ? (
+                <div>
+                    {/* ═══ KPIs Y BARRA DE HERRAMIENTAS DE LA BASE DE DATOS MAESTRA DE TURNOS ONLINE ═══ */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '12px',
+                        marginBottom: '14px'
+                    }}>
+                        <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '14px 18px', border: '1.5px solid #E2E8F0', boxShadow: '0 1px 4px rgba(15,23,42,0.03)' }}>
+                            <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Total Turnos Online (Período)</div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>{dbStats.total.toLocaleString('es-AR')}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '2px' }}>Tabla: <code>cita_online_reservas</code></div>
+                        </div>
+                        <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '14px 18px', border: '1.5px solid #BBF7D0', boxShadow: '0 1px 4px rgba(15,23,42,0.03)' }}>
+                            <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#15803D', textTransform: 'uppercase' }}>Confirmados por WhatsApp</div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#166534', marginTop: '4px' }}>{dbStats.confirmadosWa.toLocaleString('es-AR')}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#15803D', marginTop: '2px' }}>Plantilla: <code>confirmacion_turno_online</code></div>
+                        </div>
+                        <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '14px 18px', border: '1.5px solid #BFDBFE', boxShadow: '0 1px 4px rgba(15,23,42,0.03)' }}>
+                            <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#1D4ED8', textTransform: 'uppercase' }}>Turnos Vigentes / Pendientes</div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#1E40AF', marginTop: '4px' }}>{dbStats.pendientes.toLocaleString('es-AR')}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#3B82F6', marginTop: '2px' }}>Agendados desde el portal web</div>
+                        </div>
+                        <div style={{ background: '#FFFFFF', borderRadius: '14px', padding: '14px 18px', border: '1.5px solid #E2E8F0', boxShadow: '0 1px 4px rgba(15,23,42,0.03)' }}>
+                            <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>Asistidos / Presentes</div>
+                            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#065F46', marginTop: '4px' }}>{dbStats.asistidos.toLocaleString('es-AR')}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>Ausentes / Anulados: {dbStats.cancelados}</div>
+                        </div>
+                    </div>
+
+                    {/* Barra de búsqueda, filtro de asistencia y exportación */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                        marginBottom: '14px'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <div style={{ position: 'relative', width: '340px', maxWidth: '100%' }}>
+                                <Search size={16} style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    placeholder="Buscar por DNI, paciente, teléfono, médico u obra social..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 12px 8px 34px',
+                                        borderRadius: '10px',
+                                        border: '1.5px solid #CBD5E1',
+                                        fontSize: '0.82rem',
+                                        outline: 'none',
+                                        background: '#FFFFFF',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', background: '#FFFFFF', borderRadius: '10px', padding: '3px', border: '1.5px solid #CBD5E1' }}>
+                                {[
+                                    { id: 'todos', label: `Todos (${dbStats.total})` },
+                                    { id: 'pendientes', label: `Vigentes (${dbStats.pendientes})` },
+                                    { id: 'asistidos', label: `Asistidos (${dbStats.asistidos})` },
+                                    { id: 'cancelados', label: `Anulados/Ausentes (${dbStats.cancelados})` },
+                                    { id: 'confirmados_wa', label: `✅ Confirmados WA (${dbStats.confirmadosWa})` },
+                                ].map(f => (
+                                    <button
+                                        key={f.id}
+                                        type="button"
+                                        onClick={() => setFiltroAsistenciaDb(f.id)}
+                                        style={{
+                                            padding: '5px 10px',
+                                            borderRadius: '7px',
+                                            border: 'none',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            background: filtroAsistenciaDb === f.id ? '#0F2942' : 'transparent',
+                                            color: filtroAsistenciaDb === f.id ? '#FFFFFF' : '#64748B',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleExportReservasCsv}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '8px 14px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #0284C7',
+                                background: '#F0F9FF',
+                                color: '#0369A1',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <Download size={14} />
+                            Exportar Base CSV / Excel ({reservasFiltradas.length})
+                        </button>
+                    </div>
+
+                    {/* Tabla de todos los Turnos Online */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        border: '1.5px solid #E2E8F0',
+                        boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)',
+                        overflow: 'hidden'
+                    }}>
+                        {loadingDb && reservasDb.length === 0 ? (
+                            <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+                                <RefreshCw size={32} style={{ animation: 'spin 1s linear infinite', color: '#1565C0', marginBottom: '10px' }} />
+                                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>Cargando Base de Datos de Turnos Online...</div>
+                            </div>
+                        ) : reservasFiltradas.length === 0 ? (
+                            <div style={{ padding: '42px 24px', textAlign: 'center', color: '#64748B', fontSize: '0.9rem' }}>
+                                No se encontraron turnos online para el filtro seleccionado.
+                            </div>
+                        ) : (
+                            <div style={{ maxHeight: '640px', overflowY: 'auto', overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#F8FAFC', borderBottom: '1.5px solid #E2E8F0', color: '#334155', textAlign: 'left', position: 'sticky', top: 0, zIndex: 2 }}>
+                                            <th style={{ padding: '10px 12px' }}>Fecha Reserva</th>
+                                            <th style={{ padding: '10px 12px' }}>Paciente / DNI</th>
+                                            <th style={{ padding: '10px 12px' }}>WhatsApp</th>
+                                            <th style={{ padding: '10px 12px' }}>Profesional / Especialidad</th>
+                                            <th style={{ padding: '10px 12px' }}>Turno Asignado</th>
+                                            <th style={{ padding: '10px 12px' }}>Obra Social</th>
+                                            <th style={{ padding: '10px 12px' }}>Estado SALUS</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Confirmación WhatsApp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {reservasFiltradas.slice(0, 500).map((r) => {
+                                            const asist = String(r.asistencia || 'Pendiente');
+                                            const isPresente = /presente|internado|urgencia/i.test(asist);
+                                            const isCancel = /ausencia|anul|suspend/i.test(asist);
+                                            const isSendingThis = sendingReservaId === r.id;
+
+                                            return (
+                                                <tr key={r.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', color: '#475569' }}>
+                                                        <div style={{ fontWeight: 700, color: '#0F172A' }}>
+                                                            {r.fecha_creacion_salus ? new Date(r.fecha_creacion_salus).toLocaleDateString('es-AR') : '—'}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                            {r.fecha_creacion_salus ? new Date(r.fecha_creacion_salus).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                                            {r.id_visita ? ` · #${r.id_visita}` : ''}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px' }}>
+                                                        <div style={{ fontWeight: 800, color: '#0F172A' }}>{r.paciente_nombre || 'SIN NOMBRE'}</div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#475569', marginTop: '2px' }}>
+                                                            <span>DNI: <strong>{r.dni || '—'}</strong></span>
+                                                            {r.dni && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => handleCopyQuick(e, r.dni, 'DNI copiado')}
+                                                                    style={{ background: '#F1F5F9', border: 'none', borderRadius: '4px', padding: '1px 5px', cursor: 'pointer', fontSize: '0.65rem', color: '#334155', fontWeight: 700 }}
+                                                                    title="Copiar DNI"
+                                                                >
+                                                                    Copiar
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                                        {r.telefono ? (
+                                                            <div>
+                                                                <div style={{ fontWeight: 700, color: '#0F172A' }}>{formatPhoneClean(r.telefono)}</div>
+                                                                {r.email && <div style={{ fontSize: '0.67rem', color: '#64748B', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.email}</div>}
+                                                            </div>
+                                                        ) : (
+                                                            <span style={{ color: '#94A3B8' }}>Sin teléfono</span>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px' }}>
+                                                        <div style={{ fontWeight: 800, color: '#0F172A' }}>{r.profesional || r.agenda || '—'}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: '#475569' }}>
+                                                            {r.especialidad || r.tipo_visita || r.agenda || ''}
+                                                            {r.centro ? ` · ${r.centro}` : ''}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ fontWeight: 800, color: '#1E40AF' }}>
+                                                            {r.fecha_turno ? formatHumanDate(r.fecha_turno, true) : (r.fecha_hora_texto || '—')}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                                                            {r.hora_inicio ? formatHumanTime24(r.hora_inicio) : ''}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', maxWidth: '170px' }}>
+                                                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.obra_social || ''}>
+                                                            {r.obra_social || 'PARTICULAR / S/D'}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '3px 8px',
+                                                            borderRadius: '999px',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 800,
+                                                            background: isPresente ? '#ECFDF5' : isCancel ? '#FEF2F2' : '#EFF6FF',
+                                                            color: isPresente ? '#047857' : isCancel ? '#B91C1C' : '#1D4ED8',
+                                                            border: `1px solid ${isPresente ? '#A7F3D0' : isCancel ? '#FECACA' : '#BFDBFE'}`
+                                                        }}>
+                                                            {asist || 'Pendiente'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '9px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                            {r.whatsapp_enviado ? (
+                                                                <span style={{
+                                                                    background: '#DCFCE7',
+                                                                    color: '#15803D',
+                                                                    border: '1px solid #86EFAC',
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '0.68rem',
+                                                                    fontWeight: 800
+                                                                }} title={r.whatsapp_plantilla || 'confirmacion_turno_online'}>
+                                                                    ✓ Confirmado WA
+                                                                </span>
+                                                            ) : null}
+                                                            {r.telefono && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isSendingThis}
+                                                                    onClick={() => handleSendConfirmacionIndividual(r)}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        padding: '4px 9px',
+                                                                        borderRadius: '7px',
+                                                                        border: '1px solid #CBD5E1',
+                                                                        background: r.whatsapp_enviado ? '#F8FAFC' : '#ECFDF5',
+                                                                        color: r.whatsapp_enviado ? '#475569' : '#047857',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 800,
+                                                                        cursor: isSendingThis ? 'wait' : 'pointer'
+                                                                    }}
+                                                                    title="Enviar plantilla oficial confirmacion_turno_online por WhatsApp"
+                                                                >
+                                                                    <Send size={11} />
+                                                                    {isSendingThis ? 'Enviando...' : (r.whatsapp_enviado ? 'Reenviar' : 'Enviar Confirmación')}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <>
             {/* ═══ BARRA DE BÚSQUEDA, FILTRO DE GRAVEDAD Y FILTRO DE ESTADO ═══ */}
             <div style={{
                 display: 'flex',
@@ -1997,6 +2479,8 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         );
                     })}
                 </div>
+            )}
+                </>
             )}
 
             {/* ═══ MODAL ENVIAR PLANTILLA WHATSAPP ═══ */}

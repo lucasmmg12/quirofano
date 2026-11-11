@@ -475,7 +475,7 @@ Deno.serve(async (req) => {
             }
 
             const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
-            const requestedTemplate = String(body.templateName || 'confirmacion_turno_web').trim();
+            const requestedTemplate = String(body.templateName || 'confirmacion_turno_online').trim();
             const requestedLang = String(body.languageCode || 'es_AR').trim();
 
             const profCleanForVar = (profesional || 'Profesional asignado').replace(/\s*\([^)]*\)\s*/g, '').trim();
@@ -483,17 +483,17 @@ Deno.serve(async (req) => {
             const profAndEspVar = espCleanForVar ? `${profCleanForVar} (${espCleanForVar})` : profCleanForVar;
             const fechaHoraVar = (fechaHora || 'Fecha y hora seleccionadas').replace(/[\r\n\t]+/g, ' ').trim();
 
-            // Intentar primero con la plantilla específica 'confirmacion_turno_web' (3 variables: {{1}} Paciente, {{2}} Profesional/Especialidad, {{3}} Fecha y Hora)
-            // Si aún no está aprobada en Meta, hacer fallback automático e inmediato a 'ojonoscobran'
+            // Intentar primero con la plantilla oficial aprobada 'confirmacion_turno_online' (3 variables: {{1}} Paciente, {{2}} Profesional/Especialidad, {{3}} Fecha y Hora)
+            // Si fallara por cualquier motivo, hacer fallback automático e inmediato a 'ojonoscobran'
             let usedTemplate = requestedTemplate;
             let response: Response;
             let data: any;
 
             const buildPayloadForTemplate = (tplName: string) => {
-                if (tplName === 'confirmacion_turno_web') {
+                if (tplName === 'confirmacion_turno_online' || tplName === 'confirmacion_turno_web') {
                     return {
                         to: targetPhone,
-                        templateName: 'confirmacion_turno_web',
+                        templateName: tplName,
                         languageCode: requestedLang,
                         components: [
                             {
@@ -541,9 +541,9 @@ Deno.serve(async (req) => {
                 data = { rawResponse: rawText };
             }
 
-            // Fallback automático a 'ojonoscobran' si 'confirmacion_turno_web' aún no está activa/aprobada en Meta
-            if ((!response.ok || data?.success === false || data?.error) && usedTemplate === 'confirmacion_turno_web') {
-                console.warn(`[send-whatsapp] Plantilla confirmacion_turno_web aún no disponible (${rawText}). Usando fallback 'ojonoscobran'...`);
+            // Fallback automático a 'ojonoscobran' si la plantilla primaria devuelve error
+            if ((!response.ok || data?.success === false || data?.error) && (usedTemplate === 'confirmacion_turno_online' || usedTemplate === 'confirmacion_turno_web')) {
+                console.warn(`[send-whatsapp] Plantilla ${usedTemplate} devolvió error (${rawText}). Usando fallback 'ojonoscobran'...`);
                 usedTemplate = 'ojonoscobran';
                 response = await fetch(url, {
                     method: 'POST',
@@ -561,12 +561,64 @@ Deno.serve(async (req) => {
                 }
             }
 
-            const resolvedDisplayMessage = usedTemplate === 'confirmacion_turno_web'
-                ? `📋 [Plantilla Meta: confirmacion_turno_web] ¡Hola ${cleanFirstName}! ✅ Te confirmamos que tu turno en Sanatorio Argentino con ${profAndEspVar} para el día ${fechaHoraVar} ya quedó reservado con éxito. ⚠️ IMPORTANTE: Si ya tenés tu turno asignado, por favor NO saques más turnos adicionales en la web.`
+            const isNewTemplate = usedTemplate === 'confirmacion_turno_online' || usedTemplate === 'confirmacion_turno_web';
+            const resolvedDisplayMessage = isNewTemplate
+                ? `📋 [Plantilla Meta: ${usedTemplate}] ¡Hola ${cleanFirstName}! ✅ Te confirmamos que tu turno en Sanatorio Argentino con ${profAndEspVar} para el día ${fechaHoraVar} ya quedó reservado con éxito. ⚠️ IMPORTANTE: Tu turno ya se encuentra confirmado en nuestro sistema. Por favor NO saques turnos adicionales en la web para esta misma consulta, así evitamos duplicaciones.`
                 : `📋 [Plantilla Meta CitaOnline: ${usedTemplate}] Hola ${cleanFirstName} soy ${param2Confirmacion} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
             const nowIso = new Date().toISOString();
+            const isSentOk = Boolean(response.ok && data?.success !== false);
 
-            // Registrar en whatsapp_messages para trazabilidad en la consola del Contact Center
+            // 1. Registrar en la Base de Datos Maestra de Turnos Online (public.cita_online_reservas)
+            try {
+                const numericVisitId = visitId != null && !isNaN(Number(visitId)) ? Number(visitId) : null;
+                const recordId = numericVisitId
+                    ? `visita_${numericVisitId}`
+                    : `web_${dni || targetPhone}_${fechaHoraVar.replace(/\W+/g, '_')}`;
+
+                // Intentar extraer fecha YYYY-MM-DD si viene en formato DD/MM/YYYY o YYYY-MM-DD
+                let parsedFechaTurno: string | null = null;
+                let parsedHoraInicio: string | null = null;
+                const dmyMatch = fechaHoraVar.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                const ymdMatch = fechaHoraVar.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+                const timeMatch = fechaHoraVar.match(/(\d{1,2}:\d{2})/);
+                if (ymdMatch) {
+                    parsedFechaTurno = `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+                } else if (dmyMatch) {
+                    parsedFechaTurno = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+                }
+                if (timeMatch) {
+                    parsedHoraInicio = timeMatch[1];
+                }
+
+                await supabaseAdmin.from('cita_online_reservas').upsert({
+                    id: recordId,
+                    id_visita: numericVisitId,
+                    dni: dni || null,
+                    paciente_nombre: fullPatientName,
+                    telefono: rawPhone || targetPhone.replace(/^549/, ''),
+                    whatsapp_phone: targetPhone,
+                    email: email || null,
+                    profesional: profCleanForVar || null,
+                    especialidad: espCleanForVar || null,
+                    agenda: profesional || null,
+                    obra_social: obraSocial || null,
+                    motivo: String(body.observaciones || body.motivo || '').trim() || null,
+                    fecha_turno: parsedFechaTurno,
+                    hora_inicio: parsedHoraInicio,
+                    fecha_hora_texto: fechaHoraVar,
+                    fecha_creacion_salus: nowIso,
+                    origen_captura: 'web_realtime',
+                    whatsapp_enviado: isSentOk,
+                    whatsapp_plantilla: usedTemplate,
+                    whatsapp_enviado_at: nowIso,
+                    whatsapp_respuesta: data,
+                    updated_at: nowIso
+                }, { onConflict: 'id' });
+            } catch (reservaErr) {
+                console.warn('[send-whatsapp] Error registrando en cita_online_reservas:', reservaErr);
+            }
+
+            // 2. Registrar en whatsapp_messages para trazabilidad en la consola del Contact Center
             try {
                 await supabaseAdmin.from('whatsapp_messages').insert({
                     phone: targetPhone,

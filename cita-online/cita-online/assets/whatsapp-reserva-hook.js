@@ -247,6 +247,8 @@
             var bodyData = {
                 action: 'notify_cita_online_reservation',
                 lineId: 'contact_center',
+                templateName: 'confirmacion_turno_online',
+                languageCode: 'es_AR',
                 phone: cleanLocalPhone || rawInputPhone,
                 whatsappPhone: formattedWaPhone,
                 nombre: payload.nombre || payload.PatientName || '',
@@ -254,6 +256,7 @@
                 segundoApellido: payload.segundoApellido || payload.PatientSecondSurname || '',
                 dni: payload.dni || payload.NIF || '',
                 email: payload.email || payload.PatientEMail || '',
+                observaciones: payload.observaciones || '',
                 fechaHora: payload.fechaHora || payload.Date || payload.Hour || '',
                 profesional: payload.profesional || '',
                 especialidad: payload.especialidad || '',

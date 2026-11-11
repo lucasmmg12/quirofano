@@ -633,3 +633,82 @@ export async function sendWhatsappAvisoTurno({ phone, text, agente, pacienteNomb
 
     return { ...result, phone: recipientPhone, displayContent: text, agenteId, agenteNombre };
 }
+
+/**
+ * Consulta la Base de Datos Maestra de TODOS los Turnos Online realizados (public.cita_online_reservas)
+ */
+export async function fetchBaseDatosTurnosOnline({ days = 1, date = null, limit = 1500 } = {}) {
+    try {
+        let query = supabase
+            .from('cita_online_reservas')
+            .select('*')
+            .order('fecha_creacion_salus', { ascending: false })
+            .limit(limit);
+
+        if (date) {
+            query = query
+                .gte('fecha_creacion_salus', `${date}T00:00:00`)
+                .lte('fecha_creacion_salus', `${date}T23:59:59`);
+        } else if (days && Number(days) > 0) {
+            const d = new Date();
+            d.setDate(d.getDate() - Number(days));
+            const minIso = d.toISOString().split('T')[0] + 'T00:00:00';
+            query = query.gte('fecha_creacion_salus', minIso);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+            console.error('[turnosOnlineService] Error consultando cita_online_reservas:', error);
+            return { success: false, error: error.message, reservas: [] };
+        }
+
+        return {
+            success: true,
+            reservas: Array.isArray(data) ? data : []
+        };
+    } catch (err) {
+        console.error('[turnosOnlineService] Excepción consultando cita_online_reservas:', err);
+        return { success: false, error: err?.message || 'Error consultando base de datos de turnos online', reservas: [] };
+    }
+}
+
+/**
+ * Envía (o reenvía) la plantilla oficial aprobada 'confirmacion_turno_online' (es_AR) para un turno online individual
+ */
+export async function sendConfirmacionTurnoOnlineIndividual(reserva) {
+    if (!reserva?.telefono && !reserva?.whatsapp_phone) {
+        throw new Error('El turno no posee número de teléfono registrado.');
+    }
+
+    const fechaHoraFormatted = reserva.fecha_turno
+        ? `${reserva.fecha_turno.split('-').reverse().join('/')}${reserva.hora_inicio ? ` a las ${reserva.hora_inicio}` : ''}`
+        : (reserva.fecha_hora_texto || '');
+
+    const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+            action: 'notify_cita_online_reservation',
+            lineId: 'contact_center',
+            templateName: 'confirmacion_turno_online',
+            languageCode: 'es_AR',
+            phone: reserva.telefono || reserva.whatsapp_phone,
+            nombre: formatNombrePaciente(reserva.paciente_nombre),
+            dni: reserva.dni || '',
+            email: reserva.email || '',
+            fechaHora: fechaHoraFormatted,
+            profesional: reserva.profesional || reserva.agenda || '',
+            especialidad: reserva.especialidad || reserva.tipo_visita || '',
+            obraSocial: reserva.obra_social || '',
+            visitId: reserva.id_visita || null
+        }
+    });
+
+    if (error) {
+        throw new Error(error.message || 'Error invocando send-whatsapp');
+    }
+    if (data && data.success === false) {
+        throw new Error(data.error || 'No se pudo enviar la plantilla confirmacion_turno_online');
+    }
+
+    return data;
+}
+

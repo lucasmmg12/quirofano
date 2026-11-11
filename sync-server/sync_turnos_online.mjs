@@ -99,14 +99,18 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             vl.[Tipo Visita] as TipoVisita,
             vl.[Visita_Especialidad] as Especialidad,
             vl.[Centro] as Centro,
-            vl.[Cliente] as Cliente
+            vl.[Cliente] as Cliente,
+            vl.[Asistencia] as Asistencia,
+            vl.[Paciente] as PacienteSalus,
+            vl.[NIF] as DniSalus,
+            vl.[telefono1] as TelefonoSalus,
+            vl.[email] as EmailSalus
         FROM Visitas v
-        INNER JOIN Visitas_ntext vn ON v.id = vn.IdVisita
+        LEFT JOIN Visitas_ntext vn ON v.id = vn.IdVisita
         LEFT JOIN [SALUS].[dbo].[VLISE_Visitas] vl ON v.id = vl.idVisita
         LEFT JOIN Agendas a ON v.idAgenda = a.id
         LEFT JOIN Personal p ON v.idPersonal = p.id
         WHERE v.Internet = 1
-          AND (vl.Asistencia IS NULL OR vl.Asistencia = '')
           AND ${dateCondition}
         ORDER BY v.FechaCreacion DESC
     `;
@@ -114,7 +118,16 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
     const result = await pool.request().query(query);
     const gestiones = loadGestiones();
 
-    const turnosParsed = result.recordset.map(r => {
+    // Deduplicar por IdVisita (por si VLISE_Visitas devuelve más de 1 fila para la misma visita)
+    const seenVisitas = new Set();
+    const uniqueRecordset = [];
+    for (const r of (result.recordset || [])) {
+        if (!r.IdVisita || seenVisitas.has(r.IdVisita)) continue;
+        seenVisitas.add(r.IdVisita);
+        uniqueRecordset.push(r);
+    }
+
+    const turnosParsed = uniqueRecordset.map(r => {
         const contact = parseOnlineComment(r.Comentarios);
         const horaInicioStr = r.HoraInici 
             ? new Date(r.HoraInici).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) 
@@ -122,6 +135,15 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
         const horaFinStr = r.HoraFi 
             ? new Date(r.HoraFi).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) 
             : '';
+
+        const cleanDni = contact.dni || String(r.DniSalus || '').replace(/[^\d]/g, '');
+        const cleanNombre = (contact.nombre && contact.nombre !== 'PACIENTE SIN NOMBRE')
+            ? contact.nombre
+            : (r.PacienteSalus ? String(r.PacienteSalus).trim() : 'PACIENTE SIN NOMBRE');
+        const cleanTel = contact.telefono || String(r.TelefonoSalus || '').replace(/[^\d+]/g, '');
+        const cleanEmail = contact.email || (r.EmailSalus ? String(r.EmailSalus).trim() : '');
+        const cleanObraSocial = contact.mutua || (r.Cliente ? String(r.Cliente).trim() : '');
+        const asistenciaStr = r.Asistencia ? String(r.Asistencia).trim() : '';
 
         return {
             idVisita: r.IdVisita,
@@ -137,15 +159,22 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             tipoVisita: r.TipoVisita ? String(r.TipoVisita).trim() : '',
             especialidad: r.Especialidad ? String(r.Especialidad).trim() : '',
             centro: r.Centro ? String(r.Centro).trim() : '',
-            cliente: r.Cliente ? String(r.Cliente).trim() : '',
-            ...contact
+            cliente: cleanObraSocial,
+            asistencia: asistenciaStr,
+            ...contact,
+            dni: cleanDni,
+            nombre: cleanNombre,
+            telefono: cleanTel,
+            email: cleanEmail,
+            mutua: cleanObraSocial
         };
     });
 
-    // Agrupar por paciente (DNI) y Prestador
+    // Agrupar por paciente (DNI) y Prestador (solo turnos activos/pendientes de asistencia para alerta de duplicados)
     const groups = {};
     for (const t of turnosParsed) {
         if (!t.dni) continue;
+        if (t.asistencia && t.asistencia !== '') continue; // Solo turnos pendientes de asistencia
         const key = `${t.dni}_${t.idPersonal || t.idAgenda}`;
         if (!groups[key]) {
             groups[key] = {
@@ -266,7 +295,8 @@ export async function getTurnosOnlineDuplicados(pool, options = {}) {
             totalContactados,
             totalResueltos
         },
-        casos: duplicados
+        casos: duplicados,
+        todosTurnos: turnosParsed
     };
 }
 
@@ -515,6 +545,102 @@ export async function syncTurnosOnlineToSupabase(poolOrOptions, maybeOptions = {
         } else {
             console.log(`[turnos-online] ✅ ${upsertRows.length} casos duplicados guardados en Supabase contact_center_turnos_online`);
         }
+    }
+
+    // ── PASO 3: Guardar TODOS los turnos online realizados en la Base de Datos Maestra (public.cita_online_reservas) ──
+    try {
+        const allTurnos = Array.isArray(result.todosTurnos) ? result.todosTurnos : [];
+        if (allTurnos.length > 0) {
+            const allIds = allTurnos.map(t => `visita_${t.idVisita}`);
+            const existingReservasMap = new Map();
+            const CHUNK = 300;
+
+            for (let i = 0; i < allIds.length; i += CHUNK) {
+                const slice = allIds.slice(i, i + CHUNK);
+                const { data: existRes } = await supabaseClient
+                    .from('cita_online_reservas')
+                    .select('id, whatsapp_enviado, whatsapp_plantilla, whatsapp_enviado_at, whatsapp_respuesta, origen_captura')
+                    .in('id', slice);
+                if (Array.isArray(existRes)) {
+                    for (const er of existRes) {
+                        existingReservasMap.set(er.id, er);
+                    }
+                }
+            }
+
+            const normalizePhone10 = (raw) => {
+                let d = String(raw || '').replace(/\D/g, '');
+                if (!d) return '';
+                if (d.startsWith('549') && d.length >= 13) d = d.slice(3);
+                else if (d.startsWith('54') && d.length >= 12) d = d.slice(2);
+                d = d.replace(/^0+/, '');
+                if (d.startsWith('15') && d.length === 9) d = '264' + d.slice(2);
+                if (d.length === 12) {
+                    const idx15 = d.indexOf('15');
+                    if (idx15 >= 2 && idx15 <= 4) d = d.slice(0, idx15) + d.slice(idx15 + 2);
+                }
+                return d.length > 10 ? d.slice(0, 10) : d;
+            };
+
+            const nowIso = new Date().toISOString();
+            const reservasToUpsert = allTurnos.map(t => {
+                const recId = `visita_${t.idVisita}`;
+                const prev = existingReservasMap.get(recId);
+                const clean10 = normalizePhone10(t.telefono || t.telefonoAlt || '');
+                const wa13 = clean10.length === 10 ? `549${clean10}` : (clean10 || null);
+                let fechaCreacionIso = nowIso;
+                try {
+                    if (t.fechaCreacion) {
+                        const dt = new Date(t.fechaCreacion);
+                        if (!isNaN(dt.getTime())) fechaCreacionIso = dt.toISOString();
+                    }
+                } catch {}
+
+                return {
+                    id: recId,
+                    id_visita: t.idVisita,
+                    dni: t.dni || null,
+                    paciente_nombre: t.nombre || 'PACIENTE SIN NOMBRE',
+                    telefono: clean10 || t.telefono || null,
+                    whatsapp_phone: wa13,
+                    email: t.email || null,
+                    profesional: t.profesional || null,
+                    id_personal: t.idPersonal || null,
+                    especialidad: t.especialidad || null,
+                    agenda: t.agenda || null,
+                    id_agenda: t.idAgenda || null,
+                    tipo_visita: t.tipoVisita || null,
+                    centro: t.centro || null,
+                    obra_social: t.mutua || t.cliente || null,
+                    motivo: t.motivo || null,
+                    fecha_turno: t.fechaTurno || null,
+                    hora_inicio: t.horaInicio || null,
+                    hora_fin: t.horaFin || null,
+                    fecha_hora_texto: `${t.fechaTurno || ''} ${t.horaInicio || ''}`.trim() || null,
+                    fecha_creacion_salus: fechaCreacionIso,
+                    asistencia: t.asistencia || 'Pendiente',
+                    origen_captura: prev?.origen_captura === 'web_realtime' ? 'ambos' : (prev?.origen_captura || 'salus_sync'),
+                    whatsapp_enviado: prev?.whatsapp_enviado || false,
+                    whatsapp_plantilla: prev?.whatsapp_plantilla || null,
+                    whatsapp_enviado_at: prev?.whatsapp_enviado_at || null,
+                    whatsapp_respuesta: prev?.whatsapp_respuesta || null,
+                    updated_at: nowIso
+                };
+            });
+
+            for (let i = 0; i < reservasToUpsert.length; i += CHUNK) {
+                const batch = reservasToUpsert.slice(i, i + CHUNK);
+                const { error: resErr } = await supabaseClient
+                    .from('cita_online_reservas')
+                    .upsert(batch, { onConflict: 'id' });
+                if (resErr) {
+                    console.error('[turnos-online] Error guardando lote en cita_online_reservas:', resErr.message);
+                }
+            }
+            console.log(`[turnos-online] ✅ ${reservasToUpsert.length} turnos online totales registrados en public.cita_online_reservas`);
+        }
+    } catch (allTurnosErr) {
+        console.warn('[turnos-online] ⚠️ Error sincronizando base completa cita_online_reservas:', allTurnosErr.message);
     }
 
     return result;
