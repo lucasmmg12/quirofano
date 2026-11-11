@@ -6,6 +6,7 @@ import {
     RENAPDIS_INSTITUTION_CONFIG,
 } from '../../services/recetarioService';
 import RecetaDocumentoOficial, { formatFechaAR } from './RecetaDocumentoOficial';
+import { descargarPDFRecetaOficial, imprimirPDFRecetaOficial } from '../../utils/recetaPdfGenerator';
 import {
     ShieldCheck,
     Printer,
@@ -200,12 +201,12 @@ export default function PublicRecetaPrestacionView() {
                             </button>
 
                             <button
-                                onClick={() => window.print()}
+                                onClick={() => descargarPDFRecetaOficial(receta)}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '6px',
-                                    padding: '8px 16px',
+                                    padding: '8px 15px',
                                     borderRadius: '8px',
                                     border: 'none',
                                     background: '#FFFFFF',
@@ -215,9 +216,31 @@ export default function PublicRecetaPrestacionView() {
                                     cursor: 'pointer',
                                     boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                                 }}
+                                title="Generar y descargar archivo PDF A4 Oficial de la Receta"
+                            >
+                                <Download size={15} />
+                                Descargar PDF Oficial
+                            </button>
+
+                            <button
+                                onClick={() => imprimirPDFRecetaOficial(receta)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 14px',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(255,255,255,0.35)',
+                                    background: 'rgba(255,255,255,0.15)',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                }}
+                                title="Abrir diálogo de impresión A4 de la Receta"
                             >
                                 <Printer size={15} />
-                                Descargar PDF / Imprimir
+                                Imprimir A4
                             </button>
                         </div>
                     )}

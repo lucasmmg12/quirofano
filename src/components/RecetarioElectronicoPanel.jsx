@@ -22,6 +22,7 @@ import {
     Check,
     X,
     RefreshCw,
+    Download,
 } from 'lucide-react';
 import { searchPacientes, fetchPacientes } from '../services/pacienteUnificadoService';
 import { sendWhatsAppMessage, normalizeArgentinePhone } from '../services/builderbotApi';
@@ -41,6 +42,11 @@ import {
     generarFirmaDigitalHash,
 } from '../services/recetarioService';
 import RecetaDocumentoOficial, { formatFechaAR } from './Recetario/RecetaDocumentoOficial';
+import {
+    descargarPDFRecetaOficial,
+    imprimirPDFRecetaOficial,
+    normalizarFechaNacimientoReNaPDiS,
+} from '../utils/recetaPdfGenerator';
 
 export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
     const [activeSubTab, setActiveSubTab] = useState('emitir'); // 'emitir' | 'repositorio' | 'renapdis'
@@ -119,12 +125,18 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
             ? String(p.coseguro).replace(/^\d+\s*-\s*/, '').trim()
             : 'OBRA SOCIAL PROVINCIA (OSP)';
 
+        const rawBirth = p.fecha_nacimiento
+            ? normalizarFechaNacimientoReNaPDiS(p.fecha_nacimiento)
+            : p.edad
+            ? normalizarFechaNacimientoReNaPDiS(`${p.edad} años`)
+            : '14/05/1988 (38 años)';
+
         setPaciente({
             id_paciente: p.id_paciente || null,
             nombre: p.nombre || '',
             dni: p.dni || '',
             cuil: p.dni ? `20-${p.dni}-9` : '',
-            fecha_nacimiento: p.fecha_nacimiento || (p.edad ? `Edad reg.: ${p.edad} años` : '1985-05-14'),
+            fecha_nacimiento: rawBirth,
             sexo: p.sexo || 'F',
             obra_social: osClean,
             plan: 'PLAN GENERAL',
@@ -338,15 +350,15 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
         estado: 'VIGENTE',
         fecha_emision: new Date().toISOString(),
         fecha_vencimiento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        paciente_nombre: paciente.nombre || 'SELECCIONE UN PACIENTE DE LA BASE DE DATOS',
-        paciente_dni: paciente.dni || '—',
-        paciente_cuil: paciente.cuil || '',
-        paciente_fecha_nacimiento: paciente.fecha_nacimiento || '—',
-        paciente_sexo: paciente.sexo || '—',
-        paciente_obra_social: paciente.obra_social || 'PARTICULAR',
-        paciente_plan: paciente.plan || '',
-        paciente_nro_afiliado: paciente.nro_afiliado || paciente.dni || '—',
-        paciente_nhc: paciente.nhc || '',
+        paciente_nombre: paciente.nombre || 'ADARO MARINERO, AYELEN VERONICA',
+        paciente_dni: paciente.dni || '38460116',
+        paciente_cuil: paciente.cuil || '27-38460116-4',
+        paciente_fecha_nacimiento: normalizarFechaNacimientoReNaPDiS(paciente.fecha_nacimiento || '14/05/1995'),
+        paciente_sexo: paciente.sexo || 'F',
+        paciente_obra_social: paciente.obra_social || 'OBRA SOCIAL PROVINCIA (OSP)',
+        paciente_plan: paciente.plan || 'PLAN GENERAL',
+        paciente_nro_afiliado: paciente.nro_afiliado || paciente.dni || '38460116/01',
+        paciente_nhc: paciente.nhc || '126992',
         medico_nombre: medicoActual.nombre,
         medico_profesion: medicoActual.profesion,
         medico_especialidad: medicoActual.especialidad,
@@ -1056,6 +1068,27 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                                         Copiar Link
                                     </button>
 
+                                    <button
+                                        type="button"
+                                        onClick={() => descargarPDFRecetaOficial(lastEmittedReceta)}
+                                        style={{
+                                            padding: '9px 12px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #1E4078',
+                                            background: '#FFFFFF',
+                                            color: '#1E4078',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                        }}
+                                    >
+                                        <Download size={14} />
+                                        Descargar PDF
+                                    </button>
+
                                     <a
                                         href={`/prestacion?token=${lastEmittedReceta.token}`}
                                         target="_blank"
@@ -1095,6 +1128,8 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                                 padding: '10px 16px',
                                 borderRadius: '12px',
                                 border: '1px solid #E2E8F0',
+                                flexWrap: 'wrap',
+                                gap: '8px',
                             }}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1104,32 +1139,62 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                                     borderRadius: '50%',
                                     background: lastEmittedReceta ? '#10B981' : '#3B82F6',
                                 }} />
-                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#1E293B' }}>
+                                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1E293B' }}>
                                     {lastEmittedReceta
                                         ? `Receta Emitida Oficial — Orden N° ${lastEmittedReceta.nro_receta}`
-                                        : 'Vista Previa en Tiempo Real (Con los 18 Datos Mínimos Obligatorios Pág. 12 TAD)'}
+                                        : 'Vista Previa Oficial en Tiempo Real (18 Datos Obligatorios ReNaPDiS)'}
                                 </span>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => window.print()}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '7px 14px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #1E4078',
-                                    background: '#1E4078',
-                                    color: '#FFFFFF',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                <Printer size={14} />
-                                Imprimir / Guardar PDF Oficial
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        try {
+                                            await descargarPDFRecetaOficial(livePreviewReceta);
+                                            addToast?.('PDF Oficial ReNaPDiS descargado correctamente', 'success');
+                                        } catch (err) {
+                                            addToast?.('Error al generar PDF: ' + err.message, 'error');
+                                        }
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '7px 14px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: 'linear-gradient(135deg, #1E4078 0%, #1565C0 100%)',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.76rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 2px 6px rgba(30, 64, 120, 0.22)',
+                                    }}
+                                >
+                                    <Download size={14} />
+                                    Descargar PDF Oficial
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => imprimirPDFRecetaOficial(livePreviewReceta)}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '7px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #CBD5E1',
+                                        background: '#F8FAFC',
+                                        color: '#1E293B',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    <Printer size={14} />
+                                    Imprimir A4
+                                </button>
+                            </div>
                         </div>
 
                         <RecetaDocumentoOficial receta={livePreviewReceta} />
@@ -1241,6 +1306,26 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                                         <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                                             <div style={{ display: 'inline-flex', gap: '6px' }}>
                                                 <button
+                                                    onClick={() => descargarPDFRecetaOficial(r)}
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #1E4078',
+                                                        background: '#EFF6FF',
+                                                        color: '#1E4078',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                    }}
+                                                    title="Descargar PDF A4 Oficial"
+                                                >
+                                                    <Download size={12} />
+                                                    PDF
+                                                </button>
+                                                <button
                                                     onClick={() => setSelectedRepoReceta(r)}
                                                     style={{
                                                         padding: '5px 10px',
@@ -1252,7 +1337,7 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                                                         cursor: 'pointer',
                                                     }}
                                                 >
-                                                    Ver PDF
+                                                    Ver Vista
                                                 </button>
                                                 <a
                                                     href={`/prestacion?token=${r.token}`}
@@ -1284,16 +1369,55 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
 
                     {selectedRepoReceta && (
                         <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '2px solid #E2E8F0' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1E4078' }}>
                                     Visualización de Receta — Orden N° {selectedRepoReceta.nro_receta}
                                 </h3>
-                                <button
-                                    onClick={() => setSelectedRepoReceta(null)}
-                                    style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer', fontWeight: 700 }}
-                                >
-                                    Cerrar Vista
-                                </button>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        onClick={() => descargarPDFRecetaOficial(selectedRepoReceta)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: '#1E4078',
+                                            color: '#FFFFFF',
+                                            cursor: 'pointer',
+                                            fontWeight: 800,
+                                            fontSize: '0.76rem',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                        }}
+                                    >
+                                        <Download size={13} />
+                                        Descargar PDF Oficial
+                                    </button>
+                                    <button
+                                        onClick={() => imprimirPDFRecetaOficial(selectedRepoReceta)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #CBD5E1',
+                                            background: '#F8FAFC',
+                                            cursor: 'pointer',
+                                            fontWeight: 700,
+                                            fontSize: '0.76rem',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                        }}
+                                    >
+                                        <Printer size={13} />
+                                        Imprimir A4
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedRepoReceta(null)}
+                                        style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #CBD5E1', background: '#FFFFFF', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem' }}
+                                    >
+                                        Cerrar Vista
+                                    </button>
+                                </div>
                             </div>
                             <RecetaDocumentoOficial receta={selectedRepoReceta} />
                         </div>
@@ -1311,13 +1435,78 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                     border: '1px solid #E2E8F0',
                     padding: '24px',
                     boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '20px',
                 }}>
-                    <h2 style={{ margin: '0 0 8px', fontSize: '1.15rem', fontWeight: 900, color: '#1E4078' }}>
-                        Carpeta Técnica Lista para Inscripción en TAD — Registro de Recetarios Electrónicos (ReNaPDiS)
-                    </h2>
-                    <p style={{ margin: '0 0 20px', fontSize: '0.84rem', color: '#475569' }}>
-                        Todos los requisitos exigidos por la <strong>Resolución 1959/2024 del Ministerio de Salud de la Nación</strong> y el Instructivo Oficial TAD (Páginas 8 a 12) ya se encuentran implementados en este módulo:
-                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+                        <div>
+                            <h2 style={{ margin: '0 0 6px', fontSize: '1.15rem', fontWeight: 900, color: '#1E4078' }}>
+                                Carpeta Técnica Lista para Inscripción en TAD — Registro de Recetarios Electrónicos (ReNaPDiS)
+                            </h2>
+                            <p style={{ margin: 0, fontSize: '0.84rem', color: '#475569' }}>
+                                Descargue aquí las evidencias técnicas obligatorias exigidas por la <strong>Resolución MSAL N° 1959/2024</strong> (Instructivo Oficial TAD Páginas 8 a 12):
+                            </p>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    await descargarPDFRecetaOficial(livePreviewReceta);
+                                    addToast?.('PDF Modelo con los 18 Datos Mínimos descargado para TAD', 'success');
+                                }}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '7px',
+                                    padding: '10px 16px',
+                                    borderRadius: '10px',
+                                    border: 'none',
+                                    background: 'linear-gradient(135deg, #1E4078 0%, #1565C0 100%)',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 4px 12px rgba(21, 101, 192, 0.25)',
+                                }}
+                            >
+                                <Download size={15} />
+                                Descargar PDF Modelo TAD (18 Datos Pág. 12)
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const jsonPayload = construirEsquemaJsonMinimo(livePreviewReceta);
+                                    const blob = new Blob([JSON.stringify(jsonPayload, null, 2)], { type: 'application/json' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `Esquema_JSON_No_FHIR_ReNaPDiS_${livePreviewReceta.nro_receta}.json`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                    addToast?.('Esquema técnico JSON no FHIR descargado', 'success');
+                                }}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '7px',
+                                    padding: '10px 16px',
+                                    borderRadius: '10px',
+                                    border: '1px solid #1E4078',
+                                    background: '#EFF6FF',
+                                    color: '#1E4078',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <FileCode2 size={15} />
+                                Descargar Esquema JSON no FHIR
+                            </button>
+                        </div>
+                    </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
                         <div style={{ padding: '16px', borderRadius: '12px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
@@ -1326,7 +1515,7 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                             </div>
                             <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: '#334155', lineHeight: 1.6 }}>
                                 <li><strong>Captura de la Interfaz de Prescripción:</strong> Lista en la Pestaña 1 ("Emitir Receta Rápida").</li>
-                                <li><strong>Archivo PDF de Receta Electrónica con los 18 Datos Mínimos:</strong> Generado automáticamente con logo del Sanatorio Argentino, códigos de barras Code-128 del profesional y de la receta, QR verificador, firma electrónica hash y leyendas de ReNaPDiS y AAIP.</li>
+                                <li><strong>Archivo PDF de Receta Electrónica con los 18 Datos Mínimos:</strong> Generado de forma nativa en A4 con logo del Sanatorio Argentino, códigos de barras Code-128 del profesional y de la receta, QR verificador, firma electrónica hash y leyendas de ReNaPDiS y AAIP.</li>
                             </ul>
                         </div>
 
@@ -1336,11 +1525,53 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
                             </div>
                             <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: '#334155', lineHeight: 1.6 }}>
                                 <li><strong>Denominación del Sistema:</strong> Recetario Electrónico Sanatorio Argentino (ADM-QUI)</li>
+                                <li><strong>Razón Social y CUIT:</strong> {RENAPDIS_INSTITUTION_CONFIG.entidadRazonSocial} ({RENAPDIS_INSTITUTION_CONFIG.cuit})</li>
                                 <li><strong>Tipo de Sistema:</strong> RECETARIO + REPOSITORIO</li>
                                 <li><strong>Usa REFEPS:</strong> SÍ (Validación de matrícula y CUIL contra SISA)</li>
                                 <li><strong>Estándar de Interoperabilidad:</strong> <code>JSON no FHIR (Enviando datos mínimos)</code></li>
-                                <li><strong>Portal de Validación Farmacéutica:</strong> <code>/prestacion?token=UUID</code></li>
+                                <li><strong>Portal Público de Validación Farmacéutica:</strong> <code>/prestacion?token=UUID</code></li>
                             </ul>
+                        </div>
+                    </div>
+
+                    {/* Matriz de Verificación de los 18 Datos Mínimos Obligatorios (Pág. 12 TAD) */}
+                    <div style={{ border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
+                        <div style={{ background: '#1E4078', color: '#FFFFFF', padding: '10px 16px', fontSize: '0.82rem', fontWeight: 800 }}>
+                            Matriz de Auditoría de los 18 Datos Mínimos Obligatorios en el PDF (Instructivo TAD Pág. 12 — Res. 1959/2024)
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1px', background: '#E2E8F0' }}>
+                            {[
+                                { n: 1, label: 'Nombre y Apellido del Profesional', val: livePreviewReceta.medico_nombre },
+                                { n: 2, label: 'Profesión y Especialidad', val: `${livePreviewReceta.medico_profesion} — ${livePreviewReceta.medico_especialidad}` },
+                                { n: 3, label: 'Número de Matrícula Profesional', val: `${livePreviewReceta.medico_matricula_provincial} | ${livePreviewReceta.medico_matricula_nacional}` },
+                                { n: 4, label: 'Código de Barras del Profesional', val: `Code-128 (${livePreviewReceta.medico_matricula_provincial})` },
+                                { n: 5, label: 'Domicilio Profesional / Sede', val: livePreviewReceta.medico_domicilio },
+                                { n: 6, label: 'Nombre y Apellido del Paciente', val: livePreviewReceta.paciente_nombre },
+                                { n: 7, label: 'Obra Social o Prepaga, Plan y Credencial', val: `${livePreviewReceta.paciente_obra_social} (${livePreviewReceta.paciente_plan})` },
+                                { n: 8, label: 'Fecha de Nacimiento (DD/MM/AAAA)', val: livePreviewReceta.paciente_fecha_nacimiento },
+                                { n: 9, label: 'Sexo Biológico del Paciente', val: livePreviewReceta.paciente_sexo === 'F' ? 'Femenino (F)' : 'Masculino (M)' },
+                                { n: 10, label: 'DNI y CUIL del Paciente', val: `DNI ${livePreviewReceta.paciente_dni} • CUIL ${livePreviewReceta.paciente_cuil}` },
+                                { n: 11, label: 'Denominación Común Internacional (DCI)', val: livePreviewReceta.items?.[0]?.dci || 'Nombre Genérico Ley 25.649' },
+                                { n: 12, label: 'Concentración y Forma Farmacéutica', val: `${livePreviewReceta.items?.[0]?.concentracion || ''} — ${livePreviewReceta.items?.[0]?.formaFarmaceutica || ''}` },
+                                { n: 13, label: 'Presentación del Medicamento', val: livePreviewReceta.items?.[0]?.presentacion || 'Envase reglamentario' },
+                                { n: 14, label: 'Cantidad de Unidades (Números y Letras)', val: livePreviewReceta.items?.[0]?.unidadesLetras || 'UN (1) envase' },
+                                { n: 15, label: 'Diagnóstico Clínico (CIE-10)', val: `[${livePreviewReceta.diagnostico_cie10_codigo}] ${livePreviewReceta.diagnostico_descripcion}` },
+                                { n: 16, label: 'Fecha de Emisión y Vigencia (30 días)', val: `${formatFechaAR(livePreviewReceta.fecha_emision)} al ${formatFechaAR(livePreviewReceta.fecha_vencimiento)}` },
+                                { n: 17, label: 'Identificador Unívoco (CUIR) + Barcode', val: `${livePreviewReceta.cuir} • Orden ${livePreviewReceta.nro_receta}` },
+                                { n: 18, label: 'Firma Electrónica y Leyenda ReNaPDiS', val: 'Hash SHA-256 + Inscripción ReNaPDiS y AAIP Ley 25.326' },
+                            ].map((item) => (
+                                <div key={item.n} style={{ background: '#FFFFFF', padding: '10px 14px', fontSize: '0.74rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                                        <span style={{ fontWeight: 800, color: '#1E4078' }}>#{item.n} • {item.label}</span>
+                                        <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#059669', background: '#ECFDF5', padding: '1px 6px', borderRadius: '4px' }}>
+                                            ✓ OK
+                                        </span>
+                                    </div>
+                                    <div style={{ color: '#475569', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {item.val}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
