@@ -247,58 +247,71 @@ export async function updateAltaEstado(id, estado, operador = 'operador', select
         // La ficha original siempre queda como "Alta Adm. Parcial"
         updatePayload.estado = 'Alta Adm. Parcial';
 
-        // Solo crear prórroga si la ficha actual no tiene fecha de alta médica (paciente aún internado)
-        if (!current.fecha_alta) {
-            // Extraer año y mes directamente evitando desfases por huso horario UTC
-            let y, m;
-            if (typeof current.fecha_ingreso === 'string' && current.fecha_ingreso.includes('-')) {
-                const parts = current.fecha_ingreso.split('T')[0].split('-');
-                y = parseInt(parts[0], 10);
-                m = parseInt(parts[1], 10); // 1-12
-            } else {
-                const d = new Date(current.fecha_ingreso || Date.now());
-                y = d.getFullYear();
-                m = d.getMonth() + 1;
+        // Extraer año y mes directamente evitando desfases por huso horario UTC
+        let y, m;
+        if (typeof current.fecha_ingreso === 'string' && current.fecha_ingreso.includes('-')) {
+            const parts = current.fecha_ingreso.split('T')[0].split('-');
+            y = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10); // 1-12
+        } else {
+            const d = new Date(current.fecha_ingreso || Date.now());
+            y = d.getFullYear();
+            m = d.getMonth() + 1;
+        }
+        const nextY = m === 12 ? y + 1 : y;
+        const nextM = m === 12 ? 1 : m + 1;
+        const nextMonthDateOnly = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
+        const nextMonthStart = `${nextMonthDateOnly}T00:00:00.000Z`;
+        const altaDateOnly = typeof current.fecha_alta === 'string' ? current.fecha_alta.split('T')[0] : null;
+
+        // Crear prórroga si aún no tiene fecha de alta médica O si el alta médica ocurrió en el mes siguiente (cruza mes)
+        if (!altaDateOnly || altaDateOnly >= nextMonthDateOnly) {
+            const cleanBase = (current.numero_admision || '').replace(/-P\d*$/i, '');
+            const { data: existingNextMonth } = await supabase
+                .from('altas_administrativas')
+                .select('id')
+                .ilike('numero_admision', `${cleanBase}-P%`)
+                .gte('fecha_ingreso', nextMonthDateOnly)
+                .limit(1);
+
+            if (!existingNextMonth || existingNextMonth.length === 0) {
+                const newNumeroAdmision = await generateNextNumeroAdmision(current.numero_admision);
+
+                const { id: oldId, created_at, updated_at, ...rest } = current;
+                duplicateRecord = {
+                    ...rest,
+                    numero_admision: newNumeroAdmision,
+                    fecha_ingreso: nextMonthStart,
+                    fecha_alta: altaDateOnly && altaDateOnly >= nextMonthDateOnly ? current.fecha_alta : null,
+                    estado: estado === 'Prórroga' ? 'Prórroga' : null,
+                    estado_fac: 'Pendiente',
+                    notas_internas: (current.notas_internas ? current.notas_internas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
+                    en_carrito_traspaso: false,
+                    carrito_traspaso_por: null,
+                    carrito_traspaso_at: null,
+                    traspaso_id: null,
+                    traspasada_at: null,
+                    traspasada_por: null,
+                    facturada: false,
+                    facturada_at: null,
+                    usuario_facturo: null,
+                    cantidad_facturas: 0,
+                    responsable_fac: null,
+                    facturacion_cerrada_hasta: null,
+                    devolucion_id: null,
+                    devuelta_at: null,
+                    devuelta_por: null,
+                    en_carrito_devolucion: false,
+                    carrito_devolucion_por: null,
+                    carrito_devolucion_at: null,
+                    en_carrito_rendicion: false,
+                    carrito_rendicion_por: null,
+                    carrito_rendicion_at: null,
+                    rendicion_garantia_id: null
+                };
             }
-            const nextY = m === 12 ? y + 1 : y;
-            const nextM = m === 12 ? 1 : m + 1;
-            const nextMonthStart = `${nextY}-${String(nextM).padStart(2, '0')}-01T00:00:00.000Z`;
-
-            const newNumeroAdmision = await generateNextNumeroAdmision(current.numero_admision);
-
-            const { id: oldId, created_at, ...rest } = current;
-            duplicateRecord = {
-                ...rest,
-                numero_admision: newNumeroAdmision,
-                fecha_ingreso: nextMonthStart,
-                fecha_alta: null, // Limpiar alta médica para la nueva prórroga
-                estado: estado === 'Prórroga' ? 'Prórroga' : null, // Prórroga -> Prórroga, Alta Parcial -> Vacío
-                estado_fac: 'Pendiente',
-                notas_internas: (current.notas_internas ? current.notas_internas + '\n\n' : '') + `[Corte Manual] ${estado} arrastrada desde ${new Date(current.fecha_ingreso).toLocaleDateString('es-AR')}`,
-            en_carrito_traspaso: false,
-            carrito_traspaso_por: null,
-            carrito_traspaso_at: null,
-            traspaso_id: null,
-            traspasada_at: null,
-            traspasada_por: null,
-            facturada: false,
-            facturada_at: null,
-            usuario_facturo: null,
-            cantidad_facturas: 0,
-            facturacion_cerrada_hasta: null,
-            devolucion_id: null,
-            devuelta_at: null,
-            devuelta_por: null,
-            en_carrito_devolucion: false,
-            carrito_devolucion_por: null,
-            carrito_devolucion_at: null,
-            en_carrito_rendicion: false,
-            carrito_rendicion_por: null,
-            carrito_rendicion_at: null,
-            rendicion_garantia_id: null
-        };
+        }
     }
-}
 
     const { data, error } = await supabase
         .from('altas_administrativas')
