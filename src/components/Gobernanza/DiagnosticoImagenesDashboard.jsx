@@ -1346,10 +1346,31 @@ export default function DiagnosticoImagenesDashboard({
         return (rangeDays <= 65 && hasDaily) ? 'dia' : 'mes';
     }, [chartGranularity, rangeDays, scopedData?.evolucion]);
 
+    const ALL_MOD_SERIES_KEYS = ['ECOGRAFIA', 'RADIOLOGIA', 'MAMOGRAFIA', 'TOMOGRAFIA', 'DENSITOMETRIA', 'ECOCARDIO'];
+    const MOD_SERIES_LABELS = {
+        ECOGRAFIA: 'Ecografía (ECO)',
+        RADIOLOGIA: 'Radiología (RX)',
+        MAMOGRAFIA: 'Mamografía',
+        TOMOGRAFIA: 'Tomografía (TC)',
+        DENSITOMETRIA: 'Densitometría',
+        ECOCARDIO: 'Ecocardiograma'
+    };
+
+    const activeVisibleMods = useMemo(() => {
+        if (selectedModalidad !== 'TODAS' || selectedAgenda !== 'TODAS') return [];
+        return ALL_MOD_SERIES_KEYS.filter(k => Boolean(visibleSeries[k]));
+    }, [selectedModalidad, selectedAgenda, visibleSeries]);
+
+    const isSubsetModalitiesVisible = selectedModalidad === 'TODAS'
+        && selectedAgenda === 'TODAS'
+        && activeVisibleMods.length > 0
+        && activeVisibleMods.length < ALL_MOD_SERIES_KEYS.length;
+
     const progressionChartData = useMemo(() => {
         if (!scopedData?.evolucion || !Array.isArray(scopedData.evolucion) || scopedData.evolucion.length === 0) return [];
 
         const map = new Map();
+        const activeModSet = isSubsetModalitiesVisible ? new Set(activeVisibleMods) : null;
 
         const createEmptyPoint = (key, label) => ({
             key,
@@ -1491,16 +1512,22 @@ export default function DiagnosticoImagenesDashboard({
             const cant = selectedAgenda !== 'TODAS' ? Math.round(rawCant * share) : rawCant;
             if (cant <= 0) return;
 
-            point.total += cant;
-            if (finType === 'Obra Social') point.obraSocial += cant;
-            else point.particular += cant;
-
             const mod = r.Modalidad || 'OTRAS';
             if (point[mod] !== undefined) {
                 point[mod] += cant;
             } else {
                 point.OTRAS += cant;
             }
+
+            // Si el usuario filtró series de modalidad en el gráfico (ej. dejó solo Ecocardiograma activo),
+            // acotar Total, Obra Social, Particular y Ámbito estrictamente a las modalidades activas en el gráfico
+            if (activeModSet && !activeModSet.has(mod)) {
+                return;
+            }
+
+            point.total += cant;
+            if (finType === 'Obra Social') point.obraSocial += cant;
+            else point.particular += cant;
 
             if (r.Ambito === 'Hospitalización') {
                 point.hospitalizacion += cant;
@@ -1510,7 +1537,7 @@ export default function DiagnosticoImagenesDashboard({
         });
 
         return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
-    }, [scopedData?.evolucion, scopedData?.agendas, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, filterAsistencia, filterFinanciador, selectedModalidad, selectedAgenda, ESTADOS_EFECTIVOS]);
+    }, [scopedData?.evolucion, scopedData?.agendas, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, filterAsistencia, filterFinanciador, selectedModalidad, selectedAgenda, ESTADOS_EFECTIVOS, isSubsetModalitiesVisible, activeVisibleMods]);
 
     const chartStats = useMemo(() => {
         if (!progressionChartData.length) return { total: 0, obraSocial: 0, particular: 0, avg: 0, peak: null };
@@ -3022,7 +3049,15 @@ export default function DiagnosticoImagenesDashboard({
                                 }}
                             >
                                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB' }} />
-                                Total {selectedAgenda !== 'TODAS' ? 'Estudio' : selectedModalidad === 'TODAS' ? 'General' : selectedModalidad}
+                                {selectedAgenda !== 'TODAS'
+                                    ? 'Total Estudio'
+                                    : selectedModalidad !== 'TODAS'
+                                        ? `Total ${MOD_SERIES_LABELS[selectedModalidad] || selectedModalidad}`
+                                        : isSubsetModalitiesVisible
+                                            ? (activeVisibleMods.length === 1
+                                                ? `Total ${MOD_SERIES_LABELS[activeVisibleMods[0]]}`
+                                                : `Total Seleccionadas (${activeVisibleMods.length})`)
+                                            : 'Total General'}
                             </button>
 
                             {/* Toggles de Cobertura: Obra Social vs Particular (Disponibles en TODAS y en cada estudio singular) */}
@@ -3102,6 +3137,33 @@ export default function DiagnosticoImagenesDashboard({
                                             {s.label}
                                         </button>
                                     ))}
+                                    {isSubsetModalitiesVisible && (
+                                        <button
+                                            onClick={() => setVisibleSeries(prev => ({
+                                                ...prev,
+                                                total: true,
+                                                ECOGRAFIA: true,
+                                                RADIOLOGIA: true,
+                                                MAMOGRAFIA: true,
+                                                TOMOGRAFIA: true,
+                                                DENSITOMETRIA: true,
+                                                ECOCARDIO: true
+                                            }))}
+                                            title="Restablecer todas las modalidades en el gráfico"
+                                            style={{
+                                                borderRadius: '14px',
+                                                padding: '3px 10px',
+                                                fontSize: '0.7rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                background: '#EFF6FF',
+                                                color: COLOR_PRIMARY,
+                                                border: '1px solid #BFDBFE'
+                                            }}
+                                        >
+                                            ↺ Ver todas las modalidades
+                                        </button>
+                                    )}
                                 </>
                             ) : (
                                 <>
@@ -3184,6 +3246,15 @@ export default function DiagnosticoImagenesDashboard({
                                             content={({ active, payload, label }) => {
                                                 if (!active || !payload || !payload.length) return null;
                                                 const pointData = payload[0]?.payload;
+                                                const totalHeaderLabel = selectedAgenda !== 'TODAS'
+                                                    ? `Total ${selectedAgenda}:`
+                                                    : selectedModalidad !== 'TODAS'
+                                                        ? `Total ${MOD_SERIES_LABELS[selectedModalidad] || selectedModalidad}:`
+                                                        : isSubsetModalitiesVisible
+                                                            ? (activeVisibleMods.length === 1
+                                                                ? `Total ${MOD_SERIES_LABELS[activeVisibleMods[0]]}:`
+                                                                : `Total Modalidades Visibles (${activeVisibleMods.length}):`)
+                                                            : 'Total Estudios:';
                                                 return (
                                                     <div style={{
                                                         background: '#FFFFFF',
@@ -3197,8 +3268,8 @@ export default function DiagnosticoImagenesDashboard({
                                                         <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
                                                             {activeGranularity === 'dia' ? `Fecha: ${pointData?.fullDate || label}` : `Período: ${label}`}
                                                         </div>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: 800, color: '#2563EB' }}>
-                                                            <span>Total Estudios:</span>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: 800, color: '#2563EB', gap: '8px' }}>
+                                                            <span>{totalHeaderLabel}</span>
                                                             <span>{(pointData?.total || 0).toLocaleString('es-AR')}</span>
                                                         </div>
                                                         <div style={{
@@ -3242,6 +3313,7 @@ export default function DiagnosticoImagenesDashboard({
                                                 strokeDasharray="5 3"
                                                 dot={{ r: 2, fill: '#0D9488' }}
                                                 activeDot={{ r: 5 }}
+                                                isAnimationActive={false}
                                             />
                                         )}
                                         {visibleSeries.particular && (
@@ -3254,6 +3326,7 @@ export default function DiagnosticoImagenesDashboard({
                                                 strokeDasharray="3 3"
                                                 dot={{ r: 2, fill: '#EA580C' }}
                                                 activeDot={{ r: 5 }}
+                                                isAnimationActive={false}
                                             />
                                         )}
 
@@ -3269,6 +3342,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={2.8} 
                                                         dot={{ r: 2.5, fill: '#2563EB' }} 
                                                         activeDot={{ r: 6 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.ECOGRAFIA && (
@@ -3280,6 +3354,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.RADIOLOGIA && (
@@ -3291,6 +3366,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.MAMOGRAFIA && (
@@ -3302,6 +3378,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.TOMOGRAFIA && (
@@ -3313,6 +3390,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.DENSITOMETRIA && (
@@ -3324,6 +3402,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.ECOCARDIO && (
@@ -3335,6 +3414,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                             </>
@@ -3352,6 +3432,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={2.8} 
                                                         dot={{ r: 2.5, fill: MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB' }} 
                                                         activeDot={{ r: 6 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.ambulatorio && (
@@ -3363,6 +3444,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.hospitalizacion && (
@@ -3374,6 +3456,7 @@ export default function DiagnosticoImagenesDashboard({
                                                         strokeWidth={1.8} 
                                                         dot={false} 
                                                         activeDot={{ r: 5 }} 
+                                                        isAnimationActive={false}
                                                     />
                                                 )}
                                             </>
