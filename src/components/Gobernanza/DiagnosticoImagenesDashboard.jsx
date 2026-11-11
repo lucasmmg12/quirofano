@@ -595,16 +595,19 @@ export default function DiagnosticoImagenesDashboard({
             });
         }
 
+        const todayMonthKey = new Date().toISOString().substring(0, 7);
         const availableMonthsSet = new Set(monthTotalsMap.keys());
         const maxMonthVol = Math.max(1, ...Array.from(monthTotalsMap.values()));
-        // Un mes del caché se considera mes completo si supera el 35% del volumen mensual pico (excluye meses en curso con pocos días)
+        // Un mes del caché se considera mes completo solo si NO es el mes actual en curso y supera el 65% del volumen mensual pico
         const fullAvailableMonthsSet = new Set(
             Array.from(monthTotalsMap.entries())
-                .filter(([, vol]) => vol >= maxMonthVol * 0.35)
+                .filter(([m, vol]) => m !== todayMonthKey && vol >= maxMonthVol * 0.65)
                 .map(([m]) => m)
         );
         if (fullAvailableMonthsSet.size === 0 && availableMonthsSet.size > 0) {
-            availableMonthsSet.forEach(m => fullAvailableMonthsSet.add(m));
+            availableMonthsSet.forEach(m => {
+                if (m !== todayMonthKey) fullAvailableMonthsSet.add(m);
+            });
         }
 
         const sortedFullMonths = Array.from(fullAvailableMonthsSet).sort();
@@ -684,10 +687,9 @@ export default function DiagnosticoImagenesDashboard({
             };
         }
 
-        // Caso 2: El rango incluye meses fuera del caché (ej. Histórico 2022-2026 o meses previos a 2026-01).
+        // Caso 2: El rango incluye meses fuera del caché (ej. Histórico 2022-2026 o meses previos a 2025-01).
         // Para TODOS los meses que existen en el caché (incluido 2026-11 en curso) se usa el dato 100% real de SALUS;
         // solo para meses pasados fuera del caché se proyecta tomando UN SOLO MES plantilla completo.
-        const todayMonthKey = new Date().toISOString().substring(0, 7);
         const getTemplateMonthFor = (mObj) => {
             if (fullMonthByMM.has(mObj.mm)) return fullMonthByMM.get(mObj.mm);
             return referenceMonth;
