@@ -587,7 +587,7 @@ export default function RecetaDocumentoOficial({ receta, compact = false, idDom 
                 </div>
             </div>
 
-            {/* ─── 8. LEYENDA DE FIRMA OLÓGRAFA + PIE MINISTERIO DE SALUD DE LA NACIÓN ─── */}
+            {/* ─── 8. LEYENDA DE FIRMA OLÓGRAFA + BUSCADOR NACIONAL DE MEDICAMENTOS + PIE MSAL ─── */}
             <div
                 style={{
                     textAlign: 'center',
@@ -603,9 +603,36 @@ export default function RecetaDocumentoOficial({ receta, compact = false, idDom 
             <div
                 style={{
                     textAlign: 'center',
-                    fontSize: '0.78rem',
+                    fontSize: '0.84rem',
                     color: '#000000',
                     paddingTop: '6px',
+                    paddingBottom: '6px',
+                    lineHeight: 1.35,
+                }}
+            >
+                <div>Buscador Nacional de Medicamentos:</div>
+                <div>
+                    <a
+                        href="https://www.argentina.gob.ar/buscador-de-precios-de-medicamentos"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                            color: '#0000EE',
+                            textDecoration: 'underline',
+                            wordBreak: 'break-all',
+                        }}
+                    >
+                        https://www.argentina.gob.ar/buscador-de-precios-de-medicamentos
+                    </a>
+                </div>
+            </div>
+
+            <div
+                style={{
+                    textAlign: 'center',
+                    fontSize: '0.78rem',
+                    color: '#000000',
+                    paddingTop: '4px',
                     lineHeight: 1.35,
                 }}
             >

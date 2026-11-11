@@ -560,7 +560,7 @@ export async function construirDocumentoPDFReceta(receta) {
 
     y += 30;
 
-    // ─── 8. LEYENDA DE FIRMA OLÓGRAFA + PIE MINISTERIO DE SALUD DE LA NACIÓN ───
+    // ─── 8. LEYENDA DE FIRMA OLÓGRAFA + BUSCADOR NACIONAL DE MEDICAMENTOS + PIE MSAL ───
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9.2);
     doc.setTextColor(107, 114, 128);
@@ -573,7 +573,27 @@ export async function construirDocumentoPDFReceta(receta) {
 
     y += 4.5;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.2);
+    doc.setFontSize(8.8);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Buscador Nacional de Medicamentos:', centerX, y, { align: 'center' });
+
+    y += 4.2;
+    const buscadorUrl = 'https://www.argentina.gob.ar/buscador-de-precios-de-medicamentos';
+    doc.setTextColor(0, 0, 238); // Azul enlace (#0000EE)
+    const linkW = doc.getTextWidth(buscadorUrl);
+    const linkX = centerX - linkW / 2;
+    if (typeof doc.textWithLink === 'function') {
+        doc.textWithLink(buscadorUrl, linkX, y, { url: buscadorUrl });
+    } else {
+        doc.text(buscadorUrl, centerX, y, { align: 'center' });
+    }
+    doc.setDrawColor(0, 0, 238);
+    doc.setLineWidth(0.22);
+    doc.line(linkX, y + 0.6, linkX + linkW, y + 0.6);
+
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.0);
     doc.setTextColor(0, 0, 0);
     doc.text(
         'Esta receta fue creada por un emisor inscripto y validado en el Registro de Recetarios Electrónicos del',
@@ -584,7 +604,7 @@ export async function construirDocumentoPDFReceta(receta) {
     doc.text(
         `Ministerio de Salud de la Nación (Resolución RL-2024-91317760-APN-SSVEIYES#MS — ${RENAPDIS_INSTITUTION_CONFIG.entidadRazonSocial})`,
         centerX,
-        y + 4,
+        y + 3.8,
         { align: 'center' }
     );
 
