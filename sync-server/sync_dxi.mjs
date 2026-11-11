@@ -84,6 +84,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                 CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS FechaDia,
                 CONVERT(VARCHAR(7), v.[Fecha Visita], 120) AS PeriodoMes,
                 CASE 
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFIA'
                     WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO'
                     WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
                     WHEN v.[Grupo Agenda] = 'GUARDIAS ' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
@@ -94,11 +95,11 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                     ELSE 'OTRAS'
                 END AS Modalidad,
                 CASE 
-                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOCARDIO (DRA. GERBEC)'
-                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO (CARDIÓLOGOS)'
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFIAS'
                     ELSE ISNULL(RTRIM(LTRIM(v.[Grupo Agenda])), 'SIN GRUPO')
                 END AS GrupoAgenda,
                 CASE 
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFÍAS (' + ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'GRAL')) + ')'
                     WHEN v.[Grupo Agenda] IN ('ECOCARDIO', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'TOMOGRAFIA', 'RADIOLOGIA') THEN ISNULL(RTRIM(LTRIM(v.Agenda)), 'SIN AGENDA')
                     ELSE 'ECOGRAFÍAS (' + ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'GRAL')) + ')'
                 END AS AgendaSalus,
@@ -107,6 +108,10 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                 ISNULL(v.Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS Responsable,
                 ISNULL(i.SolicitanteLIS, ISNULL(NULLIF(RTRIM(LTRIM(v.[Persona referidora])), ''), 'NO ESPECIFICADO / EXTERNO')) AS Solicitante,
                 ISNULL(v.Cliente, 'PARTICULAR / SIN FINANCIADOR') AS ObraSocial,
+                CASE 
+                    WHEN LTRIM(ISNULL(v.Cliente, '')) LIKE '[0-9]%' AND LTRIM(ISNULL(v.Cliente, '')) NOT LIKE '042%' THEN 'Obra Social'
+                    ELSE 'Particular'
+                END AS TipoFinanciador,
                 ISNULL(NULLIF(RTRIM(LTRIM(v.Asistencia)), ''), 'SIN REGISTRAR') AS AsistenciaOriginal,
                 CASE 
                     WHEN v.Asistencia = 'Presente' THEN 'Presente'
@@ -124,7 +129,8 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                     WHEN v.Asistencia IN ('Ausencia justificada', 'Ausencia injustificada', 'SUSPENDIDA') THEN 'No Realizado'
                     ELSE 'Ambulatorio'
                 END AS Ambito,
-                ISNULL(i.EstaInformado, 0) AS EstaInformado
+                ISNULL(i.EstaInformado, 0) AS EstaInformado,
+                CASE WHEN i.idVisita IS NULL THEN 0 ELSE 1 END AS TienePeticionLIS
             INTO #TempDxI
             FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
             LEFT JOIN #InformesVisitas i ON i.idVisita = v.idVisita
@@ -140,48 +146,100 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
 
             DELETE FROM #TempDxI WHERE Modalidad = 'OTRAS';
 
-            -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia e Informe (con PeriodoMes para filtrado en caché)
-            -- Nota: Informados y PendientesInforme se contabilizan estrictamente sobre estudios efectivamente realizados
-            SELECT PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad,
+            -- 3. Detectar y separar todas las Ecografías efectivamente asistidas pero SIN INFORMAR antes de excluirlas de la suma
+            SELECT 
+                PeriodoMes,
+                GrupoAgenda,
+                AgendaSalus,
+                Agenda,
+                Responsable,
+                Centro,
+                Ambito,
+                EstadoAsistencia,
+                TipoFinanciador,
+                TienePeticionLIS,
+                CASE 
+                    WHEN Agenda LIKE '%CONSULTA DE PUNCION%' OR Agenda LIKE '%GUIA POR ECOGRAFIA%' OR Agenda LIKE '%PUNCION GUIADA%' THEN 'Práctica de Punción / Guía / Gasto (Sin informe ecográfico)'
+                    WHEN TienePeticionLIS = 0 THEN 'Turno en Agenda sin Petición en LIS'
+                    WHEN GrupoAgenda LIKE 'GUARDIAS%' OR EstadoAsistencia IN ('Internado', 'Urgencia') THEN 'Ecografía de Guardia / Internación sin firma en LIS'
+                    ELSE 'Ecografía Ambulatoria con Petición LIS pendiente de firma'
+                END AS MotivoSinInforme,
+                COUNT(*) AS Cantidad
+            INTO #EcoSinInformar
+            FROM #TempDxI
+            WHERE Modalidad = 'ECOGRAFIA'
+              AND EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno')
+              AND EstaInformado = 0
+            GROUP BY 
+                PeriodoMes,
+                GrupoAgenda,
+                AgendaSalus,
+                Agenda,
+                Responsable,
+                Centro,
+                Ambito,
+                EstadoAsistencia,
+                TipoFinanciador,
+                TienePeticionLIS,
+                CASE 
+                    WHEN Agenda LIKE '%CONSULTA DE PUNCION%' OR Agenda LIKE '%GUIA POR ECOGRAFIA%' OR Agenda LIKE '%PUNCION GUIADA%' THEN 'Práctica de Punción / Guía / Gasto (Sin informe ecográfico)'
+                    WHEN TienePeticionLIS = 0 THEN 'Turno en Agenda sin Petición en LIS'
+                    WHEN GrupoAgenda LIKE 'GUARDIAS%' OR EstadoAsistencia IN ('Internado', 'Urgencia') THEN 'Ecografía de Guardia / Internación sin firma en LIS'
+                    ELSE 'Ecografía Ambulatoria con Petición LIS pendiente de firma'
+                END;
+
+            -- Quitar de la suma de ECOGRAFIA todas las que están sin informar
+            DELETE FROM #TempDxI
+            WHERE Modalidad = 'ECOGRAFIA'
+              AND EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno')
+              AND EstaInformado = 0;
+
+            -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia, TipoFinanciador e Informe (con PeriodoMes para filtrado en caché)
+            SELECT PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador,
+                   COUNT(*) AS Cantidad,
                    SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 1 THEN 1 ELSE 0 END) AS Informados,
                    SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal;
+            GROUP BY PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador;
 
-            -- Set 1: Prestadores que la Realizan (por PeriodoMes y Modalidad para resumen general ultrarrápido)
-            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorRealiza, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 1: Prestadores que la Realizan (por PeriodoMes, Modalidad y TipoFinanciador)
+            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorRealiza, EstadoAsistencia, TipoFinanciador, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Responsable, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Responsable, EstadoAsistencia, TipoFinanciador;
 
-            -- Set 2: Prestadores que la Solicitan (por PeriodoMes y Modalidad)
-            SELECT PeriodoMes, Modalidad, Solicitante AS PrestadorSolicita, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 2: Prestadores que la Solicitan (por PeriodoMes, Modalidad y TipoFinanciador)
+            SELECT PeriodoMes, Modalidad, Solicitante AS PrestadorSolicita, EstadoAsistencia, TipoFinanciador, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, Solicitante, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, Solicitante, EstadoAsistencia, TipoFinanciador;
 
-            -- Set 3: Prestadores que la Informan (solo estudios efectivamente realizados y firmados/informados, con PeriodoMes)
-            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorInforma, COUNT(*) AS Cantidad
+            -- Set 3: Prestadores que la Informan (solo estudios efectivamente realizados y firmados/informados)
+            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorInforma, TipoFinanciador, COUNT(*) AS Cantidad
             FROM #TempDxI
             WHERE EstaInformado = 1
               AND EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno')
-            GROUP BY PeriodoMes, Modalidad, Responsable;
+            GROUP BY PeriodoMes, Modalidad, Responsable, TipoFinanciador;
 
-            -- Set 4: Obras Sociales (por PeriodoMes y Modalidad)
-            SELECT PeriodoMes, Modalidad, ObraSocial, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 4: Obras Sociales (por PeriodoMes, Modalidad y TipoFinanciador)
+            SELECT PeriodoMes, Modalidad, ObraSocial, TipoFinanciador, EstadoAsistencia, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, ObraSocial, EstadoAsistencia;
+            GROUP BY PeriodoMes, Modalidad, ObraSocial, TipoFinanciador, EstadoAsistencia;
 
-            -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia)
-            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, COUNT(*) AS Cantidad
+            -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia, TipoFinanciador)
+            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, TipoFinanciador, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia
+            GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, TipoFinanciador
             ORDER BY FechaDia ASC;
 
-            -- Set 6: Desglose Agregado por Estado de Asistencia (con PeriodoMes)
-            SELECT PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, COUNT(*) AS Cantidad
+            -- Set 6: Desglose Agregado por Estado de Asistencia (con PeriodoMes y TipoFinanciador)
+            SELECT PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador, COUNT(*) AS Cantidad
             FROM #TempDxI
-            GROUP BY PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal
+            GROUP BY PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador
             ORDER BY Cantidad DESC;
 
+            -- Set 7: Ecografías Sin Informar detectadas y excluidas de la suma
+            SELECT * FROM #EcoSinInformar ORDER BY Cantidad DESC;
+
+            DROP TABLE #EcoSinInformar;
             DROP TABLE #TempDxI;
             DROP TABLE #InformesVisitas;
         `;
@@ -228,7 +286,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                 if (isTop || (r.Cantidad || 0) >= 5) {
                     out.push(r);
                 } else {
-                    const bKey = `${r.PeriodoMes}|${r.Modalidad}|${r.Agenda || 'SIN AGENDA'}|${r.EstadoAsistencia || ''}`;
+                    const bKey = `${r.PeriodoMes}|${r.Modalidad}|${r.Agenda || 'SIN AGENDA'}|${r.EstadoAsistencia || ''}|${r.TipoFinanciador || ''}`;
                     if (!tailBuckets.has(bKey)) {
                         const baseObj = {
                             PeriodoMes: r.PeriodoMes,
@@ -238,6 +296,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                             Cantidad: 0
                         };
                         if (r.EstadoAsistencia !== undefined) baseObj.EstadoAsistencia = r.EstadoAsistencia;
+                        if (r.TipoFinanciador !== undefined) baseObj.TipoFinanciador = r.TipoFinanciador;
                         tailBuckets.set(bKey, baseObj);
                     }
                     tailBuckets.get(bKey).Cantidad += (r.Cantidad || 0);
@@ -260,6 +319,8 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             obrasSociales: compactRankingSet(res.recordsets[4] || [], 'ObraSocial', 'OTRAS OBRAS SOCIALES (MENOR VOLUMEN)'),
             evolucion: res.recordsets[5] || [],
             asistencias: res.recordsets[6] || [],
+            ecografiasSinInformar: res.recordsets[7] || [],
+            schemaVersion: 'dxi_v3_financiador_eco_informadas',
             ultima_actualizacion: new Date().toISOString()
         };
 
@@ -295,6 +356,7 @@ export async function getDxICasosNominales({
     agenda = 'TODAS',
     ambito = 'TODOS',
     estadoAsistencia = 'TODOS',
+    tipoFinanciador = 'TODOS',
     realizador = '',
     solicitante = '',
     obraSocial = '',
@@ -315,6 +377,7 @@ export async function getDxICasosNominales({
             .input('agenda', sql.VarChar, agenda || 'TODAS')
             .input('ambito', sql.VarChar, ambito || 'TODOS')
             .input('estadoAsistencia', sql.VarChar, estadoAsistencia || 'TODOS')
+            .input('tipoFinanciador', sql.VarChar, tipoFinanciador || 'TODOS')
             .input('realizador', sql.VarChar, realizador ? `%${realizador}%` : '')
             .input('solicitante', sql.VarChar, solicitante ? `%${solicitante}%` : '')
             .input('obraSocial', sql.VarChar, obraSocial ? `%${obraSocial}%` : '')
@@ -353,6 +416,7 @@ export async function getDxICasosNominales({
                     v.Edad AS edad,
                     ISNULL(v.Sexo, '') AS sexo,
                     CASE 
+                        WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFIA'
                         WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO'
                         WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
                         WHEN v.[Grupo Agenda] = 'GUARDIAS ' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
@@ -368,6 +432,10 @@ export async function getDxICasosNominales({
                     ISNULL(v.Responsable, 'SIN ASIGNAR / INSTITUCIONAL') AS realizador,
                     ISNULL(i.SolicitanteLIS, ISNULL(NULLIF(RTRIM(LTRIM(v.[Persona referidora])), ''), 'NO ESPECIFICADO / EXTERNO')) AS solicitante,
                     ISNULL(v.Cliente, 'PARTICULAR / SIN FINANCIADOR') AS obra_social,
+                    CASE 
+                        WHEN LTRIM(ISNULL(v.Cliente, '')) LIKE '[0-9]%' AND LTRIM(ISNULL(v.Cliente, '')) NOT LIKE '042%' THEN 'Obra Social'
+                        ELSE 'Particular'
+                    END AS tipo_financiador,
                     ISNULL(NULLIF(RTRIM(LTRIM(v.Asistencia)), ''), 'SIN REGISTRAR') AS asistencia_original,
                     CASE 
                         WHEN v.Asistencia = 'Presente' THEN 'Presente'
@@ -404,10 +472,12 @@ export async function getDxICasosNominales({
             SELECT TOP (${safeLimit}) *
             FROM BaseCasos
             WHERE modalidad <> 'OTRAS'
+              AND NOT (modalidad = 'ECOGRAFIA' AND estado_asistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND informado = 0)
               AND (@modalidad = 'TODAS' OR modalidad = @modalidad)
               AND (@agenda = 'TODAS' OR agenda = @agenda)
               AND (@ambito = 'TODOS' OR ambito = @ambito)
               AND (@estadoAsistencia = 'TODOS' OR estado_asistencia = @estadoAsistencia)
+              AND (@tipoFinanciador = 'TODOS' OR tipo_financiador = @tipoFinanciador)
               AND (@realizador = '' OR realizador LIKE @realizador)
               AND (@solicitante = '' OR solicitante LIKE @solicitante)
               AND (@obraSocial = '' OR obra_social LIKE @obraSocial)

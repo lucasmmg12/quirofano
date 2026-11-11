@@ -59,14 +59,28 @@ export const ASISTENCIA_CONFIG = {
     'Sin Registrar': { label: 'Sin Registrar / Trámite', shortLabel: 'Sin Reg.', color: '#64748B', bg: '#F8FAFC', border: '#E2E8F0', text: '#334155', desc: 'Estado pendiente o no asignado' }
 };
 
+// Regla oficial de clasificación de financiador en SALUS (Gobernanza de Datos):
+// - Comienza con un número adelante (0-9) EXCEPTO 042 => "Obra Social"
+// - Es 042 ("042 - PARTICULARES") o comienza con letras (nombre propio / particular) => "Particular"
+export const classifyFinanciador = (obraSocial, rowTipoFinanciador) => {
+    if (rowTipoFinanciador === 'Obra Social' || rowTipoFinanciador === 'Particular') {
+        return rowTipoFinanciador;
+    }
+    const raw = String(obraSocial || '').trim();
+    if (/^[0-9]/.test(raw) && !raw.startsWith('042')) {
+        return 'Obra Social';
+    }
+    return 'Particular';
+};
+
 const MODALIDADES_TABS = [
     { id: 'TODAS', label: 'Todas las Modalidades', icon: Layers, badgeColor: '#3B82F6' },
-    { id: 'ECOGRAFIA', label: 'Ecografía (ECO)', icon: Activity, badgeColor: '#06B6D4' },
+    { id: 'ECOGRAFIA', label: 'Ecografía (ECO)', icon: Activity, badgeColor: '#06B6D4', note: 'Solo informadas' },
     { id: 'RADIOLOGIA', label: 'Radiología (RX)', icon: Activity, badgeColor: '#6366F1' },
     { id: 'MAMOGRAFIA', label: 'Mamografía', icon: Activity, badgeColor: '#EC4899', note: 'Sin Densitometría' },
     { id: 'TOMOGRAFIA', label: 'Tomografía (TC)', icon: Activity, badgeColor: '#F59E0B', note: 'Sin contrastes' },
     { id: 'DENSITOMETRIA', label: 'Densitometría Ósea', icon: Activity, badgeColor: '#10B981', note: 'Separada de Mamo' },
-    { id: 'ECOCARDIO', label: 'Ecocardiograma', icon: Activity, badgeColor: '#E11D48' }
+    { id: 'ECOCARDIO', label: 'Ecocardiograma', icon: Activity, badgeColor: '#E11D48', note: '4 Agendas Cardiólogos' }
 ];
 
 export default function DiagnosticoImagenesDashboard({
@@ -95,6 +109,7 @@ export default function DiagnosticoImagenesDashboard({
         agenda: 'TODAS',
         ambito: 'TODOS',
         estadoAsistencia: 'TODOS',
+        tipoFinanciador: 'TODOS',
         realizador: '',
         solicitante: '',
         obraSocial: ''
@@ -103,9 +118,10 @@ export default function DiagnosticoImagenesDashboard({
     // Filtros de navegación
     const [selectedModalidad, setSelectedModalidad] = useState('TODAS');
     const [selectedAgenda, setSelectedAgenda] = useState('TODAS');
-    const [ecocardioSubFilter, setEcocardioSubFilter] = useState('TODOS'); // 'TODOS' | 'CARDIOLOGOS' | 'GERBEC'
     const [filterAmbito, setFilterAmbito] = useState('TODOS'); // 'TODOS' | 'Ambulatorio' | 'Hospitalización'
     const [filterAsistencia, setFilterAsistencia] = useState('TODOS'); // 'TODOS' | 'Presente' | 'Internado' | 'Urgencia' | 'Sobreturno' | 'Ausente' | 'Sin Registrar'
+    const [filterFinanciador, setFilterFinanciador] = useState('TODOS'); // 'TODOS' | 'Obra Social' | 'Particular'
+    const [ecoSinInformarExpanded, setEcoSinInformarExpanded] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTabDetail, setActiveTabDetail] = useState('prestadores'); // 'prestadores' | 'solicitantes' | 'informantes' | 'asistencia' | 'obras_sociales' | 'centros'
 
@@ -114,6 +130,8 @@ export default function DiagnosticoImagenesDashboard({
     const [chartCollapsed, setChartCollapsed] = useState(false);
     const [visibleSeries, setVisibleSeries] = useState({
         total: true,
+        obraSocial: true,
+        particular: true,
         ECOGRAFIA: true,
         RADIOLOGIA: true,
         MAMOGRAFIA: true,
@@ -253,7 +271,11 @@ export default function DiagnosticoImagenesDashboard({
                 if (cfg?.value) {
                     try {
                         const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
-                        const hasUpdatedSchema = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO' && Boolean(r.AgendaSalus) && (r.GrupoAgenda || '').includes('GERBEC'));
+                        const hasUpdatedSchema = parsed?.schemaVersion === 'dxi_v3_financiador_eco_informadas' || (
+                            Array.isArray(parsed?.agendas) &&
+                            parsed.agendas.some(r => Boolean(r.TipoFinanciador)) &&
+                            Array.isArray(parsed?.ecografiasSinInformar)
+                        );
                         if (parsed && Array.isArray(parsed.agendas) && hasUpdatedSchema) {
                             setData(parsed);
                             setLastUpdated(cfg.updated_at || parsed.ultima_actualizacion || new Date().toISOString());
@@ -266,7 +288,7 @@ export default function DiagnosticoImagenesDashboard({
                 }
             }
 
-            // 2. Solo consultar SALUS Sync Server si el usuario pidió Sincronizar SALUS (forceRefresh) o si no había caché fija válida con ECOCARDIO
+            // 2. Solo consultar SALUS Sync Server si el usuario pidió Sincronizar SALUS (forceRefresh) o si no había caché fija válida
             if (!loaded || forceRefresh) {
                 const qs = new URLSearchParams({
                     desde: '2025-01-01',
@@ -334,6 +356,7 @@ export default function DiagnosticoImagenesDashboard({
                 agenda: activeF.agenda || 'TODAS',
                 ambito: activeF.ambito || 'TODOS',
                 estadoAsistencia: activeF.estadoAsistencia || 'TODOS',
+                tipoFinanciador: activeF.tipoFinanciador || 'TODOS',
                 realizador: activeF.realizador || '',
                 solicitante: activeF.solicitante || '',
                 obraSocial: activeF.obraSocial || '',
@@ -419,6 +442,7 @@ export default function DiagnosticoImagenesDashboard({
                             realizador: p.seccion || 'INSTITUCIONAL',
                             solicitante: p.solicitante || 'NO ESPECIFICADO',
                             obra_social: 'SEGÚN ADMISIÓN',
+                            tipo_financiador: 'Particular',
                             estado_asistencia: p.origen === 'Hospitalización' ? 'Internado' : 'Presente',
                             ambito: p.origen === 'Hospitalización' ? 'Hospitalización' : 'Ambulatorio',
                             informado: 1,
@@ -434,6 +458,8 @@ export default function DiagnosticoImagenesDashboard({
                     if (activeF.agenda !== 'TODAS' && c.agenda !== activeF.agenda) return false;
                     if (activeF.ambito !== 'TODOS' && c.ambito !== activeF.ambito) return false;
                     if (activeF.estadoAsistencia !== 'TODOS' && c.estado_asistencia !== activeF.estadoAsistencia) return false;
+                    const fin = classifyFinanciador(c.obra_social, c.tipo_financiador);
+                    if (activeF.tipoFinanciador && activeF.tipoFinanciador !== 'TODOS' && fin !== activeF.tipoFinanciador) return false;
                     if (activeF.realizador && !(c.realizador || '').toLowerCase().includes(activeF.realizador.toLowerCase())) return false;
                     if (activeF.solicitante && !(c.solicitante || '').toLowerCase().includes(activeF.solicitante.toLowerCase())) return false;
                     if (activeF.obraSocial && !(c.obra_social || '').toLowerCase().includes(activeF.obraSocial.toLowerCase())) return false;
@@ -457,6 +483,7 @@ export default function DiagnosticoImagenesDashboard({
             agenda: overrides.agenda !== undefined ? overrides.agenda : selectedAgenda,
             ambito: overrides.ambito !== undefined ? overrides.ambito : filterAmbito,
             estadoAsistencia: overrides.estadoAsistencia !== undefined ? overrides.estadoAsistencia : filterAsistencia,
+            tipoFinanciador: overrides.tipoFinanciador !== undefined ? overrides.tipoFinanciador : filterFinanciador,
             realizador: overrides.realizador || '',
             solicitante: overrides.solicitante || '',
             obraSocial: overrides.obraSocial || ''
@@ -652,6 +679,7 @@ export default function DiagnosticoImagenesDashboard({
                 informantes: filterAndScaleByMonth(data.informantes),
                 obrasSociales: filterAndScaleByMonth(data.obrasSociales),
                 asistencias: filterAndScaleByMonth(data.asistencias),
+                ecografiasSinInformar: filterAndScaleByMonth(data.ecografiasSinInformar),
                 evolucion: filteredEvol
             };
         }
@@ -691,6 +719,7 @@ export default function DiagnosticoImagenesDashboard({
         const informantesByMonth = groupByMonth(data.informantes);
         const obrasSocialesByMonth = groupByMonth(data.obrasSociales);
         const asistenciasByMonth = groupByMonth(data.asistencias);
+        const ecoSinInfByMonth = groupByMonth(data.ecografiasSinInformar);
         const evolucionByMonth = groupByMonth(data.evolucion);
 
         const buildCollectionForMonths = (byMonthMap, fallbackArr, keyFn, isAgenda = false) => {
@@ -782,9 +811,9 @@ export default function DiagnosticoImagenesDashboard({
             } else {
                 const modMap = new Map();
                 tplEvolRows.forEach(e => {
-                    const k = `${e.Modalidad}|${e.Ambito}|${e.EstadoAsistencia}`;
+                    const k = `${e.Modalidad}|${e.Ambito}|${e.EstadoAsistencia}|${e.TipoFinanciador || ''}`;
                     if (!modMap.has(k)) {
-                        modMap.set(k, { Modalidad: e.Modalidad, Ambito: e.Ambito, EstadoAsistencia: e.EstadoAsistencia, Cantidad: 0 });
+                        modMap.set(k, { Modalidad: e.Modalidad, Ambito: e.Ambito, EstadoAsistencia: e.EstadoAsistencia, TipoFinanciador: e.TipoFinanciador, Cantidad: 0 });
                     }
                     modMap.get(k).Cantidad += (e.Cantidad || 0);
                 });
@@ -796,6 +825,7 @@ export default function DiagnosticoImagenesDashboard({
                         Modalidad: tpl.Modalidad,
                         Ambito: tpl.Ambito,
                         EstadoAsistencia: tpl.EstadoAsistencia,
+                        TipoFinanciador: tpl.TipoFinanciador,
                         Cantidad: Math.max(1, Math.round(tpl.Cantidad * factor * itemJitter(`${mObj.key}_${tpl.Modalidad}`)))
                     });
                 });
@@ -805,21 +835,23 @@ export default function DiagnosticoImagenesDashboard({
         return {
             ...data,
             rango: { fechaDesde: effectiveDesde, fechaHasta: effectiveHasta },
-            agendas: buildCollectionForMonths(agendasByMonth, data.agendas, r => `${r.Modalidad}_${r.Agenda}_${r.EstadoAsistencia}`, true),
-            realizadores: buildCollectionForMonths(realizadoresByMonth, data.realizadores, r => `${r.Modalidad}_${r.PrestadorRealiza}_${r.EstadoAsistencia}`),
-            solicitantes: buildCollectionForMonths(solicitantesByMonth, data.solicitantes, r => `${r.Modalidad}_${r.PrestadorSolicita}_${r.EstadoAsistencia}`),
-            informantes: buildCollectionForMonths(informantesByMonth, data.informantes, r => `${r.Modalidad}_${r.PrestadorInforma}`),
+            agendas: buildCollectionForMonths(agendasByMonth, data.agendas, r => `${r.Modalidad}_${r.Agenda}_${r.EstadoAsistencia}_${r.TipoFinanciador || ''}`, true),
+            realizadores: buildCollectionForMonths(realizadoresByMonth, data.realizadores, r => `${r.Modalidad}_${r.PrestadorRealiza}_${r.EstadoAsistencia}_${r.TipoFinanciador || ''}`),
+            solicitantes: buildCollectionForMonths(solicitantesByMonth, data.solicitantes, r => `${r.Modalidad}_${r.PrestadorSolicita}_${r.EstadoAsistencia}_${r.TipoFinanciador || ''}`),
+            informantes: buildCollectionForMonths(informantesByMonth, data.informantes, r => `${r.Modalidad}_${r.PrestadorInforma}_${r.TipoFinanciador || ''}`),
             obrasSociales: buildCollectionForMonths(obrasSocialesByMonth, data.obrasSociales, r => `${r.Modalidad}_${r.ObraSocial}_${r.EstadoAsistencia}`),
-            asistencias: buildCollectionForMonths(asistenciasByMonth, data.asistencias, r => `${r.Modalidad}_${r.AsistenciaOriginal}_${r.EstadoAsistencia}`),
+            asistencias: buildCollectionForMonths(asistenciasByMonth, data.asistencias, r => `${r.Modalidad}_${r.AsistenciaOriginal}_${r.EstadoAsistencia}_${r.TipoFinanciador || ''}`),
+            ecografiasSinInformar: buildCollectionForMonths(ecoSinInfByMonth, data.ecografiasSinInformar, r => `${r.Agenda}_${r.Responsable}_${r.EstadoAsistencia}`),
             evolucion: scaledEvolucion
         };
     }, [data, effectiveDesde, effectiveHasta, MONTH_SEASONAL_WEIGHTS]);
 
-    // 1. Resumen de conteos globales por modalidad (priorizando estudios efectivamente realizados)
+    // 1. Resumen de conteos globales por modalidad (priorizando estudios efectivamente realizados y respetando filtro de financiador)
     const modalidadCounts = useMemo(() => {
         if (!scopedData?.agendas) return {};
         const counts = { TODAS: 0, ECOGRAFIA: 0, RADIOLOGIA: 0, MAMOGRAFIA: 0, TOMOGRAFIA: 0, DENSITOMETRIA: 0, ECOCARDIO: 0 };
         scopedData.agendas.forEach(row => {
+            if (filterFinanciador !== 'TODOS' && row.TipoFinanciador && row.TipoFinanciador !== filterFinanciador) return;
             const cant = row.Cantidad || 0;
             // Priorizar conteo de estudios efectivamente realizados
             if (row.EstadoAsistencia && ESTADOS_EFECTIVOS.has(row.EstadoAsistencia)) {
@@ -830,7 +862,7 @@ export default function DiagnosticoImagenesDashboard({
             }
         });
         return counts;
-    }, [scopedData, ESTADOS_EFECTIVOS]);
+    }, [scopedData, filterFinanciador, ESTADOS_EFECTIVOS]);
     const modalidadTotals = modalidadCounts;
 
     // 1.b Desglose conciliado de los Grupos de Agenda SALUS "MAMOGRAFIA" vs "DENSITOMETRIA Y MAMOGRAFIA"
@@ -844,6 +876,7 @@ export default function DiagnosticoImagenesDashboard({
             if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
             if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return;
             if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
 
             const cant = r.Cantidad || 0;
             const grp = (r.GrupoAgenda || '').toUpperCase();
@@ -862,8 +895,8 @@ export default function DiagnosticoImagenesDashboard({
 
         const totalMamoPura = mamoGrupoMamografia + mamoGrupoMixto;
         const totalDensitoPura = densitoGrupoMixto;
-        const totalGrupoMixtoSalus = mamoGrupoMixto + densitoGrupoMixto; // Todo el Grupo "DENSITOMETRIA Y MAMOGRAFIA" en Santa Fe
-        const totalAmbosGruposSalus = mamoGrupoMamografia + totalGrupoMixtoSalus; // Ej: 851 en Oct/26 (667 Mamo + 184 Densito)
+        const totalGrupoMixtoSalus = mamoGrupoMixto + densitoGrupoMixto;
+        const totalAmbosGruposSalus = mamoGrupoMamografia + totalGrupoMixtoSalus;
 
         return {
             mamoGrupoMamografia,
@@ -874,94 +907,85 @@ export default function DiagnosticoImagenesDashboard({
             totalGrupoMixtoSalus,
             totalAmbosGruposSalus
         };
-    }, [scopedData, filterAmbito, filterAsistencia, ESTADOS_EFECTIVOS]);
+    }, [scopedData, filterAmbito, filterAsistencia, filterFinanciador, ESTADOS_EFECTIVOS]);
 
-    // 1.c Desglose conciliado del Grupo Agenda SALUS "ECOCARDIO": 4 Agendas Cardiólogos vs Agenda Dra. Gerbec Daniela
-    const ecocardioBreakdown = useMemo(() => {
-        if (!scopedData?.agendas) return null;
-        let totalEcocardio = 0;
-        let gerbecFromAgenda = 0;
-        let hasTaggedGrupo = false;
-
-        // Desglose nominal de estudios realizados por Dra. Gerbec dentro de ECOCARDIO
-        const gerbecStudiesMap = new Map();
-        const cardiologosAgendasMap = new Map();
-
-        scopedData.agendas.forEach(r => {
-            if (r.Modalidad !== 'ECOCARDIO') return;
-            if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
-            if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return;
-            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return;
-
-            const cant = r.Cantidad || 0;
-            totalEcocardio += cant;
-            const grp = (r.GrupoAgenda || '').toUpperCase();
-            const agSalus = (r.AgendaSalus || '').toUpperCase();
-            const isGerbecRow = grp.includes('GERBEC') || agSalus.includes('GERBEC');
-
-            if (grp.includes('GERBEC') || grp.includes('CARDI') || agSalus.includes('GERBEC')) {
-                hasTaggedGrupo = true;
-            }
-            if (isGerbecRow) {
-                gerbecFromAgenda += cant;
-                const studyName = r.Agenda || 'Eco Doppler Vascular';
-                gerbecStudiesMap.set(studyName, (gerbecStudiesMap.get(studyName) || 0) + cant);
-            } else if (r.AgendaSalus) {
-                cardiologosAgendasMap.set(r.AgendaSalus, (cardiologosAgendasMap.get(r.AgendaSalus) || 0) + cant);
-            }
-        });
-
-        let gerbecCount = gerbecFromAgenda;
-        if (!hasTaggedGrupo && Array.isArray(scopedData.realizadores)) {
-            gerbecCount = 0;
-            scopedData.realizadores.forEach(r => {
-                if (r.Modalidad !== 'ECOCARDIO') return;
-                if (filterAsistencia !== 'TODOS') {
-                    if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
-                } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
-                    return;
-                }
-                if ((r.PrestadorRealiza || '').toUpperCase().includes('GERBEC')) {
-                    gerbecCount += (r.Cantidad || 0);
-                }
-            });
+    // 1.c Resumen y Auditoría de Ecografías Sin Informar (detectadas y excluidas de la suma de producción efectiva)
+    const ecoSinInformarSummary = useMemo(() => {
+        const rows = scopedData?.ecografiasSinInformar || [];
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return { totalExcluidas: 0, obraSocial: 0, particular: 0, porMotivo: [], detalleEstudios: [] };
         }
 
-        const cardiologosCount = Math.max(0, totalEcocardio - gerbecCount);
-        const gerbecStudies = Array.from(gerbecStudiesMap.entries())
-            .map(([estudio, cantidad]) => ({ estudio, cantidad }))
+        let totalExcluidas = 0;
+        let obraSocial = 0;
+        let particular = 0;
+        const motivoMap = new Map();
+        const detalleMap = new Map();
+
+        rows.forEach(r => {
+            if (filterAmbito !== 'TODOS' && r.Ambito && r.Ambito !== filterAmbito) return;
+            if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
+            if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return;
+
+            const cant = r.Cantidad || 0;
+            if (cant <= 0) return;
+
+            totalExcluidas += cant;
+            if (r.TipoFinanciador === 'Obra Social') obraSocial += cant;
+            else particular += cant;
+
+            const mot = r.MotivoSinInforme || 'Ecografía sin firma/informe en LIS';
+            motivoMap.set(mot, (motivoMap.get(mot) || 0) + cant);
+
+            const dKey = `${r.Agenda}|${r.AgendaSalus || ''}|${r.Responsable || ''}|${mot}`;
+            if (!detalleMap.has(dKey)) {
+                detalleMap.set(dKey, {
+                    estudio: r.Agenda || 'SIN ESPECIFICAR',
+                    agendaSalus: r.AgendaSalus || r.GrupoAgenda || 'ECOGRAFIAS',
+                    responsable: r.Responsable || 'SIN ASIGNAR',
+                    motivo: mot,
+                    tienePeticionLIS: Boolean(r.TienePeticionLIS),
+                    obraSocial: 0,
+                    particular: 0,
+                    cantidad: 0
+                });
+            }
+            const item = detalleMap.get(dKey);
+            item.cantidad += cant;
+            if (r.TipoFinanciador === 'Obra Social') item.obraSocial += cant;
+            else item.particular += cant;
+        });
+
+        const porMotivo = Array.from(motivoMap.entries())
+            .map(([motivo, cantidad]) => ({
+                motivo,
+                cantidad,
+                porcentaje: totalExcluidas > 0 ? ((cantidad / totalExcluidas) * 100).toFixed(1) : '0.0'
+            }))
             .sort((a, b) => b.cantidad - a.cantidad);
-        const cardiologosAgendas = Array.from(cardiologosAgendasMap.entries())
-            .map(([agenda, cantidad]) => ({ agenda, cantidad }))
+
+        const detalleEstudios = Array.from(detalleMap.values())
             .sort((a, b) => b.cantidad - a.cantidad);
 
         return {
-            cardiologos: cardiologosCount,
-            gerbec: gerbecCount,
-            totalGrupoSalus: totalEcocardio,
-            hasTaggedGrupo,
-            gerbecStudies,
-            cardiologosAgendas
+            totalExcluidas,
+            obraSocial,
+            particular,
+            porMotivo,
+            detalleEstudios
         };
-    }, [scopedData, filterAmbito, filterAsistencia, ESTADOS_EFECTIVOS]);
+    }, [scopedData?.ecografiasSinInformar, filterAmbito, filterAsistencia, filterFinanciador, selectedAgenda]);
 
-    // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia y búsqueda
+    // 2. Agendas filtradas por modalidad seleccionada, ámbito, asistencia, financiador y búsqueda
     const filteredAgendasRows = useMemo(() => {
         if (!scopedData?.agendas) return [];
-        const hasTaggedEcocardio = scopedData.agendas.some(r =>
-            r.Modalidad === 'ECOCARDIO' &&
-            ((r.GrupoAgenda || '').toUpperCase().includes('GERBEC') || (r.AgendaSalus || '').toUpperCase().includes('GERBEC'))
-        );
 
         return scopedData.agendas.filter(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
-            if (r.Modalidad === 'ECOCARDIO' && ecocardioSubFilter !== 'TODOS' && hasTaggedEcocardio) {
-                const isGerbec = (r.GrupoAgenda || '').toUpperCase().includes('GERBEC') || (r.AgendaSalus || '').toUpperCase().includes('GERBEC');
-                if (ecocardioSubFilter === 'CARDIOLOGOS' && isGerbec) return false;
-                if (ecocardioSubFilter === 'GERBEC' && !isGerbec) return false;
-            }
             if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return false;
             if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return false;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return false;
             if (searchTerm.trim()) {
                 const term = searchTerm.toLowerCase();
                 const ag = (r.Agenda || '').toLowerCase();
@@ -972,9 +996,9 @@ export default function DiagnosticoImagenesDashboard({
             }
             return true;
         });
-    }, [scopedData, selectedModalidad, ecocardioSubFilter, filterAmbito, filterAsistencia, searchTerm]);
+    }, [scopedData, selectedModalidad, filterAmbito, filterAsistencia, filterFinanciador, searchTerm]);
 
-    // 3. Agrupación por Agenda Única (sumando centros, ámbitos y asistencias)
+    // 3. Agrupación por Agenda Única / Estudio en Singular (sumando centros, ámbitos, asistencias y diferenciando Obra Social vs Particular)
     const agendasSummaryList = useMemo(() => {
         const map = new Map();
         filteredAgendasRows.forEach(r => {
@@ -985,6 +1009,10 @@ export default function DiagnosticoImagenesDashboard({
                     modalidad: r.Modalidad,
                     total: 0,
                     realizados: 0,
+                    obraSocial: 0,
+                    particular: 0,
+                    totalObraSocial: 0,
+                    totalParticular: 0,
                     ambulatorio: 0,
                     hospitalizacion: 0,
                     presente: 0,
@@ -1001,7 +1029,12 @@ export default function DiagnosticoImagenesDashboard({
             }
             const item = map.get(key);
             const cant = r.Cantidad || 0;
+            const isOS = (r.TipoFinanciador || 'Obra Social') === 'Obra Social';
+
             item.total += cant;
+            if (isOS) item.totalObraSocial += cant;
+            else item.totalParticular += cant;
+
             if (r.Ambito === 'Hospitalización') item.hospitalizacion += cant;
             else item.ambulatorio += cant;
 
@@ -1017,6 +1050,8 @@ export default function DiagnosticoImagenesDashboard({
             item.realizados = item.presente + item.internado + item.urgencia + item.sobreturno;
 
             if (ESTADOS_EFECTIVOS.has(estado)) {
+                if (isOS) item.obraSocial += cant;
+                else item.particular += cant;
                 item.informados += r.Informados || 0;
                 item.pendientes += r.PendientesInforme || 0;
             }
@@ -1032,7 +1067,7 @@ export default function DiagnosticoImagenesDashboard({
         });
     }, [filteredAgendasRows, filterAsistencia, ESTADOS_EFECTIVOS]);
 
-    // 3.b Agrupación por Agenda Médica SALUS real (v.Agenda: ej. DRA RUARTE CELINA, DR LOPEZ IGNACIO, DRA GERBEC DANIELA, DENSITOMETRIA Y MAMOGRAFIA (CE), etc.)
+    // 3.b Agrupación por Agenda Médica SALUS real (v.Agenda: ej. DRA RUARTE CELINA, DR LOPEZ IGNACIO, DENSITOMETRIA Y MAMOGRAFIA (CE), etc.)
     const agendasSalusList = useMemo(() => {
         const map = new Map();
         filteredAgendasRows.forEach(r => {
@@ -1045,6 +1080,8 @@ export default function DiagnosticoImagenesDashboard({
                     modalidad: r.Modalidad,
                     centro: r.Centro || '',
                     realizados: 0,
+                    obraSocial: 0,
+                    particular: 0,
                     total: 0
                 });
             }
@@ -1053,36 +1090,49 @@ export default function DiagnosticoImagenesDashboard({
             item.total += cant;
             if (ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
                 item.realizados += cant;
+                if ((r.TipoFinanciador || 'Obra Social') === 'Obra Social') item.obraSocial += cant;
+                else item.particular += cant;
             }
         });
         return Array.from(map.values()).sort((a, b) => b.realizados - a.realizados);
     }, [filteredAgendasRows, ESTADOS_EFECTIVOS]);
 
-    // 4. Totales del filtro activo (priorizando estudios efectivamente realizados)
+    // 4. Totales del filtro activo (priorizando estudios efectivamente realizados y diferenciando Obra Social vs Particular)
     const totals = useMemo(() => {
-        const total = agendasSummaryList.reduce((acc, a) => acc + a.total, 0);
-        const ambulatorio = agendasSummaryList.reduce((acc, a) => acc + a.ambulatorio, 0);
-        const hospitalizacion = agendasSummaryList.reduce((acc, a) => acc + a.hospitalizacion, 0);
-        const presente = agendasSummaryList.reduce((acc, a) => acc + (a.presente || 0), 0);
-        const internado = agendasSummaryList.reduce((acc, a) => acc + (a.internado || 0), 0);
-        const urgencia = agendasSummaryList.reduce((acc, a) => acc + (a.urgencia || 0), 0);
-        const sobreturno = agendasSummaryList.reduce((acc, a) => acc + (a.sobreturno || 0), 0);
-        const ausente = agendasSummaryList.reduce((acc, a) => acc + (a.ausente || 0), 0);
-        const sinRegistrar = agendasSummaryList.reduce((acc, a) => acc + (a.sinRegistrar || 0), 0);
+        const sourceList = selectedAgenda !== 'TODAS'
+            ? agendasSummaryList.filter(a => a.agenda === selectedAgenda)
+            : agendasSummaryList;
+
+        const total = sourceList.reduce((acc, a) => acc + a.total, 0);
+        const ambulatorio = sourceList.reduce((acc, a) => acc + a.ambulatorio, 0);
+        const hospitalizacion = sourceList.reduce((acc, a) => acc + a.hospitalizacion, 0);
+        const presente = sourceList.reduce((acc, a) => acc + (a.presente || 0), 0);
+        const internado = sourceList.reduce((acc, a) => acc + (a.internado || 0), 0);
+        const urgencia = sourceList.reduce((acc, a) => acc + (a.urgencia || 0), 0);
+        const sobreturno = sourceList.reduce((acc, a) => acc + (a.sobreturno || 0), 0);
+        const ausente = sourceList.reduce((acc, a) => acc + (a.ausente || 0), 0);
+        const sinRegistrar = sourceList.reduce((acc, a) => acc + (a.sinRegistrar || 0), 0);
+        const obraSocial = sourceList.reduce((acc, a) => acc + (a.obraSocial || 0), 0);
+        const particular = sourceList.reduce((acc, a) => acc + (a.particular || 0), 0);
 
         // ESTUDIOS EFECTIVAMENTE REALIZADOS (Presente + Internado + Urgencia + Sobreturno)
         const realizados = presente + internado + urgencia + sobreturno;
 
-        const informados = agendasSummaryList.reduce((acc, a) => acc + a.informados, 0);
-        const pendientes = agendasSummaryList.reduce((acc, a) => acc + a.pendientes, 0);
+        const informados = sourceList.reduce((acc, a) => acc + a.informados, 0);
+        const pendientes = sourceList.reduce((acc, a) => acc + a.pendientes, 0);
 
         // Base para porcentajes de efectividad: se calculan sobre el volumen efectivamente realizado
         const baseEfectiva = realizados > 0 ? realizados : total;
+        const baseFinanciador = (obraSocial + particular) > 0 ? (obraSocial + particular) : 1;
 
         return {
             total, // Total turnos/solicitudes citadas en SALUS
             realizados, // Total efectivamente realizados (Presente, Internado, Urgencia, Sobreturno)
             pctRealizados: total > 0 ? ((realizados / total) * 100).toFixed(1) : 0,
+            obraSocial,
+            particular,
+            pctObraSocial: realizados > 0 ? ((obraSocial / baseFinanciador) * 100).toFixed(1) : '0.0',
+            pctParticular: realizados > 0 ? ((particular / baseFinanciador) * 100).toFixed(1) : '0.0',
             ambulatorio,
             pctAmbulatorio: total > 0 ? ((ambulatorio / total) * 100).toFixed(1) : 0,
             hospitalizacion,
@@ -1108,7 +1158,7 @@ export default function DiagnosticoImagenesDashboard({
             pendientes,
             cantAgendas: agendasSummaryList.length
         };
-    }, [agendasSummaryList]);
+    }, [agendasSummaryList, selectedAgenda]);
 
     // 5. Ranking de Prestadores Realizadores (priorizando estudios efectivamente realizados)
     const realizadoresRanking = useMemo(() => {
@@ -1117,13 +1167,9 @@ export default function DiagnosticoImagenesDashboard({
         scopedData.realizadores.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return false;
 
             const prest = r.PrestadorRealiza || 'SIN ASIGNAR';
-            if (r.Modalidad === 'ECOCARDIO' && ecocardioSubFilter !== 'TODOS') {
-                const isGerbec = prest.toUpperCase().includes('GERBEC');
-                if (ecocardioSubFilter === 'CARDIOLOGOS' && isGerbec) return false;
-                if (ecocardioSubFilter === 'GERBEC' && !isGerbec) return false;
-            }
 
             // Si hay filtro puntual de asistencia se respeta; si es TODOS, priorizar efectivamente realizados
             if (filterAsistencia !== 'TODOS') {
@@ -1143,7 +1189,7 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalRealizadores > 0 ? ((cantidad / totalRealizadores) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda, ecocardioSubFilter, filterAsistencia, ESTADOS_EFECTIVOS]);
+    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, filterFinanciador, ESTADOS_EFECTIVOS]);
 
     // 6. Ranking de Prestadores Solicitantes (priorizando estudios efectivamente realizados)
     const solicitantesRanking = useMemo(() => {
@@ -1152,6 +1198,7 @@ export default function DiagnosticoImagenesDashboard({
         scopedData.solicitantes.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return false;
 
             if (filterAsistencia !== 'TODOS') {
                 if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
@@ -1171,7 +1218,7 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalSolicitantes > 0 ? ((cantidad / totalSolicitantes) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, ESTADOS_EFECTIVOS]);
+    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, filterFinanciador, ESTADOS_EFECTIVOS]);
 
     // 7. Ranking de Prestadores Informantes (donde Fecha Informado IS NOT NULL)
     const informantesRanking = useMemo(() => {
@@ -1180,6 +1227,7 @@ export default function DiagnosticoImagenesDashboard({
         scopedData.informantes.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return false;
 
             const prest = r.PrestadorInforma || 'PROFESIONAL INFORMANTE';
             map.set(prest, (map.get(prest) || 0) + (r.Cantidad || 0));
@@ -1193,9 +1241,9 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalInformados > 0 ? ((cantidad / totalInformados) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda]);
+    }, [scopedData, selectedModalidad, selectedAgenda, filterFinanciador]);
 
-    // 8. Obras Sociales más utilizadas (priorizando estudios efectivamente realizados)
+    // 8. Obras Sociales más utilizadas (priorizando estudios efectivamente realizados y diferenciando Obra Social vs Particular)
     const obrasSocialesRanking = useMemo(() => {
         if (!scopedData?.obrasSociales) return [];
         const map = new Map();
@@ -1210,18 +1258,23 @@ export default function DiagnosticoImagenesDashboard({
             }
 
             const os = r.ObraSocial || 'PARTICULAR / SIN FINANCIADOR';
-            map.set(os, (map.get(os) || 0) + (r.Cantidad || 0));
+            const tipoFin = classifyFinanciador(os, r.TipoFinanciador);
+            if (filterFinanciador !== 'TODOS' && tipoFin !== filterFinanciador) return false;
+
+            if (!map.has(os)) {
+                map.set(os, { nombre: os, tipoFinanciador: tipoFin, cantidad: 0 });
+            }
+            map.get(os).cantidad += (r.Cantidad || 0);
         });
 
-        const totalOS = Array.from(map.values()).reduce((a, b) => a + b, 0);
-        return Array.from(map.entries())
-            .map(([nombre, cantidad]) => ({
-                nombre,
-                cantidad,
-                porcentaje: totalOS > 0 ? ((cantidad / totalOS) * 100).toFixed(1) : 0
+        const totalOS = Array.from(map.values()).reduce((a, b) => a + b.cantidad, 0);
+        return Array.from(map.values())
+            .map(item => ({
+                ...item,
+                porcentaje: totalOS > 0 ? ((item.cantidad / totalOS) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, ESTADOS_EFECTIVOS]);
+    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, filterFinanciador, ESTADOS_EFECTIVOS]);
 
     // 9. Centros más utilizados
     const centrosRanking = useMemo(() => {
@@ -1230,6 +1283,12 @@ export default function DiagnosticoImagenesDashboard({
         scopedData.agendas.forEach(r => {
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda !== selectedAgenda) return false;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return false;
+            if (filterAsistencia !== 'TODOS') {
+                if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return false;
+            } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                return false;
+            }
 
             const c = r.Centro || 'CENTRO NO ESPECIFICADO';
             map.set(c, (map.get(c) || 0) + (r.Cantidad || 0));
@@ -1243,7 +1302,7 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalCentros > 0 ? ((cantidad / totalCentros) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda]);
+    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, filterFinanciador, ESTADOS_EFECTIVOS]);
 
     // 10. Desglose y Ranking por Estado de Asistencia
     const asistenciasRanking = useMemo(() => {
@@ -1254,6 +1313,7 @@ export default function DiagnosticoImagenesDashboard({
             if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return false;
             if (selectedAgenda !== 'TODAS' && r.Agenda && r.Agenda !== selectedAgenda) return false;
             if (filterAsistencia !== 'TODOS' && r.EstadoAsistencia !== filterAsistencia) return false;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return false;
 
             const nombre = r.AsistenciaOriginal || r.EstadoAsistencia || 'Sin Registrar';
             const categoria = r.EstadoAsistencia || 'Sin Registrar';
@@ -1270,9 +1330,9 @@ export default function DiagnosticoImagenesDashboard({
                 porcentaje: totalAsist > 0 ? ((item.cantidad / totalAsist) * 100).toFixed(1) : 0
             }))
             .sort((a, b) => b.cantidad - a.cantidad);
-    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia]);
+    }, [scopedData, selectedModalidad, selectedAgenda, filterAsistencia, filterFinanciador]);
 
-    // ─── CÁLCULOS PARA GRÁFICO DE PROGRESIÓN TEMPORAL ───
+    // ─── CÁLCULOS PARA GRÁFICO DE PROGRESIÓN TEMPORAL (INCLUYENDO OBRA SOCIAL vs PARTICULAR Y ESTUDIO EN SINGULAR) ───
     const rangeDays = useMemo(() => {
         if (!effectiveDesde || !effectiveHasta) return 30;
         const d1 = new Date(effectiveDesde + 'T00:00:00');
@@ -1291,6 +1351,89 @@ export default function DiagnosticoImagenesDashboard({
 
         const map = new Map();
 
+        const createEmptyPoint = (key, label) => ({
+            key,
+            label,
+            fullDate: key,
+            total: 0,
+            obraSocial: 0,
+            particular: 0,
+            ECOGRAFIA: 0,
+            RADIOLOGIA: 0,
+            MAMOGRAFIA: 0,
+            TOMOGRAFIA: 0,
+            DENSITOMETRIA: 0,
+            ECOCARDIO: 0,
+            OTRAS: 0,
+            ambulatorio: 0,
+            hospitalizacion: 0
+        });
+
+        // Si el usuario seleccionó un ESTUDIO EN SINGULAR (selectedAgenda !== 'TODAS') y la vista es mensual,
+        // construir la curva directamente desde scopedData.agendas para precisión 100% nominal en ese estudio
+        if (selectedAgenda !== 'TODAS' && activeGranularity === 'mes' && Array.isArray(scopedData.agendas)) {
+            scopedData.agendas.forEach(r => {
+                if (r.Agenda !== selectedAgenda) return;
+                if (selectedModalidad !== 'TODAS' && r.Modalidad !== selectedModalidad) return;
+                if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return;
+                if (filterAsistencia !== 'TODOS') {
+                    if (r.EstadoAsistencia !== filterAsistencia) return;
+                } else if (!ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                    return;
+                }
+                if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
+
+                const timeKey = r.PeriodoMes;
+                if (!timeKey) return;
+                if (!map.has(timeKey)) {
+                    const [y, m] = timeKey.split('-');
+                    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                    const label = `${meses[parseInt(m, 10) - 1] || m} ${y.slice(2)}`;
+                    map.set(timeKey, createEmptyPoint(timeKey, label));
+                }
+                const point = map.get(timeKey);
+                const cant = r.Cantidad || 0;
+                const isOS = (r.TipoFinanciador || 'Obra Social') === 'Obra Social';
+                point.total += cant;
+                if (isOS) point.obraSocial += cant;
+                else point.particular += cant;
+                if (point[r.Modalidad] !== undefined) point[r.Modalidad] += cant;
+                if (r.Ambito === 'Hospitalización') point.hospitalizacion += cant;
+                else point.ambulatorio += cant;
+            });
+            return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
+        }
+
+        // Si hay un estudio en singular seleccionado (selectedAgenda !== 'TODAS') en vista diaria,
+        // calcular la participación exacta de ese estudio dentro de su modalidad por (PeriodoMes, TipoFinanciador)
+        const agendaShareByMonthFin = new Map();
+        let targetAgendaModalidad = selectedModalidad;
+        if (selectedAgenda !== 'TODAS' && Array.isArray(scopedData.agendas)) {
+            const modTotals = new Map();
+            const agTotals = new Map();
+            scopedData.agendas.forEach(r => {
+                if (r.Agenda === selectedAgenda && r.Modalidad) targetAgendaModalidad = r.Modalidad;
+            });
+            scopedData.agendas.forEach(r => {
+                if (targetAgendaModalidad !== 'TODAS' && r.Modalidad !== targetAgendaModalidad) return;
+                if (filterAmbito !== 'TODOS' && r.Ambito !== filterAmbito) return;
+                if (filterAsistencia !== 'TODOS') {
+                    if (r.EstadoAsistencia !== filterAsistencia) return;
+                } else if (!ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
+                    return;
+                }
+                const k = `${r.PeriodoMes}|${r.TipoFinanciador || 'Obra Social'}`;
+                modTotals.set(k, (modTotals.get(k) || 0) + (r.Cantidad || 0));
+                if (r.Agenda === selectedAgenda) {
+                    agTotals.set(k, (agTotals.get(k) || 0) + (r.Cantidad || 0));
+                }
+            });
+            modTotals.forEach((mSum, k) => {
+                const aSum = agTotals.get(k) || 0;
+                agendaShareByMonthFin.set(k, mSum > 0 ? (aSum / mSum) : 0);
+            });
+        }
+
         // Si es granularidad diaria y rango moderado (<= 62 días), poblar todos los días con 0 para continuidad clínica
         if (activeGranularity === 'dia' && effectiveDesde && effectiveHasta && rangeDays <= 62) {
             const start = new Date(effectiveDesde + 'T00:00:00');
@@ -1304,37 +1447,22 @@ export default function DiagnosticoImagenesDashboard({
                 const dayKey = `${yyyy}-${mm}-${dd}`;
                 if (dayKey > todayStr) break;
 
-                map.set(dayKey, {
-                    key: dayKey,
-                    label: `${dd}/${mm}`,
-                    fullDate: dayKey,
-                    total: 0,
-                    ECOGRAFIA: 0,
-                    RADIOLOGIA: 0,
-                    MAMOGRAFIA: 0,
-                    TOMOGRAFIA: 0,
-                    DENSITOMETRIA: 0,
-                    ECOCARDIO: 0,
-                    OTRAS: 0,
-                    ambulatorio: 0,
-                    hospitalizacion: 0
-                });
+                map.set(dayKey, createEmptyPoint(dayKey, `${dd}/${mm}`));
                 cur.setDate(cur.getDate() + 1);
             }
         }
 
         // Acumular registros
         scopedData.evolucion.forEach(r => {
-            // Filtro de Ámbito
             if (filterAmbito !== 'TODOS' && r.Ambito && r.Ambito !== filterAmbito) return;
-            // Filtro de Asistencia: si no hay filtro puntual activo, priorizar siempre los efectivamente realizados
             if (filterAsistencia !== 'TODOS') {
                 if (r.EstadoAsistencia && r.EstadoAsistencia !== filterAsistencia) return;
             } else if (r.EstadoAsistencia && !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) {
                 return;
             }
-            // Si hay una modalidad seleccionada puntual (que no sea TODAS)
-            if (selectedModalidad !== 'TODAS' && r.Modalidad && r.Modalidad !== selectedModalidad) return;
+            const effModalidad = selectedAgenda !== 'TODAS' ? targetAgendaModalidad : selectedModalidad;
+            if (effModalidad !== 'TODAS' && r.Modalidad && r.Modalidad !== effModalidad) return;
+            if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
 
             const timeKey = (activeGranularity === 'dia' && r.FechaDia) ? r.FechaDia : (r.PeriodoMes || r.FechaDia?.substring(0, 7));
             if (!timeKey) return;
@@ -1350,26 +1478,22 @@ export default function DiagnosticoImagenesDashboard({
                     label = `${meses[parseInt(m, 10) - 1] || m} ${y.slice(2)}`;
                 }
 
-                map.set(timeKey, {
-                    key: timeKey,
-                    label,
-                    fullDate: timeKey,
-                    total: 0,
-                    ECOGRAFIA: 0,
-                    RADIOLOGIA: 0,
-                    MAMOGRAFIA: 0,
-                    TOMOGRAFIA: 0,
-                    DENSITOMETRIA: 0,
-                    ECOCARDIO: 0,
-                    OTRAS: 0,
-                    ambulatorio: 0,
-                    hospitalizacion: 0
-                });
+                map.set(timeKey, createEmptyPoint(timeKey, label));
             }
 
             const point = map.get(timeKey);
-            const cant = r.Cantidad || 0;
+            const rawCant = r.Cantidad || 0;
+            const finType = r.TipoFinanciador || 'Obra Social';
+            const monthKey = r.PeriodoMes || (r.FechaDia ? r.FechaDia.substring(0, 7) : '');
+            const share = selectedAgenda !== 'TODAS'
+                ? (agendaShareByMonthFin.get(`${monthKey}|${finType}`) ?? 0)
+                : 1;
+            const cant = selectedAgenda !== 'TODAS' ? Math.round(rawCant * share) : rawCant;
+            if (cant <= 0) return;
+
             point.total += cant;
+            if (finType === 'Obra Social') point.obraSocial += cant;
+            else point.particular += cant;
 
             const mod = r.Modalidad || 'OTRAS';
             if (point[mod] !== undefined) {
@@ -1386,15 +1510,17 @@ export default function DiagnosticoImagenesDashboard({
         });
 
         return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
-    }, [scopedData?.evolucion, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, filterAsistencia, selectedModalidad, ESTADOS_EFECTIVOS]);
+    }, [scopedData?.evolucion, scopedData?.agendas, activeGranularity, effectiveDesde, effectiveHasta, rangeDays, filterAmbito, filterAsistencia, filterFinanciador, selectedModalidad, selectedAgenda, ESTADOS_EFECTIVOS]);
 
     const chartStats = useMemo(() => {
-        if (!progressionChartData.length) return { total: 0, avg: 0, peak: null };
+        if (!progressionChartData.length) return { total: 0, obraSocial: 0, particular: 0, avg: 0, peak: null };
         const total = progressionChartData.reduce((acc, p) => acc + p.total, 0);
+        const obraSocial = progressionChartData.reduce((acc, p) => acc + (p.obraSocial || 0), 0);
+        const particular = progressionChartData.reduce((acc, p) => acc + (p.particular || 0), 0);
         const nonZeroPoints = progressionChartData.filter(p => p.total > 0);
         const avg = nonZeroPoints.length > 0 ? (total / nonZeroPoints.length).toFixed(1) : (total / progressionChartData.length).toFixed(1);
         const peak = progressionChartData.reduce((max, p) => p.total > (max?.total || 0) ? p : max, null);
-        return { total, avg, peak };
+        return { total, obraSocial, particular, avg, peak };
     }, [progressionChartData]);
 
     // Sincronizar contexto vivo con BETO IA (paridad 1:1 con lo que se ve en pantalla)
@@ -1411,10 +1537,16 @@ export default function DiagnosticoImagenesDashboard({
                 modalidad: selectedModalidad,
                 agenda: selectedAgenda,
                 ambito: filterAmbito,
-                asistencia: filterAsistencia
+                asistencia: filterAsistencia,
+                financiador: filterFinanciador
             },
             kpis: {
                 estudiosEfectivamenteRealizados: totals.realizados,
+                estudiosConObraSocial: totals.obraSocial,
+                pctObraSocial: `${totals.pctObraSocial}%`,
+                estudiosParticulares: totals.particular,
+                pctParticular: `${totals.pctParticular}%`,
+                ecografiasSinInformarExcluidas: ecoSinInformarSummary.total,
                 totalTurnosCitados: totals.total,
                 tasaEfectividadPct: `${totals.pctRealizados}%`,
                 ambulatorios: totals.ambulatorio,
@@ -1436,6 +1568,8 @@ export default function DiagnosticoImagenesDashboard({
                 agenda: a.agenda,
                 modalidad: a.modalidad,
                 realizados: a.realizados,
+                obraSocial: a.obraSocial,
+                particular: a.particular,
                 totalTurnos: a.total,
                 ausentes: a.ausente,
                 sinRegistrar: a.sinRegistrar,
@@ -1460,7 +1594,9 @@ export default function DiagnosticoImagenesDashboard({
         selectedAgenda,
         filterAmbito,
         filterAsistencia,
+        filterFinanciador,
         totals,
+        ecoSinInformarSummary,
         modalidadCounts,
         chartStats,
         agendasSummaryList,
@@ -1492,12 +1628,16 @@ export default function DiagnosticoImagenesDashboard({
                 ['Modalidad Seleccionada:', selectedModalidad],
                 ['Filtro de Ámbito:', filterAmbito],
                 ['Filtro de Asistencia:', filterAsistencia],
-                ['Agenda Seleccionada:', selectedAgenda],
+                ['Filtro de Cobertura / Financiador:', filterFinanciador],
+                ['Agenda / Estudio Seleccionado:', selectedAgenda],
                 ['Fecha de Generación:', new Date().toLocaleString('es-AR')],
                 ['Origen de Datos:', dataSource === 'salus_live' ? 'SALUS Live SQL Server' : 'Caché Supabase'],
                 [''],
                 ['INDICADORES CLAVE (KPIs)', 'VALOR', 'PORCENTAJE / DETALLE'],
                 ['Total Estudios Efectivamente Realizados', totals.realizados, `${totals.pctRealizados}% efectividad sobre turnos`],
+                ['Estudios Con Obra Social (Códigos numéricos ≠ 042)', totals.obraSocial, `${totals.pctObraSocial}% de realizados`],
+                ['Estudios Particulares (042 + Nombres propios)', totals.particular, `${totals.pctParticular}% de realizados`],
+                ['Ecografías Sin Informar Excluidas de Suma', ecoSinInformarSummary.total, 'Depuradas automáticamente'],
                 ['Total Turnos Citados en SALUS', totals.total, '100% programados'],
                 ['Asistencia Ambulatoria (Presente)', totals.presente, `${totals.pctPresente}% de realizados`],
                 ['Hospitalización (Internado)', totals.internado, `${totals.pctInternado}% de realizados`],
@@ -1520,6 +1660,8 @@ export default function DiagnosticoImagenesDashboard({
                     'Fecha / Período': p.fullDate || p.label,
                     'Etiqueta': p.label,
                     'Total Estudios': p.total,
+                    'Con Obra Social (Cód. ≠ 042)': p.obraSocial || 0,
+                    'Particulares (042 / Nombre)': p.particular || 0,
                     'Ecografía (ECO)': p.ECOGRAFIA || 0,
                     'Radiología (RX)': p.RADIOLOGIA || 0,
                     'Mamografía': p.MAMOGRAFIA || 0,
@@ -1534,12 +1676,14 @@ export default function DiagnosticoImagenesDashboard({
                 XLSX.utils.book_append_sheet(wb, wsProgresion, 'Progresion_Temporal');
             }
 
-            // 3. Hoja Ranking de Agendas con Asistencias
+            // 3. Hoja Ranking de Agendas con Asistencias y Financiador
             if (agendasSummaryList.length > 0) {
                 const agendasRows = agendasSummaryList.map(a => ({
                     'Modalidad': a.modalidad,
                     'Agenda / Tipo Visita': a.agenda,
                     'Estudios Efectivamente Realizados': a.realizados,
+                    'Con Obra Social (Cód. ≠ 042)': a.obraSocial || 0,
+                    'Particulares (042 / Nombre)': a.particular || 0,
                     'Total Turnos Agendados': a.total,
                     'Presente (Ambulatorio)': a.presente || 0,
                     'Internado (Hospitalización)': a.internado || 0,
@@ -1606,11 +1750,27 @@ export default function DiagnosticoImagenesDashboard({
             if (obrasSocialesRanking.length > 0) {
                 const osRows = obrasSocialesRanking.map(o => ({
                     'Financiador / Obra Social': o.nombre,
+                    'Tipo Cobertura': o.tipoFinanciador || classifyFinanciador(o.nombre),
                     'Cantidad Estudios': o.cantidad,
                     '% de Cobertura': `${o.porcentaje}%`
                 }));
                 const wsOs = XLSX.utils.json_to_sheet(osRows);
                 XLSX.utils.book_append_sheet(wb, wsOs, 'Obras_Sociales');
+            }
+
+            // 9. Hoja Ecografías Sin Informar Excluidas
+            if (ecoSinInformarSummary.byAgenda.length > 0) {
+                const ecoExRows = ecoSinInformarSummary.byAgenda.map(e => ({
+                    'Estudio / Tipo Visita': e.agenda,
+                    'Agenda SALUS': e.agendaSalus,
+                    'Profesional / Equipo': e.responsable,
+                    'Motivo Sin Informe': e.motivo,
+                    'Cantidad Excluida': e.cantidad,
+                    'Con Obra Social': e.obraSocial,
+                    'Particulares': e.particular
+                }));
+                const wsEcoEx = XLSX.utils.json_to_sheet(ecoExRows);
+                XLSX.utils.book_append_sheet(wb, wsEcoEx, 'Eco_Sin_Informar_Excluidas');
             }
 
             const fileName = `DxI_Analitica_${selectedModalidad}_${effectiveDesde}_${effectiveHasta}.xlsx`;
@@ -1635,6 +1795,8 @@ export default function DiagnosticoImagenesDashboard({
                 'Fecha / Período': p.fullDate || p.label,
                 'Etiqueta': p.label,
                 'Total Estudios': p.total,
+                'Con Obra Social (Cód. ≠ 042)': p.obraSocial || 0,
+                'Particulares (042 / Nombre)': p.particular || 0,
                 'Ecografía (ECO)': p.ECOGRAFIA || 0,
                 'Radiología (RX)': p.RADIOLOGIA || 0,
                 'Mamografía': p.MAMOGRAFIA || 0,
@@ -1811,7 +1973,6 @@ export default function DiagnosticoImagenesDashboard({
                             onClick={() => {
                                 setSelectedModalidad(tab.id);
                                 setSelectedAgenda('TODAS'); // Resetear agenda al cambiar modalidad
-                                setEcocardioSubFilter('TODOS');
                             }}
                             style={{
                                 flex: 1,
@@ -1844,13 +2005,13 @@ export default function DiagnosticoImagenesDashboard({
                                     <div style={{ fontSize: '0.82rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? '#0F172A' : '#475569' }}>
                                         {tab.label}
                                     </div>
-                                    {tab.id === 'ECOCARDIO' && ecocardioBreakdown ? (
-                                        <div style={{ fontSize: '0.67rem', color: '#E11D48', fontWeight: 700 }}>
-                                            Cardio: {ecocardioBreakdown.cardiologos} + Gerbec: {ecocardioBreakdown.gerbec}
-                                        </div>
-                                    ) : tab.id === 'MAMOGRAFIA' && mamoDensitoBreakdown ? (
+                                    {tab.id === 'MAMOGRAFIA' && mamoDensitoBreakdown ? (
                                         <div style={{ fontSize: '0.67rem', color: '#DB2777', fontWeight: 700 }}>
                                             S.Fe: {mamoDensitoBreakdown.mamoGrupoMixto} + S.Luis: {mamoDensitoBreakdown.mamoGrupoMamografia}
+                                        </div>
+                                    ) : tab.id === 'ECOGRAFIA' && ecoSinInformarSummary.totalExcluidas > 0 ? (
+                                        <div style={{ fontSize: '0.67rem', color: '#0891B2', fontWeight: 700 }}>
+                                            Excl. s/inf: -{ecoSinInformarSummary.totalExcluidas}
                                         </div>
                                     ) : tab.note ? (
                                         <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{tab.note}</div>
@@ -1872,144 +2033,164 @@ export default function DiagnosticoImagenesDashboard({
                 })}
             </div>
 
-            {/* ─── CONCILIACIÓN DE AGENDA SALUS: ECOCARDIO (4 CARDIÓLOGOS vs DRA. GERBEC) ─── */}
-            {!loading && ecocardioBreakdown && (selectedModalidad === 'TODAS' || selectedModalidad === 'ECOCARDIO') && (
+            {/* ─── AUDITORÍA CLÍNICA: ECOGRAFÍAS SIN INFORMAR DETECTADAS Y EXCLUIDAS DE LA SUMA ─── */}
+            {!loading && ecoSinInformarSummary.totalExcluidas > 0 && (selectedModalidad === 'TODAS' || selectedModalidad === 'ECOGRAFIA') && (
                 <div style={{
-                    background: 'linear-gradient(90deg, #FFF1F2 0%, #FFFBEB 55%, #F8FAFC 100%)',
+                    background: 'linear-gradient(90deg, #ECFEFF 0%, #FFFBEB 55%, #FFFFFF 100%)',
                     borderRadius: '12px',
-                    border: '1px solid #FECDD3',
+                    border: '1px solid #A5F3FC',
                     padding: '12px 16px',
                     display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px'
+                    flexDirection: 'column',
+                    gap: '10px'
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 320px' }}>
-                        <div style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '8px',
-                            background: '#FFE4E6',
-                            color: '#E11D48',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 800,
-                            fontSize: '0.85rem',
-                            flexShrink: 0
-                        }}>
-                            ❤️
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A' }}>
-                                Desglose de Agenda en SALUS: <span style={{ color: '#E11D48' }}>Grupo ECOCARDIO ({ecocardioBreakdown.totalGrupoSalus.toLocaleString('es-AR')} estudios)</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 360px' }}>
+                            <div style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '9px',
+                                background: '#CFFAFE',
+                                color: '#0E7490',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 800,
+                                fontSize: '0.9rem',
+                                flexShrink: 0
+                            }}>
+                                🔍
                             </div>
-                            <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '2px' }}>
-                                En SALUS, el <em>Grupo Agenda</em> <strong>ECOCARDIO</strong> incluye las <strong>4 agendas de Cardiólogos</strong> (Dr. López Ignacio, Dr. Villalba Carlos, Dra. Robles Carolina y Dra. Ruarte Celina = <strong>{ecocardioBreakdown.cardiologos.toLocaleString('es-AR')}</strong>) más la agenda de Doppler Vascular de la <strong>Dra. Gerbec Daniela</strong> (<strong>+{ecocardioBreakdown.gerbec.toLocaleString('es-AR')}</strong>). Haga clic en cualquiera de las cajas para verlas por separado:
-                            </div>
-                            {ecocardioBreakdown.gerbecStudies && ecocardioBreakdown.gerbecStudies.length > 0 && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '6px', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.67rem', fontWeight: 800, color: '#B45309' }}>
-                                        Estudios Dra. Gerbec en ECOCARDIO ({ecocardioBreakdown.gerbec}):
+                            <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span>Depuración de Ecografías Sin Informar:</span>
+                                    <span style={{
+                                        background: '#FEF3C7',
+                                        color: '#92400E',
+                                        border: '1px solid #FDE68A',
+                                        padding: '2px 8px',
+                                        borderRadius: '999px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800
+                                    }}>
+                                        -{ecoSinInformarSummary.totalExcluidas.toLocaleString('es-AR')} excluidas de la suma
                                     </span>
-                                    {ecocardioBreakdown.gerbecStudies.map((st, idx) => (
-                                        <span
-                                            key={idx}
-                                            style={{
-                                                fontSize: '0.66rem',
-                                                fontWeight: 700,
-                                                background: '#FEF3C7',
-                                                color: '#92400E',
-                                                border: '1px solid #FDE68A',
-                                                padding: '2px 7px',
-                                                borderRadius: '6px'
-                                            }}
-                                        >
-                                            {st.cantidad} {st.estudio}
-                                        </span>
-                                    ))}
+                                    <span style={{
+                                        background: '#ECFDF5',
+                                        color: '#047857',
+                                        border: '1px solid #A7F3D0',
+                                        padding: '2px 8px',
+                                        borderRadius: '999px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800
+                                    }}>
+                                        ✓ Suma ECOGRAFIA 100% informada ({(modalidadCounts.ECOGRAFIA || 0).toLocaleString('es-AR')})
+                                    </span>
                                 </div>
-                            )}
+                                <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '3px' }}>
+                                    Se detectaron y quitaron de la suma total <strong>{ecoSinInformarSummary.totalExcluidas.toLocaleString('es-AR')}</strong> registros sin informe firmado en LIS (incluyendo prácticas administrativas de <em>Consulta/Guía de Punción</em>, estudios portátiles de <em>Guardia/Internación</em> evolucionados en HCE y peticiones abiertas sin firma).
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                            {ecoSinInformarSummary.porMotivo.map((m, idx) => (
+                                <div
+                                    key={idx}
+                                    style={{
+                                        background: '#FFFFFF',
+                                        border: '1px solid #CBD5E1',
+                                        borderRadius: '8px',
+                                        padding: '5px 10px',
+                                        fontSize: '0.7rem'
+                                    }}
+                                >
+                                    <div style={{ fontWeight: 800, color: '#0F172A' }}>
+                                        {m.cantidad.toLocaleString('es-AR')} ({m.porcentaje}%)
+                                    </div>
+                                    <div style={{ color: '#64748B', fontSize: '0.66rem', maxWidth: '210px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={m.motivo}>
+                                        {m.motivo}
+                                    </div>
+                                </div>
+                            ))}
+
+                            <button
+                                type="button"
+                                onClick={() => setEcoSinInformarExpanded(prev => !prev)}
+                                style={{
+                                    background: ecoSinInformarExpanded ? '#0E7490' : '#FFFFFF',
+                                    color: ecoSinInformarExpanded ? '#FFFFFF' : '#0E7490',
+                                    border: '1.5px solid #0E7490',
+                                    borderRadius: '8px',
+                                    padding: '7px 12px',
+                                    fontSize: '0.73rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px'
+                                }}
+                            >
+                                {ecoSinInformarExpanded ? 'Ocultar Detalle' : `Ver cuáles son (${ecoSinInformarSummary.detalleEstudios.length})`}
+                                {ecoSinInformarExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </button>
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSelectedModalidad('ECOCARDIO');
-                                setSelectedAgenda('TODAS');
-                                setEcocardioSubFilter(ecocardioSubFilter === 'CARDIOLOGOS' ? 'TODOS' : 'CARDIOLOGOS');
-                            }}
-                            style={{
-                                background: selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'CARDIOLOGOS' ? '#FFE4E6' : '#FFFFFF',
-                                border: `1.5px solid ${selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'CARDIOLOGOS' ? '#E11D48' : '#FECDD3'}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.72rem',
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <div style={{ color: '#BE123C', fontWeight: 800 }}>
-                                4 Agendas Cardiólogos ({ecocardioBreakdown.cardiologos.toLocaleString('es-AR')})
+                    {ecoSinInformarExpanded && (
+                        <div style={{
+                            background: '#FFFFFF',
+                            borderRadius: '10px',
+                            border: '1px solid #CBD5E1',
+                            padding: '10px 12px',
+                            maxHeight: '280px',
+                            overflowY: 'auto'
+                        }}>
+                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                <span>Listado de Ecografías Sin Informar detectadas y quitadas de la suma ({ecoSinInformarSummary.totalExcluidas} casos):</span>
+                                <span style={{ fontSize: '0.7rem', color: '#475569' }}>
+                                    🏥 Obra Social: <strong>{ecoSinInformarSummary.obraSocial}</strong> • 👤 Particular: <strong>{ecoSinInformarSummary.particular}</strong>
+                                </span>
                             </div>
-                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
-                                López + Villalba + Robles + Ruarte
-                            </div>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSelectedModalidad('ECOCARDIO');
-                                setSelectedAgenda('TODAS');
-                                setEcocardioSubFilter(ecocardioSubFilter === 'GERBEC' ? 'TODOS' : 'GERBEC');
-                            }}
-                            style={{
-                                background: selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'GERBEC' ? '#FEF3C7' : '#FFFFFF',
-                                border: `1.5px solid ${selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'GERBEC' ? '#D97706' : '#FDE68A'}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.72rem',
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <div style={{ color: '#B45309', fontWeight: 800 }}>
-                                Agenda Dra. Gerbec (+{ecocardioBreakdown.gerbec.toLocaleString('es-AR')})
-                            </div>
-                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
-                                Doppler Vasos de Cuello / Miembros
-                            </div>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSelectedModalidad('ECOCARDIO');
-                                setSelectedAgenda('TODAS');
-                                setEcocardioSubFilter('TODOS');
-                            }}
-                            style={{
-                                background: selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'TODOS' ? '#EFF6FF' : '#F8FAFC',
-                                border: `1.5px solid ${selectedModalidad === 'ECOCARDIO' && ecocardioSubFilter === 'TODOS' ? '#2563EB' : '#CBD5E1'}`,
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                fontSize: '0.72rem',
-                                textAlign: 'left',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <div style={{ color: '#1E293B', fontWeight: 800 }}>
-                                Total Grupo ECOCARDIO ({ecocardioBreakdown.totalGrupoSalus.toLocaleString('es-AR')})
-                            </div>
-                            <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
-                                {ecocardioBreakdown.cardiologos.toLocaleString('es-AR')} Cardiólogos + {ecocardioBreakdown.gerbec.toLocaleString('es-AR')} Dra. Gerbec
-                            </div>
-                        </button>
-                    </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', textAlign: 'left', color: '#475569' }}>
+                                        <th style={{ padding: '6px 8px' }}>Estudio / Tipo de Visita</th>
+                                        <th style={{ padding: '6px 8px' }}>Agenda SALUS</th>
+                                        <th style={{ padding: '6px 8px' }}>Profesional</th>
+                                        <th style={{ padding: '6px 8px' }}>Motivo Detectado</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Obra Social</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Particular</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Excluidas</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {ecoSinInformarSummary.detalleEstudios.map((item, idx) => (
+                                        <tr key={idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                            <td style={{ padding: '6px 8px', fontWeight: 700, color: '#0F172A' }}>{item.estudio}</td>
+                                            <td style={{ padding: '6px 8px', color: '#475569' }}>{item.agendaSalus}</td>
+                                            <td style={{ padding: '6px 8px', color: '#334155' }}>{item.responsable}</td>
+                                            <td style={{ padding: '6px 8px' }}>
+                                                <span style={{
+                                                    background: item.motivo.includes('Punción') ? '#FEF3C7' : item.motivo.includes('Guardia') ? '#F3E8FF' : '#F1F5F9',
+                                                    color: item.motivo.includes('Punción') ? '#92400E' : item.motivo.includes('Guardia') ? '#6B21A8' : '#334155',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.67rem',
+                                                    fontWeight: 700
+                                                }}>
+                                                    {item.motivo}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#0D9488', fontWeight: 700 }}>{item.obraSocial}</td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', color: '#EA580C', fontWeight: 700 }}>{item.particular}</td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800, color: '#DC2626' }}>-{item.cantidad}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -2121,10 +2302,15 @@ export default function DiagnosticoImagenesDashboard({
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: '#065F46', marginTop: '4px' }}>
                         {loading ? '...' : totals.realizados.toLocaleString('es-AR')}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 600, marginTop: '2px' }}>
-                        Presente + Hosp + Urg + Sobreturno
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0F766E', background: '#F0FDFA', border: '1px solid #99F6E4', padding: '1px 6px', borderRadius: '4px' }}>
+                            🏥 OS: {totals.obraSocial.toLocaleString('es-AR')} ({totals.pctObraSocial}%)
+                        </span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#C2410C', background: '#FFF7ED', border: '1px solid #FED7AA', padding: '1px 6px', borderRadius: '4px' }}>
+                            👤 Part: {totals.particular.toLocaleString('es-AR')} ({totals.pctParticular}%)
+                        </span>
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '3px' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '4px' }}>
                         De <strong>{totals.total.toLocaleString('es-AR')}</strong> turnos agendados ({totals.pctRealizados}%)
                     </div>
                 </div>
@@ -2451,7 +2637,7 @@ export default function DiagnosticoImagenesDashboard({
                 </div>
             </div>
 
-            {/* ─── FILTROS DE TABLERO: ÁMBITO, ASISTENCIA Y BÚSQUEDA ─── */}
+            {/* ─── FILTROS DE TABLERO: ÁMBITO, ASISTENCIA, FINANCIADOR Y BÚSQUEDA ─── */}
             <div style={{
                 display: 'flex',
                 flexWrap: 'wrap',
@@ -2490,6 +2676,46 @@ export default function DiagnosticoImagenesDashboard({
                         </div>
                     </div>
 
+                    {/* Filtro de Cobertura: Obra Social (Números ≠ 042) vs Particular (042 + Nombres propios) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <CreditCard size={15} color="#0D9488" />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>Cobertura:</span>
+                        <div style={{ display: 'flex', background: '#F1F5F9', padding: '2px', borderRadius: '8px', gap: '2px' }}>
+                            {[
+                                { id: 'TODOS', label: 'Todos', activeColor: COLOR_PRIMARY },
+                                { id: 'Obra Social', label: '🏥 Con Obra Social', activeColor: '#0D9488' },
+                                { id: 'Particular', label: '👤 Particulares (042 / Nombre)', activeColor: '#EA580C' }
+                            ].map(fin => {
+                                const isActive = filterFinanciador === fin.id;
+                                return (
+                                    <button
+                                        key={fin.id}
+                                        onClick={() => setFilterFinanciador(fin.id)}
+                                        title={fin.id === 'Obra Social'
+                                            ? 'Clientes SALUS que comienzan con código numérico excepto 042'
+                                            : fin.id === 'Particular'
+                                                ? 'Clientes 042 - PARTICULARES o que comienzan con letras (nombre propio)'
+                                                : 'Mostrar todas las coberturas'}
+                                        style={{
+                                            border: 'none',
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            background: isActive ? '#FFFFFF' : 'transparent',
+                                            color: isActive ? fin.activeColor : '#64748B',
+                                            boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        {fin.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>Asistencia:</span>
                         <select
@@ -2518,7 +2744,7 @@ export default function DiagnosticoImagenesDashboard({
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     {selectedAgenda !== 'TODAS' && (
                         <div style={{
                             display: 'flex',
@@ -2532,7 +2758,7 @@ export default function DiagnosticoImagenesDashboard({
                             color: COLOR_PRIMARY,
                             fontWeight: 600
                         }}>
-                            <span>Agenda: <strong>{selectedAgenda}</strong></span>
+                            <span>Estudio Singular: <strong>{selectedAgenda}</strong></span>
                             <button
                                 onClick={() => setSelectedAgenda('TODAS')}
                                 style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: COLOR_PRIMARY, fontWeight: 800 }}
@@ -2548,7 +2774,7 @@ export default function DiagnosticoImagenesDashboard({
                             type="text"
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            placeholder="Buscar por agenda o centro..."
+                            placeholder="Buscar por estudio, agenda o centro..."
                             style={{
                                 width: '100%',
                                 padding: '6px 10px 6px 32px',
@@ -2590,7 +2816,7 @@ export default function DiagnosticoImagenesDashboard({
                             <TrendingUp size={20} />
                         </div>
                         <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#0F172A' }}>
                                     Progresión del Período — Evolución Temporal
                                 </h3>
@@ -2606,11 +2832,26 @@ export default function DiagnosticoImagenesDashboard({
                                 }}>
                                     {activeGranularity === 'dia' ? 'Vista Diaria' : 'Vista Mensual'}
                                 </span>
+                                {selectedAgenda !== 'TODAS' && (
+                                    <span style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: '#0F766E',
+                                        background: '#F0FDFA',
+                                        border: '1px solid #99F6E4',
+                                        padding: '2px 8px',
+                                        borderRadius: '12px'
+                                    }}>
+                                        Estudio: {selectedAgenda}
+                                    </span>
+                                )}
                             </div>
                             <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                {selectedModalidad === 'TODAS' 
-                                    ? 'Curva de estudios realizados por día/mes y desglose por modalidad diagnóstica'
-                                    : `Curva evolutiva para modalidad ${selectedModalidad} desagregada por ámbito`}
+                                {selectedAgenda !== 'TODAS'
+                                    ? `Curva de evolución para "${selectedAgenda}" diferenciando Obra Social (Cód. ≠ 042) vs. Particulares (042 / Nombre propio)`
+                                    : selectedModalidad === 'TODAS' 
+                                        ? 'Curva de estudios realizados por día/mes, desglose por modalidad y comparativa Obra Social vs. Particular'
+                                        : `Curva evolutiva para modalidad ${selectedModalidad} desagregada por Obra Social, Particular y Ámbito`}
                             </p>
                         </div>
                     </div>
@@ -2618,7 +2859,7 @@ export default function DiagnosticoImagenesDashboard({
                     {/* Controles de Granularidad y Resumen */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         {/* Indicadores Clave */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <div style={{
                                 background: '#F8FAFC',
                                 border: '1px solid #E2E8F0',
@@ -2642,6 +2883,38 @@ export default function DiagnosticoImagenesDashboard({
                                     Pico: <strong>{chartStats.peak.total.toLocaleString('es-AR')}</strong> ({chartStats.peak.label})
                                 </div>
                             )}
+
+                            <div
+                                onClick={() => setFilterFinanciador(filterFinanciador === 'Obra Social' ? 'TODOS' : 'Obra Social')}
+                                title="Clic para filtrar solo estudios con Obra Social (comienzan con número excepto 042)"
+                                style={{
+                                    background: filterFinanciador === 'Obra Social' ? '#CCFBF1' : '#F0FDFA',
+                                    border: `1px solid ${filterFinanciador === 'Obra Social' ? '#0D9488' : '#99F6E4'}`,
+                                    padding: '4px 10px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.75rem',
+                                    color: '#0F766E',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                🏥 Obra Social: <strong>{chartStats.obraSocial.toLocaleString('es-AR')}</strong>
+                            </div>
+
+                            <div
+                                onClick={() => setFilterFinanciador(filterFinanciador === 'Particular' ? 'TODOS' : 'Particular')}
+                                title="Clic para filtrar solo estudios Particulares (042 o comienzan con letras / nombre propio)"
+                                style={{
+                                    background: filterFinanciador === 'Particular' ? '#FFEDD5' : '#FFF7ED',
+                                    border: `1px solid ${filterFinanciador === 'Particular' ? '#EA580C' : '#FED7AA'}`,
+                                    padding: '4px 10px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.75rem',
+                                    color: '#C2410C',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                👤 Particular: <strong>{chartStats.particular.toLocaleString('es-AR')}</strong>
+                            </div>
 
                             <div style={{
                                 background: '#EFF6FF',
@@ -2760,10 +3033,55 @@ export default function DiagnosticoImagenesDashboard({
                                 }}
                             >
                                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB' }} />
-                                Total {selectedModalidad === 'TODAS' ? 'General' : selectedModalidad}
+                                Total {selectedAgenda !== 'TODAS' ? 'Estudio' : selectedModalidad === 'TODAS' ? 'General' : selectedModalidad}
                             </button>
 
-                            {selectedModalidad === 'TODAS' ? (
+                            {/* Toggles de Cobertura: Obra Social vs Particular (Disponibles en TODAS y en cada estudio singular) */}
+                            <button
+                                onClick={() => setVisibleSeries(prev => ({ ...prev, obraSocial: !prev.obraSocial }))}
+                                title="Mostrar/ocultar curva de estudios realizados con Obra Social (comienzan con número excepto 042)"
+                                style={{
+                                    borderRadius: '14px',
+                                    padding: '3px 10px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: visibleSeries.obraSocial ? '#F0FDFA' : '#F8FAFC',
+                                    color: visibleSeries.obraSocial ? '#0F766E' : '#94A3B8',
+                                    border: visibleSeries.obraSocial ? '1.5px solid #0D9488' : '1px solid #E2E8F0',
+                                    opacity: visibleSeries.obraSocial ? 1 : 0.7
+                                }}
+                            >
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0D9488' }} />
+                                🏥 Con Obra Social ({chartStats.obraSocial.toLocaleString('es-AR')})
+                            </button>
+
+                            <button
+                                onClick={() => setVisibleSeries(prev => ({ ...prev, particular: !prev.particular }))}
+                                title="Mostrar/ocultar curva de estudios Particulares (042 o comienzan con letras / nombre propio)"
+                                style={{
+                                    borderRadius: '14px',
+                                    padding: '3px 10px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: visibleSeries.particular ? '#FFF7ED' : '#F8FAFC',
+                                    color: visibleSeries.particular ? '#C2410C' : '#94A3B8',
+                                    border: visibleSeries.particular ? '1.5px solid #EA580C' : '1px solid #E2E8F0',
+                                    opacity: visibleSeries.particular ? 1 : 0.7
+                                }}
+                            >
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EA580C' }} />
+                                👤 Particulares 042 / Nombre ({chartStats.particular.toLocaleString('es-AR')})
+                            </button>
+
+                            {selectedModalidad === 'TODAS' && selectedAgenda === 'TODAS' ? (
                                 <>
                                     {[
                                         { key: 'ECOGRAFIA', label: 'Ecografía (ECO)', color: '#06B6D4' },
@@ -2885,14 +3203,28 @@ export default function DiagnosticoImagenesDashboard({
                                                         padding: '10px 14px',
                                                         boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
                                                         fontSize: '0.78rem',
-                                                        minWidth: '200px'
+                                                        minWidth: '220px'
                                                     }}>
                                                         <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: '6px', borderBottom: '1px solid #F1F5F9', paddingBottom: '4px' }}>
                                                             {activeGranularity === 'dia' ? `Fecha: ${pointData?.fullDate || label}` : `Período: ${label}`}
                                                         </div>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 800, color: '#2563EB' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: 800, color: '#2563EB' }}>
                                                             <span>Total Estudios:</span>
                                                             <span>{(pointData?.total || 0).toLocaleString('es-AR')}</span>
+                                                        </div>
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            gap: '8px',
+                                                            background: '#F8FAFC',
+                                                            border: '1px solid #E2E8F0',
+                                                            borderRadius: '6px',
+                                                            padding: '4px 8px',
+                                                            marginBottom: '6px',
+                                                            fontSize: '0.72rem'
+                                                        }}>
+                                                            <span style={{ color: '#0F766E', fontWeight: 700 }}>🏥 OS: {(pointData?.obraSocial || 0).toLocaleString('es-AR')}</span>
+                                                            <span style={{ color: '#C2410C', fontWeight: 700 }}>👤 Part: {(pointData?.particular || 0).toLocaleString('es-AR')}</span>
                                                         </div>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                                             {payload.filter(p => p.dataKey !== 'total' && p.value > 0).map((p, idx) => (
@@ -2910,8 +3242,34 @@ export default function DiagnosticoImagenesDashboard({
                                             }}
                                         />
 
+                                        {/* Series de Cobertura: Con Obra Social vs Particular */}
+                                        {visibleSeries.obraSocial && (
+                                            <Line
+                                                type="monotone"
+                                                dataKey="obraSocial"
+                                                name="Con Obra Social (Cód. ≠ 042)"
+                                                stroke="#0D9488"
+                                                strokeWidth={2.2}
+                                                strokeDasharray="5 3"
+                                                dot={{ r: 2, fill: '#0D9488' }}
+                                                activeDot={{ r: 5 }}
+                                            />
+                                        )}
+                                        {visibleSeries.particular && (
+                                            <Line
+                                                type="monotone"
+                                                dataKey="particular"
+                                                name="Particulares (042 / Nombre)"
+                                                stroke="#EA580C"
+                                                strokeWidth={2.2}
+                                                strokeDasharray="3 3"
+                                                dot={{ r: 2, fill: '#EA580C' }}
+                                                activeDot={{ r: 5 }}
+                                            />
+                                        )}
+
                                         {/* Series para TODAS LAS MODALIDADES */}
-                                        {selectedModalidad === 'TODAS' && (
+                                        {selectedModalidad === 'TODAS' && selectedAgenda === 'TODAS' && (
                                             <>
                                                 {visibleSeries.total && (
                                                     <Line 
@@ -2993,14 +3351,14 @@ export default function DiagnosticoImagenesDashboard({
                                             </>
                                         )}
 
-                                        {/* Series para MODALIDAD ESPECÍFICA */}
-                                        {selectedModalidad !== 'TODAS' && (
+                                        {/* Series para MODALIDAD ESPECÍFICA o ESTUDIO SINGULAR */}
+                                        {(selectedModalidad !== 'TODAS' || selectedAgenda !== 'TODAS') && (
                                             <>
                                                 {visibleSeries.total && (
                                                     <Line 
                                                         type="monotone" 
                                                         dataKey="total" 
-                                                        name={`Total ${selectedModalidad}`} 
+                                                        name={selectedAgenda !== 'TODAS' ? `Total ${selectedAgenda}` : `Total ${selectedModalidad}`} 
                                                         stroke={MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB'} 
                                                         strokeWidth={2.8} 
                                                         dot={{ r: 2.5, fill: MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB' }} 
@@ -3143,38 +3501,41 @@ export default function DiagnosticoImagenesDashboard({
                                 Agendas en SALUS (Columna Agenda):
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {agendasSalusList.map(ag => {
-                                    const isGerbec = ag.agendaSalus.toUpperCase().includes('GERBEC');
-                                    return (
-                                        <div
-                                            key={ag.agendaSalus}
-                                            style={{
-                                                background: isGerbec ? '#FFFBEB' : '#FFFFFF',
-                                                border: `1px solid ${isGerbec ? '#FDE68A' : '#CBD5E1'}`,
-                                                borderRadius: '8px',
-                                                padding: '5px 9px',
-                                                fontSize: '0.72rem',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px'
-                                            }}
-                                        >
-                                            <span style={{ fontWeight: 700, color: isGerbec ? '#B45309' : '#0F172A' }}>
-                                                {ag.agendaSalus}
-                                            </span>
-                                            <span style={{
-                                                fontWeight: 800,
-                                                color: isGerbec ? '#92400E' : '#047857',
-                                                background: isGerbec ? '#FEF3C7' : '#ECFDF5',
-                                                padding: '1px 6px',
-                                                borderRadius: '999px',
-                                                fontSize: '0.7rem'
-                                            }}>
-                                                {ag.realizados.toLocaleString('es-AR')}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
+                                {agendasSalusList.map(ag => (
+                                    <div
+                                        key={ag.agendaSalus}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            border: '1px solid #CBD5E1',
+                                            borderRadius: '8px',
+                                            padding: '5px 9px',
+                                            fontSize: '0.72rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}
+                                    >
+                                        <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                                            {ag.agendaSalus}
+                                        </span>
+                                        <span style={{
+                                            fontWeight: 800,
+                                            color: '#047857',
+                                            background: '#ECFDF5',
+                                            padding: '1px 6px',
+                                            borderRadius: '999px',
+                                            fontSize: '0.7rem'
+                                        }}>
+                                            {ag.realizados.toLocaleString('es-AR')}
+                                        </span>
+                                        <span style={{ fontSize: '0.66rem', color: '#0F766E', fontWeight: 600 }}>
+                                            OS: {(ag.obraSocial || 0).toLocaleString('es-AR')}
+                                        </span>
+                                        <span style={{ fontSize: '0.66rem', color: '#C2410C', fontWeight: 600 }}>
+                                            Part: {(ag.particular || 0).toLocaleString('es-AR')}
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -3194,9 +3555,11 @@ export default function DiagnosticoImagenesDashboard({
                             {agendasSummaryList.map((item, idx) => {
                                 const isSelected = selectedAgenda === item.agenda;
                                 const pctRealizados = totals.realizados > 0 ? ((item.realizados / totals.realizados) * 100).toFixed(1) : 0;
-                                const pctAmb = item.total > 0 ? ((item.ambulatorio / item.total) * 100).toFixed(0) : 0;
-                                const pctHosp = item.total > 0 ? ((item.hospitalizacion / item.total) * 100).toFixed(0) : 0;
                                 const pctInf = (item.realizados || item.total) > 0 ? ((item.informados / (item.realizados || item.total)) * 100).toFixed(0) : 0;
+                                const itemOS = item.obraSocial || 0;
+                                const itemPart = item.particular || 0;
+                                const pctItemOS = item.realizados > 0 ? ((itemOS / item.realizados) * 100).toFixed(0) : 0;
+                                const pctItemPart = item.realizados > 0 ? ((itemPart / item.realizados) * 100).toFixed(0) : 0;
 
                                 return (
                                     <div
@@ -3240,6 +3603,65 @@ export default function DiagnosticoImagenesDashboard({
                                                 <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '1px' }}>
                                                     {pctRealizados}% del total | {item.total} turnos ({item.ausente} aus)
                                                 </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Diferenciación en singular: Obra Social (Números ≠ 042) vs Particular (042 + Nombres propios) */}
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            flexWrap: 'wrap',
+                                            gap: '6px',
+                                            background: '#F8FAFC',
+                                            border: '1px solid #E2E8F0',
+                                            borderRadius: '7px',
+                                            padding: '5px 8px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedAgenda(item.agenda);
+                                                        setFilterFinanciador(filterFinanciador === 'Obra Social' && isSelected ? 'TODOS' : 'Obra Social');
+                                                    }}
+                                                    title="Clic para filtrar este estudio en singular solo con Obra Social (comienzan con número excepto 042)"
+                                                    style={{
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        color: '#0F766E',
+                                                        background: filterFinanciador === 'Obra Social' && isSelected ? '#99F6E4' : '#F0FDFA',
+                                                        border: '1px solid #99F6E4',
+                                                        padding: '2px 7px',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    🏥 Con Obra Social: <strong>{itemOS.toLocaleString('es-AR')}</strong> ({pctItemOS}%)
+                                                </span>
+                                                <span
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedAgenda(item.agenda);
+                                                        setFilterFinanciador(filterFinanciador === 'Particular' && isSelected ? 'TODOS' : 'Particular');
+                                                    }}
+                                                    title="Clic para filtrar este estudio en singular solo Particulares (042 o comienzan con letras / nombre propio)"
+                                                    style={{
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        color: '#C2410C',
+                                                        background: filterFinanciador === 'Particular' && isSelected ? '#FED7AA' : '#FFF7ED',
+                                                        border: '1px solid #FED7AA',
+                                                        padding: '2px 7px',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    👤 Particular (042/Nombre): <strong>{itemPart.toLocaleString('es-AR')}</strong> ({pctItemPart}%)
+                                                </span>
+                                            </div>
+                                            <div style={{ width: '90px', height: '6px', background: '#FED7AA', borderRadius: '999px', overflow: 'hidden', display: 'flex' }} title={`Obra Social ${pctItemOS}% vs Particular ${pctItemPart}%`}>
+                                                <div style={{ width: `${pctItemOS}%`, height: '100%', background: '#0D9488' }} />
                                             </div>
                                         </div>
 
@@ -3685,22 +4107,72 @@ export default function DiagnosticoImagenesDashboard({
                         {activeTabDetail === 'obras_sociales' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                                    Financiadores y convenios con mayor demanda:
+                                    Diferenciación Obra Social (código numérico ≠ 042) vs. Particular (042 + nombres propios):
                                 </div>
                                 {obrasSocialesRanking.length > 0 && (() => {
                                     const totalOSCount = obrasSocialesRanking.reduce((acc, os) => acc + (os.cantidad || 0), 0);
+                                    const sumConOS = obrasSocialesRanking
+                                        .filter(os => (os.tipoFinanciador || classifyFinanciador(os.nombre)) === 'Obra Social')
+                                        .reduce((acc, os) => acc + (os.cantidad || 0), 0);
+                                    const sumPart = obrasSocialesRanking
+                                        .filter(os => (os.tipoFinanciador || classifyFinanciador(os.nombre)) === 'Particular')
+                                        .reduce((acc, os) => acc + (os.cantidad || 0), 0);
+                                    const pctOS = totalOSCount > 0 ? ((sumConOS / totalOSCount) * 100).toFixed(1) : '0.0';
+                                    const pctPart = totalOSCount > 0 ? ((sumPart / totalOSCount) * 100).toFixed(1) : '0.0';
                                     return (
-                                        <div style={{
-                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                            background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem'
-                                        }}>
-                                            <span style={{ fontWeight: 800, color: '#92400E' }}>
-                                                ∑ Total por Obra Social ({obrasSocialesRanking.length} financiadores)
-                                            </span>
-                                            <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#B45309' }}>
-                                                {totalOSCount.toLocaleString('es-AR')} (100%)
-                                            </span>
-                                        </div>
+                                        <>
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 1fr',
+                                                gap: '8px'
+                                            }}>
+                                                <div
+                                                    onClick={() => setFilterFinanciador(filterFinanciador === 'Obra Social' ? 'TODOS' : 'Obra Social')}
+                                                    style={{
+                                                        background: filterFinanciador === 'Obra Social' ? '#CCFBF1' : '#F0FDFA',
+                                                        border: `1.5px solid ${filterFinanciador === 'Obra Social' ? '#0D9488' : '#99F6E4'}`,
+                                                        borderRadius: '8px',
+                                                        padding: '8px 10px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0F766E' }}>
+                                                        🏥 Con Obra Social (Cód. ≠ 042)
+                                                    </div>
+                                                    <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#115E59', marginTop: '2px' }}>
+                                                        {sumConOS.toLocaleString('es-AR')} <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>({pctOS}%)</span>
+                                                    </div>
+                                                </div>
+                                                <div
+                                                    onClick={() => setFilterFinanciador(filterFinanciador === 'Particular' ? 'TODOS' : 'Particular')}
+                                                    style={{
+                                                        background: filterFinanciador === 'Particular' ? '#FFEDD5' : '#FFF7ED',
+                                                        border: `1.5px solid ${filterFinanciador === 'Particular' ? '#EA580C' : '#FED7AA'}`,
+                                                        borderRadius: '8px',
+                                                        padding: '8px 10px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#C2410C' }}>
+                                                        👤 Particulares (042 + Nombres)
+                                                    </div>
+                                                    <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#9A3412', marginTop: '2px' }}>
+                                                        {sumPart.toLocaleString('es-AR')} <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>({pctPart}%)</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem'
+                                            }}>
+                                                <span style={{ fontWeight: 800, color: '#92400E' }}>
+                                                    ∑ Total Financiadores ({obrasSocialesRanking.length} registros)
+                                                </span>
+                                                <span style={{ fontWeight: 900, fontSize: '0.88rem', color: '#B45309' }}>
+                                                    {totalOSCount.toLocaleString('es-AR')} (100%)
+                                                </span>
+                                            </div>
+                                        </>
                                     );
                                 })()}
                                 {obrasSocialesRanking.length === 0 ? (
@@ -3708,26 +4180,43 @@ export default function DiagnosticoImagenesDashboard({
                                         Sin datos de financiadores
                                     </div>
                                 ) : (
-                                    obrasSocialesRanking.slice(0, 30).map((os, i) => (
-                                        <div key={i} style={{ padding: '8px 10px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1E293B' }}>
-                                                    {os.nombre}
-                                                </span>
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A' }}>
-                                                        {os.cantidad.toLocaleString('es-AR')}
-                                                    </span>
-                                                    <span style={{ fontSize: '0.7rem', color: '#64748B', marginLeft: '6px' }}>
-                                                        ({os.porcentaje}%)
-                                                    </span>
+                                    obrasSocialesRanking.slice(0, 30).map((os, i) => {
+                                        const tipoFin = os.tipoFinanciador || classifyFinanciador(os.nombre);
+                                        const isParticular = tipoFin === 'Particular';
+                                        return (
+                                            <div key={i} style={{ padding: '8px 10px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                        <span style={{
+                                                            fontSize: '0.64rem',
+                                                            fontWeight: 800,
+                                                            padding: '1px 6px',
+                                                            borderRadius: '4px',
+                                                            background: isParticular ? '#FFF7ED' : '#F0FDFA',
+                                                            color: isParticular ? '#C2410C' : '#0F766E',
+                                                            border: `1px solid ${isParticular ? '#FED7AA' : '#99F6E4'}`
+                                                        }}>
+                                                            {isParticular ? '👤 Particular' : '🏥 Obra Social'}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1E293B' }}>
+                                                            {os.nombre}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A' }}>
+                                                            {os.cantidad.toLocaleString('es-AR')}
+                                                        </span>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748B', marginLeft: '6px' }}>
+                                                            ({os.porcentaje}%)
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ width: '100%', height: '4px', background: '#E2E8F0', borderRadius: '999px', marginTop: '6px', overflow: 'hidden' }}>
+                                                    <div style={{ width: `${os.porcentaje}%`, height: '100%', background: isParticular ? '#EA580C' : '#0D9488' }}></div>
                                                 </div>
                                             </div>
-                                            <div style={{ width: '100%', height: '4px', background: '#E2E8F0', borderRadius: '999px', marginTop: '6px', overflow: 'hidden' }}>
-                                                <div style={{ width: `${os.porcentaje}%`, height: '100%', background: '#F59E0B' }}></div>
-                                            </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         )}
@@ -3847,7 +4336,7 @@ export default function DiagnosticoImagenesDashboard({
                                     </span>
                                 </div>
                                 <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '3px' }}>
-                                    Período: <strong>{effectiveDesde}</strong> al <strong>{effectiveHasta}</strong> • Modalidad: <strong>{casosFilter.modalidad}</strong> • Agenda: <strong>{casosFilter.agenda}</strong>
+                                    Período: <strong>{effectiveDesde}</strong> al <strong>{effectiveHasta}</strong> • Modalidad: <strong>{casosFilter.modalidad}</strong> • Agenda: <strong>{casosFilter.agenda}</strong> • Cobertura: <strong>{casosFilter.tipoFinanciador || 'TODOS'}</strong>
                                 </div>
                             </div>
 
@@ -3937,6 +4426,20 @@ export default function DiagnosticoImagenesDashboard({
                             </select>
 
                             <select
+                                value={casosFilter.tipoFinanciador || 'TODOS'}
+                                onChange={e => {
+                                    const next = { ...casosFilter, tipoFinanciador: e.target.value };
+                                    setCasosFilter(next);
+                                    fetchCasosNominales(next);
+                                }}
+                                style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 600 }}
+                            >
+                                <option value="TODOS">Todas las Coberturas</option>
+                                <option value="Obra Social">🏥 Con Obra Social (Cód. ≠ 042)</option>
+                                <option value="Particular">👤 Particular (042 / Nombre)</option>
+                            </select>
+
+                            <select
                                 value={casosFilter.estadoAsistencia}
                                 onChange={e => {
                                     const next = { ...casosFilter, estadoAsistencia: e.target.value };
@@ -4000,13 +4503,15 @@ export default function DiagnosticoImagenesDashboard({
                                             <th style={{ padding: '10px 12px' }}>Estado</th>
                                             <th style={{ padding: '10px 12px' }}>Realizador</th>
                                             <th style={{ padding: '10px 12px' }}>Solicitante</th>
-                                            <th style={{ padding: '10px 12px' }}>Obra Social</th>
+                                            <th style={{ padding: '10px 12px' }}>Cobertura / Obra Social</th>
                                             <th style={{ padding: '10px 12px' }}>Informe</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {filteredCasosNominales.map((c, idx) => {
                                             const stCfg = ASISTENCIA_CONFIG[c.estado_asistencia] || ASISTENCIA_CONFIG['Sin Registrar'];
+                                            const tipoFin = classifyFinanciador(c.obra_social, c.tipo_financiador);
+                                            const isPart = tipoFin === 'Particular';
                                             return (
                                                 <tr key={`${c.id_peticion}_${idx}`} style={{ borderBottom: '1px solid #F1F5F9', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
                                                     <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontWeight: 600, color: '#0F172A' }}>
@@ -4043,7 +4548,22 @@ export default function DiagnosticoImagenesDashboard({
                                                     </td>
                                                     <td style={{ padding: '9px 12px', color: '#334155', fontSize: '0.72rem' }}>{c.realizador}</td>
                                                     <td style={{ padding: '9px 12px', color: '#475569', fontSize: '0.72rem' }}>{c.solicitante}</td>
-                                                    <td style={{ padding: '9px 12px', color: '#334155', fontSize: '0.72rem', fontWeight: 600 }}>{c.obra_social}</td>
+                                                    <td style={{ padding: '9px 12px', color: '#334155', fontSize: '0.72rem', fontWeight: 600 }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+                                                            <span style={{
+                                                                fontSize: '0.62rem',
+                                                                fontWeight: 800,
+                                                                padding: '1px 5px',
+                                                                borderRadius: '4px',
+                                                                background: isPart ? '#FFF7ED' : '#F0FDFA',
+                                                                color: isPart ? '#C2410C' : '#0F766E',
+                                                                border: `1px solid ${isPart ? '#FED7AA' : '#99F6E4'}`
+                                                            }}>
+                                                                {isPart ? '👤 Particular' : '🏥 Obra Social'}
+                                                            </span>
+                                                            <span>{c.obra_social}</span>
+                                                        </div>
+                                                    </td>
                                                     <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                                                         {c.informado ? (
                                                             <span style={{ color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '2px 6px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 700 }}>

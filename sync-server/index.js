@@ -4359,8 +4359,12 @@ app.get('/api/salus/dxi-analytics', async (req, res) => {
                 try {
                     const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
                     const cacheDesde = parsed?.rango?.fechaDesde || '2026-01-01';
-                    const hasEcocardio = Array.isArray(parsed?.agendas) && parsed.agendas.some(r => r.Modalidad === 'ECOCARDIO' && Boolean(r.AgendaSalus) && (r.GrupoAgenda || '').includes('GERBEC'));
-                    if (hasEcocardio && (!desde || desde >= cacheDesde)) {
+                    const hasUpdatedSchema = parsed?.schemaVersion === 'dxi_v3_financiador_eco_informadas' || (
+                        Array.isArray(parsed?.agendas) &&
+                        parsed.agendas.some(r => Boolean(r.TipoFinanciador)) &&
+                        Array.isArray(parsed?.ecografiasSinInformar)
+                    );
+                    if (hasUpdatedSchema && (!desde || desde >= cacheDesde)) {
                         return res.json({ success: true, fromCache: true, data: parsed, updated_at: cfg.updated_at });
                     }
                 } catch (_) {}
@@ -4391,6 +4395,7 @@ app.get('/api/salus/dxi-casos', async (req, res) => {
             agenda: req.query.agenda || 'TODAS',
             ambito: req.query.ambito || 'TODOS',
             estadoAsistencia: req.query.estadoAsistencia || 'TODOS',
+            tipoFinanciador: req.query.tipoFinanciador || 'TODOS',
             realizador: req.query.realizador || '',
             solicitante: req.query.solicitante || '',
             obraSocial: req.query.obraSocial || '',
