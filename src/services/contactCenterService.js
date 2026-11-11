@@ -356,6 +356,9 @@ export function normalizeMessage(m) {
         audio_understanding: audioUnder,
         agent: m.raw_payload.agent,
         bot: m.raw_payload.bot || m.raw_payload.is_bot,
+        origen: m.raw_payload.origen || null,
+        tipo: m.raw_payload.tipo || m.raw_payload.type || null,
+        templateName: m.raw_payload.templateName || null,
         quoted_message: quotedMessage,
         reactions,
         is_deleted: isDeleted,
@@ -752,6 +755,7 @@ export function resolveConversationTags(conv, messages = []) {
                 if (norm === 'autorizacion') tagsSet.add('Autorización');
                 else if (norm === 'cancelacion') tagsSet.add('Cancelación');
                 else if (norm === 'reprogramacion') tagsSet.add('Reprogramación');
+                else if (norm === 'turnos online' || norm === 'turnos_online') tagsSet.add('Turnos Online');
                 else if (t !== 'Contact Center' && t !== 'WhatsApp') tagsSet.add(t);
             }
         });
@@ -778,7 +782,7 @@ export function resolveConversationTags(conv, messages = []) {
     // 3. Textos de mensajes del PACIENTE en el chat (NUNCA del bot)
     const patientMsgs = (messages || [])
         .filter(m => m.direction === 'incoming' || m.sender === 'patient')
-        .map(m => (m.content || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase())
+        .map(m => (m.content || m.text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase())
         .slice(0, 15);
     const fullPatientCorpus = patientMsgs.join(' ');
 
@@ -786,8 +790,42 @@ export function resolveConversationTags(conv, messages = []) {
     const patientHasExplicitCancel = /\b(cancelar|cancelo|cancela|cancelen|cancelarme|cancelado|anular\s+(?:el\s+|mi\s+|la\s+)?turno|dar\s+de\s+baja\s+(?:el\s+|mi\s+|la\s+)?turno|baja\s+(?:de|del)\s*turno|no\s+voy\s+a\s+poder\s+ir|no\s+puedo\s+asistir)\b/i.test(fullPatientCorpus);
 
     const motivo = (conv?.motivo_consulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const lastMsgNorm = (conv?.last_message_text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const stage = (conv?.bot_stage || '').toLowerCase();
     const isConsultationMotivo = motivo.includes('consulta de turno') || motivo.includes('consultar turno') || motivo.includes('consulta propia') || stage === 'turno_consultado' || stage === 'esperando_dni_turno';
+
+    // 0. TURNOS ONLINE: Conversaciones originadas por envío de la plantilla de Turnos Online duplicados
+    const hasTurnosOnlineMsg = (messages || []).some(m => {
+        const raw = m.rawPayload || m.raw_payload || {};
+        if (
+            raw.origen === 'turnos_online_mismo_dia' ||
+            raw.tipo === 'aviso_turnos_online_duplicados' ||
+            raw.templateName === 'turnos_duplicados'
+        ) {
+            return true;
+        }
+        const mText = String(m.text || m.content || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        return (
+            mText.includes('plantilla meta: turnos_duplicados') ||
+            mText.includes('mas de un turno agendado') ||
+            mText.includes('tenes mas de un turno') ||
+            mText.includes('varios turnos online') ||
+            (mText.includes('reservaste') && mText.includes('turnos online'))
+        );
+    });
+
+    const isTurnosOnline =
+        motivo.includes('turnos online') ||
+        motivo.includes('turnos duplicados') ||
+        lastMsgNorm.includes('turnos_duplicados') ||
+        lastMsgNorm.includes('mas de un turno agendado') ||
+        lastMsgNorm.includes('tenes mas de un turno') ||
+        lastMsgNorm.includes('varios turnos online') ||
+        hasTurnosOnlineMsg;
+
+    if (isTurnosOnline) {
+        tagsSet.add('Turnos Online');
+    }
 
     // A. CANCELACIÓN: Solo cuando expresamente el paciente quiera cancelar o la IA determine trámite de cancelación
     // Si la IA o el motivo determinan que es solo consulta de turno y el paciente no escribió "cancelar/cancelo/cancela", NO ES CANCELACIÓN
@@ -1227,6 +1265,7 @@ export async function fetchLiveAndDemoChats() {
             const lastIncomingMs = lastIncomingIso ? new Date(lastIncomingIso).getTime() : 0;
 
             const cleanPhone = normalizeArgentinePhone(phone) || phone.replace(/\D/g, '');
+            const resolvedTags = resolveConversationTags(conv, formattedMessages);
             realChats.push({
                 id: 'REAL_' + cleanPhone,
                 contactName: resolvedNombre,
@@ -1258,9 +1297,9 @@ export async function fetchLiveAndDemoChats() {
                 waitingTimeText: waitingInfo.waitingTimeText,
                 badgeTimeText: waitingInfo.badgeTimeText,
                 chatbot: '#triage-sanatorio',
-                avatarColor: '#0284C7',
+                avatarColor: resolvedTags.includes('Turnos Online') ? '#EA580C' : '#0284C7',
                 avatarUrl: conv?.avatar_url || conv?.photo_url || null,
-                tags: resolveConversationTags(conv, formattedMessages),
+                tags: resolvedTags,
                 whatsappName: incomingSenderName || null,
                 lastIncomingAt: lastIncomingIso,
                 lastIncomingTimestamp: lastIncomingMs,

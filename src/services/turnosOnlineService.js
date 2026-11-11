@@ -225,6 +225,8 @@ export async function sendTemplateTurnosMismoDia({ caso, variables, agente }) {
                 assigned_at: now,
                 bot_active: false,
                 bot_stage: 'esperando_agente',
+                motivo_consulta: caso.esMismoDia ? 'Turnos online múltiples el mismo día' : 'Auditoría de turnos online duplicados',
+                last_message_text: displayContent,
                 updated_at: now
             })
             .eq('phone', rawDigits);

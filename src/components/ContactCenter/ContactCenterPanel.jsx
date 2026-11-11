@@ -1178,6 +1178,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
             if (existingIdx >= 0) {
                 const existing = current[existingIdx];
+                const updatedTags = Array.from(new Set(['Turnos Online', ...(existing.tags || [])]));
                 const updatedChat = {
                     ...existing,
                     contactName: caso?.nombre || existing.contactName,
@@ -1192,12 +1193,16 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     timeAgo: 'hace instantes',
                     lastResponder: agName,
                     lastResponderRole: 'agent',
+                    avatarColor: '#EA580C',
+                    tags: updatedTags,
                     customFields: {
                         ...(existing.customFields || {}),
                         dni: caso?.dni || existing.customFields?.dni || null,
                         pacienteNombre: caso?.nombre || existing.customFields?.pacienteNombre || existing.contactName,
                         pacienteContacto: normPhone,
-                        email: caso?.email || existing.customFields?.email || null
+                        email: caso?.email || existing.customFields?.email || null,
+                        motivoConsulta: caso?.esMismoDia === false ? 'Auditoría de turnos online duplicados' : 'Turnos online múltiples el mismo día',
+                        botActive: false
                     },
                     messages: [...(existing.messages || []), newMsgObj]
                 };
@@ -1230,14 +1235,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 waitingTimeText: 'Respondido',
                 badgeTimeText: 'Respondido',
                 chatbot: '#triage-sanatorio',
-                avatarColor: '#0284C7',
+                avatarColor: '#EA580C',
                 tags: ['Turnos Online', 'Asignado'],
                 customFields: {
                     dni: caso?.dni || null,
                     pacienteNombre: caso?.nombre || `+${normPhone}`,
                     pacienteContacto: normPhone,
                     email: caso?.email || null,
-                    motivoConsulta: 'Turnos online múltiples el mismo día',
+                    motivoConsulta: caso?.esMismoDia === false ? 'Auditoría de turnos online duplicados' : 'Turnos online múltiples el mismo día',
                     botActive: false
                 },
                 messages: [newMsgObj]
@@ -1246,7 +1251,10 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         });
 
         setActiveChatId(chatId);
-        try { localStorage.setItem('sa_cc_active_chat_id', chatId); } catch (_) {}
+        try {
+            localStorage.setItem('sa_cc_active_chat_id', chatId);
+            localStorage.setItem('sa_cc_filter_tab', 'asignadas_mi');
+        } catch (_) {}
         setActiveSubTab('conversaciones');
 
         // Refrescar desde BD en segundo plano

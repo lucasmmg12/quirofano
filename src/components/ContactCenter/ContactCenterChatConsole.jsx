@@ -298,7 +298,38 @@ import { fetchTurnosSalusHoy } from '../../services/agentShiftService';
 const TEST_BOT_RESET_INDICATOR_ENABLED = false;
 
 /**
- * Renderiza las etiquetas generadas por el bot:
+ * Detecta si la conversación proviene de haber enviado la plantilla o aviso de Turnos Online
+ */
+function isTurnosOnlineChat(chat) {
+    if (!chat) return false;
+    const rawTags = Array.isArray(chat.tags) ? chat.tags : [];
+    for (const t of rawTags) {
+        if (!t || typeof t !== 'string') continue;
+        const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if (norm === 'turnos online' || norm === 'turnos_online') return true;
+    }
+    const motivo = String(chat.customFields?.motivoConsulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (motivo.includes('turnos online') || motivo.includes('turnos duplicados')) return true;
+    const lastMsg = String(chat.lastMessage || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (lastMsg.includes('turnos_duplicados') || lastMsg.includes('mas de un turno agendado') || lastMsg.includes('tenes mas de un turno') || lastMsg.includes('varios turnos online')) return true;
+    if (Array.isArray(chat.messages)) {
+        for (const m of chat.messages) {
+            const raw = m.rawPayload || m.raw_payload || {};
+            if (raw.origen === 'turnos_online_mismo_dia' || raw.tipo === 'aviso_turnos_online_duplicados' || raw.templateName === 'turnos_duplicados') {
+                return true;
+            }
+            const mText = String(m.text || m.content || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            if (mText.includes('plantilla meta: turnos_duplicados') || mText.includes('mas de un turno agendado') || mText.includes('tenes mas de un turno')) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Renderiza las etiquetas generadas por el bot y origen de gestión:
+ * - 'Turnos Online' (conversación iniciada/asignada desde auditoría de Turnos Online)
  * - 'Autorización' (cuando el paciente no está pidiendo turno, solamente está pidiendo autorización)
  * - 'Cancelación' (cuando el paciente expresa de forma explícita que quiere cancelar un turno)
  * - 'Reprogramación' (cuando el paciente expresa de forma explícita que quiere cambiar, modificar o reprogramar un turno)
@@ -310,19 +341,52 @@ function renderBotTags(chat, theme) {
     
     const botTags = [];
     const seen = new Set();
+
+    if (isTurnosOnlineChat(chat)) {
+        seen.add('turnos online');
+        botTags.push('turnos online');
+    }
     
     for (const t of rawTags) {
         if (!t || typeof t !== 'string') continue;
         const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-        if ((norm === 'autorizacion' || norm === 'cancelacion' || norm === 'reprogramacion' || norm === 'triage completo' || norm === 'triage_completo') && !seen.has(norm)) {
-            seen.add(norm);
-            botTags.push(norm);
+        const canonical = norm === 'turnos_online' ? 'turnos online' : norm;
+        if ((canonical === 'turnos online' || canonical === 'autorizacion' || canonical === 'cancelacion' || canonical === 'reprogramacion' || canonical === 'triage completo' || canonical === 'triage_completo') && !seen.has(canonical)) {
+            seen.add(canonical);
+            botTags.push(canonical);
         }
     }
     
     if (botTags.length === 0) return null;
 
     return botTags.map((tagKey) => {
+        if (tagKey === 'turnos online') {
+            return (
+                <span
+                    key="bot-tag-turnos-online"
+                    title="Conversación asignada proveniente de envío de plantilla de Turnos Online"
+                    style={{
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '1px 7px',
+                        borderRadius: '6px',
+                        background: theme?.isDark
+                            ? 'linear-gradient(135deg, #9A3412 0%, #C2410C 100%)'
+                            : 'linear-gradient(135deg, #EA580C 0%, #D97706 100%)',
+                        color: '#FFFFFF',
+                        border: `1px solid ${theme?.isDark ? '#F97316' : '#C2410C'}`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3.5px',
+                        lineHeight: 1.2,
+                        boxShadow: '0 1px 3px rgba(234, 88, 12, 0.28)'
+                    }}
+                >
+                    <CalendarCheck size={10} strokeWidth={2.5} />
+                    Turnos Online
+                </span>
+            );
+        }
         if (tagKey === 'cancelacion') {
             return (
                 <span
@@ -3346,6 +3410,9 @@ export default function ContactCenterChatConsole({
             if (triageFilter === 'con_orden') {
                 return chat.customFields?.pedidoMedicoFoto && chat.customFields.pedidoMedicoFoto !== 'No adjuntado';
             }
+            if (triageFilter === 'turnos_online') {
+                return isTurnosOnlineChat(chat);
+            }
             // Filtro por agente específico (usado desde el sub-panel de Otras)
             if (triageFilter.startsWith('agent_')) {
                 const agentId = triageFilter.replace('agent_', '').toLowerCase();
@@ -4685,6 +4752,61 @@ export default function ContactCenterChatConsole({
                     )}
                 </div>
 
+                {/* SUB-FILTROS DE MIS CHATS (Filtro rápido Turnos Online cuando existen conversaciones de Turnos Online) */}
+                {filterTab === 'asignadas_mi' && (() => {
+                    const myTurnosOnlineCount = myAssignedChats.filter(c => isTurnosOnlineChat(c)).length;
+                    if (myTurnosOnlineCount === 0 && triageFilter !== 'turnos_online') return null;
+                    const isActiveTO = triageFilter === 'turnos_online';
+                    return (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '5px 8px',
+                            background: ccTheme.isDark ? '#0F172A' : '#FFF7ED',
+                            borderBottom: `1px solid ${ccTheme.isDark ? '#7C2D12' : '#FED7AA'}`,
+                            overflowX: 'auto',
+                            flexWrap: 'nowrap'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setTriageFilter('all')}
+                                style={{
+                                    padding: '2px 8px', borderRadius: '10px', fontSize: '0.63rem', fontWeight: 700,
+                                    border: triageFilter === 'all' ? '1px solid #0284C7' : `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
+                                    background: triageFilter === 'all' ? '#E0F2FE' : '#FFFFFF',
+                                    color: triageFilter === 'all' ? '#0284C7' : '#64748B',
+                                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
+                                }}
+                            >
+                                Todos ({myAssignedChats.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTriageFilter(isActiveTO ? 'all' : 'turnos_online')}
+                                style={{
+                                    padding: '2px 9px', borderRadius: '10px', fontSize: '0.63rem', fontWeight: 800,
+                                    border: isActiveTO ? '1px solid #C2410C' : '1px solid #FDBA74',
+                                    background: isActiveTO ? 'linear-gradient(135deg, #EA580C 0%, #D97706 100%)' : '#FFEDD5',
+                                    color: isActiveTO ? '#FFFFFF' : '#C2410C',
+                                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                                    display: 'flex', alignItems: 'center', gap: '4px',
+                                    boxShadow: isActiveTO ? '0 1px 4px rgba(234, 88, 12, 0.3)' : 'none'
+                                }}
+                            >
+                                <CalendarCheck size={10} strokeWidth={2.5} />
+                                <span>Turnos Online</span>
+                                <span style={{
+                                    fontSize: '0.60rem', fontWeight: 800,
+                                    padding: '0px 5px', borderRadius: '7px',
+                                    background: isActiveTO ? '#FFFFFF' : '#EA580C',
+                                    color: isActiveTO ? '#C2410C' : '#FFFFFF'
+                                }}>{myTurnosOnlineCount}</span>
+                            </button>
+                        </div>
+                    );
+                })()}
+
                 {/* SUB-FILTROS DE AGENTES (solo visibles en tab Otras) */}
                 {filterTab === 'asignadas_otros' && (() => {
                     const otherAgents = CONTACT_CENTER_AGENTS.filter(a => a.id !== activeAgent?.id);
@@ -4947,6 +5069,7 @@ export default function ContactCenterChatConsole({
                             const assignedAgent = chat.assignedTo ? getAgentById(chat.assignedTo) : null;
                             const chatIsLocked = isChatLockedForUser(chat, activeAgent.id, currentUser);
                             const chatIsMine = chat.assignedTo && chat.assignedTo.toLowerCase() === activeAgent.id.toLowerCase();
+                            const isTurnosOnline = isTurnosOnlineChat(chat);
 
                             const incomingMsgs = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
                             const readAtCount = readChatMsgCountRef.current.get(chat.id);
@@ -4966,30 +5089,38 @@ export default function ContactCenterChatConsole({
                                     }}
                                     style={{
                                         padding: '7px 10px',
-                                        borderBottom: `1px solid ${themeCardBorder}`,
+                                        borderBottom: isTurnosOnline
+                                            ? `1px solid ${ccTheme.isDark ? '#7C2D12' : '#FED7AA'}`
+                                            : `1px solid ${themeCardBorder}`,
                                         cursor: 'pointer',
                                         background: isSelected 
-                                            ? themeCardSelectedBg 
+                                            ? (isTurnosOnline ? (ccTheme.isDark ? '#431407' : '#FFEDD5') : themeCardSelectedBg)
                                             : isChecked 
                                                 ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
-                                                : isChatUnread
-                                                    ? (ccTheme.isDark ? '#172554' : '#DBEAFE')
-                                                    : (getChatSalusAudit(chat)?.isAlert)
-                                                        ? (ccTheme.isDark ? '#3B0A0A' : '#FEF2F2')
-                                                        : (getChatSalusAudit(chat)?.isPending)
-                                                            ? (ccTheme.isDark ? '#3B1F0A' : '#FFFDF5')
-                                                            : themeCardBg,
-                                        borderLeft: isSelected 
-                                            ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
-                                            : isChecked 
-                                                ? '4px solid #16A34A' 
-                                                : isChatUnread
-                                                    ? '4px solid #2563EB'
-                                                    : (getChatSalusAudit(chat)?.isAlert)
-                                                        ? '4px solid #DC2626'
-                                                        : (getChatSalusAudit(chat)?.isPending)
-                                                            ? '4px solid #F59E0B'
-                                                            : '4px solid transparent',
+                                                : isTurnosOnline
+                                                    ? (isChatUnread
+                                                        ? (ccTheme.isDark ? '#541C0A' : '#FED7AA')
+                                                        : (ccTheme.isDark ? '#2A1205' : '#FFF7ED'))
+                                                    : isChatUnread
+                                                        ? (ccTheme.isDark ? '#172554' : '#DBEAFE')
+                                                        : (getChatSalusAudit(chat)?.isAlert)
+                                                            ? (ccTheme.isDark ? '#3B0A0A' : '#FEF2F2')
+                                                            : (getChatSalusAudit(chat)?.isPending)
+                                                                ? (ccTheme.isDark ? '#3B1F0A' : '#FFFDF5')
+                                                                : themeCardBg,
+                                        borderLeft: isTurnosOnline
+                                            ? '4px solid #EA580C'
+                                            : isSelected 
+                                                ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
+                                                : isChecked 
+                                                    ? '4px solid #16A34A' 
+                                                    : isChatUnread
+                                                        ? '4px solid #2563EB'
+                                                        : (getChatSalusAudit(chat)?.isAlert)
+                                                            ? '4px solid #DC2626'
+                                                            : (getChatSalusAudit(chat)?.isPending)
+                                                                ? '4px solid #F59E0B'
+                                                                : '4px solid transparent',
                                         transition: 'background 0.15s',
                                         position: 'relative'
                                     }}
@@ -5029,15 +5160,16 @@ export default function ContactCenterChatConsole({
                                             ) : (
                                                 <div style={{
                                                     width: '22px', height: '22px', borderRadius: '50%',
-                                                    background: chat.avatarColor || '#1E40AF', color: '#FFF',
+                                                    background: isTurnosOnline ? '#EA580C' : (chat.avatarColor || '#1E40AF'), color: '#FFF',
                                                     fontSize: '0.58rem', fontWeight: 800, display: 'flex',
-                                                    alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                                    boxShadow: isTurnosOnline ? '0 1px 3px rgba(234, 88, 12, 0.35)' : 'none'
                                                 }}>
                                                     {getChatAvatarInitials(chat)}
                                                 </div>
                                             )}
                                             <div style={{ minWidth: 0 }}>
-                                                <span style={{ fontSize: '0.73rem', fontWeight: 700, color: isSelected ? (ccTheme.accentColor || (ccTheme.isDark ? '#38BDF8' : '#1E40AF')) : themeCardText, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                <span style={{ fontSize: '0.73rem', fontWeight: 700, color: isTurnosOnline ? (ccTheme.isDark ? '#FDBA74' : '#9A3412') : (isSelected ? (ccTheme.accentColor || (ccTheme.isDark ? '#38BDF8' : '#1E40AF')) : themeCardText), display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {getCleanChatName(chat)}
                                                 </span>
                                                 <div style={{ fontSize: '0.60rem', color: themeCardSubtext }}>
