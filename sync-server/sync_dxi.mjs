@@ -84,22 +84,17 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                 CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS FechaDia,
                 CONVERT(VARCHAR(7), v.[Fecha Visita], 120) AS PeriodoMes,
                 CASE 
-                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFIA'
+                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'OTRAS'
                     WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO'
-                    WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
-                    WHEN v.[Grupo Agenda] = 'GUARDIAS ' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
+                    WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' THEN 'ECOGRAFIA'
                     WHEN v.[Grupo Agenda] = 'TOMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '(TC)%' THEN 'TOMOGRAFIA'
                     WHEN v.[Grupo Agenda] = 'DENSITOMETRIA Y MAMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '%DENSITOMETR%' THEN 'DENSITOMETRIA'
                     WHEN v.[Grupo Agenda] IN ('MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA') AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%DENSITOMETR%' AND ISNULL(v.[Tipo Visita], '') LIKE '(RX)%' THEN 'MAMOGRAFIA'
                     WHEN v.[Grupo Agenda] = 'RADIOLOGIA' THEN 'RADIOLOGIA'
                     ELSE 'OTRAS'
                 END AS Modalidad,
+                ISNULL(RTRIM(LTRIM(v.[Grupo Agenda])), 'SIN GRUPO') AS GrupoAgenda,
                 CASE 
-                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFIAS'
-                    ELSE ISNULL(RTRIM(LTRIM(v.[Grupo Agenda])), 'SIN GRUPO')
-                END AS GrupoAgenda,
-                CASE 
-                    WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFÍAS (' + ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'GRAL')) + ')'
                     WHEN v.[Grupo Agenda] IN ('ECOCARDIO', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'TOMOGRAFIA', 'RADIOLOGIA') THEN ISNULL(RTRIM(LTRIM(v.Agenda)), 'SIN AGENDA')
                     ELSE 'ECOGRAFÍAS (' + ISNULL(v.VIS_Centro, ISNULL(v.Centro, 'GRAL')) + ')'
                 END AS AgendaSalus,
@@ -135,10 +130,8 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
             FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
             LEFT JOIN #InformesVisitas i ON i.idVisita = v.idVisita
             WHERE v.[Fecha Visita] >= @desde AND v.[Fecha Visita] <= @hasta
-              AND (
-                  v.[Grupo Agenda] IN ('ECOGRAFIAS', 'ECOCARDIO', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'RADIOLOGIA')
-                  OR (v.[Grupo Agenda] = 'GUARDIAS ' AND (v.[Tipo Visita] LIKE '(ECO)%' OR v.[Tipo Visita] LIKE '%ECOGRAF%' OR v.[Tipo Visita] LIKE '%DOPPLER%'))
-              )
+              AND v.[Grupo Agenda] IN ('ECOGRAFIAS', 'ECOCARDIO', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'RADIOLOGIA')
+              AND NOT (v.[Grupo Agenda] = 'ECOGRAFIAS' AND v.Asistencia IN ('Presente', 'INTERNADO', 'URGENCIA', 'SOBRETURNO') AND v.idEntrada IS NULL)
               AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDIO DE CONTRASTE%'
               AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%ADICIONAL POR%ANESTESIA%'
               AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDICI%N DE ESCOLIOSIS%'
@@ -146,7 +139,7 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
 
             DELETE FROM #TempDxI WHERE Modalidad = 'OTRAS';
 
-            -- 3. Detectar y separar todas las Ecografías efectivamente asistidas pero SIN INFORMAR antes de excluirlas de la suma
+            -- 3. Detectar y separar para auditoría todas las Ecografías efectivamente asistidas pero SIN INFORMAR (manteniendo el total igual a SALUS)
             SELECT 
                 PeriodoMes,
                 GrupoAgenda,
@@ -187,12 +180,6 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                     WHEN GrupoAgenda LIKE 'GUARDIAS%' OR EstadoAsistencia IN ('Internado', 'Urgencia') THEN 'Ecografía de Guardia / Internación sin firma en LIS'
                     ELSE 'Ecografía Ambulatoria con Petición LIS pendiente de firma'
                 END;
-
-            -- Quitar de la suma de ECOGRAFIA todas las que están sin informar
-            DELETE FROM #TempDxI
-            WHERE Modalidad = 'ECOGRAFIA'
-              AND EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno')
-              AND EstaInformado = 0;
 
             -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia, TipoFinanciador e Informe (con PeriodoMes para filtrado en caché)
             SELECT PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador,
@@ -416,10 +403,9 @@ export async function getDxICasosNominales({
                     v.Edad AS edad,
                     ISNULL(v.Sexo, '') AS sexo,
                     CASE 
-                        WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'ECOGRAFIA'
+                        WHEN v.[Grupo Agenda] = 'ECOCARDIO' AND (ISNULL(v.Agenda, '') LIKE '%GERBEC%' OR ISNULL(v.Responsable, '') LIKE '%GERBEC%') THEN 'OTRAS'
                         WHEN v.[Grupo Agenda] = 'ECOCARDIO' THEN 'ECOCARDIO'
-                        WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
-                        WHEN v.[Grupo Agenda] = 'GUARDIAS ' AND (ISNULL(v.[Tipo Visita], '') LIKE '(ECO)%' OR ISNULL(v.[Tipo Visita], '') LIKE '%ECOGRAF%' OR ISNULL(v.[Tipo Visita], '') LIKE '%DOPPLER%') THEN 'ECOGRAFIA'
+                        WHEN v.[Grupo Agenda] = 'ECOGRAFIAS' THEN 'ECOGRAFIA'
                         WHEN v.[Grupo Agenda] = 'TOMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '(TC)%' THEN 'TOMOGRAFIA'
                         WHEN v.[Grupo Agenda] = 'DENSITOMETRIA Y MAMOGRAFIA' AND ISNULL(v.[Tipo Visita], '') LIKE '%DENSITOMETR%' THEN 'DENSITOMETRIA'
                         WHEN v.[Grupo Agenda] IN ('MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA') AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%DENSITOMETR%' AND ISNULL(v.[Tipo Visita], '') LIKE '(RX)%' THEN 'MAMOGRAFIA'
@@ -460,10 +446,8 @@ export async function getDxICasosNominales({
                 FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
                 LEFT JOIN #InformesCasos i ON i.idVisita = v.idVisita
                 WHERE v.[Fecha Visita] >= @desde AND v.[Fecha Visita] <= @hasta
-                  AND (
-                      v.[Grupo Agenda] IN ('ECOGRAFIAS', 'ECOCARDIO', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'RADIOLOGIA')
-                      OR (v.[Grupo Agenda] = 'GUARDIAS ' AND (v.[Tipo Visita] LIKE '(ECO)%' OR v.[Tipo Visita] LIKE '%ECOGRAF%' OR v.[Tipo Visita] LIKE '%DOPPLER%'))
-                  )
+                  AND v.[Grupo Agenda] IN ('ECOGRAFIAS', 'ECOCARDIO', 'TOMOGRAFIA', 'MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA', 'RADIOLOGIA')
+                  AND NOT (v.[Grupo Agenda] = 'ECOGRAFIAS' AND v.Asistencia IN ('Presente', 'INTERNADO', 'URGENCIA', 'SOBRETURNO') AND v.idEntrada IS NULL)
                   AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDIO DE CONTRASTE%'
                   AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%ADICIONAL POR%ANESTESIA%'
                   AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%MEDICI%N DE ESCOLIOSIS%'
@@ -472,7 +456,6 @@ export async function getDxICasosNominales({
             SELECT TOP (${safeLimit}) *
             FROM BaseCasos
             WHERE modalidad <> 'OTRAS'
-              AND NOT (modalidad = 'ECOGRAFIA' AND estado_asistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND informado = 0)
               AND (@modalidad = 'TODAS' OR modalidad = @modalidad)
               AND (@agenda = 'TODAS' OR agenda = @agenda)
               AND (@ambito = 'TODOS' OR ambito = @ambito)

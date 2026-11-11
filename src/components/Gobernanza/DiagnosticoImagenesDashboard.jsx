@@ -2029,7 +2029,7 @@ export default function DiagnosticoImagenesDashboard({
                                         </div>
                                     ) : tab.id === 'ECOGRAFIA' && ecoSinInformarSummary.totalExcluidas > 0 ? (
                                         <div style={{ fontSize: '0.67rem', color: '#0891B2', fontWeight: 700 }}>
-                                            Excl. s/inf: -{ecoSinInformarSummary.totalExcluidas}
+                                            Criterio SALUS (s/inf: {ecoSinInformarSummary.totalExcluidas})
                                         </div>
                                     ) : tab.note ? (
                                         <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{tab.note}</div>
@@ -2081,7 +2081,7 @@ export default function DiagnosticoImagenesDashboard({
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    <span>Depuración de Ecografías Sin Informar:</span>
+                                    <span>Auditoría de Ecografías Sin Informar (Criterio SALUS 1:1):</span>
                                     <span style={{
                                         background: '#FEF3C7',
                                         color: '#92400E',
@@ -2091,7 +2091,7 @@ export default function DiagnosticoImagenesDashboard({
                                         fontSize: '0.72rem',
                                         fontWeight: 800
                                     }}>
-                                        -{ecoSinInformarSummary.totalExcluidas.toLocaleString('es-AR')} excluidas de la suma
+                                        {ecoSinInformarSummary.totalExcluidas.toLocaleString('es-AR')} sin firma en LIS
                                     </span>
                                     <span style={{
                                         background: '#ECFDF5',
@@ -2102,11 +2102,11 @@ export default function DiagnosticoImagenesDashboard({
                                         fontSize: '0.72rem',
                                         fontWeight: 800
                                     }}>
-                                        ✓ Suma ECOGRAFIA 100% informada ({(modalidadCounts.ECOGRAFIA || 0).toLocaleString('es-AR')})
+                                        ✓ Total igualado a SALUS ({(modalidadCounts.ECOGRAFIA || 0).toLocaleString('es-AR')})
                                     </span>
                                 </div>
                                 <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '3px' }}>
-                                    Se detectaron y quitaron de la suma total <strong>{ecoSinInformarSummary.totalExcluidas.toLocaleString('es-AR')}</strong> registros sin informe firmado en LIS (incluyendo prácticas administrativas de <em>Consulta/Guía de Punción</em>, estudios portátiles de <em>Guardia/Internación</em> evolucionados en HCE y peticiones abiertas sin firma).
+                                    El total de <strong>Ecografía</strong> coincide 1:1 con el reporte oficial de SALUS (<em>Grupo Agenda = ECOGRAFIAS</em> con admisión efectiva). Dentro de ese universo se identifican <strong>{ecoSinInformarSummary.totalExcluidas.toLocaleString('es-AR')}</strong> registros sin informe firmado en LIS para seguimiento de calidad.
                                 </div>
                             </div>
                         </div>
@@ -2165,7 +2165,7 @@ export default function DiagnosticoImagenesDashboard({
                             overflowY: 'auto'
                         }}>
                             <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0F172A', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                <span>Listado de Ecografías Sin Informar detectadas y quitadas de la suma ({ecoSinInformarSummary.totalExcluidas} casos):</span>
+                                <span>Listado de Ecografías Sin Informar en LIS dentro del total SALUS ({ecoSinInformarSummary.totalExcluidas} casos):</span>
                                 <span style={{ fontSize: '0.7rem', color: '#475569' }}>
                                     🏥 Obra Social: <strong>{ecoSinInformarSummary.obraSocial}</strong> • 👤 Particular: <strong>{ecoSinInformarSummary.particular}</strong>
                                 </span>
@@ -2179,7 +2179,7 @@ export default function DiagnosticoImagenesDashboard({
                                         <th style={{ padding: '6px 8px' }}>Motivo Detectado</th>
                                         <th style={{ padding: '6px 8px', textAlign: 'right' }}>Obra Social</th>
                                         <th style={{ padding: '6px 8px', textAlign: 'right' }}>Particular</th>
-                                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Excluidas</th>
+                                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Sin Informar</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -2202,7 +2202,7 @@ export default function DiagnosticoImagenesDashboard({
                                             </td>
                                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#0D9488', fontWeight: 700 }}>{item.obraSocial}</td>
                                             <td style={{ padding: '6px 8px', textAlign: 'right', color: '#EA580C', fontWeight: 700 }}>{item.particular}</td>
-                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800, color: '#DC2626' }}>-{item.cantidad}</td>
+                                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800, color: '#B45309' }}>{item.cantidad}</td>
                                         </tr>
                                     ))}
                                 </tbody>
