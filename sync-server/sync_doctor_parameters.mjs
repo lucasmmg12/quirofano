@@ -535,114 +535,123 @@ export async function syncDoctorParameters({ syncSimon = true } = {}) {
                 };
             });
 
-            console.log(`[SYNC-DOCTOR-PARAMS] Generating OpenAI embeddings for ${rulePayloads.length} Simon IA doctor rules...`);
-            const ruleEmbeddings = await generateEmbeddingsBatch(rulePayloads.map(r => r.content), 50);
+            console.log(`[SYNC-DOCTOR-PARAMS] Checking incremental changes among ${rulePayloads.length} Simon IA doctor rules...`);
 
-            // Borrar reglas automáticas anteriores de SALUS e insertar las nuevas actualizadas
-            const { error: delRulesErr } = await simonSupabase
+            // Obtener reglas existentes en Simon IA para re-vectorizar SOLO las que cambiaron (ahorro ~99% de tokens)
+            const { data: existingRules, error: fetchExistErr } = await simonSupabase
                 .from('rag_documents')
-                .delete()
+                .select('id, metadata')
                 .eq('metadata->>source', 'rule')
                 .eq('metadata->>created_by', 'Sincronizador Automático SALUS');
-            if (delRulesErr) {
-                console.warn('[SYNC-DOCTOR-PARAMS] Warning deleting old Simon SALUS rules:', delRulesErr.message);
+
+            if (fetchExistErr) {
+                console.warn('[SYNC-DOCTOR-PARAMS] Warning fetching existing Simon SALUS rules:', fetchExistErr.message);
             }
 
-            for (let i = 0; i < rulePayloads.length; i += 50) {
-                const batch = rulePayloads.slice(i, i + 50).map((r, idx) => ({
-                    content: r.content,
-                    metadata: r.metadata,
-                    embedding: ruleEmbeddings[i + idx]
-                }));
-                const { error: insErr } = await simonSupabase.from('rag_documents').insert(batch);
-                if (insErr) {
-                    console.error(`[SYNC-DOCTOR-PARAMS] Error inserting Simon rules batch ${i}:`, insErr.message);
-                } else {
-                    simonSyncedRules += batch.length;
+            const existingByAgenda = new Map();
+            for (const row of existingRules || []) {
+                const agId = String(row.metadata?.id_agenda ?? '');
+                if (agId) existingByAgenda.set(agId, row);
+            }
+
+            const changedPayloads = [];
+            const idsToDelete = [];
+            const activeAgendaIds = new Set();
+
+            for (const payload of rulePayloads) {
+                const agId = String(payload.metadata.id_agenda);
+                activeAgendaIds.add(agId);
+                const prev = existingByAgenda.get(agId);
+                const prevText = (prev?.metadata?.processed_text || '').trim();
+                const currText = (payload.metadata.processed_text || '').trim();
+
+                if (!prev || prevText !== currText) {
+                    changedPayloads.push(payload);
+                    if (prev?.id) idsToDelete.push(prev.id);
                 }
             }
 
-            // 4b. Construir y actualizar el documento maestro Guia_Parametros_Notas_Diarias_Medicos_SALUS.md
-            const mdSections = [
-                `# GUÍA DE PARÁMETROS, SEDES, HORARIOS Y NOTAS DIARIAS DE MÉDICOS - SANATORIO ARGENTINO`,
-                `*Fecha de Sincronización con SALUS:* ${todayHuman}`,
-                `*Total de Agendas y Médicos Activos Sincronizados:* ${simonDoctorRecords.length}`,
-                `\nEste documento oficial consolida todas las directivas operativas, especialidades, sedes de atención, consultorios, días y horarios habituales, tipos de turno, aranceles particulares, coseguros/adicionales, exclusiones de obras sociales, alias de pago y particularidades de los profesionales del Sanatorio Argentino vigentes en SALUS.`
-            ];
-
-            for (const doc of simonDoctorRecords) {
-                const sec = [
-                    `## ${doc.medico}`,
-                    `- **Id Agenda SALUS:** ${doc.id_agenda}`,
-                    `- **Especialidad:** ${doc.especialidad}`,
-                    doc.matricula ? `- **Matrícula (MP):** ${doc.matricula}` : null,
-                    doc.sedes.length > 0 ? `- **Sedes de Atención:** ${doc.sedes.join(' / ')}` : null,
-                    doc.consultorio ? `- **Consultorio Habitual:** ${doc.consultorio}` : null,
-                    doc.duracion_min ? `- **Duración de Turno:** ${doc.duracion_min}` : null,
-                    doc.horarios.length > 0 ? `- **Días y Horarios Habituales:** ${doc.horarios.join(' | ')}` : null,
-                    doc.practicas.length > 0 ? `- **Prácticas / Tipos de Turno:** ${doc.practicas.join(', ')}` : null,
-                    `- **Vigencia hasta:** ${doc.vigencia_hasta}`,
-                    `**Detalle de Parámetros y Valores (Notas Diarias SALUS):**`,
-                    '```text',
-                    doc.nota_raw || 'Agenda activa en SALUS sin observaciones de cobro adicional en Notas Diarias.',
-                    '```'
-                ].filter(Boolean).join('\n');
-                mdSections.push(sec);
+            // Eliminar agendas que ya no están activas
+            for (const [agId, prev] of existingByAgenda.entries()) {
+                if (!activeAgendaIds.has(agId) && prev?.id) {
+                    idsToDelete.push(prev.id);
+                }
             }
 
-            const fullMarkdown = mdSections.join('\n\n---\n\n');
-            const mdBuffer = Buffer.from(fullMarkdown, 'utf-8');
-            const filename = 'Guia_Parametros_Notas_Diarias_Medicos_SALUS.md';
-            const folder = 'Parametros_Medicos';
-            const storagePath = `${folder}/${filename}`;
-            const docSummary = 'Guía operativa oficial del Sanatorio Argentino sincronizada desde SALUS que detalla para cada médico su especialidad, sede y consultorio de atención, días y horarios habituales, prácticas realizadas, tarifas particulares, adicionales/coseguros por obra social, alias de transferencia y requisitos de turno.';
-
-            // Subir archivo actualizado al Storage de Simon IA
-            try {
-                await simonSupabase.storage.from('rag-files').upload(storagePath, mdBuffer, {
-                    contentType: 'text/markdown; charset=utf-8',
-                    upsert: true
-                });
-            } catch (stErr) {
-                console.warn('[SYNC-DOCTOR-PARAMS] Storage upload warning:', stErr.message);
+            if (idsToDelete.length > 0) {
+                for (let i = 0; i < idsToDelete.length; i += 100) {
+                    await simonSupabase
+                        .from('rag_documents')
+                        .delete()
+                        .in('id', idsToDelete.slice(i, i + 100));
+                }
             }
 
-            // Chunkear y vectorizar el documento maestro
-            const rawChunks = chunkMarkdown(fullMarkdown, 1200, 200);
-            const contextPrefix = `[Documento: ${filename}]\n[Resumen: ${docSummary}]\n\n`;
-            const chunkTexts = rawChunks.map(c => `${contextPrefix}${c}`);
-            console.log(`[SYNC-DOCTOR-PARAMS] Generating OpenAI embeddings for ${chunkTexts.length} markdown chunks...`);
-            const chunkEmbeddings = await generateEmbeddingsBatch(chunkTexts, 50);
+            if (changedPayloads.length === 0) {
+                console.log(`[SYNC-DOCTOR-PARAMS] ✅ 0 cambios en parámetros médicos de SALUS. Omitiendo llamadas a OpenAI Embeddings ($0.00 consumido).`);
+            } else {
+                console.log(`[SYNC-DOCTOR-PARAMS] Generating OpenAI embeddings ONLY for ${changedPayloads.length} changed doctor rules (out of ${rulePayloads.length})...`);
+                const ruleEmbeddings = await generateEmbeddingsBatch(changedPayloads.map(r => r.content), 50);
 
-            await simonSupabase
-                .from('rag_documents')
-                .delete()
-                .eq('metadata->>filename', filename);
-
-            for (let i = 0; i < chunkTexts.length; i += 50) {
-                const batch = chunkTexts.slice(i, i + 50).map((content, idx) => ({
-                    content,
-                    embedding: chunkEmbeddings[i + idx],
-                    metadata: {
-                        tag: 'salus-notas-diarias',
-                        folder,
-                        filename,
-                        file_size: mdBuffer.length,
-                        file_type: '.md',
-                        chunk_index: i + idx,
-                        doc_summary: docSummary,
-                        storage_path: storagePath,
-                        total_chunks: chunkTexts.length
+                for (let i = 0; i < changedPayloads.length; i += 50) {
+                    const batch = changedPayloads.slice(i, i + 50).map((r, idx) => ({
+                        content: r.content,
+                        metadata: r.metadata,
+                        embedding: ruleEmbeddings[i + idx]
+                    }));
+                    const { error: insErr } = await simonSupabase.from('rag_documents').insert(batch);
+                    if (insErr) {
+                        console.error(`[SYNC-DOCTOR-PARAMS] Error inserting Simon rules batch ${i}:`, insErr.message);
+                    } else {
+                        simonSyncedRules += batch.length;
                     }
-                }));
-                const { error: chErr } = await simonSupabase.from('rag_documents').insert(batch);
-                if (chErr) {
-                    console.error(`[SYNC-DOCTOR-PARAMS] Error inserting markdown chunks batch ${i}:`, chErr.message);
-                } else {
-                    simonSyncedChunks += batch.length;
                 }
+
+                // 4b. Actualizar el documento maestro Guia_Parametros_Notas_Diarias_Medicos_SALUS.md SOLO si hubo cambios reales
+                const mdSections = [
+                    `# GUÍA DE PARÁMETROS, SEDES, HORARIOS Y NOTAS DIARIAS DE MÉDICOS - SANATORIO ARGENTINO`,
+                    `*Fecha de Sincronización con SALUS:* ${todayHuman}`,
+                    `*Total de Agendas y Médicos Activos Sincronizados:* ${simonDoctorRecords.length}`,
+                    `\nEste documento oficial consolida todas las directivas operativas, especialidades, sedes de atención, consultorios, días y horarios habituales, tipos de turno, aranceles particulares, coseguros/adicionales, exclusiones de obras sociales, alias de pago y particularidades de los profesionales del Sanatorio Argentino vigentes en SALUS.`
+                ];
+
+                for (const doc of simonDoctorRecords) {
+                    const sec = [
+                        `## ${doc.medico}`,
+                        `- **Id Agenda SALUS:** ${doc.id_agenda}`,
+                        `- **Especialidad:** ${doc.especialidad}`,
+                        doc.matricula ? `- **Matrícula (MP):** ${doc.matricula}` : null,
+                        doc.sedes.length > 0 ? `- **Sedes de Atención:** ${doc.sedes.join(' / ')}` : null,
+                        doc.consultorio ? `- **Consultorio Habitual:** ${doc.consultorio}` : null,
+                        doc.duracion_min ? `- **Duración de Turno:** ${doc.duracion_min}` : null,
+                        doc.horarios.length > 0 ? `- **Días y Horarios Habituales:** ${doc.horarios.join(' | ')}` : null,
+                        doc.practicas.length > 0 ? `- **Prácticas / Tipos de Turno:** ${doc.practicas.join(', ')}` : null,
+                        `- **Vigencia hasta:** ${doc.vigencia_hasta}`,
+                        `**Detalle de Parámetros y Valores (Notas Diarias SALUS):**`,
+                        '```text',
+                        doc.nota_raw || 'Agenda activa en SALUS sin observaciones de cobro adicional en Notas Diarias.',
+                        '```'
+                    ].filter(Boolean).join('\n');
+                    mdSections.push(sec);
+                }
+
+                const fullMarkdown = mdSections.join('\n\n---\n\n');
+                const mdBuffer = Buffer.from(fullMarkdown, 'utf-8');
+                const filename = 'Guia_Parametros_Notas_Diarias_Medicos_SALUS.md';
+                const folder = 'Parametros_Medicos';
+                const storagePath = `${folder}/${filename}`;
+
+                // Subir archivo actualizado al Storage de Simon IA (sin re-vectorizar 350 chunks duplicados que ya están en las reglas individuales)
+                try {
+                    await simonSupabase.storage.from('rag-files').upload(storagePath, mdBuffer, {
+                        contentType: 'text/markdown; charset=utf-8',
+                        upsert: true
+                    });
+                } catch (stErr) {
+                    console.warn('[SYNC-DOCTOR-PARAMS] Storage upload warning:', stErr.message);
+                }
+                console.log(`[SYNC-DOCTOR-PARAMS] Simon IA updated incrementally: ${simonSyncedRules} changed doctor rules.`);
             }
-            console.log(`[SYNC-DOCTOR-PARAMS] Simon IA updated: ${simonSyncedRules} doctor rules + ${simonSyncedChunks} document chunks.`);
         }
 
         return {
