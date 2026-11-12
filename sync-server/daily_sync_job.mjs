@@ -426,6 +426,36 @@ export async function runDailySync({ skipDoctors = false } = {}) {
         `);
     }
 
+    // 4.B Actualizar Serie Mensual de Asistencia Quirófano desde VLISE_Visitas (quirofano_asistencia_mensual_salus)
+    try {
+        const resQxAsist = await pool.request().query(`
+            SELECT 
+                FORMAT([Fecha Visita], 'yyyy-MM') AS mes,
+                [Grupo Agenda] AS grupo,
+                ISNULL(NULLIF(LTRIM(RTRIM(Asistencia)), ''), 'Sin Registrar') AS asistencia,
+                COUNT(*) AS cant
+            FROM dbo.VLISE_Visitas WITH (NOLOCK)
+            WHERE [Fecha Visita] >= '2025-01-01'
+              AND [Grupo Agenda] IN ('QUIRÓFANOS CENTRALES', 'QUIRÓFANOS HdD', 'HEMODINAMIA')
+            GROUP BY FORMAT([Fecha Visita], 'yyyy-MM'), [Grupo Agenda], ISNULL(NULLIF(LTRIM(RTRIM(Asistencia)), ''), 'Sin Registrar')
+            ORDER BY mes ASC, grupo ASC, cant DESC
+        `);
+        const qxAsistRows = resQxAsist.recordset.map(r => ({
+            mes: r.mes,
+            grupo: r.grupo,
+            asistencia: r.asistencia,
+            cant: Number(r.cant)
+        }));
+        await supabase.from('app_config').upsert({
+            key: 'quirofano_asistencia_mensual_salus',
+            value: { rows: qxAsistRows, updated_at: new Date().toISOString() },
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+        log(`Paso 4.B completado: ${qxAsistRows.length} filas de Asistencia Mensual Quirófano actualizadas en app_config.`);
+    } catch (eQxAsist) {
+        log(`⚠️ Advertencia en Paso 4.B (Asistencia Mensual Quirófano): ${eQxAsist.message}`);
+    }
+
     await pool.close();
 
     // ──────────────────────────────────────────────────────────

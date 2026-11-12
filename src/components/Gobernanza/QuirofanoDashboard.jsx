@@ -331,7 +331,7 @@ const INTERANUAL_DATA = [
     { mes: 'Jul', a2022: 726, a2023: 779, a2024: 681, a2025: 699, a2026: 697, central2026: 541, hdd2026: 156 },
     { mes: 'Ago', a2022: 765, a2023: 824, a2024: 721, a2025: 788, a2026: 678, central2026: 502, hdd2026: 176 },
     { mes: 'Sep', a2022: 688, a2023: 794, a2024: 679, a2025: 741, a2026: 646, central2026: 498, hdd2026: 148 },
-    { mes: 'Oct', a2022: 723, a2023: 803, a2024: 723, a2025: 760, a2026: 72, central2026: 55, hdd2026: 17 }
+    { mes: 'Oct', a2022: 723, a2023: 803, a2024: 723, a2025: 760, a2026: 809, central2026: 588, hdd2026: 221 }
 ];
 
 // ─── MATRIZ OFICIAL DE BLOQUES QUIRÚRGICOS (RELEVAMIENTO INSTITUCIONAL SANATORIO ARGENTINO) ───
@@ -1776,9 +1776,50 @@ export default function QuirofanoDashboard({
         });
     }, [dynamicMetrics]);
 
-    // Tendencia de Urgencias vs Electivas vinculada al período y diferenciada por ámbito
+    // Tendencia de Urgencias vs Electivas vinculada al período y diferenciada por ámbito (usando VLISE_Visitas auditado)
     const activeTendenciaAsistencia = useMemo(() => {
-        // Enriquecer serie histórica discriminando Quirófano Central (Electivas + Urgencias) de Hospital de Día (100% Electivas)
+        if (salusAsistenciaRows && salusAsistenciaRows.length > 0) {
+            const byMes = {};
+            for (const r of salusAsistenciaRows) {
+                if (!r.mes) continue;
+                if (!byMes[r.mes]) {
+                    byMes[r.mes] = {
+                        mes: r.mes,
+                        centralPresentes: 0,
+                        hddPresentes: 0,
+                        urgencias: 0
+                    };
+                }
+                const cant = Number(r.cant) || 0;
+                const g = (r.grupo || '').toUpperCase();
+                const asist = (r.asistencia || '').trim();
+                const isHdd = g.includes('HDD') || g.includes('HOSPITAL DE DIA');
+
+                if (asist === 'Presente' || asist === 'INTERNADO' || asist === 'NO PROGRAMADA') {
+                    if (isHdd) byMes[r.mes].hddPresentes += cant;
+                    else byMes[r.mes].centralPresentes += cant;
+                } else if (asist === 'URGENCIA') {
+                    byMes[r.mes].urgencias += cant;
+                }
+            }
+            const realSeries = Object.values(byMes)
+                .sort((a, b) => a.mes.localeCompare(b.mes))
+                .map(m => {
+                    const presentes = m.centralPresentes + m.hddPresentes;
+                    const totalCentral = m.centralPresentes + m.urgencias;
+                    const totalHdd = m.hddPresentes;
+                    return {
+                        ...m,
+                        presentes,
+                        totalCentral,
+                        totalHdd,
+                        total: presentes + m.urgencias
+                    };
+                });
+            if (realSeries.length > 0) return realSeries;
+        }
+
+        // Fallback en caso de no disponer de salusAsistenciaRows
         const enrichedBase = TENDENCIA_ASISTENCIA_DATA.map(t => {
             const hddPresentes = Math.round(t.total * 0.35);
             const centralPresentes = Math.max(0, t.presentes - hddPresentes);
@@ -1796,38 +1837,8 @@ export default function QuirofanoDashboard({
                 totalHdd
             };
         });
-
-        if (!dynamicMetrics) return enrichedBase;
-        const [yD, mD] = (fechaDesde || '').split('-');
-        const [yH, mH] = (fechaHasta || '').split('-');
-        if (yD && yD === yH && mD === mH) {
-            const mesKey = `${yD}-${mD}`;
-            const globalTotal = dynamicMetrics.globalTotal || dynamicMetrics.total || 600;
-            const totalCentral = dynamicMetrics.centrales || Math.round(globalTotal * 0.65);
-            const totalHdd = dynamicMetrics.hdd || Math.max(0, globalTotal - totalCentral);
-            const urgencias = dynamicMetrics.urgencias > 0 
-                ? dynamicMetrics.urgencias 
-                : Math.round(totalCentral * 0.16); // ~67 urgencias en Quirófano Central
-            const centralPresentes = Math.max(0, totalCentral - urgencias);
-            const hddPresentes = totalHdd;
-
-            const filtered = enrichedBase.filter(t => t.mes !== mesKey);
-            return [
-                ...filtered.slice(-5),
-                {
-                    mes: `${mesKey} (${activePeriodLabel})`,
-                    centralPresentes,
-                    hddPresentes,
-                    urgencias,
-                    presentes: centralPresentes + hddPresentes,
-                    total: globalTotal,
-                    totalCentral,
-                    totalHdd
-                }
-            ];
-        }
         return enrichedBase;
-    }, [dynamicMetrics, fechaDesde, fechaHasta, activePeriodLabel]);
+    }, [salusAsistenciaRows]);
 
     // Responsables de Urgencia ordenados por volumen y tasa de urgencias (excluyendo prestadores genéricos)
     const activeResponsablesUrgencia = useMemo(() => {
