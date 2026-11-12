@@ -868,9 +868,10 @@ export default function AltasPanel({ addToast, currentUser }) {
 
         // Ocultar solo admisiones obsoletas de MISMA fecha (fusionadas)
         // Las de fecha diferente se muestran como filas independientes
-        // Excluir también las fichas "cruza mes" (ingreso fuera del mes seleccionado)
-        return result.filter(a => !a._isObsoleteAdmission && !a._cruzaMes);
-    }, [altas, criterios, selectedMonth]);
+        // Excluir también las fichas "cruza mes" (ingreso fuera del mes seleccionado), salvo cuando hay búsqueda activa
+        const hasSearch = debouncedSearch && debouncedSearch.trim().length >= 2;
+        return result.filter(a => !a._isObsoleteAdmission && (!a._cruzaMes || hasSearch));
+    }, [altas, criterios, selectedMonth, debouncedSearch]);
 
     // ── Internaciones prolongadas (cruza mes, sin alta) — para banner y corte ──
     const prolongadasAltas = useMemo(() => {

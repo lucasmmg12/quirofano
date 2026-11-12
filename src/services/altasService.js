@@ -101,16 +101,20 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
             .order('fecha_ingreso', { ascending: false })
             .range(from, from + PAGE_SIZE - 1);
 
-        if (toDate) query = query.lte('fecha_ingreso', toDate);
-        if (fromDate) {
-            // Incluir admisiones que: ingresaron en el mes, O tienen alta en el mes,
-            // O siguen internadas (sin alta) PERO ingresaron antes del fin del mes seleccionado.
-            // La cláusula and(fecha_alta.is.null,...) evita traer admisiones antiguas sin alta
-            // de meses muy anteriores al rango seleccionado.
-            if (toDate) {
-                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},and(fecha_alta.is.null,fecha_ingreso.lte.${toDate})`);
-            } else {
-                query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+        const hasGlobalSearch = search && search.trim().length >= 2;
+
+        if (!hasGlobalSearch) {
+            if (toDate) query = query.lte('fecha_ingreso', toDate);
+            if (fromDate) {
+                // Incluir admisiones que: ingresaron en el mes, O tienen alta en el mes,
+                // O siguen internadas (sin alta) PERO ingresaron antes del fin del mes seleccionado.
+                // La cláusula and(fecha_alta.is.null,...) evita traer admisiones antiguas sin alta
+                // de meses muy anteriores al rango seleccionado.
+                if (toDate) {
+                    query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},and(fecha_alta.is.null,fecha_ingreso.lte.${toDate})`);
+                } else {
+                    query = query.or(`fecha_ingreso.gte.${fromDate},fecha_alta.gte.${fromDate},fecha_alta.is.null`);
+                }
             }
         }
         if (search) {
@@ -152,7 +156,8 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
                 return false;
             }
             if (row.fecha_ingreso && row.fecha_ingreso >= '2026-10-01') {
-                return row.ficha_estado === 'entregada';
+                const ctrlSi = ['si', 'sí', 's', '1', 'true'].includes((row.control_adm_finalizado || '').trim().toLowerCase());
+                return row.ficha_estado === 'entregada' || (ctrlSi && row.ficha_estado !== 'devuelta_a_recepcion');
             }
             return true;
         });
