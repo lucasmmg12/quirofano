@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { exportSuspensionesPdf } from '../../utils/quirofanoSuspensionesPdf';
 import { exportQuirofanoExcelStyled } from '../../utils/quirofanoExcelExporter';
 import { SALUS_QUIROFANO_ASISTENCIA_MENSUAL } from '../../data/salusQuirofanoAsistenciaData';
+import { SALUS_QUIROFANO_EQUIPOS_MENSUAL } from '../../data/salusQuirofanoEquiposData';
 import { 
     Activity, Clock, CheckCircle2, AlertTriangle, 
     Calendar, RefreshCw, TrendingUp, Users,
@@ -1925,17 +1926,39 @@ export default function QuirofanoDashboard({
             .slice(0, 15);
     }, [dynamicMetrics]);
 
-    // Productividad de Equipos escalada proporcionalmente al período
+    // Productividad real de Equipos Quirúrgicos extraída de SALUS (dbo.TABLEAU_Cirugias) para el período activo
     const activeEquiposData = useMemo(() => {
-        if (!dynamicMetrics) return EQUIPOS_DATA;
-        const scale = dynamicMetrics.total / 5618;
-        return {
-            circulantes: EQUIPOS_DATA.circulantes.map(c => ({ ...c, cant: Math.max(1, Math.round(c.cant * scale)) })),
-            tecnicosAnestesia: EQUIPOS_DATA.tecnicosAnestesia.map(t => ({ ...t, cant: Math.max(1, Math.round(t.cant * scale)) })),
-            anestesistas: EQUIPOS_DATA.anestesistas.map(a => ({ ...a, cant: Math.max(1, Math.round(a.cant * scale)) })),
-            instrumentadores: EQUIPOS_DATA.instrumentadores.map(i => ({ ...i, cant: Math.max(1, Math.round(i.cant * scale)) }))
-        };
-    }, [dynamicMetrics]);
+        if (effectiveDesde && effectiveHasta) {
+            const startYm = effectiveDesde.slice(0, 7);
+            const endYm = effectiveHasta.slice(0, 7);
+            const matchingMonths = Object.keys(SALUS_QUIROFANO_EQUIPOS_MENSUAL).filter(
+                ym => ym >= startYm && ym <= endYm
+            );
+            if (matchingMonths.length > 0) {
+                const agg = {
+                    circulantes: {},
+                    tecnicosAnestesia: {},
+                    anestesistas: {},
+                    instrumentadores: {}
+                };
+                for (const ym of matchingMonths) {
+                    const mData = SALUS_QUIROFANO_EQUIPOS_MENSUAL[ym];
+                    if (!mData) continue;
+                    for (const c of mData.circulantes || []) agg.circulantes[c.nombre] = (agg.circulantes[c.nombre] || 0) + c.cant;
+                    for (const t of mData.tecnicosAnestesia || []) agg.tecnicosAnestesia[t.nombre] = (agg.tecnicosAnestesia[t.nombre] || 0) + t.cant;
+                    for (const a of mData.anestesistas || []) agg.anestesistas[a.nombre] = (agg.anestesistas[a.nombre] || 0) + a.cant;
+                    for (const i of mData.instrumentadores || []) agg.instrumentadores[i.nombre] = (agg.instrumentadores[i.nombre] || 0) + i.cant;
+                }
+                return {
+                    circulantes: Object.entries(agg.circulantes).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([nombre, cant]) => ({ nombre, cant })),
+                    tecnicosAnestesia: Object.entries(agg.tecnicosAnestesia).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([nombre, cant]) => ({ nombre, cant })),
+                    anestesistas: Object.entries(agg.anestesistas).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([nombre, cant]) => ({ nombre, cant, grupo: 'Grupo' })),
+                    instrumentadores: Object.entries(agg.instrumentadores).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([nombre, cant]) => ({ nombre, cant }))
+                };
+            }
+        }
+        return EQUIPOS_DATA;
+    }, [effectiveDesde, effectiveHasta]);
 
     // Helper para estimar la sala específica a partir del procedimiento y ámbito
     const getSalaEstimada = (s, idx = 0) => {
