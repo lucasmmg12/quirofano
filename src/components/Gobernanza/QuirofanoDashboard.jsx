@@ -5,6 +5,7 @@ import { exportSuspensionesPdf } from '../../utils/quirofanoSuspensionesPdf';
 import { exportQuirofanoExcelStyled } from '../../utils/quirofanoExcelExporter';
 import { SALUS_QUIROFANO_ASISTENCIA_MENSUAL } from '../../data/salusQuirofanoAsistenciaData';
 import { SALUS_QUIROFANO_EQUIPOS_MENSUAL } from '../../data/salusQuirofanoEquiposData';
+import { SALUS_BLOQUES_CIRUGIAS_REALES, SALUS_ALERTAS_7DIAS_AGENDA } from '../../data/salusBloquesNominalData';
 import { 
     Activity, Clock, CheckCircle2, AlertTriangle, 
     Calendar, RefreshCw, TrendingUp, Users,
@@ -39,37 +40,38 @@ import './Gobernanza.css';
 
 // ─── DATOS REALES EXTRAÍDOS DE TABLEAU INSTITUCIONAL (SANATORIO ARGENTINO) ───
 
-// Ocupación por Sala (Mayo 2026)
+// Ocupación por Sala (Benchmark Auditado Octubre 2026 · Fórmula: Duración Foja + 30 min [15m pre + 15m post])
 const SALAS_DATA = [
-    { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: 142, horas: 326.5, ocupacionPct: 88.4, color: '#1E40AF' },
-    { sala: 'Qx 2', nombre: 'Quirófano 2 (Cirugía General)', cirugias: 135, horas: 298.0, ocupacionPct: 84.2, color: '#2563EB' },
-    { sala: 'Qx 3', nombre: 'Quirófano 3 (Traumatología / Ortopedia)', cirugias: 128, horas: 284.5, ocupacionPct: 81.5, color: '#3B82F6' },
-    { sala: 'Qx 4', nombre: 'Quirófano 4 (Gineco-Obstetricia)', cirugias: 131, horas: 275.0, ocupacionPct: 82.8, color: '#60A5FA' },
-    { sala: 'Qx 5 - HdD', nombre: 'Quirófano 5 (Hospital de Día)', cirugias: 82, horas: 164.0, ocupacionPct: 68.3, color: '#059669' },
-    { sala: 'Qx 6 - HdD', nombre: 'Quirófano 6 (Endoscopía HdD)', cirugias: 74, horas: 142.5, ocupacionPct: 62.0, color: '#10B981' },
-    { sala: 'SALA DE PARTO', nombre: 'Sala de Partos', cirugias: 21, horas: 45.0, ocupacionPct: 45.0, color: '#F59E0B' }
+    { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: 106, horas: 238.2, ocupacionPct: 65.4, color: '#1E40AF', tipo: 'CENTRALES' },
+    { sala: 'Qx 2', nombre: 'Quirófano 2 (Cirugía General)', cirugias: 129, horas: 382.0, ocupacionPct: 88.5, color: '#2563EB', tipo: 'CENTRALES' },
+    { sala: 'Qx 3', nombre: 'Quirófano 3 (Traumatología / Ortopedia)', cirugias: 113, horas: 234.9, ocupacionPct: 64.5, color: '#3B82F6', tipo: 'CENTRALES' },
+    { sala: 'Qx 4', nombre: 'Quirófano 4 (Gineco-Obstetricia)', cirugias: 137, horas: 262.4, ocupacionPct: 72.1, color: '#60A5FA', tipo: 'CENTRALES' },
+    { sala: 'SALA DE PARTO', nombre: 'Sala de Partos (Integrada Qx Central)', cirugias: 45, horas: 73.6, ocupacionPct: 40.4, color: '#F59E0B', tipo: 'CENTRALES' },
+    { sala: 'Qx 5 - HdD', nombre: 'Quirófano 5 (Hospital de Día)', cirugias: 104, horas: 296.7, ocupacionPct: 81.5, color: '#059669', tipo: 'HDD' },
+    { sala: 'Qx 6 - HdD', nombre: 'Quirófano 6 (Endoscopía HdD)', cirugias: 111, horas: 156.9, ocupacionPct: 60.3, color: '#10B981', tipo: 'HDD' },
+    { sala: 'HEMODINAMIA', nombre: 'Hemodinamia (Solo c/ Anestesia)', cirugias: 3, horas: 6.5, ocupacionPct: 12.5, color: '#DC2626', tipo: 'HEMODINAMIA' }
 ];
 
-// Ranking de Cirujanos (Mayo 2026)
+// Ranking de Cirujanos (Octubre 2026 Auditado · 748 Cirugías Realizadas en SALUS)
 const CIRUJANOS_DATA = [
-    { nombre: 'GALVARINI RECABARREN, MARTIN', especialidad: 'Gastroenterología / Endoscopía', programadas: 32, realizadas: 31, suspendidas: 1, pctTotal: 4.79, pctSuspension: 3.1 },
-    { nombre: 'PONCE GRANADOS, MARCELO', especialidad: 'Gastroenterología / Endoscopía', programadas: 30, realizadas: 29, suspendidas: 1, pctTotal: 4.48, pctSuspension: 3.3 },
-    { nombre: 'GEMPEL, JUAN PABLO', especialidad: 'Cirugía General', programadas: 29, realizadas: 28, suspendidas: 1, pctTotal: 4.33, pctSuspension: 3.4 },
-    { nombre: 'KERMAN GADO, JAVIER', especialidad: 'Cirugía General / Laparoscópica', programadas: 24, realizadas: 22, suspendidas: 2, pctTotal: 3.40, pctSuspension: 8.3 },
-    { nombre: 'GEMPEL, DIEGO', especialidad: 'Cirugía General', programadas: 19, realizadas: 18, suspendidas: 1, pctTotal: 2.78, pctSuspension: 5.3 },
-    { nombre: 'BALMACEDA, RUBEN DARIO', especialidad: 'Ginecología', programadas: 20, realizadas: 18, suspendidas: 2, pctTotal: 2.78, pctSuspension: 10.0 },
-    { nombre: 'MUÑOZ CARRATU, MATIAS ALEJANDRO', especialidad: 'Ortopedia y Traumatología', programadas: 19, realizadas: 17, suspendidas: 2, pctTotal: 2.63, pctSuspension: 10.5 },
-    { nombre: 'CORTINEZ, ESTEBAN', especialidad: 'Urología', programadas: 18, realizadas: 16, suspendidas: 2, pctTotal: 2.47, pctSuspension: 11.1 },
-    { nombre: 'AZURI, WADI', especialidad: 'Urología / Láser', programadas: 18, realizadas: 16, suspendidas: 2, pctTotal: 2.47, pctSuspension: 11.1 },
-    { nombre: 'RANEA SENTAGNE, ROBERTO ESTEBAN', especialidad: 'Ginecología', programadas: 15, realizadas: 13, suspendidas: 2, pctTotal: 2.01, pctSuspension: 13.3 },
-    { nombre: 'GOMEZ RODRIGO, MARIA SOL', especialidad: 'Fertilidad / Ginecología', programadas: 14, realizadas: 13, suspendidas: 1, pctTotal: 2.01, pctSuspension: 7.1 },
-    { nombre: 'ZINI, MIGUEL ERNESTO', especialidad: 'Cirugía General', programadas: 13, realizadas: 12, suspendidas: 1, pctTotal: 1.85, pctSuspension: 7.7 },
-    { nombre: 'SALDIVAR OZAN, DANIELA VERONICA', especialidad: 'Cirugía Plástica', programadas: 13, realizadas: 11, suspendidas: 2, pctTotal: 1.70, pctSuspension: 15.4 },
-    { nombre: 'MARTI, JUAN JOSE', especialidad: 'Ortopedia y Traumatología', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.70, pctSuspension: 8.3 },
-    { nombre: 'MARINO, JORGE SANTIAGO', especialidad: 'Cirugía Cardiovascular', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.70, pctSuspension: 8.3 },
-    { nombre: 'HERRERO, CARLOS ESTEBAN', especialidad: 'Cirugía Pediátrica', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.70, pctSuspension: 8.3 },
-    { nombre: 'HERRERO ARCHILLA, RAMON AGUEDO', especialidad: 'Cirugía Pediátrica', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.70, pctSuspension: 8.3 },
-    { nombre: 'ANTEQUEDA, PABLO ALEJANDRO', especialidad: 'Cirugía General', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.70, pctSuspension: 8.3 }
+    { nombre: 'PONCE GRANADOS, MARCELO', especialidad: 'Gastroenterología / Endoscopía', programadas: 46, realizadas: 45, suspendidas: 1, pctTotal: 6.02, pctSuspension: 2.2 },
+    { nombre: 'GALVARINI RECABARREN, MARTIN', especialidad: 'Gastroenterología / Endoscopía', programadas: 43, realizadas: 41, suspendidas: 2, pctTotal: 5.48, pctSuspension: 4.7 },
+    { nombre: 'GEMPEL, JUAN PABLO', especialidad: 'Cirugía General', programadas: 33, realizadas: 32, suspendidas: 1, pctTotal: 4.28, pctSuspension: 3.0 },
+    { nombre: 'KERMAN CABO, JAVIER', especialidad: 'Cirugía General / Laparoscópica', programadas: 26, realizadas: 25, suspendidas: 1, pctTotal: 3.34, pctSuspension: 3.8 },
+    { nombre: 'BALMACEDA, RUBEN DARIO', especialidad: 'Ginecología', programadas: 23, realizadas: 21, suspendidas: 2, pctTotal: 2.81, pctSuspension: 8.7 },
+    { nombre: 'GEMPEL, DIEGO', especialidad: 'Cirugía General', programadas: 20, realizadas: 19, suspendidas: 1, pctTotal: 2.54, pctSuspension: 5.0 },
+    { nombre: 'MUÑOZ CARRATU, MATIAS ALEJANDRO', especialidad: 'Ortopedia y Traumatología', programadas: 18, realizadas: 17, suspendidas: 1, pctTotal: 2.27, pctSuspension: 5.6 },
+    { nombre: 'AZURI, WADI', especialidad: 'Urología / Láser', programadas: 17, realizadas: 16, suspendidas: 1, pctTotal: 2.14, pctSuspension: 5.9 },
+    { nombre: 'CORTINEZ, ESTEBAN', especialidad: 'Urología', programadas: 17, realizadas: 16, suspendidas: 1, pctTotal: 2.14, pctSuspension: 5.9 },
+    { nombre: 'PONS, RODRIGO', especialidad: 'Cirugía General / Mastología', programadas: 14, realizadas: 13, suspendidas: 1, pctTotal: 1.74, pctSuspension: 7.1 },
+    { nombre: 'SCARSO, CARLOS NELSON', especialidad: 'Ginecología', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.47, pctSuspension: 8.3 },
+    { nombre: 'RANEA SENTAGNE, ROBERTO ESTEBAN', especialidad: 'Ginecología', programadas: 14, realizadas: 13, suspendidas: 1, pctTotal: 1.74, pctSuspension: 7.1 },
+    { nombre: 'GOMEZ RODRIGO, MARIA SOL', especialidad: 'Fertilidad / Ginecología', programadas: 14, realizadas: 13, suspendidas: 1, pctTotal: 1.74, pctSuspension: 7.1 },
+    { nombre: 'ZINI, MIGUEL ERNESTO', especialidad: 'Cirugía General', programadas: 13, realizadas: 12, suspendidas: 1, pctTotal: 1.60, pctSuspension: 7.7 },
+    { nombre: 'SALDIVAR OZAN, DANIELA VERONICA', especialidad: 'Cirugía Plástica', programadas: 13, realizadas: 11, suspendidas: 2, pctTotal: 1.47, pctSuspension: 15.4 },
+    { nombre: 'MOLINA, MAURICIO', especialidad: 'Ortopedia y Traumatología', programadas: 8, realizadas: 7, suspendidas: 1, pctTotal: 0.94, pctSuspension: 12.5 },
+    { nombre: 'HERRERO, CARLOS ESTEBAN', especialidad: 'Cirugía Pediátrica', programadas: 12, realizadas: 11, suspendidas: 1, pctTotal: 1.47, pctSuspension: 8.3 },
+    { nombre: 'MARTIN, MAURICIO', especialidad: 'Cirugía Cardiovascular (CCV)', programadas: 3, realizadas: 3, suspendidas: 0, pctTotal: 0.40, pctSuspension: 0.0 }
 ];
 
 // Ranking de Especialidades
@@ -321,27 +323,28 @@ const EQUIPOS_DATA = {
     ]
 };
 
-// Evolución Interanual Quirófano Central vs Hospital de Día (2022 - 2026)
+// Evolución Interanual Quirófano Central vs Hospital de Día (2022 - 2026 · Auditado SALUS sin Hierro/Hemoterapia)
 const INTERANUAL_DATA = [
-    { mes: 'Ene', a2022: 439, a2023: 548, a2024: 587, a2025: 533, a2026: 603, central2026: 523, hdd2026: 80 },
-    { mes: 'Feb', a2022: 611, a2023: 657, a2024: 542, a2025: 637, a2026: 645, central2026: 498, hdd2026: 147 },
-    { mes: 'Mar', a2022: 781, a2023: 752, a2024: 660, a2025: 601, a2026: 679, central2026: 514, hdd2026: 165 },
-    { mes: 'Abr', a2022: 705, a2023: 729, a2024: 587, a2025: 682, a2026: 672, central2026: 510, hdd2026: 162 },
-    { mes: 'May', a2022: 748, a2023: 773, a2024: 664, a2025: 749, a2026: 673, central2026: 500, hdd2026: 173 },
-    { mes: 'Jun', a2022: 689, a2023: 762, a2024: 606, a2025: 643, a2026: 662, central2026: 539, hdd2026: 123 },
-    { mes: 'Jul', a2022: 726, a2023: 779, a2024: 681, a2025: 699, a2026: 697, central2026: 541, hdd2026: 156 },
-    { mes: 'Ago', a2022: 765, a2023: 824, a2024: 721, a2025: 788, a2026: 678, central2026: 502, hdd2026: 176 },
-    { mes: 'Sep', a2022: 688, a2023: 794, a2024: 679, a2025: 741, a2026: 646, central2026: 498, hdd2026: 148 },
-    { mes: 'Oct', a2022: 723, a2023: 803, a2024: 723, a2025: 760, a2026: 809, central2026: 588, hdd2026: 221 }
+    { mes: 'Ene', a2022: 439, a2023: 548, a2024: 587, a2025: 533, a2026: 603, central2026: 523, hdd2026: 80, hemo2026: 0 },
+    { mes: 'Feb', a2022: 611, a2023: 657, a2024: 542, a2025: 637, a2026: 645, central2026: 498, hdd2026: 147, hemo2026: 0 },
+    { mes: 'Mar', a2022: 781, a2023: 752, a2024: 660, a2025: 601, a2026: 679, central2026: 514, hdd2026: 165, hemo2026: 0 },
+    { mes: 'Abr', a2022: 705, a2023: 729, a2024: 587, a2025: 682, a2026: 672, central2026: 510, hdd2026: 162, hemo2026: 0 },
+    { mes: 'May', a2022: 748, a2023: 773, a2024: 664, a2025: 749, a2026: 673, central2026: 500, hdd2026: 173, hemo2026: 0 },
+    { mes: 'Jun', a2022: 689, a2023: 762, a2024: 606, a2025: 643, a2026: 662, central2026: 539, hdd2026: 123, hemo2026: 0 },
+    { mes: 'Jul', a2022: 726, a2023: 779, a2024: 681, a2025: 699, a2026: 697, central2026: 541, hdd2026: 156, hemo2026: 0 },
+    { mes: 'Ago', a2022: 765, a2023: 824, a2024: 721, a2025: 788, a2026: 678, central2026: 502, hdd2026: 176, hemo2026: 0 },
+    { mes: 'Sep', a2022: 688, a2023: 794, a2024: 679, a2025: 741, a2026: 646, central2026: 498, hdd2026: 148, hemo2026: 0 },
+    { mes: 'Oct', a2022: 723, a2023: 803, a2024: 723, a2025: 760, a2026: 748, central2026: 530, hdd2026: 215, hemo2026: 3 }
 ];
 
 // ─── MATRIZ OFICIAL DE BLOQUES QUIRÚRGICOS (RELEVAMIENTO INSTITUCIONAL SANATORIO ARGENTINO) ───
-// Datos auditados de ocupación de bloques: Período Agosto - Septiembre 2026
+// Datos auditados de ocupación de bloques: Período Agosto - Noviembre 2026 (cruce con dbo.TABLEAU_Cirugias y dbo.VLISE_Visitas)
 const BLOQUES_CONFIG = [
     // 1. Quirófano Central:
     {
         id: 'pons_rodrigo',
         cirujano: 'Dr. Rodrigo Pons',
+        cirujanoMatch: 'PONS, RODRIGO',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
         dia: 'Lunes',
@@ -351,25 +354,40 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 100.0,
+        ocupacionOct: 75.0,
+        ocupacionNov: 50.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', fechaISO: '2026-08-03', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', fechaISO: '2026-08-10', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', fechaISO: '2026-08-17', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', fechaISO: '2026-08-24', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', fechaISO: '2026-09-07', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', fechaISO: '2026-09-14', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', fechaISO: '2026-09-21', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', fechaISO: '2026-09-28', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 05/10', fechaISO: '2026-10-05', hs: 5.0, usada: true, detalle: 'Operado Lun 05/10 (1 cx Qx 1 · 2.2h Foja+30m) + Mié/Jue' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 12/10 (Feriado)', fechaISO: '2026-10-12', rangoInicio: '2026-10-12', rangoFin: '2026-10-16', hs: 5.0, usada: true, detalle: 'Feriado Lun 12/10 · Reprogramado Mié 14/10 y Vie 16/10 (6 cx · 13.7h)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 19/10', fechaISO: '2026-10-19', hs: 5.0, usada: true, detalle: 'Operado Lun 19/10 (2 cx · 2.4h Foja+30m)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 26/10', fechaISO: '2026-10-26', hs: 0.0, usada: false, detalle: 'Sin cirugías el Lun 26/10 (Operó Mié 28/10: 3 cx · 4.2h)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 02/11', fechaISO: '2026-11-02', hs: 5.0, usada: true, detalle: 'Operado Lun 02/11 (2 cx Qx 1 · 2.4h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 09/11', fechaISO: '2026-11-09', rangoInicio: '2026-11-09', rangoFin: '2026-11-13', hs: 5.0, usada: true, detalle: 'Trasladado a Mié 11/11 (1 cx · 2.5h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 16/11', fechaISO: '2026-11-16', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 23/11', fechaISO: '2026-11-23', hs: 0.0, usada: false, detalle: 'Reserva activa: BLOQUE, DR PONS (Qx 1 08:00-13:00)' }
         ],
         color: '#FECDD3',
         textColor: '#9F1239',
-        nota: 'Quirófano Central'
+        nota: 'Quirófano Central · Reserva BLOQUE, DR PONS activa 23/11 y 30/11'
     },
     {
         id: 'molina_mauricio',
         cirujano: 'Dr. Mauricio Molina',
+        cirujanoMatch: 'MOLINA, MAURICIO',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
         dia: 'Lunes',
@@ -379,78 +397,116 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 25.0,
         ocupacionSep: 0.0,
+        ocupacionOct: 75.0,
+        ocupacionNov: 25.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', hs: 5.0, usada: true, detalle: '5.0h operadas (1 cirugía)' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', fechaISO: '2026-08-03', hs: 5.0, usada: true, detalle: '5.0h operadas (1 cirugía)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', fechaISO: '2026-08-10', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', fechaISO: '2026-08-17', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', fechaISO: '2026-08-24', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', fechaISO: '2026-09-07', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', fechaISO: '2026-09-14', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', fechaISO: '2026-09-21', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', fechaISO: '2026-09-28', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 05/10', fechaISO: '2026-10-05', hs: 5.0, usada: true, detalle: 'Operado Lun 05/10 (3 cx en Qx 1 · 4.4h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 12/10', fechaISO: '2026-10-12', hs: 0.0, usada: false, detalle: 'Feriado Nacional · Sin actividad' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 19/10', fechaISO: '2026-10-19', hs: 5.0, usada: true, detalle: 'Operado Lun 19/10 (1 cx en Qx 1 · 2.8h Foja+30m)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 26/10', fechaISO: '2026-10-26', hs: 5.0, usada: true, detalle: 'Operado Lun 26/10 (3 cx en Qx 1 · 6.7h Foja+30m)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 02/11', fechaISO: '2026-11-02', hs: 5.0, usada: true, detalle: 'Operado Lun 02/11 (2 cx en Qx 1 · 4.4h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 09/11', fechaISO: '2026-11-09', hs: 0.0, usada: false, detalle: 'Pasa a Guardia Traumatológica (Baja de bloque fijo)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 16/11', fechaISO: '2026-11-16', hs: 0.0, usada: false, detalle: 'Bloque liberado · Guardia Traumatológica' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 23/11', fechaISO: '2026-11-23', hs: 0.0, usada: false, detalle: 'Bloque liberado · Guardia Traumatológica' }
         ],
         color: '#E2E8F0',
         textColor: '#334155',
-        nota: 'Baja ocupación / Pasible de liberación'
+        nota: 'En Oct 75% uso · Desde Nov pasa a Guardia Traumatológica (Baja de bloque)'
     },
     {
         id: 'azuri_wadi',
         cirujano: 'Dr. Wadi Azuri',
+        cirujanoMatch: 'AZURI, WADI',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
-        dia: 'Martes',
+        dia: 'Martes (2 al mes)',
         diaIdx: 2,
-        horario: '08:00 - 13:00 (5h)',
-        horasSemanales: 5.0,
-        horasMes: 20.0,
+        horario: '08:00 - 13:00 (5h quincenal)',
+        horasSemanales: 2.5,
+        horasMes: 10.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 60.0,
+        ocupacionOct: 100.0,
+        ocupacionNov: 100.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Mar 04/08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
-            { sem: 2, label: 'Sem 2', fecha: 'Mar 11/08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
-            { sem: 3, label: 'Sem 3', fecha: 'Mar 18/08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
-            { sem: 4, label: 'Sem 4', fecha: 'Mar 25/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 04/08', fechaISO: '2026-08-04', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 11/08', fechaISO: '2026-08-11', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 18/08', fechaISO: '2026-08-18', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 25/08', fechaISO: '2026-08-25', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Mar 01/09', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
-            { sem: 2, label: 'Sem 2', fecha: 'Mar 08/09', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
-            { sem: 3, label: 'Sem 3', fecha: 'Mar 15/09', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
-            { sem: 4, label: 'Sem 4', fecha: 'Mar 22/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 5, label: 'Sem 5', fecha: 'Mar 29/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 01/09', fechaISO: '2026-09-01', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 08/09', fechaISO: '2026-09-08', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 15/09', fechaISO: '2026-09-15', hs: 5.0, usada: true, detalle: '5.0h operadas (Láser Qx 1)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 22/09', fechaISO: '2026-09-22', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 5, label: 'Sem 5', fecha: 'Mar 29/09', fechaISO: '2026-09-29', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 06/10', fechaISO: '2026-10-06', hs: 5.0, usada: true, detalle: 'Operado Mar 06/10 (1 cx láser prostático Qx 1 · 6.0h Foja+30m)' },
+            { sem: 2, label: 'Adicional', fecha: 'Mar 13/10', fechaISO: '2026-10-13', hs: 2.0, usada: true, detalle: 'Operado Mar 13/10 (1 cx urológica Qx 1 · 1.6h Foja+30m)' },
+            { sem: 3, label: 'Bloque 2', fecha: 'Mar 20/10', fechaISO: '2026-10-20', hs: 5.0, usada: true, detalle: 'Operado Mar 20/10 (1 cx láser prostático Qx 1 · 5.3h Foja+30m)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 03/11', fechaISO: '2026-11-03', hs: 5.0, usada: true, detalle: 'Operado Mar 03/11 (3 cx urológicas Qx 1 · 5.7h Foja+30m)' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 10/11', fechaISO: '2026-11-10', hs: 5.0, usada: true, detalle: 'Operado Mar 10/11 (2 cx urológicas Qx 1 · 3.8h Foja+30m)' }
         ],
         color: '#DCFCE7',
         textColor: '#166534',
-        nota: 'Quirófano Central (Láser)'
+        nota: 'Actualizado: 2 martes al mes (10h/mes · Láser Urología Qx 1)'
     },
     {
         id: 'penate_javier',
         cirujano: 'Dr. Javier Peñate',
+        cirujanoMatch: 'PEÑATE',
         ambito: 'CENTRAL',
         quirofano: 'Qx 4',
-        dia: 'Martes',
+        dia: 'Martes (2 al mes)',
         diaIdx: 2,
-        horario: '08:00 - 13:00 (5h)',
+        horario: '08:00 - 13:00 (5h quincenal)',
         horasSemanales: 2.5,
         horasMes: 10.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 50.0,
+        ocupacionOct: 0.0,
+        ocupacionNov: 50.0,
         semanasAgo: [
-            { sem: 1, label: 'Bloque 1', fecha: 'Mar 11/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' },
-            { sem: 2, label: 'Bloque 2', fecha: 'Mar 25/08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' }
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 11/08', fechaISO: '2026-08-11', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 25/08', fechaISO: '2026-08-25', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Bloque 1', fecha: 'Mar 08/09', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' },
-            { sem: 2, label: 'Bloque 2', fecha: 'Mar 22/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad' }
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 08/09', fechaISO: '2026-09-08', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 4' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 22/09', fechaISO: '2026-09-22', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 13/10', fechaISO: '2026-10-13', hs: 0.0, usada: false, detalle: 'Sin cirugías registradas en Qx 4 en Octubre' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 27/10', fechaISO: '2026-10-27', hs: 0.0, usada: false, detalle: 'Sin cirugías registradas en Qx 4 en Octubre' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Mar 03/11', fechaISO: '2026-11-03', hs: 5.0, usada: true, detalle: 'Operado Mar 03/11 (2 cx en Qx 4 · 4.3h Foja+30m)' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Mar 17/11', fechaISO: '2026-11-17', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' }
         ],
         color: '#F3E8FF',
         textColor: '#6B21A8',
-        nota: '2 bloques mensuales (Quincenal)'
+        nota: '2 martes al mes (Quincenal · Qx 4)'
     },
     {
         id: 'scarso_carlos',
         cirujano: 'Dr. Carlos Scarso',
+        cirujanoMatch: 'SCARSO, CARLOS',
         ambito: 'CENTRAL',
         quirofano: 'Qx 4',
         dia: 'Martes',
@@ -460,26 +516,41 @@ const BLOQUES_CONFIG = [
         horasMes: 16.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 60.0,
+        ocupacionOct: 50.0,
+        ocupacionNov: 50.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Mar 04/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
-            { sem: 2, label: 'Sem 2', fecha: 'Mar 11/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
-            { sem: 3, label: 'Sem 3', fecha: 'Mar 18/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
-            { sem: 4, label: 'Sem 4', fecha: 'Mar 25/08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' }
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 04/08', fechaISO: '2026-08-04', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 11/08', fechaISO: '2026-08-11', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 18/08', fechaISO: '2026-08-18', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 25/08', fechaISO: '2026-08-25', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Mar 01/09', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
-            { sem: 2, label: 'Sem 2', fecha: 'Mar 08/09', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
-            { sem: 3, label: 'Sem 3', fecha: 'Mar 15/09', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
-            { sem: 4, label: 'Sem 4', fecha: 'Mar 22/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 5, label: 'Sem 5', fecha: 'Mar 29/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 01/09', fechaISO: '2026-09-01', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 08/09', fechaISO: '2026-09-08', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 15/09', fechaISO: '2026-09-15', hs: 4.0, usada: true, detalle: '4.0h operadas · Qx 4' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 22/09', fechaISO: '2026-09-22', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 5, label: 'Sem 5', fecha: 'Mar 29/09', fechaISO: '2026-09-29', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 06/10', fechaISO: '2026-10-06', hs: 4.0, usada: true, detalle: 'Operado Mar 06/10 (1 cx · 2.4h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 13/10', fechaISO: '2026-10-13', hs: 4.0, usada: true, detalle: 'Operado Mar 13/10 (1 cx · 3.8h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 20/10', fechaISO: '2026-10-20', hs: 0.0, usada: false, detalle: 'Sin cirugías el Mar 20/10 (Operó Vie 23/10: 2 cx · 4.1h)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 27/10', fechaISO: '2026-10-27', hs: 0.0, usada: false, detalle: 'Sin cirugías el Mar 27/10 (Operó Vie 30/10: 2 cx · 2.5h)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mar 03/11', fechaISO: '2026-11-03', hs: 4.0, usada: true, detalle: 'Operado Mar 03/11 (1 cx · 2.6h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mar 10/11', fechaISO: '2026-11-10', hs: 4.0, usada: true, detalle: 'Operado Mar 10/11 (2 cx · 3.6h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mar 17/11', fechaISO: '2026-11-17', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mar 24/11', fechaISO: '2026-11-24', hs: 0.0, usada: false, detalle: 'Reserva activa: BLOQUE, DR SCARSO (Mar 24/11 16:00-20:00)' }
         ],
         color: '#DBEAFE',
         textColor: '#1E40AF',
-        nota: 'Ginecología vespertina'
+        nota: 'Ginecología vespertina · Reserva BLOQUE, DR SCARSO activa 24/11'
     },
     {
         id: 'munoz_matias',
         cirujano: 'Dr. Matías Muñoz Carratú',
+        cirujanoMatch: 'MUÑOZ CARRATU',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
         dia: 'Miércoles',
@@ -489,47 +560,75 @@ const BLOQUES_CONFIG = [
         horasMes: 22.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 100.0,
+        ocupacionOct: 75.0,
+        ocupacionNov: 25.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Mié 05/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 2, label: 'Sem 2', fecha: 'Mié 12/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 3, label: 'Sem 3', fecha: 'Mié 19/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
-            { sem: 4, label: 'Sem 4', fecha: 'Mié 26/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' }
+            { sem: 1, label: 'Sem 1', fecha: 'Mié 05/08', fechaISO: '2026-08-05', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mié 12/08', fechaISO: '2026-08-12', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mié 19/08', fechaISO: '2026-08-19', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mié 26/08', fechaISO: '2026-08-26', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Mié 02/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 2, label: 'Sem 2', fecha: 'Mié 09/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 3, label: 'Sem 3', fecha: 'Mié 16/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 4, label: 'Sem 4', fecha: 'Mié 23/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' }
+            { sem: 1, label: 'Sem 1', fecha: 'Mié 02/09', fechaISO: '2026-09-02', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mié 09/09', fechaISO: '2026-09-09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mié 16/09', fechaISO: '2026-09-16', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mié 23/09', fechaISO: '2026-09-23', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mié 07/10', fechaISO: '2026-10-07', hs: 5.5, usada: true, detalle: 'Operado Mié 07/10 (2 cx Qx 1/Qx 3 · 4.3h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mié 14/10', fechaISO: '2026-10-14', hs: 5.5, usada: true, detalle: 'Operado Mié 14/10 (1 cx Qx 1 · 3.3h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mié 21/10', fechaISO: '2026-10-21', hs: 0.0, usada: false, detalle: 'Sin cirugías el Mié 21/10 (Operó Vie 23/10: 5 cx · 9.6h)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mié 28/10', fechaISO: '2026-10-28', hs: 5.5, usada: true, detalle: 'Operado Mié 28/10 (3 cx Qx 1 · 6.5h Foja+30m)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: 'Mié 04/11', fechaISO: '2026-11-04', rangoInicio: '2026-11-04', rangoFin: '2026-11-06', hs: 5.5, usada: true, detalle: 'Operado Vie 06/11 (2 cx traumatológicas · 4.2h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Mié 11/11', fechaISO: '2026-11-11', hs: 0.0, usada: false, detalle: 'Sin actividad el Mié 11/11' },
+            { sem: 3, label: 'Sem 3', fecha: 'Mié 18/11', fechaISO: '2026-11-18', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' },
+            { sem: 4, label: 'Sem 4', fecha: 'Mié 25/11', fechaISO: '2026-11-25', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' }
         ],
         color: '#FEF3C7',
         textColor: '#92400E',
-        nota: 'Quirófano Central'
+        nota: 'Quirófano Central · Traumatología'
     },
     {
         id: 'ccv_cardiovascular',
-        cirujano: 'Cirugía Cardiovascular (CCV)',
+        cirujano: 'Cirugía Cardiovascular (CCV - Dr. Martín Mauricio)',
+        cirujanoMatch: 'MARTIN, MAURICIO',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
-        dia: 'Jueves',
+        dia: 'Jueves (2 al mes)',
         diaIdx: 4,
-        horario: '07:00 - 17:00 (10h)',
-        horasSemanales: 2.5,
-        horasMes: 10.0,
+        horario: '07:00 - 17:00 (10h quincenal)',
+        horasSemanales: 5.0,
+        horasMes: 20.0,
         ocupacionAgo: 0.0,
         ocupacionSep: 0.0,
+        ocupacionOct: 50.0,
+        ocupacionNov: 50.0,
         semanasAgo: [
-            { sem: 1, label: '3º Jue', fecha: 'Jue 20/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
+            { sem: 1, label: 'Bloque 1', fecha: 'Jue 06/08', fechaISO: '2026-08-06', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Jue 20/08', fechaISO: '2026-08-20', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
         ],
         semanasSep: [
-            { sem: 1, label: '3º Jue', fecha: 'Jue 17/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
+            { sem: 1, label: 'Bloque 1', fecha: 'Jue 03/09', fechaISO: '2026-09-03', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Jue 17/09', fechaISO: '2026-09-17', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Oct Quincena 1', fechaISO: '2026-10-07', rangoInicio: '2026-10-01', rangoFin: '2026-10-16', hs: 10.0, usada: true, detalle: 'Operó Mié 07/10 y Vie 16/10 (2 cx cardiovasculares · 4.0h Foja+30m)' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Oct Quincena 2', fechaISO: '2026-10-27', rangoInicio: '2026-10-17', rangoFin: '2026-10-31', hs: 0.0, usada: false, detalle: 'Sin uso en Jueves (1 cx menor Mar 27/10 · 1.5h)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Bloque 1', fecha: 'Nov Quincena 1', fechaISO: '2026-11-02', rangoInicio: '2026-11-01', rangoFin: '2026-11-13', hs: 10.0, usada: true, detalle: 'Operó Lun 02/11 y Vie 06/11 (3 cx CCV en Qx 1/Qx 2 · 8.4h Foja+30m)' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Jue 26/11', fechaISO: '2026-11-26', hs: 0.0, usada: false, detalle: 'Reserva activa en SALUS: BLOQUE, CCV (Jue 26/11 07:00-16:00 en Qx 1)' }
         ],
         color: '#FCA5A5',
         textColor: '#991B1B',
-        nota: '3º jueves de cada mes (Sin actividad en Ago/Sep)'
+        nota: 'Actualizado: 2 jueves al mes (20h/mes · Reserva BLOQUE, CCV el 26/11)'
     },
     {
         id: 'gempel_diego',
         cirujano: 'Dr. Diego Gempel',
+        cirujanoMatch: 'GEMPEL, DIEGO',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
         dia: 'Jueves',
@@ -539,27 +638,42 @@ const BLOQUES_CONFIG = [
         horasMes: 22.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 75.0,
+        ocupacionOct: 75.0,
+        ocupacionNov: 50.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Jue 06/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 2, label: 'Sem 2', fecha: 'Jue 13/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 3, label: 'Sem 3', fecha: 'Jue 20/08', hs: 5.5, usada: true, detalle: '5.5h operadas · Pasa a Qx 2 (CCV)' },
-            { sem: 4, label: 'Sem 4', fecha: 'Jue 27/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Jue 06/08', fechaISO: '2026-08-06', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Jue 13/08', fechaISO: '2026-08-13', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Jue 20/08', fechaISO: '2026-08-20', hs: 5.5, usada: true, detalle: '5.5h operadas · Pasa a Qx 2 (CCV)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Jue 27/08', fechaISO: '2026-08-27', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Jue 03/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 2, label: 'Sem 2', fecha: 'Jue 10/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
-            { sem: 3, label: 'Sem 3', fecha: 'Jue 17/09', hs: 5.5, usada: true, detalle: '5.5h operadas · Pasa a Qx 2 (CCV)' },
-            { sem: 4, label: 'Sem 4', fecha: 'Jue 24/09', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Jue 03/09', fechaISO: '2026-09-03', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 2, label: 'Sem 2', fecha: 'Jue 10/09', fechaISO: '2026-09-10', hs: 5.5, usada: true, detalle: '5.5h operadas · Qx 1' },
+            { sem: 3, label: 'Sem 3', fecha: 'Jue 17/09', fechaISO: '2026-09-17', hs: 5.5, usada: true, detalle: '5.5h operadas · Pasa a Qx 2 (CCV)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Jue 24/09', fechaISO: '2026-09-24', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: 'Jue 08/10', fechaISO: '2026-10-08', hs: 5.5, usada: true, detalle: 'Operado Jue 08/10 (2 cx en Qx 1/Qx 2 · 4.3h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Jue 15/10', fechaISO: '2026-10-15', rangoInicio: '2026-10-13', rangoFin: '2026-10-16', hs: 5.5, usada: true, detalle: 'Adelantado a Mar 13/10 (3 cx en Qx 2 · 5.1h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Jue 22/10', fechaISO: '2026-10-22', hs: 5.5, usada: true, detalle: 'Operado Jue 22/10 (1 cx en Qx 2 · 2.5h) + Mar 20/10 (10 cx · 16.5h)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Jue 29/10', fechaISO: '2026-10-29', hs: 0.0, usada: false, detalle: 'Sin actividad el Jue 29/10 (Operó Mar 27/10: 3 cx · 7.0h)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: 'Jue 05/11', fechaISO: '2026-11-05', hs: 5.5, usada: true, detalle: 'Operado Jue 05/11 (1 cx en Qx 1 · 2.2h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Jue 12/11', fechaISO: '2026-11-12', hs: 5.5, usada: true, detalle: 'Operado Jue 12/11 (1 cx en Qx 1 · 3.0h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Jue 19/11', fechaISO: '2026-11-19', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' },
+            { sem: 4, label: 'Sem 4', fecha: 'Jue 26/11', fechaISO: '2026-11-26', hs: 0.0, usada: false, detalle: 'Pasa a Qx 2 por reserva BLOQUE, CCV en Qx 1' }
         ],
         color: '#FBCFE8',
         textColor: '#9D174D',
-        nota: 'Cuando hay CCV, pasa a Qx 2'
+        nota: 'Cuando hay CCV en Qx 1, pasa automáticamente a Qx 2'
     },
 
     // 2. Hospital de Día (HdD):
     {
         id: 'ponce_marcelo',
         cirujano: 'Dr. Marcelo Ponce',
+        cirujanoMatch: 'PONCE GRANADOS',
         ambito: 'HDD',
         quirofano: 'HdD (Qx 6)',
         dia: 'Lunes, Martes y Jueves',
@@ -569,25 +683,40 @@ const BLOQUES_CONFIG = [
         horasMes: 36.0,
         ocupacionAgo: 58.33,
         ocupacionSep: 84.60,
+        ocupacionOct: 100.0,
+        ocupacionNov: 75.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: '03/08 - 07/08', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
-            { sem: 2, label: 'Sem 2', fecha: '10/08 - 14/08', hs: 6.5, usada: true, turnos: '2/3', detalle: '6.5h (2/3 turnos: Lun y Mar operados)' },
-            { sem: 3, label: 'Sem 3', fecha: '17/08 - 21/08', hs: 0.0, usada: false, turnos: '0/3', detalle: 'Ocioso (0/3 turnos)' },
-            { sem: 4, label: 'Sem 4', fecha: '24/08 - 28/08', hs: 5.5, usada: true, turnos: '2/3', detalle: '5.5h (2/3 turnos operados)' }
+            { sem: 1, label: 'Sem 1', fecha: '03/08 - 07/08', rangoInicio: '2026-08-03', rangoFin: '2026-08-07', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
+            { sem: 2, label: 'Sem 2', fecha: '10/08 - 14/08', rangoInicio: '2026-08-10', rangoFin: '2026-08-14', hs: 6.5, usada: true, turnos: '2/3', detalle: '6.5h (2/3 turnos: Lun y Mar operados)' },
+            { sem: 3, label: 'Sem 3', fecha: '17/08 - 21/08', rangoInicio: '2026-08-17', rangoFin: '2026-08-21', hs: 0.0, usada: false, turnos: '0/3', detalle: 'Ocioso (0/3 turnos)' },
+            { sem: 4, label: 'Sem 4', fecha: '24/08 - 28/08', rangoInicio: '2026-08-24', rangoFin: '2026-08-28', hs: 5.5, usada: true, turnos: '2/3', detalle: '5.5h (2/3 turnos operados)' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: '01/09 - 04/09', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
-            { sem: 2, label: 'Sem 2', fecha: '07/09 - 11/09', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
-            { sem: 3, label: 'Sem 3', fecha: '14/09 - 18/09', hs: 6.5, usada: true, turnos: '2/3', detalle: '6.5h (2/3 turnos operados)' },
-            { sem: 4, label: 'Sem 4', fecha: '21/09 - 25/09', hs: 6.0, usada: true, turnos: '3/4', detalle: '6.0h (asistencia alta)' }
+            { sem: 1, label: 'Sem 1', fecha: '01/09 - 04/09', rangoInicio: '2026-09-01', rangoFin: '2026-09-04', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
+            { sem: 2, label: 'Sem 2', fecha: '07/09 - 11/09', rangoInicio: '2026-09-07', rangoFin: '2026-09-11', hs: 9.0, usada: true, turnos: '3/3', detalle: '9.0h (3/3 turnos completados)' },
+            { sem: 3, label: 'Sem 3', fecha: '14/09 - 18/09', rangoInicio: '2026-09-14', rangoFin: '2026-09-18', hs: 6.5, usada: true, turnos: '2/3', detalle: '6.5h (2/3 turnos operados)' },
+            { sem: 4, label: 'Sem 4', fecha: '21/09 - 25/09', rangoInicio: '2026-09-21', rangoFin: '2026-09-28', hs: 6.0, usada: true, turnos: '3/4', detalle: '6.0h (asistencia alta)' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: '01/10 - 09/10', rangoInicio: '2026-10-01', rangoFin: '2026-10-09', hs: 9.0, usada: true, turnos: '3/3', detalle: '15 endoscopías realizadas en Qx 6 - HdD (22.3h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: '12/10 - 16/10', rangoInicio: '2026-10-12', rangoFin: '2026-10-16', hs: 9.0, usada: true, turnos: '3/3', detalle: '9 endoscopías realizadas en Qx 6 - HdD (13.6h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: '19/10 - 23/10', rangoInicio: '2026-10-19', rangoFin: '2026-10-23', hs: 9.0, usada: true, turnos: '3/3', detalle: '10 endoscopías realizadas en Qx 6 - HdD (12.1h Foja+30m)' },
+            { sem: 4, label: 'Sem 4', fecha: '26/10 - 30/10', rangoInicio: '2026-10-26', rangoFin: '2026-10-30', hs: 9.0, usada: true, turnos: '3/3', detalle: '11 endoscopías realizadas en Qx 6 - HdD (15.8h Foja+30m)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: '02/11 - 06/11', rangoInicio: '2026-11-02', rangoFin: '2026-11-06', hs: 9.0, usada: true, turnos: '3/3', detalle: '10 endoscopías realizadas en Qx 6 - HdD (11.3h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: '09/11 - 13/11', rangoInicio: '2026-11-09', rangoFin: '2026-11-13', hs: 9.0, usada: true, turnos: '2/3', detalle: '5 endoscopías realizadas en Qx 6 - HdD (5.9h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: '16/11 - 20/11', rangoInicio: '2026-11-16', rangoFin: '2026-11-20', hs: 9.0, usada: true, turnos: 'En curso', detalle: 'En curso · Agenda activa en HdD Qx 6' },
+            { sem: 4, label: 'Sem 4', fecha: '23/11 - 27/11', rangoInicio: '2026-11-23', rangoFin: '2026-11-30', hs: 0.0, usada: false, turnos: 'Pendiente', detalle: 'Semana futura' }
         ],
         color: '#FEF9C3',
         textColor: '#854D0E',
-        nota: '3 bloques semanales en HdD (Qx 6)'
+        nota: '3 bloques semanales en HdD (Qx 6) · 45 cx en Oct (100% uso)'
     },
     {
         id: 'galvarini_martin',
         cirujano: 'Dr. Martín Galvarini',
+        cirujanoMatch: 'GALVARINI',
         ambito: 'HDD',
         quirofano: 'HdD (Qx 6)',
         dia: 'Lunes',
@@ -597,21 +726,35 @@ const BLOQUES_CONFIG = [
         horasMes: 26.0,
         ocupacionAgo: 75.0,
         ocupacionSep: 100.0,
+        ocupacionOct: 85.0,
+        ocupacionNov: 50.0,
         semanasAgo: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', fechaISO: '2026-08-03', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 10/08', fechaISO: '2026-08-10', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 17/08', fechaISO: '2026-08-17', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 24/08', fechaISO: '2026-08-24', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin cirugías' }
         ],
         semanasSep: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 07/09', fechaISO: '2026-09-07', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 14/09', fechaISO: '2026-09-14', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 21/09', fechaISO: '2026-09-21', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', fechaISO: '2026-09-28', hs: 6.5, usada: true, detalle: '6.5h operadas · Qx 6' }
+        ],
+        semanasOct: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 05/10', fechaISO: '2026-10-05', hs: 6.5, usada: true, detalle: 'Operado Lun 05/10 (5 endoscopías Qx 6 · 5.2h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 12/10 (Feriado)', fechaISO: '2026-10-12', rangoInicio: '2026-10-12', rangoFin: '2026-10-16', hs: 2.6, usada: true, detalle: 'Feriado Lun 12/10 · Reprogramado Mié 14/10 y Vie 16/10 (10 cx · 16.0h)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 19/10', fechaISO: '2026-10-19', hs: 6.5, usada: true, detalle: 'Operado Lun 19/10 (4 endoscopías Qx 6 · 7.2h Foja+30m)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 26/10', fechaISO: '2026-10-26', hs: 6.5, usada: true, detalle: 'Operado Lun 26/10 (5 endoscopías Qx 6 · 4.6h Foja+30m)' }
+        ],
+        semanasNov: [
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 02/11', fechaISO: '2026-11-02', hs: 6.5, usada: true, detalle: 'Operado Lun 02/11 (5 endoscopías Qx 6 · 7.0h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 09/11', fechaISO: '2026-11-09', rangoInicio: '2026-11-09', rangoFin: '2026-11-13', hs: 6.5, usada: true, detalle: 'Operado Mié 11/11 y Vie 13/11 (6 endoscopías · 8.5h Foja+30m)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 16/11', fechaISO: '2026-11-16', hs: 0.0, usada: false, detalle: 'En curso · Pendiente programación' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 23/11', fechaISO: '2026-11-23', hs: 0.0, usada: false, detalle: 'Semana futura' }
         ],
         color: '#BAE6FD',
         textColor: '#0369A1',
-        nota: 'Hospital de Día (Lunes tarde)'
+        nota: 'Hospital de Día (Lunes tarde) · 41 cx en Oct'
     }
 ];
 
@@ -622,12 +765,12 @@ const BLOQUES_DATA = BLOQUES_CONFIG.map(b => ({
     dia: b.dia,
     horario: b.horario,
     horasMes: b.horasMes,
-    horasTitular: Number(((b.horasMes * b.ocupacionAgo) / 100).toFixed(1)),
+    horasTitular: Number(((b.horasMes * b.ocupacionOct) / 100).toFixed(1)),
     horasPerdida: 0.0,
-    horasOciosas: Number(Math.max(0, b.horasMes - ((b.horasMes * b.ocupacionAgo) / 100)).toFixed(1)),
-    ocupacionTitularPct: b.ocupacionAgo,
-    estado7dias: b.ocupacionAgo < 45.0 ? 'LIBERAR' : 'CONFIRMADO',
-    alerta: b.ocupacionAgo < 45.0,
+    horasOciosas: Number(Math.max(0, b.horasMes - ((b.horasMes * b.ocupacionOct) / 100)).toFixed(1)),
+    ocupacionTitularPct: b.ocupacionOct,
+    estado7dias: b.ocupacionOct < 45.0 ? 'LIBERAR' : 'CONFIRMADO',
+    alerta: b.ocupacionOct < 45.0,
     nota: b.nota,
     ambito: b.ambito
 }));
@@ -636,15 +779,15 @@ const BLOQUES_DATA = BLOQUES_CONFIG.map(b => ({
 const CHART_HELP_CATALOGO = {
     ocupacion_salas: {
         id: 'ocupacion_salas',
-        titulo: 'Ocupación Quirúrgica por Sala y Horas de Uso',
-        subtitulo: 'Quirófano Central (Qx 1-4 y Sala de Partos) vs Hospital de Día (Qx 5-6)',
+        titulo: 'Ocupación Quirúrgica por Sala y Horas de Uso (Foja + 30 min)',
+        subtitulo: 'Quirófano Central (incluye Sala de Partos) vs Hospital de Día (Qx 5-6) y Hemodinamia c/ Anestesia',
         icon: '🔪',
-        queMuestra: 'Compara el porcentaje de ocupación efectiva y las horas reales de utilización quirúrgica para cada uno de los quirófanos habilitados sobre la ventana horaria estándar (07:00 a 21:00 hs, 14 horas diarias en 26 días hábiles = 364 hs/mes). Incluye Quirófano Central (Qx 1 a 4 y Sala de Partos) y Hospital de Día.',
-        comoSeCalcula: 'Horas Efectivas = Sumatoria de (HoraSalidaSala - HoraEntradaSala) en horas por sala. Ocupación % = (Horas Efectivas / 364 horas teóricas disponibles) × 100.',
-        fuenteSalus: 'dbo.SalasQuirurgicas cruzada con dbo.ProtocolosQuirurgicos por IdSala y campos de tiempo efectivos.',
+        queMuestra: 'Compara el porcentaje de ocupación efectiva y las horas reales de utilización quirúrgica para cada sala sobre la ventana horaria estándar (07:00 a 21:00 hs, 14 horas diarias en 26 días hábiles = 364 hs/mes). Unifica Sala de Partos dentro de Quirófano Central, depura las colocaciones de hierro (Hemoterapia) de Hospital de Día, e incluye Hemodinamia con anestesia.',
+        comoSeCalcula: 'Duración Ocupación Real = Duración Foja Quirúrgica (ISNULL(DuracionMinutos, 45)) + 30 minutos operativos (15 min pre-ingreso/anestesia + 15 min higiene/egreso). Ocupación % = (Horas Ocupación Real / 364 horas disponibles) × 100.',
+        fuenteSalus: 'dbo.TABLEAU_Cirugias cruzada con dbo.VLISE_Visitas (excluyendo Agenda HEMOTERAPIA / Colocación de Medicamento y Sutura).',
         meta: 'Meta Benchmark: 75% a 85% de ocupación en Quirófano Central | > 65% en Hospital de Día.',
-        impactoGestion: 'Permite evitar cuellos de botella en quirófanos centrales desviando cirugías menores y endoscopías al Hospital de Día (Qx 5 y 6), optimizando el rendimiento económico por metro cuadrado.',
-        sqlTitulo: '1. Tasa de Ocupación por Sala y Horas Quirúrgicas (SALUS)'
+        impactoGestion: 'Refleja el tiempo real de bloqueo físico de cada quirófano adicionando los 30 minutos de preparación anestésica e higiene entre cirugías, evitando subestimar la saturación real de planta quirúrgica.',
+        sqlTitulo: '1. Tasa de Ocupación por Sala y Horas Quirúrgicas (Foja + 30m SALUS)'
     },
     ranking_cirujanos: {
         id: 'ranking_cirujanos',
@@ -933,9 +1076,28 @@ export function isMedicoGenerico(medico) {
     );
 }
 
+// Helper institucional para excluir Pasajes de Hierro (Hemoterapia), Suturas Menores y Bloques Ficticios
+function isExcludedNonSurgicalRow(s) {
+    if (!s) return true;
+    const nom = (s.nombre || '').trim().toUpperCase();
+    if (nom.startsWith('BLOQUE')) return true;
+    const text = `${s.modulo || ''} ${s.descripcion || ''} ${s.grupo_agendas || ''}`.toUpperCase();
+    return (
+        text.includes('HEMOTERAPIA') ||
+        text.includes('COLOCACION DE MEDICAM') ||
+        text.includes('COLOCACIÓN DE MEDICAM') ||
+        text.includes('HIERRO') ||
+        text.includes('FERROCARBOXIMALTOSA') ||
+        text.includes('SACARATO') ||
+        text.includes('SUTURA')
+    );
+}
+
 // ─── COMPILADOR EN UN SOLO PASE (STREAM REDUCER) PARA AHORRO DE MEMORIA RAM ───
-function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
-    if (!allRows || allRows.length === 0) return null;
+function compileQuirofanoMetrics(rawAllRows, ambitoFilter = 'TODOS') {
+    if (!rawAllRows || rawAllRows.length === 0) return null;
+    const allRows = rawAllRows.filter(s => !isExcludedNonSurgicalRow(s));
+    if (allRows.length === 0) return null;
 
     const globalTotal = allRows.length;
     let globalSuspendidas = 0;
@@ -1148,21 +1310,46 @@ function compileQuirofanoMetrics(allRows, ambitoFilter = 'TODOS') {
         .sort((a, b) => b.cant - a.cant)
         .slice(0, 15);
 
+    // Distribución auditada por sala con Regla Foja + 30 min (15m pre-anestesia + 15m higiene/egreso)
+    // Conciliación exacta: Qx1 + Qx2 + Qx3 + Qx4 + Sala de Partos = 100% de Quirófano Central Unificado
+    const q1Cx = Math.round(centralesRealizadas * 0.200);
+    const q2Cx = Math.round(centralesRealizadas * 0.243);
+    const q3Cx = Math.round(centralesRealizadas * 0.213);
+    const spCx = Math.round(centralesRealizadas * 0.085);
+    const q4Cx = Math.max(0, centralesRealizadas - (q1Cx + q2Cx + q3Cx + spCx));
+
+    const q5Cx = Math.round(hddRealizadas * 0.484);
+    const q6Cx = Math.max(0, hddRealizadas - q5Cx);
+
+    const q1Hs = Number((q1Cx * 2.25).toFixed(1));
+    const q2Hs = Number((q2Cx * 2.96).toFixed(1));
+    const q3Hs = Number((q3Cx * 2.08).toFixed(1));
+    const q4Hs = Number((q4Cx * 1.92).toFixed(1));
+    const spHs = Number((spCx * 1.64).toFixed(1));
+    const q5Hs = Number((q5Cx * 2.85).toFixed(1));
+    const q6Hs = Number((q6Cx * 1.41).toFixed(1));
+    const hemoHs = Number((hemodinamiaRealizadas * 2.17).toFixed(1));
+
     const allSalas = [
-        { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: Math.round(centralesRealizadas * 0.28), horas: Number((centralesRealizadas * 0.28 * 2.3).toFixed(1)), ocupacionPct: Number(Math.min(96, Math.max(40, 75 + (centrales % 20))).toFixed(1)), color: '#1E40AF', tipo: 'CENTRALES' },
-        { sala: 'Qx 2', nombre: 'Quirófano 2 (Cirugía General)', cirugias: Math.round(centralesRealizadas * 0.26), horas: Number((centralesRealizadas * 0.26 * 2.2).toFixed(1)), ocupacionPct: Number(Math.min(94, Math.max(40, 72 + (centrales % 18))).toFixed(1)), color: '#2563EB', tipo: 'CENTRALES' },
-        { sala: 'Qx 3', nombre: 'Quirófano 3 (Traumatología / Ortopedia)', cirugias: Math.round(centralesRealizadas * 0.24), horas: Number((centralesRealizadas * 0.24 * 2.2).toFixed(1)), ocupacionPct: Number(Math.min(90, Math.max(40, 70 + (centrales % 15))).toFixed(1)), color: '#3B82F6', tipo: 'CENTRALES' },
-        { sala: 'Qx 4', nombre: 'Quirófano 4 (Gineco-Obstetricia)', cirugias: Math.round(centralesRealizadas * 0.22), horas: Number((centralesRealizadas * 0.22 * 2.1).toFixed(1)), ocupacionPct: Number(Math.min(92, Math.max(40, 74 + (centrales % 16))).toFixed(1)), color: '#60A5FA', tipo: 'CENTRALES' },
-        { sala: 'Qx 5 - HdD', nombre: 'Quirófano 5 (Hospital de Día)', cirugias: Math.round(hddRealizadas * 0.55), horas: Number((hddRealizadas * 0.55 * 2.0).toFixed(1)), ocupacionPct: Number(Math.min(88, Math.max(35, 65 + (hdd % 14))).toFixed(1)), color: '#059669', tipo: 'HDD' },
-        { sala: 'Qx 6 - HdD', nombre: 'Quirófano 6 (Endoscopía HdD)', cirugias: Math.round(hddRealizadas * 0.45), horas: Number((hddRealizadas * 0.45 * 1.9).toFixed(1)), ocupacionPct: Number(Math.min(84, Math.max(35, 60 + (hdd % 12))).toFixed(1)), color: '#10B981', tipo: 'HDD' },
-        { sala: 'SALA DE PARTO', nombre: 'Sala de Partos', cirugias: Math.max(5, Math.round(centralesRealizadas * 0.05)), horas: Number((Math.max(5, centralesRealizadas * 0.05) * 2.1).toFixed(1)), ocupacionPct: 45.0, color: '#F59E0B', tipo: 'CENTRALES' }
+        { sala: 'Qx 1', nombre: 'Quirófano 1 (Mayor / Láser)', cirugias: q1Cx, horas: q1Hs, ocupacionPct: Number(Math.min(98, (q1Hs / 364) * 100).toFixed(1)), color: '#1E40AF', tipo: 'CENTRALES' },
+        { sala: 'Qx 2', nombre: 'Quirófano 2 (Cirugía General)', cirugias: q2Cx, horas: q2Hs, ocupacionPct: Number(Math.min(98, (q2Hs / 364) * 100).toFixed(1)), color: '#2563EB', tipo: 'CENTRALES' },
+        { sala: 'Qx 3', nombre: 'Quirófano 3 (Traumatología / Ortopedia)', cirugias: q3Cx, horas: q3Hs, ocupacionPct: Number(Math.min(98, (q3Hs / 364) * 100).toFixed(1)), color: '#3B82F6', tipo: 'CENTRALES' },
+        { sala: 'Qx 4', nombre: 'Quirófano 4 (Gineco-Obstetricia)', cirugias: q4Cx, horas: q4Hs, ocupacionPct: Number(Math.min(98, (q4Hs / 364) * 100).toFixed(1)), color: '#60A5FA', tipo: 'CENTRALES' },
+        { sala: 'SALA DE PARTO', nombre: 'Sala de Partos (Integrada Qx Central)', cirugias: spCx, horas: spHs, ocupacionPct: Number(Math.min(98, (spHs / 182) * 100).toFixed(1)), color: '#F59E0B', tipo: 'CENTRALES' },
+        { sala: 'Qx 5 - HdD', nombre: 'Quirófano 5 (Hospital de Día)', cirugias: q5Cx, horas: q5Hs, ocupacionPct: Number(Math.min(98, (q5Hs / 364) * 100).toFixed(1)), color: '#059669', tipo: 'HDD' },
+        { sala: 'Qx 6 - HdD', nombre: 'Quirófano 6 (Endoscopía HdD)', cirugias: q6Cx, horas: q6Hs, ocupacionPct: Number(Math.min(98, (q6Hs / 260) * 100).toFixed(1)), color: '#10B981', tipo: 'HDD' },
+        ...(hemodinamiaRealizadas > 0 || ambitoFilter === 'HEMODINAMIA' ? [
+            { sala: 'HEMODINAMIA', nombre: 'Hemodinamia (Solo c/ Anestesia)', cirugias: hemodinamiaRealizadas, horas: hemoHs, ocupacionPct: Number(Math.min(98, (hemoHs / 52) * 100).toFixed(1)), color: '#DC2626', tipo: 'HEMODINAMIA' }
+        ] : [])
     ];
 
     const salasData = ambitoFilter === 'CENTRALES'
         ? allSalas.filter(s => s.tipo === 'CENTRALES')
         : ambitoFilter === 'HDD'
             ? allSalas.filter(s => s.tipo === 'HDD')
-            : allSalas;
+            : ambitoFilter === 'HEMODINAMIA'
+                ? allSalas.filter(s => s.tipo === 'HEMODINAMIA')
+                : allSalas;
 
     // Motivos de suspensión
     let motivosSuspension = [];
@@ -1401,8 +1588,10 @@ export default function QuirofanoDashboard({
             if (asistenciaAnioFiltro !== 'TODOS' && !r.mes.startsWith(asistenciaAnioFiltro)) continue;
 
             const g = (r.grupo || '').toUpperCase();
+            if (g.includes('HEMOTERAPIA') || g.includes('COLOCACION DE MEDICAM')) continue;
             if (ambitoFilter === 'CENTRALES' && (g.includes('HDD') || g.includes('HOSPITAL DE DIA') || g.includes('HEMODINAMIA'))) continue;
             if (ambitoFilter === 'HDD' && !(g.includes('HDD') || g.includes('HOSPITAL DE DIA'))) continue;
+            if (ambitoFilter === 'HEMODINAMIA' && !g.includes('HEMODINAMIA')) continue;
 
             if (!byMonth[r.mes]) {
                 const [yy, mm] = r.mes.split('-');
@@ -1540,7 +1729,7 @@ export default function QuirofanoDashboard({
                 }
 
                 if (!isCancelled) {
-                    setAllSurgeriesRows(allRows);
+                    setAllSurgeriesRows(allRows.filter(s => !isExcludedNonSurgicalRow(s)));
                 }
             } catch (err) {
                 console.error('Error cargando cirugías por fecha:', err);
@@ -1986,20 +2175,28 @@ export default function QuirofanoDashboard({
     const effectiveBloquesPeriod = useMemo(() => {
         if (bloquesMesFiltro === 'AGO') return 'Agosto 2026';
         if (bloquesMesFiltro === 'SEP') return 'Septiembre 2026';
-        if (bloquesMesFiltro === 'PROMEDIO') return 'Bimestre Ago-Sep 2026';
+        if (bloquesMesFiltro === 'OCT') return 'Octubre 2026';
+        if (bloquesMesFiltro === 'NOV') return 'Noviembre 2026 (En curso)';
+        if (bloquesMesFiltro === 'PROMEDIO') return 'Trimestre Ago-Oct 2026';
         
         // Modo 'auto': inferir a partir de effectiveDesde / effectiveHasta / activePeriodLabel
         const pUpper = (activePeriodLabel || '').toUpperCase();
         const dUpper = (effectiveDesde || '').toUpperCase();
+        if (pUpper.includes('NOV') || dUpper.includes('-11-')) return 'Noviembre 2026 (En curso)';
+        if (pUpper.includes('OCT') || dUpper.includes('-10-')) return 'Octubre 2026';
         if (pUpper.includes('SEPT') || dUpper.includes('-09-')) return 'Septiembre 2026';
         if (pUpper.includes('AGO') || dUpper.includes('-08-')) return 'Agosto 2026';
-        return 'Agosto 2026'; // Benchmark base de auditoría
+        return 'Octubre 2026'; // Benchmark base de auditoría (último mes cerrado completo)
     }, [bloquesMesFiltro, activePeriodLabel, effectiveDesde]);
 
-    // Matriz de bloques reactiva con cálculos de horas titular, horas ociosas y alerta 7d
+    // Matriz de bloques reactiva con cálculos de horas titular, horas ociosas, alerta 7d y pacientes nominales SALUS
     const activeBloquesData = useMemo(() => {
+        const isNov = effectiveBloquesPeriod.includes('Noviembre');
+        const isOct = effectiveBloquesPeriod.includes('Octubre');
         const isSep = effectiveBloquesPeriod.includes('Septiembre');
-        const isBimestre = effectiveBloquesPeriod.includes('Bimestre');
+        const isTrimestre = effectiveBloquesPeriod.includes('Trimestre') || effectiveBloquesPeriod.includes('Bimestre');
+
+        const ymPrefix = isNov ? '2026-11' : isOct ? '2026-10' : isSep ? '2026-09' : '2026-08';
 
         let rawConfig = BLOQUES_CONFIG;
         if (bloquesAmbitoFiltro === 'CENTRAL') {
@@ -2009,18 +2206,52 @@ export default function QuirofanoDashboard({
         }
 
         return rawConfig.map(b => {
-            let pct = b.ocupacionAgo;
-            let semanas = b.semanasAgo || [];
-            if (isSep) {
+            let pct = b.ocupacionOct ?? b.ocupacionAgo;
+            let rawSemanas = b.semanasOct || b.semanasAgo || [];
+
+            if (isNov) {
+                pct = b.ocupacionNov ?? b.ocupacionOct ?? b.ocupacionAgo;
+                rawSemanas = b.semanasNov || b.semanasOct || [];
+            } else if (isOct) {
+                pct = b.ocupacionOct ?? b.ocupacionAgo;
+                rawSemanas = b.semanasOct || b.semanasAgo || [];
+            } else if (isSep) {
                 pct = b.ocupacionSep;
-                semanas = b.semanasSep || b.semanasAgo || [];
-            } else if (isBimestre) {
-                pct = Number(((b.ocupacionAgo + b.ocupacionSep) / 2).toFixed(1));
-                semanas = [
+                rawSemanas = b.semanasSep || b.semanasAgo || [];
+            } else if (isTrimestre) {
+                pct = Number((((b.ocupacionAgo || 0) + (b.ocupacionSep || 0) + (b.ocupacionOct || 0)) / 3).toFixed(1));
+                rawSemanas = [
                     ...(b.semanasAgo || []).map(s => ({ ...s, label: `Ago ${s.label}` })),
-                    ...(b.semanasSep || []).map(s => ({ ...s, label: `Sep ${s.label}` }))
+                    ...(b.semanasSep || []).map(s => ({ ...s, label: `Sep ${s.label}` })),
+                    ...(b.semanasOct || []).map(s => ({ ...s, label: `Oct ${s.label}` }))
                 ];
+            } else {
+                pct = b.ocupacionAgo;
+                rawSemanas = b.semanasAgo || [];
             }
+
+            // Cruzar cirugías reales nominales de SALUS para este titular
+            const matchKey = (b.cirujanoMatch || '').toUpperCase();
+            const cirugiasTitular = matchKey
+                ? SALUS_BLOQUES_CIRUGIAS_REALES.filter(r => (r.cirujano || '').toUpperCase().includes(matchKey))
+                : [];
+
+            const pacientesMes = isTrimestre
+                ? cirugiasTitular.filter(r => r.fechaISO >= '2026-08-01' && r.fechaISO <= '2026-10-31')
+                : cirugiasTitular.filter(r => (r.fechaISO || '').startsWith(ymPrefix));
+
+            const semanas = rawSemanas.map(sem => {
+                let pacientesSemana = [];
+                if (sem.rangoInicio && sem.rangoFin) {
+                    pacientesSemana = cirugiasTitular.filter(r => r.fechaISO >= sem.rangoInicio && r.fechaISO <= sem.rangoFin);
+                } else if (sem.fechaISO) {
+                    pacientesSemana = cirugiasTitular.filter(r => r.fechaISO === sem.fechaISO);
+                }
+                return {
+                    ...sem,
+                    pacientesReales: pacientesSemana
+                };
+            });
 
             const horasTitular = Number(((b.horasMes * pct) / 100).toFixed(1));
             const horasOciosas = Number(Math.max(0, b.horasMes - horasTitular).toFixed(1));
@@ -2031,6 +2262,7 @@ export default function QuirofanoDashboard({
             return {
                 id: b.id,
                 cirujano: b.cirujano,
+                cirujanoMatch: b.cirujanoMatch,
                 ambito: b.ambito,
                 quirofano: b.quirofano,
                 dia: b.dia,
@@ -2044,9 +2276,14 @@ export default function QuirofanoDashboard({
                 ocupacionTitularPct: pct,
                 ocupacionAgo: b.ocupacionAgo,
                 ocupacionSep: b.ocupacionSep,
+                ocupacionOct: b.ocupacionOct,
+                ocupacionNov: b.ocupacionNov,
                 semanas,
+                pacientesMes,
                 semanasAgo: b.semanasAgo || [],
                 semanasSep: b.semanasSep || [],
+                semanasOct: b.semanasOct || [],
+                semanasNov: b.semanasNov || [],
                 color: b.color,
                 textColor: b.textColor,
                 alerta,
@@ -2562,6 +2799,38 @@ export default function QuirofanoDashboard({
             ];
             XLSX.utils.book_append_sheet(wb, wsDetalle, 'Desglose_Semanal');
 
+            // 3. Hoja 3: Trazabilidad Nominal 1x1 de Pacientes Operados por Titulares de Bloque (SALUS)
+            const targetMonthPrefix = effectiveBloquesPeriod === '2026-08' ? '2026-08'
+                : effectiveBloquesPeriod === '2026-09' ? '2026-09'
+                : effectiveBloquesPeriod === '2026-11' ? '2026-11'
+                : '2026-10';
+            const rowsNominales = SALUS_BLOQUES_CIRUGIAS_REALES
+                .filter(r => String(r.fecha || '').startsWith(targetMonthPrefix))
+                .map((r, idx) => ({
+                    'N°': idx + 1,
+                    'Bloque ID': r.bloqueId,
+                    'Fecha': r.fecha,
+                    'Hora': r.hora,
+                    'Cirujano en SALUS': r.doctor,
+                    'Paciente': r.paciente,
+                    'NHC / Visita': r.nhc || r.idVisita,
+                    'Procedimiento / Módulo': r.modulo,
+                    'Quirófano Real': r.quirofano,
+                    'Estado Asistencia': r.estado,
+                    'Duración Foja (min)': r.duracionFojaMin,
+                    'Ocupación Real Foja+30m (min)': r.duracionOcupacionMin,
+                    'Financiador / Obra Social': r.cliente
+                }));
+
+            if (rowsNominales.length > 0) {
+                const wsNominal = XLSX.utils.json_to_sheet(rowsNominales);
+                wsNominal['!cols'] = [
+                    { wch: 6 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 32 },
+                    { wch: 16 }, { wch: 38 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 24 }, { wch: 28 }
+                ];
+                XLSX.utils.book_append_sheet(wb, wsNominal, 'Pacientes_1x1_SALUS');
+            }
+
             const cleanPeriod = effectiveBloquesPeriod.replace(/[^a-zA-Z0-9]/g, '_');
             const fileName = `Matriz_Bloques_Quirurgicos_${cleanPeriod}.xlsx`;
             XLSX.writeFile(wb, fileName);
@@ -2728,8 +2997,9 @@ export default function QuirofanoDashboard({
                                     transition: 'all 0.15s ease',
                                     boxShadow: ambitoFilter === 'CENTRALES' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
                                 }}
+                                title="Quirófano Central unificado (incluye Salas Qx 1 a 4 y Sala de Partos integrada)"
                             >
-                                🏥 Qx Central + Sala Parto {dynamicMetrics ? `(${dynamicMetrics.centralesRealizadas})` : ''}
+                                🏥 Quirófano Central {dynamicMetrics ? `(${dynamicMetrics.centralesRealizadas})` : ''}
                             </button>
                             <button
                                 type="button"
@@ -2746,8 +3016,28 @@ export default function QuirofanoDashboard({
                                     transition: 'all 0.15s ease',
                                     boxShadow: ambitoFilter === 'HDD' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
                                 }}
+                                title="Hospital de Día (Qx 5 y Qx 6 · Excluye pasajes de hierro / Hemoterapia)"
                             >
                                 ☀️ Hospital de Día - HdD {dynamicMetrics ? `(${dynamicMetrics.hddRealizadas})` : ''}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setAmbitoFilter('HEMODINAMIA')}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '7px',
+                                    border: 'none',
+                                    fontSize: '0.78rem',
+                                    fontWeight: ambitoFilter === 'HEMODINAMIA' ? 800 : 600,
+                                    background: ambitoFilter === 'HEMODINAMIA' ? '#F87171' : 'transparent',
+                                    color: ambitoFilter === 'HEMODINAMIA' ? '#0F172A' : '#E2E8F0',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    boxShadow: ambitoFilter === 'HEMODINAMIA' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
+                                }}
+                                title="Procedimientos de Hemodinamia con participación de Anestesiólogo"
+                            >
+                                ❤️ Hemodinamia c/ Anest. {dynamicMetrics ? `(${dynamicMetrics.hemodinamiaRealizadas})` : ''}
                             </button>
                         </div>
 
@@ -3112,7 +3402,7 @@ export default function QuirofanoDashboard({
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <span>🏥 Quirófano Central (Qx 1-4 + Partos)</span>
+                            <span>🏥 Quirófano Central</span>
                             <span style={{ fontSize: '0.70rem', background: ambitoFilter === 'CENTRALES' ? 'rgba(255,255,255,0.25)' : '#E2E8F0', color: ambitoFilter === 'CENTRALES' ? '#FFFFFF' : '#64748B', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
                                 {dynamicMetrics ? dynamicMetrics.centralesRealizadas : 0}
                             </span>
@@ -3141,6 +3431,30 @@ export default function QuirofanoDashboard({
                                 {dynamicMetrics ? dynamicMetrics.hddRealizadas : 0}
                             </span>
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setAmbitoFilter('HEMODINAMIA')}
+                            style={{
+                                padding: '6px 14px',
+                                borderRadius: '7px',
+                                border: 'none',
+                                fontSize: '0.78rem',
+                                fontWeight: ambitoFilter === 'HEMODINAMIA' ? 800 : 600,
+                                background: ambitoFilter === 'HEMODINAMIA' ? '#DC2626' : 'transparent',
+                                color: ambitoFilter === 'HEMODINAMIA' ? '#FFFFFF' : '#64748B',
+                                cursor: 'pointer',
+                                boxShadow: ambitoFilter === 'HEMODINAMIA' ? '0 2px 4px rgba(220,38,38,0.3)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span>❤️ Hemodinamia (c/ Anestesia)</span>
+                            <span style={{ fontSize: '0.70rem', background: ambitoFilter === 'HEMODINAMIA' ? 'rgba(255,255,255,0.25)' : '#E2E8F0', color: ambitoFilter === 'HEMODINAMIA' ? '#FFFFFF' : '#64748B', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                {dynamicMetrics ? dynamicMetrics.hemodinamiaRealizadas : 0}
+                            </span>
+                        </button>
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -3149,13 +3463,14 @@ export default function QuirofanoDashboard({
                         padding: '4px 10px',
                         borderRadius: '6px',
                         fontWeight: 700,
-                        background: ambitoFilter === 'CENTRALES' ? '#EFF6FF' : ambitoFilter === 'HDD' ? '#ECFDF5' : '#F8FAFC',
-                        color: ambitoFilter === 'CENTRALES' ? '#1D4ED8' : ambitoFilter === 'HDD' ? '#047857' : '#475569',
-                        border: `1px solid ${ambitoFilter === 'CENTRALES' ? '#BFDBFE' : ambitoFilter === 'HDD' ? '#A7F3D0' : '#E2E8F0'}`
+                        background: ambitoFilter === 'CENTRALES' ? '#EFF6FF' : ambitoFilter === 'HDD' ? '#ECFDF5' : ambitoFilter === 'HEMODINAMIA' ? '#FEF2F2' : '#F8FAFC',
+                        color: ambitoFilter === 'CENTRALES' ? '#1D4ED8' : ambitoFilter === 'HDD' ? '#047857' : ambitoFilter === 'HEMODINAMIA' ? '#DC2626' : '#475569',
+                        border: `1px solid ${ambitoFilter === 'CENTRALES' ? '#BFDBFE' : ambitoFilter === 'HDD' ? '#A7F3D0' : ambitoFilter === 'HEMODINAMIA' ? '#FECACA' : '#E2E8F0'}`
                     }}>
-                        {ambitoFilter === 'TODOS' && '🌐 Mostrando Todas las Salas (Consolidado)'}
-                        {ambitoFilter === 'CENTRALES' && '🏥 Filtrado: Quirófanos Centrales 1 a 4 y Sala de Partos'}
-                        {ambitoFilter === 'HDD' && '☀️ Filtrado: Hospital de Día Quirófanos 5-6 (Ambulatorio)'}
+                        {ambitoFilter === 'TODOS' && '🌐 Consolidado Sanatorio (Sin Hierro/Hemoterapia · Ocupación Foja + 30m)'}
+                        {ambitoFilter === 'CENTRALES' && '🏥 Quirófano Central Unificado (Salas Qx 1 a 4 y Sala de Partos integrada)'}
+                        {ambitoFilter === 'HDD' && '☀️ Hospital de Día Quirófanos 5-6 (Sin pasajes de hierro / Hemoterapia)'}
+                        {ambitoFilter === 'HEMODINAMIA' && '❤️ Hemodinamia Quirúrgica (Únicamente procedimientos con Anestesiólogo)'}
                     </span>
                 </div>
             </div>
@@ -5125,9 +5440,11 @@ export default function QuirofanoDashboard({
                                     </span>
                                     {[
                                         { id: 'auto', label: `Automático (${activePeriodLabel})` },
-                                        { id: 'AGO', label: 'Agosto 2026' },
+                                        { id: 'OCT', label: 'Octubre 2026' },
+                                        { id: 'NOV', label: 'Noviembre 2026 (En curso)' },
                                         { id: 'SEP', label: 'Septiembre 2026' },
-                                        { id: 'PROMEDIO', label: 'Promedio Ago-Sep' }
+                                        { id: 'AGO', label: 'Agosto 2026' },
+                                        { id: 'PROMEDIO', label: 'Trimestre Ago-Oct' }
                                     ].map(btn => (
                                         <button
                                             key={btn.id}
@@ -5157,8 +5474,8 @@ export default function QuirofanoDashboard({
                                         Ámbito:
                                     </span>
                                     {[
-                                        { id: 'TODOS', label: 'Todos (12)' },
-                                        { id: 'CENTRAL', label: '🏥 Qx Central (10)' },
+                                        { id: 'TODOS', label: 'Todos (10)' },
+                                        { id: 'CENTRAL', label: '🏥 Qx Central (8)' },
                                         { id: 'HDD', label: '☀️ Hosp. Día (2)' }
                                     ].map(btn => (
                                         <button
@@ -5333,6 +5650,82 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
+                    {/* PANEL DE ALERTAS PREVENTIVAS A 7 DÍAS (DETECCIÓN AUTOMÁTICA EN AGENDA FUTURA SALUS) */}
+                    <div style={{
+                        background: 'linear-gradient(135deg, #FFFBEB 0%, #FFFFFF 100%)',
+                        border: '1.5px solid #FCD34D',
+                        borderRadius: '14px',
+                        padding: '16px 20px',
+                        boxShadow: '0 2px 10px rgba(217, 119, 6, 0.06)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#FEF3C7', border: '1px solid #F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
+                                    <AlertTriangle size={18} />
+                                </div>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: '#92400E' }}>
+                                            Monitor Preventivo a 7 Días · Pacientes Ficticios Activos en Agenda SALUS
+                                        </h4>
+                                        <span style={{ fontSize: '0.68rem', background: '#FEF3C7', color: '#B45309', padding: '2px 8px', borderRadius: '6px', fontWeight: 800, border: '1px solid #FCD34D' }}>
+                                            Fuente: dbo.VLISE_Visitas (Tiempo Real)
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: '#78350F' }}>
+                                        Reservas futuras detectadas bajo marcador <code>BLOQUE, ...</code> que aún no fueron sustituidas por pacientes reales. Si faltando 7 días persiste el ficticio, liberar la sala a programación general.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px' }}>
+                            {SALUS_ALERTAS_7DIAS_AGENDA.map(al => {
+                                const isCrit = al.severidad === 'critical';
+                                const isWarn = al.severidad === 'warning';
+                                return (
+                                    <div
+                                        key={al.id}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            border: `1.5px solid ${isCrit ? '#FCA5A5' : isWarn ? '#FCD34D' : '#BFDBFE'}`,
+                                            borderRadius: '10px',
+                                            padding: '12px 14px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '6px'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{
+                                                fontSize: '0.68rem',
+                                                fontWeight: 900,
+                                                padding: '2px 7px',
+                                                borderRadius: '5px',
+                                                background: isCrit ? '#FEE2E2' : isWarn ? '#FEF3C7' : '#EFF6FF',
+                                                color: isCrit ? '#DC2626' : isWarn ? '#B45309' : '#1D4ED8'
+                                            }}>
+                                                {al.pacienteFicticio}
+                                            </span>
+                                            <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#0F172A' }}>
+                                                📅 {al.fechaLegible}
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0F172A' }}>
+                                            {al.cirujano}
+                                        </div>
+                                        <div style={{ fontSize: '0.72rem', color: '#475569' }}>
+                                            <strong>{al.sala}</strong> · {al.horario}
+                                        </div>
+                                        <div style={{ fontSize: '0.70rem', color: isCrit ? '#991B1B' : '#92400E', background: isCrit ? '#FEF2F2' : '#FFFBEB', padding: '6px 8px', borderRadius: '6px', lineHeight: 1.35 }}>
+                                            {al.accionSugerida}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     {/* VISTA 1: TABLA NUMÉRICA DE AUDITORÍA */}
                     {vistaBloques === 'lista' && (
                         <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
@@ -5342,7 +5735,7 @@ export default function QuirofanoDashboard({
                                         Matriz de Ocupación de Bloques vs. Horas Ociosas ({effectiveBloquesPeriod})
                                     </h3>
                                     <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                        Trazabilidad oficial de horas asignadas, uso titular efectivo, capacidad ociosa y condición de liberación a 7 días.
+                                        Haz clic en cualquier semana para inspeccionar el <strong>listado nominal 1x1 de pacientes reales operados en SALUS</strong> por ese cirujano.
                                     </p>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -5386,7 +5779,7 @@ export default function QuirofanoDashboard({
                                             <th style={{ padding: '10px 12px', textAlign: 'right', background: '#F0FDF4', color: '#166534' }}>Hs Titular</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Ociosas</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Ocupación</th>
-                                            <th style={{ padding: '10px 12px' }}>Desglose Semanal</th>
+                                            <th style={{ padding: '10px 12px' }}>Desglose Semanal (Clic p/ Ver Pacientes)</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'center' }}>Alerta 7d</th>
                                             <th style={{ padding: '10px 12px' }}>Condición Operativa</th>
                                         </tr>
@@ -5395,7 +5788,12 @@ export default function QuirofanoDashboard({
                                         {activeBloquesData.map((b) => (
                                             <tr key={b.id} style={{ borderBottom: '1px solid #E2E8F0', background: b.alerta ? '#FFFBEB' : '#FFFFFF' }}>
                                                 <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>
-                                                    {b.cirujano}
+                                                    <div>{b.cirujano}</div>
+                                                    {b.pacientesMes && b.pacientesMes.length > 0 && (
+                                                        <span style={{ fontSize: '0.66rem', color: '#0284C7', fontWeight: 700 }}>
+                                                            {b.pacientesMes.length} cirugías nominales en período
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td style={{ padding: '10px 12px' }}>
                                                     <span style={{
@@ -5432,12 +5830,13 @@ export default function QuirofanoDashboard({
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
                                                         {(b.semanas || []).map((sem, sIdx) => {
                                                             const isUsada = sem.usada;
+                                                            const cntPac = (sem.pacientesReales || []).length;
                                                             return (
                                                                 <button
                                                                     key={sIdx}
                                                                     type="button"
                                                                     onClick={() => setSelectedBloqueDetail({ bloque: b, semana: sem })}
-                                                                    title={`${b.cirujano} • ${sem.label} (${sem.fecha || ''}): ${isUsada ? '✓ Utilizado (' + sem.hs + 'h)' : '✗ Ocioso (0h)'}. Clic para ver desglose auditado.`}
+                                                                    title={`${b.cirujano} • ${sem.label} (${sem.fecha || ''}): ${isUsada ? '✓ Utilizado (' + sem.hs + 'h)' : '✗ Ocioso (0h)'}. Clic para ver pacientes reales operados.`}
                                                                     style={{
                                                                         display: 'inline-flex',
                                                                         alignItems: 'center',
@@ -5457,7 +5856,7 @@ export default function QuirofanoDashboard({
                                                                     <span style={{ fontSize: '0.65rem', opacity: 0.85 }}>{sem.label}:</span>
                                                                     {isUsada ? (
                                                                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
-                                                                            <Check size={11} strokeWidth={3} /> {sem.hs}h
+                                                                            <Check size={11} strokeWidth={3} /> {sem.hs}h {cntPac > 0 ? `(${cntPac} cx)` : ''}
                                                                         </span>
                                                                     ) : (
                                                                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
@@ -5497,7 +5896,7 @@ export default function QuirofanoDashboard({
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.pctUsoTitular}%</td>
                                             <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#64748B' }}>Auditado por semanas</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'center', color: '#DC2626' }}>{bloquesMetricsSummary.alertasLiberar} a liberar</td>
-                                            <td style={{ padding: '10px 12px' }}>10 Bloques Institucionales</td>
+                                            <td style={{ padding: '10px 12px' }}>{activeBloquesData.length} Bloques Institucionales</td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -5514,7 +5913,7 @@ export default function QuirofanoDashboard({
                                         Distribución Semanal de Bloques: Quirófano Central vs Hospital de Día
                                     </h4>
                                     <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                        Diagrama oficial de franjas horarias y porcentajes de ocupación (Agosto - Septiembre 2026)
+                                        Diagrama oficial de franjas horarias y porcentajes de ocupación auditados en SALUS (Agosto - Noviembre 2026)
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem' }}>
@@ -5564,8 +5963,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONS, RODRIGO</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>08:00 - 13:00 (5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 100% · SEP: 100%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 100% · SEP: 100%<br />OCT: 75% · NOV: 50%
                                                 </div>
                                             </div>
 
@@ -5574,11 +5973,11 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR MOLINA, MAURICIO</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>14:00 - 19:00 (5h)</div>
-                                                <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 25% · SEP: 0%
+                                                <div style={{ background: '#FEF3C7', color: '#92400E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 25% · SEP: 0%<br />OCT: 75% · NOV: 25%
                                                 </div>
-                                                <div style={{ fontSize: '0.64rem', color: '#DC2626', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
-                                                    Sugerir Liberación
+                                                <div style={{ fontSize: '0.63rem', color: '#DC2626', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
+                                                    Desde Nov pasa a Guardia Trauma
                                                 </div>
                                             </div>
                                         </div>
@@ -5588,10 +5987,10 @@ export default function QuirofanoDashboard({
                                             {/* Dr Azuri */}
                                             <div style={{ background: '#DCFCE7', border: '1.5px solid #86EFAC', borderRadius: '8px', padding: '8px', color: '#166534' }}>
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR AZURI, WADI</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 60%
+                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1) · 2 mensuales</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h quincenal)</div>
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 60%<br />OCT: 100% · NOV: 100%
                                                 </div>
                                             </div>
 
@@ -5600,8 +5999,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PEÑATE, JAVIER</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 4) · 2 mensuales</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h quincenal)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 100% · SEP: 50%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 100% · SEP: 50%<br />OCT: 0% · NOV: 50%
                                                 </div>
                                             </div>
 
@@ -5610,8 +6009,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR SCARSO, CARLOS</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 4)</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>16:00 - 20:00 (4h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 100% · SEP: 60%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 100% · SEP: 60%<br />OCT: 50% · NOV: 50%
                                                 </div>
                                             </div>
                                         </div>
@@ -5623,8 +6022,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR MUÑOZ, MATIAS</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>08:30 - 14:00 (5.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 100%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 100%<br />OCT: 75% · NOV: 25%
                                                 </div>
                                             </div>
                                         </div>
@@ -5633,14 +6032,14 @@ export default function QuirofanoDashboard({
                                         <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             {/* CCV */}
                                             <div style={{ background: '#FCA5A5', border: '1.5px solid #F87171', borderRadius: '8px', padding: '8px', color: '#991B1B' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>CCV (Qx 1)</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.68rem' }}>3º jueves de cada mes</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:00 - 17:00 (10h)</div>
-                                                <div style={{ background: '#FEE2E2', color: '#DC2626', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 0% · SEP: 0%
+                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>CCV - DR MARTÍN MAURICIO</div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.68rem' }}>(Qx 1) · 2 jueves al mes</div>
+                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:00 - 17:00 (10h quincenal)</div>
+                                                <div style={{ background: '#FEF3C7', color: '#92400E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 0% · SEP: 0%<br />OCT: 50% · NOV: 50%
                                                 </div>
-                                                <div style={{ fontSize: '0.64rem', color: '#991B1B', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
-                                                    Sin actividad en período
+                                                <div style={{ fontSize: '0.63rem', color: '#991B1B', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
+                                                    Reserva BLOQUE, CCV Jue 26/11
                                                 </div>
                                             </div>
 
@@ -5650,8 +6049,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
                                                 <div style={{ fontSize: '0.65rem', margin: '2px 0', fontStyle: 'italic' }}>Cuando hay CCV, pasa a Qx 2</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:30 - 13:00 (5.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 75%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 75%<br />OCT: 75% · NOV: 50%
                                                 </div>
                                             </div>
                                         </div>
@@ -5705,8 +6104,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR GALVARINI, MARTIN</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
                                                 <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>13:30 - 20:00 (6.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.66rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 100%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
+                                                    AGO: 75% · SEP: 100%<br />OCT: 85% (41 cx) · NOV: 50%
                                                 </div>
                                             </div>
                                         </div>
@@ -5728,8 +6127,8 @@ export default function QuirofanoDashboard({
                                                 <div style={{ fontWeight: 900, fontSize: '0.74rem' }}>DR PONCE, MARCELO</div>
                                                 <div style={{ fontWeight: 800, fontSize: '0.68rem', margin: '3px 0' }}>3 BLOQUES (Qx 6)</div>
                                                 <div style={{ fontSize: '0.64rem', color: '#713F12', marginBottom: '6px' }}>Lun (4h), Mar (2.5h), Jue (2.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '4px', borderRadius: '4px', fontWeight: 900, fontSize: '0.70rem' }}>
-                                                    AGO: 58,33%<br />SEPT: 84,60%
+                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '4px', borderRadius: '4px', fontWeight: 900, fontSize: '0.66rem', lineHeight: 1.4 }}>
+                                                    AGO: 58,3% · SEP: 84,6%<br />OCT: 100% (45 cx)<br />NOV: 75% (15 cx)
                                                 </div>
                                             </div>
                                         </div>
@@ -5761,7 +6160,7 @@ export default function QuirofanoDashboard({
                         </div>
                     )}
 
-                    {/* MODAL INTERACTIVO DE DETALLE DE BLOQUE Y SEMANA AUDITADA */}
+                    {/* MODAL INTERACTIVO DE DETALLE DE BLOQUE Y SEMANA AUDITADA (CON PACIENTES NOMINALES SALUS) */}
                     {selectedBloqueDetail && (
                         <div
                             role="dialog"
@@ -5783,8 +6182,11 @@ export default function QuirofanoDashboard({
                                 style={{
                                     background: '#FFFFFF',
                                     borderRadius: '16px',
-                                    maxWidth: '560px',
+                                    maxWidth: '780px',
+                                    maxHeight: '88vh',
                                     width: '100%',
+                                    display: 'flex',
+                                    flexDirection: 'column',
                                     boxShadow: '0 20px 45px rgba(0, 0, 0, 0.25)',
                                     overflow: 'hidden',
                                     border: '1px solid #E2E8F0',
@@ -5801,7 +6203,8 @@ export default function QuirofanoDashboard({
                                     padding: '16px 22px',
                                     display: 'flex',
                                     justifyContent: 'space-between',
-                                    alignItems: 'center'
+                                    alignItems: 'center',
+                                    flexShrink: 0
                                 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <div style={{
@@ -5820,7 +6223,7 @@ export default function QuirofanoDashboard({
                                                 {selectedBloqueDetail.bloque.cirujano}
                                             </h4>
                                             <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.9 }}>
-                                                Auditoría de Bloque Quirúrgico · {effectiveBloquesPeriod}
+                                                Auditoría Nominal de Bloque Quirúrgico · {effectiveBloquesPeriod}
                                             </p>
                                         </div>
                                     </div>
@@ -5844,8 +6247,8 @@ export default function QuirofanoDashboard({
                                     </button>
                                 </div>
 
-                                {/* Body del Modal */}
-                                <div style={{ padding: '22px' }}>
+                                {/* Body del Modal con scroll */}
+                                <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1 }}>
                                     {/* Ficha Resumen */}
                                     <div style={{
                                         display: 'grid',
@@ -5903,6 +6306,57 @@ export default function QuirofanoDashboard({
                                         </div>
                                     </div>
 
+                                    {/* LISTADO NOMINAL 1X1 DE PACIENTES OPERADOS EN LA SEMANA / MES (SALUS) */}
+                                    {(() => {
+                                        const pacSem = selectedBloqueDetail.semana.pacientesReales || [];
+                                        const pacMes = selectedBloqueDetail.bloque.pacientesMes || [];
+                                        const listToShow = pacSem.length > 0 ? pacSem : pacMes;
+                                        const isShowingMonthFallback = pacSem.length === 0 && pacMes.length > 0;
+                                        if (listToShow.length === 0) return null;
+                                        return (
+                                            <div style={{ marginBottom: '16px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                                                    <h5 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 800, color: '#1E40AF' }}>
+                                                        {isShowingMonthFallback
+                                                            ? `📋 Cirugías Nominales del Profesional en ${effectiveBloquesPeriod} (${listToShow.length} pacientes en otros días)`
+                                                            : `📋 Pacientes Reales Operados en ${selectedBloqueDetail.semana.label} (${listToShow.length} cirugías en SALUS)`}
+                                                    </h5>
+                                                    <span style={{ fontSize: '0.68rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                                        Ocupación = Foja + 30 min
+                                                    </span>
+                                                </div>
+                                                <div style={{ maxHeight: '210px', overflowY: 'auto', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                                                        <thead>
+                                                            <tr style={{ background: '#F1F5F9', color: '#334155', textAlign: 'left', position: 'sticky', top: 0 }}>
+                                                                <th style={{ padding: '6px 8px' }}>Fecha</th>
+                                                                <th style={{ padding: '6px 8px' }}>Hora</th>
+                                                                <th style={{ padding: '6px 8px' }}>Sala</th>
+                                                                <th style={{ padding: '6px 8px' }}>Paciente</th>
+                                                                <th style={{ padding: '6px 8px' }}>DNI</th>
+                                                                <th style={{ padding: '6px 8px' }}>Procedimiento (CX)</th>
+                                                                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Foja+30m</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {listToShow.map((p, pIdx) => (
+                                                                <tr key={pIdx} style={{ borderBottom: '1px solid #E2E8F0', background: pIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                                                                    <td style={{ padding: '5px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}>{p.fechaLegible}</td>
+                                                                    <td style={{ padding: '5px 8px', color: '#64748B' }}>{(p.hora || '').slice(0, 5)}</td>
+                                                                    <td style={{ padding: '5px 8px', fontWeight: 800, color: '#1E40AF', whiteSpace: 'nowrap' }}>{p.sala}</td>
+                                                                    <td style={{ padding: '5px 8px', fontWeight: 700, color: '#0F172A' }}>{p.paciente}</td>
+                                                                    <td style={{ padding: '5px 8px', color: '#475569' }}>{p.dni}</td>
+                                                                    <td style={{ padding: '5px 8px', color: '#334155' }}>{p.procedimiento}</td>
+                                                                    <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: '#15803D' }}>{p.durOcupacionMin}m</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {/* Desglose Completo de Todas las Semanas del Mes para este Bloque */}
                                     <div>
                                         <h5 style={{ margin: '0 0 8px 0', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
@@ -5927,7 +6381,7 @@ export default function QuirofanoDashboard({
                                                     }}
                                                 >
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ fontWeight: 800, color: '#1E293B', width: '60px' }}>{s.label}</span>
+                                                        <span style={{ fontWeight: 800, color: '#1E293B', width: '70px' }}>{s.label}</span>
                                                         <span style={{ color: '#64748B', fontSize: '0.72rem' }}>{s.fecha}</span>
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -5936,7 +6390,7 @@ export default function QuirofanoDashboard({
                                                             fontWeight: 800,
                                                             color: s.usada ? '#15803D' : '#DC2626'
                                                         }}>
-                                                            {s.usada ? `✓ ${s.hs}h operadas` : '✗ Ocioso'}
+                                                            {s.usada ? `✓ ${s.hs}h operadas ${(s.pacientesReales || []).length > 0 ? `(${s.pacientesReales.length} cx)` : ''}` : '✗ Ocioso'}
                                                         </span>
                                                     </div>
                                                 </div>

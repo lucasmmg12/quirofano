@@ -10,47 +10,75 @@
 -- DECLARE @FechaFin DATETIME = '2026-05-31 23:59:59';
 
 -- -----------------------------------------------------------------------------------------
--- INDICADOR 1: VOLUMEN DE CIRUGÍAS Y EVOLUCIÓN INTERANUAL (CENTRAL VS. HOSPITAL DE DÍA)
--- Qué mide: Total mensual de intervenciones quirúrgicas ejecutadas discriminando Quirófano Central vs HdD.
+-- INDICADOR 1: VOLUMEN DE CIRUGÍAS Y EVOLUCIÓN INTERANUAL (CENTRAL UNIFICADO VS. HOSPITAL DE DÍA SIN HIERRO VS. HEMODINAMIA C/ ANESTESIA)
+-- Qué mide: Total mensual de intervenciones quirúrgicas ejecutadas unificando Sala de Partos en Quirófano Central,
+--           excluyendo pasajes de hierro (Agenda HEMOTERAPIA / COLOCACION DE MEDICAMENTO) y suturas menores,
+--           e incorporando procedimientos de Hemodinamia con participación de Anestesiología.
 -- -----------------------------------------------------------------------------------------
 SELECT 
-    YEAR(pq.FechaCirugia) AS Anio,
-    MONTH(pq.FechaCirugia) AS MesNumero,
-    FORMAT(pq.FechaCirugia, 'yyyy-MM') AS Periodo,
-    COUNT(DISTINCT pq.IdProtocolo) AS TotalCirugias,
-    SUM(CASE WHEN sq.CodigoSala IN ('Q1', 'Q2', 'Q3', 'Q4') THEN 1 ELSE 0 END) AS QuirofanoCentral,
-    SUM(CASE WHEN sq.CodigoSala IN ('Q5', 'Q6') THEN 1 ELSE 0 END) AS HospitalDeDia,
-    SUM(CASE WHEN sq.CodigoSala LIKE '%PARTO%' THEN 1 ELSE 0 END) AS SalaPartos,
-    ROUND(SUM(CASE WHEN sq.CodigoSala IN ('Q1', 'Q2', 'Q3', 'Q4') THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT pq.IdProtocolo), 2) AS PctCentral,
-    ROUND(SUM(CASE WHEN sq.CodigoSala IN ('Q5', 'Q6') THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT pq.IdProtocolo), 2) AS PctHdD
-FROM dbo.ProtocolosQuirurgicos pq
-INNER JOIN dbo.SalasQuirurgicas sq ON pq.IdSala = sq.IdSala
-WHERE pq.EstadoCirugia = 'Realizada'
-  AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
-GROUP BY YEAR(pq.FechaCirugia), MONTH(pq.FechaCirugia), FORMAT(pq.FechaCirugia, 'yyyy-MM')
+    YEAR(tc.[Fecha Intervencion]) AS Anio,
+    MONTH(tc.[Fecha Intervencion]) AS MesNumero,
+    FORMAT(tc.[Fecha Intervencion], 'yyyy-MM') AS Periodo,
+    COUNT(*) AS TotalCirugiasRealizadas,
+    SUM(CASE WHEN tc.[Agrupacion Quirófanos] = 'QUIRÓFANOS CENTRALES' OR tc.Quirofano LIKE '%PARTO%' THEN 1 ELSE 0 END) AS QuirofanoCentralUnificado,
+    SUM(CASE WHEN tc.[Agrupacion Quirófanos] = 'QUIRÓFANOS HdD' AND tc.Quirofano NOT LIKE '%PARTO%' THEN 1 ELSE 0 END) AS HospitalDeDiaSinHierro,
+    SUM(CASE WHEN tc.Quirofano LIKE '%HEMODINAMIA%' AND NULLIF(LTRIM(RTRIM(ISNULL(tc.Anestesista, ''))), '') IS NOT NULL THEN 1 ELSE 0 END) AS HemodinamiaConAnestesia,
+    ROUND(SUM((CASE WHEN tc.[Duracion Minutos Cirugia] BETWEEN 15 AND 480 THEN tc.[Duracion Minutos Cirugia] ELSE 45 END) + 30) / 60.0, 1) AS HorasOcupacionTotal_FojaMas30m
+FROM dbo.TABLEAU_Cirugias tc
+LEFT JOIN dbo.VLISE_Visitas vv ON tc.IdVisita = vv.idEntrada
+WHERE tc.[Asistencia Cirugia] IN ('Presente', 'URGENCIA', 'NO PROGRAMADA')
+  AND ISNULL(vv.Agenda, '') NOT LIKE '%HEMOTERAPIA%'
+  AND ISNULL(tc.Modulo, '') NOT LIKE '%COLOCACION DE MEDICAMENTO%'
+  AND ISNULL(tc.Modulo, '') NOT LIKE '%SUTURA%'
+  AND ISNULL(tc.Paciente, '') NOT LIKE 'BLOQUE%'
+  AND (
+      tc.[Agrupacion Quirófanos] IN ('QUIRÓFANOS CENTRALES', 'QUIRÓFANOS HdD')
+      OR (tc.Quirofano LIKE '%HEMODINAMIA%' AND NULLIF(LTRIM(RTRIM(ISNULL(tc.Anestesista, ''))), '') IS NOT NULL)
+  )
+  AND tc.[Fecha Intervencion] BETWEEN @FechaInicio AND @FechaFin
+GROUP BY YEAR(tc.[Fecha Intervencion]), MONTH(tc.[Fecha Intervencion]), FORMAT(tc.[Fecha Intervencion], 'yyyy-MM')
 ORDER BY Anio DESC, MesNumero DESC;
 
 
 -- -----------------------------------------------------------------------------------------
--- INDICADOR 2: TASA DE OCUPACIÓN POR SALA Y CAPACIDAD QUIRÚRGICA
--- Qué mide: Horas quirúrgicas efectivas vs horas habilitadas en ventana estándar 07:00 a 21:00 hs (14 hs/día).
+-- INDICADOR 2: TASA DE OCUPACIÓN POR SALA Y CAPACIDAD QUIRÚRGICA (FÓRMULA FOJA + 30 MIN)
+-- Qué mide: Horas quirúrgicas efectivas adicionando 30 minutos operativos por cirugía
+--           (15 min pre-ingreso/anestesia + 15 min higiene/recambio) vs horas habilitadas (364 hs/mes).
 -- -----------------------------------------------------------------------------------------
 SELECT 
-    sq.CodigoSala,
-    sq.NombreSala,
-    COUNT(DISTINCT pq.IdProtocolo) AS CantidadCirugias,
-    ROUND(SUM(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)) / 60.0, 2) AS HorasEfectivasUso,
-    -- Capacidad teórica mensual: 26 días hábiles x 14 horas = 364 horas disponibles
-    364.0 AS HorasDisponiblesMes,
-    ROUND((SUM(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)) / 60.0) * 100.0 / 364.0, 2) AS TasaOcupacionPct,
-    ROUND(AVG(DATEDIFF(MINUTE, pq.HoraEntradaSala, pq.HoraSalidaSala)), 1) AS DuracionMediaMinutos
-FROM dbo.SalasQuirurgicas sq
-LEFT JOIN dbo.ProtocolosQuirurgicos pq 
-    ON sq.IdSala = pq.IdSala 
-   AND pq.EstadoCirugia = 'Realizada'
-   AND pq.FechaCirugia BETWEEN @FechaInicio AND @FechaFin
-GROUP BY sq.CodigoSala, sq.NombreSala
-ORDER BY TasaOcupacionPct DESC;
+    CASE 
+        WHEN tc.[Agrupacion Quirófanos] = 'QUIRÓFANOS CENTRALES' OR tc.Quirofano LIKE '%PARTO%' THEN 'QUIRÓFANO CENTRAL (INC. SALA PARTOS)'
+        WHEN tc.[Agrupacion Quirófanos] = 'QUIRÓFANOS HdD' THEN 'HOSPITAL DE DÍA (QX 5 - QX 6)'
+        WHEN tc.Quirofano LIKE '%HEMODINAMIA%' THEN 'HEMODINAMIA (C/ ANESTESIA)'
+        ELSE 'OTROS'
+    END AS SectorOperativo,
+    tc.Quirofano AS NombreSala,
+    COUNT(*) AS CantidadCirugiasRealizadas,
+    ROUND(SUM(CASE WHEN tc.[Duracion Minutos Cirugia] BETWEEN 15 AND 480 THEN tc.[Duracion Minutos Cirugia] ELSE 45 END) / 60.0, 1) AS HorasFojaPura,
+    ROUND(SUM((CASE WHEN tc.[Duracion Minutos Cirugia] BETWEEN 15 AND 480 THEN tc.[Duracion Minutos Cirugia] ELSE 45 END) + 30) / 60.0, 1) AS HorasOcupacionReal_FojaMas30m,
+    CASE 
+        WHEN tc.Quirofano LIKE '%PARTO%' THEN 208.0
+        WHEN tc.Quirofano LIKE '%HEMODINAMIA%' THEN 120.0
+        ELSE 364.0
+    END AS HorasDisponiblesMes,
+    ROUND(
+        (SUM((CASE WHEN tc.[Duracion Minutos Cirugia] BETWEEN 15 AND 480 THEN tc.[Duracion Minutos Cirugia] ELSE 45 END) + 30) / 60.0) * 100.0 /
+        (CASE WHEN tc.Quirofano LIKE '%PARTO%' THEN 208.0 WHEN tc.Quirofano LIKE '%HEMODINAMIA%' THEN 120.0 ELSE 364.0 END),
+    1) AS TasaOcupacionPct
+FROM dbo.TABLEAU_Cirugias tc
+LEFT JOIN dbo.VLISE_Visitas vv ON tc.IdVisita = vv.idEntrada
+WHERE tc.[Asistencia Cirugia] IN ('Presente', 'URGENCIA', 'NO PROGRAMADA')
+  AND ISNULL(vv.Agenda, '') NOT LIKE '%HEMOTERAPIA%'
+  AND ISNULL(tc.Modulo, '') NOT LIKE '%COLOCACION DE MEDICAMENTO%'
+  AND ISNULL(tc.Modulo, '') NOT LIKE '%SUTURA%'
+  AND ISNULL(tc.Paciente, '') NOT LIKE 'BLOQUE%'
+  AND (
+      tc.[Agrupacion Quirófanos] IN ('QUIRÓFANOS CENTRALES', 'QUIRÓFANOS HdD')
+      OR (tc.Quirofano LIKE '%HEMODINAMIA%' AND NULLIF(LTRIM(RTRIM(ISNULL(tc.Anestesista, ''))), '') IS NOT NULL)
+  )
+  AND tc.[Fecha Intervencion] BETWEEN @FechaInicio AND @FechaFin
+GROUP BY tc.[Agrupacion Quirófanos], tc.Quirofano
+ORDER BY CantidadCirugiasRealizadas DESC;
 
 
 -- -----------------------------------------------------------------------------------------

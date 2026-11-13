@@ -929,8 +929,18 @@ function normalizePhone(raw, areaCode = '264') {
     return { normalized: cleaned, valid: false, original: raw };
 }
 
-// Módulos excluidos
-const EXCLUDED_MODULES = ['Transferencia embrionaria', 'Fertilidad', 'Bloque Médico'];
+// Módulos excluidos (Gobernanza Quirófano: excluye pasajes de hierro/medicación en Hemoterapia y suturas menores)
+const EXCLUDED_MODULES = [
+    'Transferencia embrionaria',
+    'Fertilidad',
+    'Bloque Médico',
+    'COLOCACION DE MEDICAMENTO',
+    'COLOCACION DE MEDICACION',
+    'HIERRO',
+    'FERROCARBOXIMALTOSA',
+    'SACARATO',
+    'SUTURA'
+];
 const EXCLUDED_NAME_PREFIXES = ['BLOQUE'];
 
 // ============================================================================
@@ -1056,7 +1066,10 @@ async function syncCirugias(db) {
               AND V_Sub.Instrucciones IS NOT NULL 
             ORDER BY V_Sub.[Fecha Solicitud] DESC
         ) V
-        WHERE A.Descrip LIKE '(CX)%'
+        WHERE (A.Descrip LIKE '(CX)%' OR A.Descrip LIKE '()%')
+          AND A.Descrip NOT LIKE '%COLOCACION DE MEDICAM%'
+          AND A.Descrip NOT LIKE '%HIERRO%'
+          AND A.Descrip NOT LIKE '%SUTURA%'
           AND A.nombre NOT LIKE '%Bloque%'
           AND (
             (A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD') AND CAST(A.Data AS DATE) >= DATEADD(DAY, -14, CAST(GETDATE() AS DATE)))

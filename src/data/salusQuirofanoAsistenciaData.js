@@ -1,17 +1,18 @@
-// Datos reales auditados desde SALUS (VLISE_Visitas / TABLEAU_Visitas ordenadas por agenda)
-// Desglose mensual por Grupo Agenda y Estado de Asistencia (Presente, SUSPENDIDA, CX SUSPENDIDA 24H, URGENCIA, NO PROGRAMADA, Ausencia, Sin Registrar)
+/**
+ * Serie histórica mensual de cirugías según Estado de Asistencia en SALUS (dbo.TABLEAU_Cirugias + dbo.VLISE_Visitas)
+ * Período: Enero 2025 – Noviembre 2026
+ * Reglas de Gobernanza Aplicadas:
+ * 1. Excluye Agenda 'HEMOTERAPIA' y '() COLOCACION DE MEDICAMENTO' (Pasajes de Hierro ambulatorios).
+ * 2. Excluye prácticas menores de 'SUTURA' y pacientes ficticios 'BLOQUE%'.
+ * 3. Unifica Sala de Partos dentro de QUIRÓFANOS CENTRALES.
+ * 4. Incluye en HEMODINAMIA únicamente procedimientos con Anestesia (Anestesista IS NOT NULL).
+ */
 export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-01",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 415
-  },
-  {
-    "mes": "2025-01",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 94
+    "cant": 414
   },
   {
     "mes": "2025-01",
@@ -33,18 +34,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   },
   {
     "mes": "2025-01",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Ausencia justificada",
-    "cant": 1
-  },
-  {
-    "mes": "2025-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 100
-  },
-  {
-    "mes": "2025-01",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
     "cant": 47
@@ -52,19 +41,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-01",
     "grupo": "QUIRÓFANOS HdD",
+    "asistencia": "Programada",
+    "cant": 1
+  },
+  {
+    "mes": "2025-01",
+    "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 9
-  },
-  {
-    "mes": "2025-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 7
-  },
-  {
-    "mes": "2025-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
     "cant": 1
   },
   {
@@ -72,12 +55,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 433
-  },
-  {
-    "mes": "2025-02",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 92
   },
   {
     "mes": "2025-02",
@@ -107,31 +84,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-02",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 121
-  },
-  {
-    "mes": "2025-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 80
+    "cant": 120
   },
   {
     "mes": "2025-02",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 13
-  },
-  {
-    "mes": "2025-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 7
-  },
-  {
-    "mes": "2025-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 2
+    "cant": 4
   },
   {
     "mes": "2025-02",
@@ -143,13 +102,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-03",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 439
-  },
-  {
-    "mes": "2025-03",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 76
+    "cant": 438
   },
   {
     "mes": "2025-03",
@@ -172,7 +125,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-03",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
@@ -184,38 +137,14 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-03",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 67
-  },
-  {
-    "mes": "2025-03",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 19
-  },
-  {
-    "mes": "2025-03",
-    "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 13
-  },
-  {
-    "mes": "2025-03",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "URGENCIA",
-    "cant": 1
+    "cant": 7
   },
   {
     "mes": "2025-04",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 455
-  },
-  {
-    "mes": "2025-04",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 93
   },
   {
     "mes": "2025-04",
@@ -233,43 +162,25 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-04",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "SUSPENDIDA",
-    "cant": 22
+    "cant": 21
   },
   {
     "mes": "2025-04",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
     "mes": "2025-04",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 154
-  },
-  {
-    "mes": "2025-04",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 87
-  },
-  {
-    "mes": "2025-04",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 24
+    "cant": 153
   },
   {
     "mes": "2025-04",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 13
-  },
-  {
-    "mes": "2025-04",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 1
+    "cant": 8
   },
   {
     "mes": "2025-04",
@@ -282,12 +193,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 488
-  },
-  {
-    "mes": "2025-05",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 86
   },
   {
     "mes": "2025-05",
@@ -310,7 +215,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-05",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 5
   },
   {
@@ -321,12 +226,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   },
   {
     "mes": "2025-05",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Ausencia justificada",
-    "cant": 1
-  },
-  {
-    "mes": "2025-05",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
     "cant": 158
@@ -334,20 +233,8 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-05",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 82
-  },
-  {
-    "mes": "2025-05",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 24
-  },
-  {
-    "mes": "2025-05",
-    "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 24
+    "cant": 14
   },
   {
     "mes": "2025-05",
@@ -363,21 +250,9 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   },
   {
     "mes": "2025-06",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "Presente",
-    "cant": 5
-  },
-  {
-    "mes": "2025-06",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 421
-  },
-  {
-    "mes": "2025-06",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 91
   },
   {
     "mes": "2025-06",
@@ -400,49 +275,37 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-06",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
     "mes": "2025-06",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 152
-  },
-  {
-    "mes": "2025-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 65
+    "cant": 150
   },
   {
     "mes": "2025-06",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 24
+    "cant": 14
   },
   {
     "mes": "2025-06",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 23
-  },
-  {
-    "mes": "2025-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 2
-  },
-  {
-    "mes": "2025-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "INTERNADO",
+    "asistencia": "URGENCIA",
     "cant": 1
   },
   {
     "mes": "2025-06",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
+    "asistencia": "Programada",
+    "cant": 1
+  },
+  {
+    "mes": "2025-06",
+    "grupo": "QUIRÓFANOS HdD",
+    "asistencia": "INTERNADO",
     "cant": 1
   },
   {
@@ -452,46 +315,16 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "cant": 1
   },
   {
-    "mes": "2025-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "URGENCIA",
-    "cant": 1
-  },
-  {
-    "mes": "2025-07",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "Presente",
-    "cant": 14
-  },
-  {
-    "mes": "2025-07",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "INTERNADO",
-    "cant": 2
-  },
-  {
-    "mes": "2025-07",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "SUSPENDIDA",
-    "cant": 1
-  },
-  {
     "mes": "2025-07",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 493
-  },
-  {
-    "mes": "2025-07",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 91
+    "cant": 492
   },
   {
     "mes": "2025-07",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "URGENCIA",
-    "cant": 59
+    "cant": 58
   },
   {
     "mes": "2025-07",
@@ -508,32 +341,20 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-07",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
     "mes": "2025-07",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 193
-  },
-  {
-    "mes": "2025-07",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 104
-  },
-  {
-    "mes": "2025-07",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 32
+    "cant": 191
   },
   {
     "mes": "2025-07",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 23
+    "cant": 7
   },
   {
     "mes": "2025-07",
@@ -549,21 +370,9 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   },
   {
     "mes": "2025-08",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "Presente",
-    "cant": 14
-  },
-  {
-    "mes": "2025-08",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 494
-  },
-  {
-    "mes": "2025-08",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 89
+    "cant": 493
   },
   {
     "mes": "2025-08",
@@ -592,38 +401,26 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-08",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
     "mes": "2025-08",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 241
-  },
-  {
-    "mes": "2025-08",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 74
-  },
-  {
-    "mes": "2025-08",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 29
+    "cant": 220
   },
   {
     "mes": "2025-08",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 19
+    "cant": 8
   },
   {
     "mes": "2025-08",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "URGENCIA",
-    "cant": 2
+    "cant": 1
   },
   {
     "mes": "2025-08",
@@ -632,34 +429,16 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "cant": 1
   },
   {
-    "mes": "2025-08",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 1
-  },
-  {
     "mes": "2025-09",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 20
-  },
-  {
-    "mes": "2025-09",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "SUSPENDIDA",
-    "cant": 2
+    "cant": 4
   },
   {
     "mes": "2025-09",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 474
-  },
-  {
-    "mes": "2025-09",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 89
   },
   {
     "mes": "2025-09",
@@ -683,37 +462,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-09",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 273
-  },
-  {
-    "mes": "2025-09",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 27
+    "cant": 192
   },
   {
     "mes": "2025-09",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 19
-  },
-  {
-    "mes": "2025-09",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 6
-  },
-  {
-    "mes": "2025-09",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 3
-  },
-  {
-    "mes": "2025-09",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 2
+    "cant": 14
   },
   {
     "mes": "2025-09",
@@ -730,26 +485,14 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-10",
     "grupo": "HEMODINAMIA",
-    "asistencia": "Presente",
-    "cant": 29
-  },
-  {
-    "mes": "2025-10",
-    "grupo": "HEMODINAMIA",
     "asistencia": "SUSPENDIDA",
-    "cant": 3
+    "cant": 1
   },
   {
     "mes": "2025-10",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 444
-  },
-  {
-    "mes": "2025-10",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 93
+    "cant": 443
   },
   {
     "mes": "2025-10",
@@ -773,37 +516,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-10",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 259
+    "cant": 178
   },
   {
     "mes": "2025-10",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 23
-  },
-  {
-    "mes": "2025-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 20
-  },
-  {
-    "mes": "2025-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 10
-  },
-  {
-    "mes": "2025-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 7
-  },
-  {
-    "mes": "2025-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 4
+    "cant": 12
   },
   {
     "mes": "2025-10",
@@ -821,12 +540,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-11",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 9
-  },
-  {
-    "mes": "2025-11",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "SUSPENDIDA",
     "cant": 1
   },
   {
@@ -834,12 +547,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 423
-  },
-  {
-    "mes": "2025-11",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 118
   },
   {
     "mes": "2025-11",
@@ -862,7 +569,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-11",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
@@ -875,37 +582,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-11",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 260
-  },
-  {
-    "mes": "2025-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 37
+    "cant": 173
   },
   {
     "mes": "2025-11",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 8
-  },
-  {
-    "mes": "2025-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
     "cant": 7
-  },
-  {
-    "mes": "2025-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 5
-  },
-  {
-    "mes": "2025-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 3
   },
   {
     "mes": "2025-11",
@@ -923,25 +606,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2025-12",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 13
-  },
-  {
-    "mes": "2025-12",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "SUSPENDIDA",
-    "cant": 1
+    "cant": 3
   },
   {
     "mes": "2025-12",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 446
-  },
-  {
-    "mes": "2025-12",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 92
   },
   {
     "mes": "2025-12",
@@ -964,32 +635,20 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-12",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 3
   },
   {
     "mes": "2025-12",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 246
-  },
-  {
-    "mes": "2025-12",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 43
+    "cant": 164
   },
   {
     "mes": "2025-12",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 15
-  },
-  {
-    "mes": "2025-12",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 7
+    "cant": 13
   },
   {
     "mes": "2025-12",
@@ -1000,14 +659,8 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2025-12",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 4
-  },
-  {
-    "mes": "2025-12",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 3
+    "asistencia": "URGENCIA",
+    "cant": 1
   },
   {
     "mes": "2025-12",
@@ -1016,28 +669,10 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "cant": 1
   },
   {
-    "mes": "2025-12",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "URGENCIA",
-    "cant": 1
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "Presente",
-    "cant": 12
-  },
-  {
     "mes": "2026-01",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 440
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 79
   },
   {
     "mes": "2026-01",
@@ -1060,44 +695,14 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2026-01",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 2
   },
   {
     "mes": "2026-01",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 138
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 17
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 9
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "SUSPENDIDA",
-    "cant": 7
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 6
-  },
-  {
-    "mes": "2026-01",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 6
+    "cant": 78
   },
   {
     "mes": "2026-01",
@@ -1108,8 +713,8 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2026-01",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "MARCAR LLEGADA",
-    "cant": 1
+    "asistencia": "SUSPENDIDA",
+    "cant": 3
   },
   {
     "mes": "2026-01",
@@ -1118,22 +723,22 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "cant": 1
   },
   {
+    "mes": "2026-01",
+    "grupo": "QUIRÓFANOS HdD",
+    "asistencia": "MARCAR LLEGADA",
+    "cant": 1
+  },
+  {
     "mes": "2026-02",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 23
+    "cant": 3
   },
   {
     "mes": "2026-02",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 418
-  },
-  {
-    "mes": "2026-02",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 90
+    "cant": 416
   },
   {
     "mes": "2026-02",
@@ -1157,36 +762,18 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-02",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 221
-  },
-  {
-    "mes": "2026-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 29
-  },
-  {
-    "mes": "2026-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 5
-  },
-  {
-    "mes": "2026-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 4
-  },
-  {
-    "mes": "2026-02",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "NO PROGRAMADA",
-    "cant": 3
+    "cant": 147
   },
   {
     "mes": "2026-02",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
+    "cant": 3
+  },
+  {
+    "mes": "2026-02",
+    "grupo": "QUIRÓFANOS HdD",
+    "asistencia": "NO PROGRAMADA",
     "cant": 3
   },
   {
@@ -1205,25 +792,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-03",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 11
-  },
-  {
-    "mes": "2026-03",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "SUSPENDIDA",
-    "cant": 1
+    "cant": 5
   },
   {
     "mes": "2026-03",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 435
-  },
-  {
-    "mes": "2026-03",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 78
+    "cant": 434
   },
   {
     "mes": "2026-03",
@@ -1246,38 +821,20 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2026-03",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 2
   },
   {
     "mes": "2026-03",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 235
-  },
-  {
-    "mes": "2026-03",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 36
+    "cant": 163
   },
   {
     "mes": "2026-03",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 24
-  },
-  {
-    "mes": "2026-03",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 7
-  },
-  {
-    "mes": "2026-03",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 5
+    "cant": 12
   },
   {
     "mes": "2026-03",
@@ -1286,28 +843,16 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "cant": 5
   },
   {
-    "mes": "2026-03",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 1
-  },
-  {
     "mes": "2026-04",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 25
+    "cant": 6
   },
   {
     "mes": "2026-04",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 429
-  },
-  {
-    "mes": "2026-04",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 92
   },
   {
     "mes": "2026-04",
@@ -1331,19 +876,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-04",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 239
-  },
-  {
-    "mes": "2026-04",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 42
+    "cant": 158
   },
   {
     "mes": "2026-04",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 22
+    "cant": 5
   },
   {
     "mes": "2026-04",
@@ -1358,34 +897,10 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "cant": 3
   },
   {
-    "mes": "2026-04",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 3
-  },
-  {
-    "mes": "2026-04",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 3
-  },
-  {
-    "mes": "2026-05",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "Presente",
-    "cant": 13
-  },
-  {
     "mes": "2026-05",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 420
-  },
-  {
-    "mes": "2026-05",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 68
   },
   {
     "mes": "2026-05",
@@ -1415,31 +930,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-05",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 258
-  },
-  {
-    "mes": "2026-05",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 27
+    "cant": 169
   },
   {
     "mes": "2026-05",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 23
-  },
-  {
-    "mes": "2026-05",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 6
-  },
-  {
-    "mes": "2026-05",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 6
+    "cant": 11
   },
   {
     "mes": "2026-05",
@@ -1457,25 +954,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-06",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 37
-  },
-  {
-    "mes": "2026-06",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 1
+    "cant": 7
   },
   {
     "mes": "2026-06",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 442
-  },
-  {
-    "mes": "2026-06",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 108
   },
   {
     "mes": "2026-06",
@@ -1499,25 +984,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-06",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 259
-  },
-  {
-    "mes": "2026-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 23
-  },
-  {
-    "mes": "2026-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "SUSPENDIDA",
-    "cant": 14
-  },
-  {
-    "mes": "2026-06",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 8
+    "cant": 174
   },
   {
     "mes": "2026-06",
@@ -1528,8 +995,8 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2026-06",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 4
+    "asistencia": "SUSPENDIDA",
+    "cant": 6
   },
   {
     "mes": "2026-06",
@@ -1547,12 +1014,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-07",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 20
-  },
-  {
-    "mes": "2026-07",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "Sin Registrar",
     "cant": 1
   },
   {
@@ -1560,12 +1021,6 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 444
-  },
-  {
-    "mes": "2026-07",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 71
   },
   {
     "mes": "2026-07",
@@ -1589,37 +1044,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-07",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 239
-  },
-  {
-    "mes": "2026-07",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 36
+    "cant": 156
   },
   {
     "mes": "2026-07",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 22
-  },
-  {
-    "mes": "2026-07",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 10
-  },
-  {
-    "mes": "2026-07",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 5
-  },
-  {
-    "mes": "2026-07",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 3
+    "cant": 7
   },
   {
     "mes": "2026-07",
@@ -1637,19 +1068,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-08",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 23
+    "cant": 5
   },
   {
     "mes": "2026-08",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 421
-  },
-  {
-    "mes": "2026-08",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 77
   },
   {
     "mes": "2026-08",
@@ -1673,37 +1098,19 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-08",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 242
-  },
-  {
-    "mes": "2026-08",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 49
+    "cant": 171
   },
   {
     "mes": "2026-08",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 16
+    "cant": 5
   },
   {
     "mes": "2026-08",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "NO PROGRAMADA",
     "cant": 5
-  },
-  {
-    "mes": "2026-08",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 3
-  },
-  {
-    "mes": "2026-08",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 2
   },
   {
     "mes": "2026-08",
@@ -1715,25 +1122,13 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-09",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 28
-  },
-  {
-    "mes": "2026-09",
-    "grupo": "HEMODINAMIA",
-    "asistencia": "NO PROGRAMADA",
-    "cant": 1
+    "cant": 5
   },
   {
     "mes": "2026-09",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
     "cant": 438
-  },
-  {
-    "mes": "2026-09",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 63
   },
   {
     "mes": "2026-09",
@@ -1757,31 +1152,19 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-09",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 282
-  },
-  {
-    "mes": "2026-09",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 39
+    "cant": 191
   },
   {
     "mes": "2026-09",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 30
+    "cant": 8
   },
   {
     "mes": "2026-09",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "NO PROGRAMADA",
     "cant": 7
-  },
-  {
-    "mes": "2026-09",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 5
   },
   {
     "mes": "2026-09",
@@ -1793,7 +1176,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-10",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 32
+    "cant": 2
   },
   {
     "mes": "2026-10",
@@ -1805,13 +1188,7 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-10",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 459
-  },
-  {
-    "mes": "2026-10",
-    "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 69
+    "cant": 458
   },
   {
     "mes": "2026-10",
@@ -1834,50 +1211,26 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2026-10",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 1
   },
   {
     "mes": "2026-10",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 304
-  },
-  {
-    "mes": "2026-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 44
+    "cant": 212
   },
   {
     "mes": "2026-10",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "SUSPENDIDA",
-    "cant": 31
-  },
-  {
-    "mes": "2026-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 6
-  },
-  {
-    "mes": "2026-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 3
+    "cant": 12
   },
   {
     "mes": "2026-10",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "URGENCIA",
     "cant": 2
-  },
-  {
-    "mes": "2026-10",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 1
   },
   {
     "mes": "2026-10",
@@ -1889,79 +1242,55 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
     "mes": "2026-11",
     "grupo": "HEMODINAMIA",
     "asistencia": "Presente",
-    "cant": 8
+    "cant": 2
   },
   {
     "mes": "2026-11",
     "grupo": "HEMODINAMIA",
-    "asistencia": "Sin Registrar",
+    "asistencia": "Programada",
     "cant": 2
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "Sin Registrar",
-    "cant": 168
-  },
-  {
-    "mes": "2026-11",
-    "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "Presente",
-    "cant": 150
+    "cant": 172
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS CENTRALES",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 49
+    "asistencia": "Programada",
+    "cant": 153
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "NO PROGRAMADA",
-    "cant": 20
+    "cant": 24
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "URGENCIA",
-    "cant": 15
+    "cant": 17
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS CENTRALES",
     "asistencia": "SUSPENDIDA",
-    "cant": 7
+    "cant": 11
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS HdD",
     "asistencia": "Presente",
-    "cant": 119
+    "cant": 79
   },
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Sin Registrar",
-    "cant": 86
-  },
-  {
-    "mes": "2026-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "CX SUSPENDIDA 24H",
-    "cant": 13
-  },
-  {
-    "mes": "2026-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "SUSPENDIDA",
-    "cant": 9
-  },
-  {
-    "mes": "2026-11",
-    "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia justificada",
-    "cant": 7
+    "asistencia": "Programada",
+    "cant": 63
   },
   {
     "mes": "2026-11",
@@ -1972,8 +1301,8 @@ export const SALUS_QUIROFANO_ASISTENCIA_MENSUAL = [
   {
     "mes": "2026-11",
     "grupo": "QUIRÓFANOS HdD",
-    "asistencia": "Ausencia injustificada",
-    "cant": 2
+    "asistencia": "SUSPENDIDA",
+    "cant": 3
   },
   {
     "mes": "2026-11",
