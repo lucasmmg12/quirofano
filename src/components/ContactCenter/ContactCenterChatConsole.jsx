@@ -2500,10 +2500,21 @@ export default function ContactCenterChatConsole({
         }
     };
 
-    // Control de desplazamiento: siempre posicionar en el último mensaje al abrir un chat o recibir/enviar un mensaje nuevo
+    // Control de desplazamiento y sincronización OnLive en memoria:
+    // Mantener loadedMessagesByPhone sincronizado con nuevos mensajes entrantes/salientes y hacer scroll al último
     useEffect(() => {
+        if (selectedChat?.phone && Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0) {
+            const normPhone = normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone;
+            setLoadedMessagesByPhone(prev => {
+                const existing = prev[normPhone];
+                if (!existing || existing.length === 0) return prev;
+                const merged = mergeAndSortMessages(existing, selectedChat.messages);
+                if (merged.length === existing.length) return prev;
+                return { ...prev, [normPhone]: merged };
+            });
+        }
         scrollToBottomInstant();
-    }, [selectedChat?.id, lastMsgId, scrollToBottomInstant]);
+    }, [selectedChat?.id, lastMsgId, selectedChat?.messages?.length, mergeAndSortMessages, scrollToBottomInstant]);
 
     // =========================================================================
     // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA

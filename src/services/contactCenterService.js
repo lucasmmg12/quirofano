@@ -130,10 +130,10 @@ export const CC_MESSAGE_SLIM_SELECT = [
  */
 export function rehydrateSlimMessage(m) {
     if (!m) return m;
-    const { 
+    const {
         rp_order, rp_audio_t, rp_trans, rp_audio_u, rp_agent, rp_bot, rp_is_bot, rp_jid, rp_from,
         rp_quote, rp_reactions, rp_deleted, rp_revoked,
-        ...base 
+        ...base
     } = m;
     return {
         ...base,
@@ -159,69 +159,69 @@ export const MASTER_ADMINS = ['lmarinero', 'admin', 'mrodriguez', 'dsantaella', 
 
 // 4 Agentes canónicas del Contact Center de Sanatorio Argentino + Supervisor Lucas Marinero
 export const CONTACT_CENTER_AGENTS = [
-    { 
-        id: 'daguilera', 
-        username: 'daguilera', 
-        legacyId: 'daniela', 
+    {
+        id: 'daguilera',
+        username: 'daguilera',
+        legacyId: 'daniela',
         shortName: 'Daniela',
-        name: 'Daniela Aguilera', 
-        fullName: 'Daniela Aguilera', 
+        name: 'Daniela Aguilera',
+        fullName: 'Daniela Aguilera',
         aliases: [
             'daguilera', 'daniela', 'aguilera', 'daniela aguilera',
             'ana daniela', 'ana aguilera', 'ana daniela romina aguilera cardozo',
             'aguilera cardozo, daniela romina', 'aguilera cardozo', 'daniela romina'
         ],
-        role: 'Atención al Paciente', 
-        color: '#E11D48', 
-        avatar: 'DA' 
+        role: 'Atención al Paciente',
+        color: '#E11D48',
+        avatar: 'DA'
     },
-    { 
-        id: 'solivier', 
-        username: 'solivier', 
-        legacyId: 'sofia', 
+    {
+        id: 'solivier',
+        username: 'solivier',
+        legacyId: 'sofia',
         shortName: 'Sofia',
-        name: 'Sofia Olivier', 
-        fullName: 'Sofia Olivier', 
+        name: 'Sofia Olivier',
+        fullName: 'Sofia Olivier',
         aliases: ['solivier', 'sofia', 'olivier', 'olivieri', 'sofia olivier', 'sofia olivieri', 'sofia fernanda olivier', 'sofia fernanda olivieri'],
-        role: 'Atención al Paciente', 
-        color: '#8B5CF6', 
-        avatar: 'SO' 
+        role: 'Atención al Paciente',
+        color: '#8B5CF6',
+        avatar: 'SO'
     },
-    { 
-        id: 'vjacques', 
-        username: 'vjacques', 
-        legacyId: 'virginia', 
+    {
+        id: 'vjacques',
+        username: 'vjacques',
+        legacyId: 'virginia',
         shortName: 'Virginia',
-        name: 'Virginia Jacques', 
-        fullName: 'Virginia Jacques', 
+        name: 'Virginia Jacques',
+        fullName: 'Virginia Jacques',
         aliases: ['vjacques', 'virginia', 'jacques', 'virginia jacques'],
-        role: 'Atención al Paciente', 
-        color: '#059669', 
-        avatar: 'VJ' 
+        role: 'Atención al Paciente',
+        color: '#059669',
+        avatar: 'VJ'
     },
-    { 
-        id: 'eleal', 
-        username: 'eleal', 
-        legacyId: 'erica', 
+    {
+        id: 'eleal',
+        username: 'eleal',
+        legacyId: 'erica',
         shortName: 'Erica',
-        name: 'Erica Leal', 
-        fullName: 'Erica Leal', 
+        name: 'Erica Leal',
+        fullName: 'Erica Leal',
         aliases: ['eleal', 'erica', 'leal', 'erica leal'],
-        role: 'Atención al Paciente', 
-        color: '#D97706', 
-        avatar: 'EL' 
+        role: 'Atención al Paciente',
+        color: '#D97706',
+        avatar: 'EL'
     },
-    { 
-        id: 'lmarinero', 
-        username: 'lmarinero', 
-        legacyId: 'lucas', 
+    {
+        id: 'lmarinero',
+        username: 'lmarinero',
+        legacyId: 'lucas',
         shortName: 'Lucas',
-        name: 'Lucas Marinero', 
-        fullName: 'Lucas Marinero', 
+        name: 'Lucas Marinero',
+        fullName: 'Lucas Marinero',
         aliases: ['lmarinero', 'lucas', 'marinero', 'lucas marinero'],
-        role: 'Supervisor Contact Center', 
-        color: '#0284C7', 
-        avatar: 'LM' 
+        role: 'Supervisor Contact Center',
+        color: '#0284C7',
+        avatar: 'LM'
     },
 ];
 
@@ -269,11 +269,11 @@ export function isUserAuthorizedForContactCenter(user) {
 
     // 1. Lucas Marinero (Supervisor)
     if (
-        username.includes('lucas') || 
-        username.includes('marinero') || 
-        username === 'lmarinero' || 
-        username === 'admin' || 
-        nombre.includes('lucas') || 
+        username.includes('lucas') ||
+        username.includes('marinero') ||
+        username === 'lmarinero' ||
+        username === 'admin' ||
+        nombre.includes('lucas') ||
         nombre.includes('marinero')
     ) {
         return true;
@@ -286,10 +286,10 @@ export function isUserAuthorizedForContactCenter(user) {
 
     // 3. Sofia Olivier (incluye variaciones de username y apellido Olivieri)
     if (
-        username.includes('sofia') || 
-        username.includes('olivier') || 
-        username.includes('solivier') || 
-        username.includes('olivieri') || 
+        username.includes('sofia') ||
+        username.includes('olivier') ||
+        username.includes('solivier') ||
+        username.includes('olivieri') ||
         nombre.includes('sofia') ||
         nombre.includes('olivier') ||
         nombre.includes('olivieri')
@@ -325,7 +325,7 @@ export function getAgentById(agentIdOrName) {
         const name = (a.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const fullName = (a.fullName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const aliases = (a.aliases || []).map(x => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
-        
+
         return id === clean ||
             username === clean ||
             legacyId === clean ||
@@ -436,7 +436,7 @@ export function isClosedOrArchived(statusOrChat) {
 export function canUserAccessContactCenter(user, allowedUsersList = null) {
     if (!user) return false;
     const username = (user.usuario || user.email || '').toLowerCase().trim().split('@')[0];
-    
+
     // Master admin siempre tiene acceso
     if (MASTER_ADMINS.includes(username)) {
         return true;
@@ -536,7 +536,7 @@ export async function updateAllowedUsers(usersList, updatedBy = 'lmarinero') {
         'lmarinero', 'daniela', 'sofia', 'virginia', 'erica',
         ...usersList.map(u => u.toLowerCase().trim())
     ]));
-    
+
     localStorage.setItem(STORAGE_ALLOWED_USERS_KEY, JSON.stringify(cleanList));
 
     try {
@@ -582,7 +582,7 @@ export function isChatLockedForUser(chat, currentAgentId, currentUser) {
     if (!chat || !chat.assignedTo) return false;
     const username = (currentUser?.usuario || '').toLowerCase().trim();
     if (MASTER_ADMINS.includes(username)) return false; // Supervisor nunca se bloquea
-    
+
     const assigned = String(chat.assignedTo).toLowerCase().trim();
     const current = String(currentAgentId || username).toLowerCase().trim();
 
@@ -601,7 +601,7 @@ export function isChatLockedForUser(chat, currentAgentId, currentUser) {
  */
 export function assignChatExclusively(chat, targetAgent, currentUser, { forceReassign = false, reassignNote = '' } = {}) {
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
-    
+
     // Si ya está asignado a otra persona y no es supervisor ni reasignación confirmada
     const currentAssigned = chat.assignedTo ? String(chat.assignedTo).toLowerCase().trim() : null;
     const currentOwner = currentAssigned ? getAgentById(currentAssigned) : null;
@@ -668,7 +668,7 @@ export function assignChatExclusively(chat, targetAgent, currentUser, { forceRea
  */
 export function unassignChat(chat, currentAgent, currentUser) {
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
-    
+
     if (chat.assignedTo && chat.assignedTo.toLowerCase() !== currentAgent.id.toLowerCase() && !isSupervisor) {
         throw new Error('Solo la agente asignada o la supervisora pueden liberar este chat.');
     }
@@ -716,7 +716,7 @@ export function unassignChat(chat, currentAgent, currentUser) {
  */
 export function transferChatToAgent(chat, fromAgent, toAgent, currentUser) {
     const isSupervisor = MASTER_ADMINS.includes((currentUser?.usuario || '').toLowerCase().trim());
-    
+
     if (chat.assignedTo && chat.assignedTo.toLowerCase() !== fromAgent.id.toLowerCase() && !isSupervisor) {
         throw new Error('Solo la agente asignada o la supervisora pueden transferir este chat.');
     }
@@ -794,13 +794,13 @@ export function resolveConversationTags(conv, messages = []) {
     const aiGestionAccion = String(aiSummary?.gestion_turno?.accion || '').toLowerCase();
 
     // La IA identificó explícitamente cancelación
-    const aiIndicatesCancel = 
+    const aiIndicatesCancel =
         aiGestionAccion === 'cancelar' ||
         aiTipoTramite.includes('cancel') ||
         /\b(cancelar|cancelo|cancela|cancelen|dar\s+de\s+baja|anular\s+turno)\b/i.test(aiResumen);
 
     // La IA identificó que el paciente solo pidió consultar / información de turno y no cancelar
-    const aiIndicatesConsultationOnly = 
+    const aiIndicatesConsultationOnly =
         (aiTipoTramite.includes('informacion') || aiTipoTramite.includes('información') || aiTipoTramite.includes('consulta')) &&
         /\b(consultar|consulta|consulto|recordar|recuerda|averiguar|saber\s+fecha)\b/i.test(aiResumen) &&
         !aiIndicatesCancel;
@@ -856,7 +856,7 @@ export function resolveConversationTags(conv, messages = []) {
     // A. CANCELACIÓN: Solo cuando expresamente el paciente quiera cancelar o la IA determine trámite de cancelación
     // Si la IA o el motivo determinan que es solo consulta de turno y el paciente no escribió "cancelar/cancelo/cancela", NO ES CANCELACIÓN
     const isCancel = !aiIndicatesConsultationOnly && !isConsultationMotivo && (
-        patientHasExplicitCancel || 
+        patientHasExplicitCancel ||
         aiIndicatesCancel ||
         stage === 'esperando_confirmacion_cancelacion' ||
         stage === 'cancelacion_completada' ||
@@ -891,16 +891,16 @@ export function resolveConversationTags(conv, messages = []) {
     }
 
     // C. AUTORIZACIÓN: cuando el paciente no está pidiendo turno, solamente está pidiendo autorización
-    const asksTurno = 
+    const asksTurno =
         motivo.includes('solicitud de turno') ||
         /\b(nuevo\s+turno|sacar\s+turno|pedir\s+turno|solicitar\s+turno)\b/i.test(fullPatientCorpus);
 
-    const isAutoriz = 
+    const isAutoriz =
         (stage === 'esperando_foto_autorizacion' ||
-        motivo.includes('autorizacion') || 
-        motivo.includes('autorizar') ||
-        aiTipoTramite.includes('autoriz') ||
-        /\b(autoriz\w*|auditar|auditoria|pedido\s+medico\s+para\s+autorizar|orden\s+para\s+autorizar)\b/i.test(fullPatientCorpus)) &&
+            motivo.includes('autorizacion') ||
+            motivo.includes('autorizar') ||
+            aiTipoTramite.includes('autoriz') ||
+            /\b(autoriz\w*|auditar|auditoria|pedido\s+medico\s+para\s+autorizar|orden\s+para\s+autorizar)\b/i.test(fullPatientCorpus)) &&
         !asksTurno;
 
     if (isAutoriz && !isCancel && !isReprog) {
@@ -962,8 +962,8 @@ export async function fetchLiveAndDemoChats() {
         const realMessages = (rawMessages || []).filter(msg => {
             const rawJid = String(msg.raw_payload?.data?.key?.remoteJid || msg.raw_payload?.data?.from || '');
             if (
-                rawJid.includes('newsletter') || 
-                rawJid.includes('@g.us') || 
+                rawJid.includes('newsletter') ||
+                rawJid.includes('@g.us') ||
                 rawJid.includes('@broadcast') ||
                 (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203')))
             ) {
@@ -1093,8 +1093,8 @@ export async function fetchLiveAndDemoChats() {
             } else if (diffMinutes < 1440) {
                 const hours = Math.floor(diffMinutes / 60);
                 const mins = diffMinutes % 60;
-                waitingTimeText = hours < 3 && mins > 0 
-                    ? `hace ${hours} h ${mins} min` 
+                waitingTimeText = hours < 3 && mins > 0
+                    ? `hace ${hours} h ${mins} min`
                     : `hace ${hours} h`;
             } else {
                 const days = Math.floor(diffMinutes / 1440);
@@ -1123,219 +1123,219 @@ export async function fetchLiveAndDemoChats() {
                 const conv = convByPhone[phone];
                 if (messages.length === 0 && !conv) return;
 
-            const chronological = [...messages].reverse();
-            const lastMsg = messages[0] || {};
-            
-            // Garantizar timestamp absoluto más reciente entre conversación y mensaje
-            const convDateMs = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
-            const msgDateMs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
-            const lastDateMs = Math.max(convDateMs, msgDateMs) || Date.now();
-            const lastDateRaw = new Date(lastDateMs).toISOString();
+                const chronological = [...messages].reverse();
+                const lastMsg = messages[0] || {};
 
-            let lastRespName = 'Paciente';
-            let lastRespRole = 'patient';
-            if (lastMsg.direction === 'outgoing') {
-                const raw = lastMsg.raw_payload;
-                lastRespName = lastMsg.sender_name || (raw?.agent ? getAgentById(raw.agent).name : 'Sanatorio');
-                lastRespRole = isHumanAgentMessage(lastMsg) ? 'agent' : 'bot';
-            }
+                // Garantizar timestamp absoluto más reciente entre conversación y mensaje
+                const convDateMs = conv?.last_message_at ? new Date(conv.last_message_at).getTime() : 0;
+                const msgDateMs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
+                const lastDateMs = Math.max(convDateMs, msgDateMs) || Date.now();
+                const lastDateRaw = new Date(lastDateMs).toISOString();
 
-            const waitingInfo = calculateWaitingTime(messages, conv, lastDateMs);
+                let lastRespName = 'Paciente';
+                let lastRespRole = 'patient';
+                if (lastMsg.direction === 'outgoing') {
+                    const raw = lastMsg.raw_payload;
+                    lastRespName = lastMsg.sender_name || (raw?.agent ? getAgentById(raw.agent).name : 'Sanatorio');
+                    lastRespRole = isHumanAgentMessage(lastMsg) ? 'agent' : 'bot';
+                }
 
-            // Optimización de Memoria: Limitar a los 60 mensajes más recientes por chat en memoria activa
-            // para garantizar máxima fluidez y evitar fugas de memoria en PCs de 4GB/8GB RAM
-            const recentMsgs = chronological.slice(-60);
+                const waitingInfo = calculateWaitingTime(messages, conv, lastDateMs);
 
-            const formattedMessages = recentMsgs.map(normalizeMessage);
+                // Optimización de Memoria: Limitar a los 60 mensajes más recientes por chat en memoria activa
+                // para garantizar máxima fluidez y evitar fugas de memoria en PCs de 4GB/8GB RAM
+                const recentMsgs = chronological.slice(-60);
 
-            const formatBirthDate = (val) => {
-                if (!val || val === 'No informada') return 'No informada';
-                if (String(val).includes('/')) return String(val).trim();
-                const parts = String(val).split('T')[0].split('-');
-                if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-                return String(val).trim();
-            };
+                const formattedMessages = recentMsgs.map(normalizeMessage);
 
-            // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
-            const isGenericName = (name) => {
-                if (!name) return true;
-                const norm = String(name).trim().toLowerCase();
-                if (
-                    norm === 'unknown' ||
-                    norm === 'bot sanatorio' ||
-                    norm === 'bot' ||
-                    norm === 'sanatorio' ||
-                    norm === 'sanatorio argentino' ||
-                    norm === 'paciente' ||
-                    norm.startsWith('paciente (') ||
-                    norm === 'recepciones' ||
-                    /^\+?\d+$/.test(norm)
-                ) return true;
+                const formatBirthDate = (val) => {
+                    if (!val || val === 'No informada') return 'No informada';
+                    if (String(val).includes('/')) return String(val).trim();
+                    const parts = String(val).split('T')[0].split('-');
+                    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    return String(val).trim();
+                };
 
-                // Nombres que coinciden con especialidades o servicios médicos NUNCA son pacientes
-                return /\b(dermatolog[ií]a|cardiolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|traumatolog[ií]a|oftalmolog[ií]a|urolog[ií]a|otorrino|otorrinolaringolog[ií]a|neurolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|cirug[ií]a|endocrinolog[ií]a|gastroenterolog[ií]a|psiquiatr[ií]a|psicolog[ií]a|reumatolog[ií]a|hematolog[ií]a|oncolog[ií]a|infectolog[ií]a|fisiatr[ií]a|alergia|guardia|laboratorio|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|resonancia|mamograf[ií]a|densitometr[ií]a|consultorios?)\b/i.test(norm);
-            };
+                // Helper de validación de nombres genéricos que NUNCA deben mostrarse como contacto
+                const isGenericName = (name) => {
+                    if (!name) return true;
+                    const norm = String(name).trim().toLowerCase();
+                    if (
+                        norm === 'unknown' ||
+                        norm === 'bot sanatorio' ||
+                        norm === 'bot' ||
+                        norm === 'sanatorio' ||
+                        norm === 'sanatorio argentino' ||
+                        norm === 'paciente' ||
+                        norm.startsWith('paciente (') ||
+                        norm === 'recepciones' ||
+                        /^\+?\d+$/.test(norm)
+                    ) return true;
 
-            // A. Remitente de mensajes entrantes de WhatsApp (pushName de la persona)
-            const incomingWithName = messages.find(m => 
-                m.direction === 'incoming' && 
-                m.sender_name && 
-                !isGenericName(m.sender_name)
-            );
-            const incomingSenderName = incomingWithName?.sender_name || null;
+                    // Nombres que coinciden con especialidades o servicios médicos NUNCA son pacientes
+                    return /\b(dermatolog[ií]a|cardiolog[ií]a|pediatr[ií]a|ginecolog[ií]a|obstetricia|traumatolog[ií]a|oftalmolog[ií]a|urolog[ií]a|otorrino|otorrinolaringolog[ií]a|neurolog[ií]a|nutrici[oó]n|kinesiolog[ií]a|cirug[ií]a|endocrinolog[ií]a|gastroenterolog[ií]a|psiquiatr[ií]a|psicolog[ií]a|reumatolog[ií]a|hematolog[ií]a|oncolog[ií]a|infectolog[ií]a|fisiatr[ií]a|alergia|guardia|laboratorio|ecograf[ií]a|radiograf[ií]a|tomograf[ií]a|resonancia|mamograf[ií]a|densitometr[ií]a|consultorios?)\b/i.test(norm);
+                };
 
-            // B. Determinar nombre de contacto:
-            // Solo si en la conversación actual se identificó expresamente al paciente se usa conv.nombre_completo.
-            // Si no, se usa el pushName de WhatsApp o el número de teléfono (tratado como nuevo usuario).
-            let resolvedContactName = null;
-            if (conv?.nombre_completo && !isGenericName(conv.nombre_completo)) {
-                resolvedContactName = conv.nombre_completo.trim();
-            } else if (incomingSenderName) {
-                resolvedContactName = incomingSenderName.trim();
-            } else {
-                resolvedContactName = `+${phone.replace(/\D/g, '')}`;
-            }
+                // A. Remitente de mensajes entrantes de WhatsApp (pushName de la persona)
+                const incomingWithName = messages.find(m =>
+                    m.direction === 'incoming' &&
+                    m.sender_name &&
+                    !isGenericName(m.sender_name)
+                );
+                const incomingSenderName = incomingWithName?.sender_name || null;
 
-            const aiDual = conv?.ai_summary?.ficha_dual || null;
-            const isThirdParty = Boolean(
-                aiDual?.es_gestion_tercero || 
-                conv?.ai_summary?.tipo_tramite?.includes('Familiar') || 
-                conv?.ai_summary?.tipo_tramite?.includes('Tercero') ||
-                (conv?.motivo_consulta && (conv.motivo_consulta.toLowerCase().includes('familiar') || conv.motivo_consulta.toLowerCase().includes('tercero')))
-            );
+                // B. Determinar nombre de contacto:
+                // Solo si en la conversación actual se identificó expresamente al paciente se usa conv.nombre_completo.
+                // Si no, se usa el pushName de WhatsApp o el número de teléfono (tratado como nuevo usuario).
+                let resolvedContactName = null;
+                if (conv?.nombre_completo && !isGenericName(conv.nombre_completo)) {
+                    resolvedContactName = conv.nombre_completo.trim();
+                } else if (incomingSenderName) {
+                    resolvedContactName = incomingSenderName.trim();
+                } else {
+                    resolvedContactName = `+${phone.replace(/\D/g, '')}`;
+                }
 
-            // =====================================================================
-            // C. Extracción de DNI y Nombre desde mensajes del bot de triage
-            // El bot pide los datos al paciente y éste responde en el formato:
-            //   "Melisa Vanesa Bustos/31871182/40años/Provincia"  (slash)
-            // También detecta: "DNI: 31871182", "mi DNI es 31871182", o un número solo.
-            // FALLBACK: solo se ejecuta si conv.dni está vacío en la BD.
-            // =====================================================================
-            function extractPatientDataFromMessages(msgs) {
-                const out = { dni: null, nombre: null };
-                if (!Array.isArray(msgs)) return out;
-                for (const m of msgs) {
-                    const text = String(m.content || '').trim();
-                    if (!text || text.startsWith('_event_')) continue;
+                const aiDual = conv?.ai_summary?.ficha_dual || null;
+                const isThirdParty = Boolean(
+                    aiDual?.es_gestion_tercero ||
+                    conv?.ai_summary?.tipo_tramite?.includes('Familiar') ||
+                    conv?.ai_summary?.tipo_tramite?.includes('Tercero') ||
+                    (conv?.motivo_consulta && (conv.motivo_consulta.toLowerCase().includes('familiar') || conv.motivo_consulta.toLowerCase().includes('tercero')))
+                );
 
-                    // Patrón 1: formato slash del bot de triage
-                    // "Melisa Vanesa Bustos/31871182/40años/San Juan"
-                    const slashMatch = text.match(
-                        /^([A-Za-záéíóúÁÉÍÓÚñÑüÜ\s]{3,60})\/([0-9]{7,9})(?:\/[^\/]*){0,3}$/
-                    );
-                    if (slashMatch) {
-                        out.nombre = slashMatch[1].trim();
-                        out.dni = slashMatch[2].trim();
-                        return out;
-                    }
+                // =====================================================================
+                // C. Extracción de DNI y Nombre desde mensajes del bot de triage
+                // El bot pide los datos al paciente y éste responde en el formato:
+                //   "Melisa Vanesa Bustos/31871182/40años/Provincia"  (slash)
+                // También detecta: "DNI: 31871182", "mi DNI es 31871182", o un número solo.
+                // FALLBACK: solo se ejecuta si conv.dni está vacío en la BD.
+                // =====================================================================
+                function extractPatientDataFromMessages(msgs) {
+                    const out = { dni: null, nombre: null };
+                    if (!Array.isArray(msgs)) return out;
+                    for (const m of msgs) {
+                        const text = String(m.content || '').trim();
+                        if (!text || text.startsWith('_event_')) continue;
 
-                    // Patrón 2: etiqueta explícita "DNI: 31871182" / "mi DNI es 31.871.182"
-                    const labelMatch = text.match(
-                        /(?:dni|d\.n\.i|documento|doc)[:\s.]+([0-9][0-9.\s]{5,10}[0-9])/i
-                    );
-                    if (labelMatch) {
-                        const candidate = labelMatch[1].replace(/[\s.]/g, '');
-                        if (candidate.length >= 7 && candidate.length <= 9) {
-                            out.dni = candidate;
+                        // Patrón 1: formato slash del bot de triage
+                        // "Melisa Vanesa Bustos/31871182/40años/San Juan"
+                        const slashMatch = text.match(
+                            /^([A-Za-záéíóúÁÉÍÓÚñÑüÜ\s]{3,60})\/([0-9]{7,9})(?:\/[^\/]*){0,3}$/
+                        );
+                        if (slashMatch) {
+                            out.nombre = slashMatch[1].trim();
+                            out.dni = slashMatch[2].trim();
+                            return out;
+                        }
+
+                        // Patrón 2: etiqueta explícita "DNI: 31871182" / "mi DNI es 31.871.182"
+                        const labelMatch = text.match(
+                            /(?:dni|d\.n\.i|documento|doc)[:\s.]+([0-9][0-9.\s]{5,10}[0-9])/i
+                        );
+                        if (labelMatch) {
+                            const candidate = labelMatch[1].replace(/[\s.]/g, '');
+                            if (candidate.length >= 7 && candidate.length <= 9) {
+                                out.dni = candidate;
+                                return out;
+                            }
+                        }
+
+                        // Patrón 3: mensaje que ES EXACTAMENTE un número de DNI (7-9 dígitos)
+                        const onlyDni = text.match(/^\s*([0-9]{7,9})\s*$/);
+                        if (onlyDni) {
+                            out.dni = onlyDni[1];
                             return out;
                         }
                     }
+                    return out;
+                }
 
-                    // Patrón 3: mensaje que ES EXACTAMENTE un número de DNI (7-9 dígitos)
-                    const onlyDni = text.match(/^\s*([0-9]{7,9})\s*$/);
-                    if (onlyDni) {
-                        out.dni = onlyDni[1];
-                        return out;
+                // Ejecutar solo si la conv no tiene DNI guardado en BD
+                const extracted = (!conv?.dni) ? extractPatientDataFromMessages(messages) : { dni: null, nombre: null };
+                const effectiveDni = conv?.dni || extracted.dni || null;
+
+                // Nombre resuelto: preferir conv.nombre_completo (validado), luego del triage, luego pushName
+                const resolvedNombre = (conv?.nombre_completo && !isGenericName(conv.nombre_completo))
+                    ? conv.nombre_completo
+                    : (extracted.nombre || resolvedContactName);
+
+                const patientFields = {
+                    dni: effectiveDni,
+                    nhc: conv?.nhc || null,
+                    pacienteNombre: resolvedNombre,
+                    obraSocial: conv?.obra_social || null,
+                    fechaNacimiento: formatBirthDate(conv?.fecha_nacimiento),
+                    email: conv?.email || null,
+                    pacienteContacto: conv?.telefono_contacto || phone,
+                    departamento: conv?.departamento || 'San Juan',
+                    esPacienteExistente: Boolean(conv?.es_paciente_existente),
+                    motivoConsulta: conv?.motivo_consulta || (messages.find(m => m.direction === 'incoming')?.content || 'Consulta general'),
+                    medicoOEspecialidad: conv?.medico_o_especialidad || null,
+                    botActive: conv?.bot_active ?? false,
+                    botStage: conv?.bot_stage || 'inicio',
+                    pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado',
+                    fichaDual: {
+                        esGestionTercero: isThirdParty,
+                        parentesco: aiDual?.parentesco || 'Familiar',
+                        titularNombre: aiDual?.titular?.nombre || incomingSenderName || resolvedNombre,
+                        titularTelefono: phone,
+                        pacienteNombre: aiDual?.paciente?.nombre || resolvedNombre,
+                        pacienteDni: aiDual?.paciente?.dni || effectiveDni,
+                        pacienteObraSocial: aiDual?.paciente?.obra_social || conv?.obra_social || null,
+                        pacienteNhc: aiDual?.paciente?.nhc || conv?.nhc || null
                     }
-                }
-                return out;
+                };
+                const lastIncomingMsg = messages.find(m => m.direction === 'incoming');
+                const lastIncomingIso = lastIncomingMsg?.created_at || incomingWithName?.created_at || null;
+                const lastIncomingMs = lastIncomingIso ? new Date(lastIncomingIso).getTime() : 0;
+
+                const cleanPhone = normalizeArgentinePhone(phone) || phone.replace(/\D/g, '');
+                const resolvedTags = resolveConversationTags(conv, formattedMessages);
+                realChats.push({
+                    id: 'REAL_' + cleanPhone,
+                    contactName: resolvedNombre,
+                    phone: phone,
+                    channel: 'WHATSAPP',
+                    channelNumber: '5492645825637',
+                    status: conv?.status || (conv?.bot_active !== false && !conv?.assigned_agent_id ? 'bot' : 'sin_asignar'),
+                    unread: lastMsg.direction === 'incoming',
+                    lastMessage: lastMsg.content || (lastMsg.media_type ? `[${lastMsg.media_type}]` : conv?.last_message_text || 'Conversación iniciada'),
+                    lastMessageTimestamp: lastDateMs,
+                    timeAgo: formatRelativeTime(lastDateRaw),
+                    department: 'Atención al cliente',
+                    assignedTo: conv?.assigned_agent_id || null,
+                    assignedToName: conv?.assigned_agent_name || null,
+                    assignedAt: conv?.assigned_at || null,
+                    botActive: conv?.bot_active ?? false,
+                    aiSummary: conv?.ai_summary || null,
+                    resolutionReason: conv?.resolution_reason || null,
+                    closedAt: conv?.closed_at || null,
+                    closed_at: conv?.closed_at || null,
+                    closedByAgentId: conv?.closed_by_agent_id || null,
+                    closedByAgentName: conv?.closed_by_agent_name || null,
+                    lastResponder: lastRespName,
+                    lastResponderRole: lastRespRole,
+                    lastResponseAt: formatRelativeTime(lastDateRaw),
+                    isWaitingResponse: waitingInfo.isWaitingResponse,
+                    waitingSinceMs: waitingInfo.waitingSinceMs || null,
+                    waitingMinutes: waitingInfo.waitingMinutes ?? 0,
+                    waitingTimeText: waitingInfo.waitingTimeText,
+                    badgeTimeText: waitingInfo.badgeTimeText,
+                    chatbot: '#triage-sanatorio',
+                    avatarColor: resolvedTags.includes('Turnos Online') ? '#EA580C' : '#0284C7',
+                    avatarUrl: conv?.avatar_url || conv?.photo_url || null,
+                    tags: resolvedTags,
+                    whatsappName: incomingSenderName || null,
+                    lastIncomingAt: lastIncomingIso,
+                    lastIncomingTimestamp: lastIncomingMs,
+                    customFields: patientFields,
+                    messages: formattedMessages
+                });
+            } catch (errPhone) {
+                console.warn('[contact-center] Error procesando chat individual:', phone, errPhone);
             }
-
-            // Ejecutar solo si la conv no tiene DNI guardado en BD
-            const extracted = (!conv?.dni) ? extractPatientDataFromMessages(messages) : { dni: null, nombre: null };
-            const effectiveDni = conv?.dni || extracted.dni || null;
-
-            // Nombre resuelto: preferir conv.nombre_completo (validado), luego del triage, luego pushName
-            const resolvedNombre = (conv?.nombre_completo && !isGenericName(conv.nombre_completo))
-                ? conv.nombre_completo
-                : (extracted.nombre || resolvedContactName);
-
-            const patientFields = {
-                dni: effectiveDni,
-                nhc: conv?.nhc || null,
-                pacienteNombre: resolvedNombre,
-                obraSocial: conv?.obra_social || null,
-                fechaNacimiento: formatBirthDate(conv?.fecha_nacimiento),
-                email: conv?.email || null,
-                pacienteContacto: conv?.telefono_contacto || phone,
-                departamento: conv?.departamento || 'San Juan',
-                esPacienteExistente: Boolean(conv?.es_paciente_existente),
-                motivoConsulta: conv?.motivo_consulta || (messages.find(m => m.direction === 'incoming')?.content || 'Consulta general'),
-                medicoOEspecialidad: conv?.medico_o_especialidad || null,
-                botActive: conv?.bot_active ?? false,
-                botStage: conv?.bot_stage || 'inicio',
-                pedidoMedicoFoto: lastMsg.media_type && lastMsg.media_type !== 'text' ? 'Adjunto en chat' : 'No adjuntado',
-                fichaDual: {
-                    esGestionTercero: isThirdParty,
-                    parentesco: aiDual?.parentesco || 'Familiar',
-                    titularNombre: aiDual?.titular?.nombre || incomingSenderName || resolvedNombre,
-                    titularTelefono: phone,
-                    pacienteNombre: aiDual?.paciente?.nombre || resolvedNombre,
-                    pacienteDni: aiDual?.paciente?.dni || effectiveDni,
-                    pacienteObraSocial: aiDual?.paciente?.obra_social || conv?.obra_social || null,
-                    pacienteNhc: aiDual?.paciente?.nhc || conv?.nhc || null
-                }
-            };
-            const lastIncomingMsg = messages.find(m => m.direction === 'incoming');
-            const lastIncomingIso = lastIncomingMsg?.created_at || incomingWithName?.created_at || null;
-            const lastIncomingMs = lastIncomingIso ? new Date(lastIncomingIso).getTime() : 0;
-
-            const cleanPhone = normalizeArgentinePhone(phone) || phone.replace(/\D/g, '');
-            const resolvedTags = resolveConversationTags(conv, formattedMessages);
-            realChats.push({
-                id: 'REAL_' + cleanPhone,
-                contactName: resolvedNombre,
-                phone: phone,
-                channel: 'WHATSAPP',
-                channelNumber: '5492645825637',
-                status: conv?.status || (conv?.bot_active !== false && !conv?.assigned_agent_id ? 'bot' : 'sin_asignar'),
-                unread: lastMsg.direction === 'incoming',
-                lastMessage: lastMsg.content || (lastMsg.media_type ? `[${lastMsg.media_type}]` : conv?.last_message_text || 'Conversación iniciada'),
-                lastMessageTimestamp: lastDateMs,
-                timeAgo: formatRelativeTime(lastDateRaw),
-                department: 'Atención al cliente',
-                assignedTo: conv?.assigned_agent_id || null,
-                assignedToName: conv?.assigned_agent_name || null,
-                assignedAt: conv?.assigned_at || null,
-                botActive: conv?.bot_active ?? false,
-                aiSummary: conv?.ai_summary || null,
-                resolutionReason: conv?.resolution_reason || null,
-                closedAt: conv?.closed_at || null,
-                closed_at: conv?.closed_at || null,
-                closedByAgentId: conv?.closed_by_agent_id || null,
-                closedByAgentName: conv?.closed_by_agent_name || null,
-                lastResponder: lastRespName,
-                lastResponderRole: lastRespRole,
-                lastResponseAt: formatRelativeTime(lastDateRaw),
-                isWaitingResponse: waitingInfo.isWaitingResponse,
-                waitingSinceMs: waitingInfo.waitingSinceMs || null,
-                waitingMinutes: waitingInfo.waitingMinutes ?? 0,
-                waitingTimeText: waitingInfo.waitingTimeText,
-                badgeTimeText: waitingInfo.badgeTimeText,
-                chatbot: '#triage-sanatorio',
-                avatarColor: resolvedTags.includes('Turnos Online') ? '#EA580C' : '#0284C7',
-                avatarUrl: conv?.avatar_url || conv?.photo_url || null,
-                tags: resolvedTags,
-                whatsappName: incomingSenderName || null,
-                lastIncomingAt: lastIncomingIso,
-                lastIncomingTimestamp: lastIncomingMs,
-                customFields: patientFields,
-                messages: formattedMessages
-            });
-        } catch (errPhone) {
-            console.warn('[contact-center] Error procesando chat individual:', phone, errPhone);
-        }
-    });
+        });
 
         // Orden de bandeja: Ordenados por actividad más reciente (mensajes entrantes de pacientes o respuestas de agentes)
         realChats.sort((a, b) => {
@@ -1364,7 +1364,7 @@ export async function fetchLiveAndDemoChats() {
  */
 export async function uploadContactCenterMedia(file, folder = 'attachments') {
     if (!file) throw new Error('No se seleccionó ningún archivo');
-    
+
     const ext = file.name?.split('.').pop() || 'bin';
     const cleanName = (file.name || 'archivo')
         .toLowerCase()
@@ -1391,11 +1391,11 @@ export async function uploadContactCenterMedia(file, folder = 'attachments') {
     };
 }
 
-export async function sendContactCenterMessage({ 
-    chat, 
-    text, 
-    isNote, 
-    activeAgent, 
+export async function sendContactCenterMessage({
+    chat,
+    text,
+    isNote,
+    activeAgent,
     currentUser,
     mediaUrl = null,
     mediaType = null,
@@ -1419,12 +1419,12 @@ export async function sendContactCenterMessage({
     const normalizedPhone = normalizeArgentinePhone(chat.phone);
 
     const finalMediaType = mediaType || (mediaUrl ? 'document' : 'text');
-    const defaultContent = finalMediaType === 'image' 
-        ? '📷 Imagen' 
-        : finalMediaType === 'audio' 
-            ? '🎤 Audio' 
-            : finalMediaType === 'document' 
-                ? (fileName ? `📎 ${fileName}` : '📎 Documento') 
+    const defaultContent = finalMediaType === 'image'
+        ? '📷 Imagen'
+        : finalMediaType === 'audio'
+            ? '🎤 Audio'
+            : finalMediaType === 'document'
+                ? (fileName ? `📎 ${fileName}` : '📎 Documento')
                 : text;
 
     const finalContent = (text && text.trim()) ? text.trim() : defaultContent;
@@ -1756,10 +1756,10 @@ export async function sendContactCenterTemplate({
     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
     // Sustituir variables en el texto de la plantilla para el historial de chat
-    const rawBody = template?.components?.find(c => c.type === 'BODY' || c.type === 'body')?.text || 
-        template?.text || 
+    const rawBody = template?.components?.find(c => c.type === 'BODY' || c.type === 'body')?.text ||
+        template?.text ||
         `Hola {{1}} soy {{2}} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
-    
+
     let resolvedText = rawBody;
     sanitizedVariables.forEach((val, idx) => {
         resolvedText = resolvedText.replace(new RegExp(`\\{\\{${idx + 1}\\}\\}`, 'g'), val);
@@ -2015,7 +2015,7 @@ export async function fetchDoctorParameters(query = '') {
 /**
  * Guarda y persiste la Ficha CRM del Paciente vinculada a la conversación y al módulo CRM
  */
-export async function saveCrmPatientCard({ 
+export async function saveCrmPatientCard({
     phone, dni, nombreCompleto, obraSocial, fechaNacimiento, email, departamento, notas, motivoConsulta,
     esGestionTercero, titularNombre, parentesco, pacienteNombre, pacienteDni, pacienteObraSocial
 }) {
@@ -2198,7 +2198,8 @@ export async function lookupPatientFromSalus(query) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, { headers: getAdmQuiHeaders(),
+            const res = await fetch(`${baseUrl}/api/salus/paciente/${clean}`, {
+                headers: getAdmQuiHeaders(),
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -2238,7 +2239,7 @@ export async function lookupPatientFromSalus(query) {
                     if (toRow && toRow.email) {
                         data.email = toRow.email;
                     }
-                } catch (_) {}
+                } catch (_) { }
             }
             return data;
         }
@@ -2288,7 +2289,8 @@ export async function getAssociatedPatientsByPhone(phone, force = false) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch(`${baseUrl}/api/salus/familiares/${clean}`, { headers: getAdmQuiHeaders(),
+            const res = await fetch(`${baseUrl}/api/salus/familiares/${clean}`, {
+                headers: getAdmQuiHeaders(),
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -2341,8 +2343,8 @@ export async function getAssociatedPatientsByPhone(phone, force = false) {
         const valid = data.filter(item => {
             const itemDigits = String(item.telefono || '').replace(/\D/g, '');
             if (itemDigits.length < 7) return false;
-            return itemDigits.slice(-7) === last7 || 
-                   (clean.length >= 8 && itemDigits.length >= 8 && itemDigits.slice(-8) === clean.slice(-8));
+            return itemDigits.slice(-7) === last7 ||
+                (clean.length >= 8 && itemDigits.length >= 8 && itemDigits.slice(-8) === clean.slice(-8));
         });
 
         // Deduplicar por DNI o id_paciente
@@ -2462,8 +2464,8 @@ export async function closeConversationWithResolution({ chat, resolutionReason, 
 
     // 3.b Si el motivo de resolución o la conversación corresponde a Cancelación de Turno,
     // sincronizar y marcar automáticamente como procesada en contact_center_cancelaciones
-    const isCancelacionReason = (resolutionReason || '').toLowerCase().includes('cancelaci') || 
-                                (resolutionReason || '').toLowerCase().includes('cancelado');
+    const isCancelacionReason = (resolutionReason || '').toLowerCase().includes('cancelaci') ||
+        (resolutionReason || '').toLowerCase().includes('cancelado');
     if (isCancelacionReason || (chat.tags && chat.tags.includes('Cancelación'))) {
         try {
             const digits = norm.replace(/\D/g, '');
@@ -2705,7 +2707,7 @@ function getSharedAudioContext() {
         }
     }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-        sharedAudioCtx.resume().catch(() => {});
+        sharedAudioCtx.resume().catch(() => { });
     }
     return sharedAudioCtx;
 }
@@ -2765,57 +2767,187 @@ export function playContactCenterChime(priority = 'normal') {
 
 /**
  * Suscripción en Tiempo Real (OnLive) para el CRM de Contact Center
- * - Escucha nuevos mensajes en whatsapp_messages para contact_center
+ * - Escucha nuevos mensajes en whatsapp_messages para contact_center (WebSocket + Delta Sync PK cada 3s)
  * - Escucha altas y modificaciones en contact_center_conversations (reasignaciones, ficha, estado)
  */
 export function subscribeToContactCenterRealtime({ onNewMessage, onConversationChange }) {
-    // Canal 1: mensajes de WhatsApp filtrados en servidor (line_id = contact_center)
-    // Al usar filter server-side, Supabase sólo envía por WebSocket los eventos relevantes,
-    // reduciendo drásticamente el tráfico en picos de carga.
-    const msgChannel = supabase
-        .channel('cc-messages-live')
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'whatsapp_messages',
-                filter: 'line_id=eq.contact_center'
-            },
-            (payload) => {
-                const msg = payload.new;
-                if (!msg) return;
-                // Filtro extra en cliente: descartar números de prueba/newsletter
-                if (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203'))) {
-                    return;
-                }
-                if (onNewMessage) onNewMessage(msg, payload.eventType);
-            }
-        )
-        .subscribe();
+    let isDisposed = false;
+    let msgChannel = null;
+    let convChannel = null;
+    let reconnectTimer = null;
 
-    // Canal 2: cambios en conversaciones (sin filtro: la tabla es pequeña y todos los cambios son relevantes)
-    const convChannel = supabase
-        .channel('cc-conversations-live')
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'contact_center_conversations'
-            },
-            (payload) => {
-                const changed = payload.new || payload.old;
-                if (onConversationChange && changed) {
-                    onConversationChange(changed, payload.eventType);
+    const seenMessageIds = new Set();
+    let maxSeenMsgId = 0;
+    let lastConvSyncIso = new Date(Date.now() - 15000).toISOString();
+    let deltaInFlight = false;
+
+    const dispatchMessage = (rawMsg, eventType = 'INSERT') => {
+        if (isDisposed || !rawMsg) return;
+        const msg = rawMsg.rp_bot !== undefined || rawMsg.rp_agent !== undefined
+            ? rehydrateSlimMessage(rawMsg)
+            : rawMsg;
+
+        if (msg.phone && (msg.phone.startsWith('5491203') || msg.phone.startsWith('1203'))) {
+            return;
+        }
+        if (msg.line_id && msg.line_id !== 'contact_center') {
+            return;
+        }
+
+        const numId = Number(msg.id);
+        if (!isNaN(numId) && numId > 0) {
+            if (numId > maxSeenMsgId) {
+                maxSeenMsgId = numId;
+            }
+            if (eventType === 'INSERT') {
+                if (seenMessageIds.has(numId)) return;
+                seenMessageIds.add(numId);
+                if (seenMessageIds.size > 1000) {
+                    const first = seenMessageIds.values().next().value;
+                    seenMessageIds.delete(first);
                 }
             }
-        )
-        .subscribe();
+        }
+
+        if (onNewMessage) {
+            onNewMessage(msg, eventType);
+        }
+    };
+
+    const dispatchConversation = (conv, eventType = 'UPDATE') => {
+        if (isDisposed || !conv) return;
+        if (conv.updated_at && conv.updated_at > lastConvSyncIso) {
+            lastConvSyncIso = conv.updated_at;
+        }
+        if (onConversationChange) {
+            onConversationChange(conv, eventType);
+        }
+    };
+
+    // Inicializar el puntero maxSeenMsgId con el último mensaje existente en BD
+    supabase
+        .from('whatsapp_messages')
+        .select('id')
+        .eq('line_id', 'contact_center')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+            if (data?.id && Number(data.id) > maxSeenMsgId) {
+                maxSeenMsgId = Number(data.id);
+                seenMessageIds.add(maxSeenMsgId);
+            }
+        })
+        .catch(() => {});
+
+    const setupChannels = () => {
+        if (isDisposed) return;
+        const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+        if (msgChannel) {
+            try { supabase.removeChannel(msgChannel); } catch (_) {}
+        }
+        if (convChannel) {
+            try { supabase.removeChannel(convChannel); } catch (_) {}
+        }
+
+        msgChannel = supabase
+            .channel(`cc-messages-live-${suffix}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'whatsapp_messages',
+                    filter: 'line_id=eq.contact_center'
+                },
+                (payload) => {
+                    if (payload?.new) {
+                        dispatchMessage(payload.new, payload.eventType || 'INSERT');
+                    }
+                }
+            )
+            .subscribe((status) => {
+                if (!isDisposed && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(setupChannels, 3000);
+                }
+            });
+
+        convChannel = supabase
+            .channel(`cc-conversations-live-${suffix}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'contact_center_conversations'
+                },
+                (payload) => {
+                    const changed = payload.new || payload.old;
+                    if (changed) {
+                        dispatchConversation(changed, payload.eventType || 'UPDATE');
+                    }
+                }
+            )
+            .subscribe();
+    };
+
+    setupChannels();
+
+    // Motor Delta OnLive de alta frecuencia (cada 3 segundos por Primary Key id > maxSeenMsgId):
+    // Garantiza actualización instantánea < 3s incluso si un proxy corporativo o micro-corte
+    // interrumpe temporalmente el WebSocket de Supabase Realtime.
+    const deltaInterval = setInterval(async () => {
+        if (isDisposed || deltaInFlight) return;
+        if (typeof document !== 'undefined' && document.hidden) return;
+        deltaInFlight = true;
+        try {
+            if (maxSeenMsgId > 0) {
+                const { data: newRows } = await supabase
+                    .from('whatsapp_messages')
+                    .select(CC_MESSAGE_SLIM_SELECT)
+                    .eq('line_id', 'contact_center')
+                    .gt('id', maxSeenMsgId)
+                    .order('id', { ascending: true })
+                    .limit(50);
+
+                if (Array.isArray(newRows) && newRows.length > 0) {
+                    for (const row of newRows) {
+                        dispatchMessage(row, 'INSERT');
+                    }
+                }
+            }
+
+            const { data: updatedConvs } = await supabase
+                .from('contact_center_conversations')
+                .select('*')
+                .gt('updated_at', lastConvSyncIso)
+                .order('updated_at', { ascending: true })
+                .limit(30);
+
+            if (Array.isArray(updatedConvs) && updatedConvs.length > 0) {
+                for (const c of updatedConvs) {
+                    dispatchConversation(c, 'UPDATE');
+                }
+            }
+        } catch (_) {
+            // Silencioso en caso de micro-corte de red
+        } finally {
+            deltaInFlight = false;
+        }
+    }, 3000);
 
     return () => {
-        supabase.removeChannel(msgChannel);
-        supabase.removeChannel(convChannel);
+        isDisposed = true;
+        clearTimeout(reconnectTimer);
+        clearInterval(deltaInterval);
+        if (msgChannel) {
+            try { supabase.removeChannel(msgChannel); } catch (_) {}
+        }
+        if (convChannel) {
+            try { supabase.removeChannel(convChannel); } catch (_) {}
+        }
     };
 }
 
@@ -2887,13 +3019,13 @@ export async function transcribeAudioMessage(audioUrl, messageId = null, phone =
  * Combina Supabase Realtime Channel Presence (cross-dispositivo) con BroadcastChannel
  * para sincronización inmediata entre pestañas en la misma máquina.
  */
-const TAB_SESSION_ID = typeof window !== 'undefined' 
+const TAB_SESSION_ID = typeof window !== 'undefined'
     ? (window.__cc_tab_id || (window.__cc_tab_id = Math.random().toString(36).substring(2, 9)))
     : 'srv';
 
 export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceChange }) {
     if (typeof window === 'undefined') {
-        return { trackChat: () => {}, untrackChat: () => {}, cleanup: () => {} };
+        return { trackChat: () => { }, untrackChat: () => { }, cleanup: () => { } };
     }
 
     const myAgentId = (activeAgent?.id || activeAgent?.username || currentUser?.usuario || 'anon').toLowerCase();
@@ -3004,7 +3136,7 @@ export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceCh
                             chatId: currentTrackedChat.chatId,
                             phone: currentTrackedChat.phone
                         });
-                    } catch {}
+                    } catch { }
                 }
             });
     } catch (e) {
@@ -3034,13 +3166,13 @@ export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceCh
                 sessionKey: mySessionKey,
                 payload
             });
-        } catch {}
+        } catch { }
 
         try {
             if (realtimeChannel && realtimeChannel.state === 'joined') {
                 await realtimeChannel.track(payload);
             }
-        } catch {}
+        } catch { }
     };
 
     const untrackChat = async () => {
@@ -3053,13 +3185,13 @@ export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceCh
                 type: 'UNTRACK',
                 sessionKey: mySessionKey
             });
-        } catch {}
+        } catch { }
 
         try {
             if (realtimeChannel && realtimeChannel.state === 'joined') {
                 await realtimeChannel.untrack();
             }
-        } catch {}
+        } catch { }
     };
 
     const intervalId = setInterval(() => {
@@ -3074,7 +3206,7 @@ export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceCh
                 type: 'UNTRACK',
                 sessionKey: mySessionKey
             });
-        } catch {}
+        } catch { }
     };
     window.addEventListener('beforeunload', onBeforeUnload);
 
@@ -3087,10 +3219,10 @@ export function subscribeToChatPresence({ activeAgent, currentUser, onPresenceCh
             untrackChat();
             try {
                 if (broadcastCh) broadcastCh.close();
-            } catch {}
+            } catch { }
             try {
                 if (realtimeChannel) supabase.removeChannel(realtimeChannel);
-            } catch {}
+            } catch { }
         }
     };
 }

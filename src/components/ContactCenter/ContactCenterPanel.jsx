@@ -21,7 +21,7 @@ import {
     transferChatToAgent, closeConversationWithResolution,
     bulkCloseConversationsSilent, autoArchiveInactiveBotConversations,
     subscribeToContactCenterRealtime, playContactCenterChime,
-    isClosedOrArchived, toggleMessageReaction
+    isClosedOrArchived, toggleMessageReaction, appendToMessageCache
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
@@ -294,10 +294,9 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         // Auto-archivar conversaciones inactivas del Bot (> 20 min) al montar y en heartbeat
         autoArchiveInactiveBotConversations(20);
 
-        // Heartbeat adaptativo: cada 90 segundos para verificar consistencia si la pestaña está visible.
-        // Los mensajes nuevos llegan por Realtime; el heartbeat es solo red de seguridad.
-        // Pausado automáticamente si el operador minimiza o cambia de pestaña.
-        const HEARTBEAT_MS = 90000;
+        // Heartbeat adaptativo: cada 20 segundos para verificar consistencia si la pestaña está visible.
+        // Los mensajes nuevos llegan por Realtime + Delta PK (cada 3s); el heartbeat asegura consistencia global.
+        const HEARTBEAT_MS = 20000;
         let lastFetchTime = Date.now();
         const heartbeatInterval = setInterval(() => {
             if (document.hidden) return; // Suspender en segundo plano para proteger la RAM del equipo
@@ -307,7 +306,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
         }, HEARTBEAT_MS);
 
         const handleVisibilityChange = () => {
-            if (!document.hidden && Date.now() - lastFetchTime > HEARTBEAT_MS) {
+            if (!document.hidden) {
                 reloadChats(true);
                 lastFetchTime = Date.now();
             }
@@ -390,6 +389,10 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         created_at: newMsg.created_at || new Date().toISOString(),
                         timestamp: timeStr
                     };
+
+                    if (normPhone) {
+                        appendToMessageCache(normPhone, formattedMsg);
+                    }
 
                     if (chatIdx >= 0) {
                         const existingChat = prevChats[chatIdx];
@@ -561,9 +564,38 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
     }, []);
 
 
+    // Helper para encontrar el chat en `chats` o reconstruir su referencia si proviene de búsqueda remota / finalizados
+    const resolveTargetChat = (chatId) => {
+        if (!chatId) return null;
+        const direct = chats.find(c => c.id === chatId || String(c.id) === String(chatId));
+        if (direct) return direct;
+        const targetDigits = String(chatId).replace(/\D/g, '');
+        if (targetDigits.length >= 8) {
+            const byPhone = chats.find(c => {
+                const pDigits = String(c.phone || c.id || '').replace(/\D/g, '');
+                return pDigits.length >= 8 && pDigits.slice(-10) === targetDigits.slice(-10);
+            });
+            if (byPhone) return byPhone;
+            const norm = normalizeArgentinePhone(targetDigits);
+            return {
+                id: 'REAL_' + norm,
+                phone: norm,
+                contactName: `+${norm}`,
+                channel: 'WHATSAPP',
+                channelNumber: '5492645825637',
+                status: 'abierto',
+                botActive: false,
+                assignedTo: activeAgent?.id || null,
+                assignedToName: activeAgent?.name || null,
+                messages: []
+            };
+        }
+        return null;
+    };
+
     // Manejar envío de mensaje en la consola de chat (texto, notas, archivos multimedia y citas)
     const handleSendMessage = async (chatId, text, isNote = false, mediaUrl = null, mediaType = null, fileName = null, quotedMessage = null) => {
-        const targetChat = chats.find(c => c.id === chatId);
+        const targetChat = resolveTargetChat(chatId);
         if (!targetChat) return;
 
         try {
@@ -578,6 +610,10 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 fileName,
                 quotedMessage
             });
+
+            if (targetChat.phone) {
+                appendToMessageCache(normalizeArgentinePhone(targetChat.phone), newMsg);
+            }
 
             setChats(prev => {
                 const existing = prev.find(c => c.id === chatId || String(c.id) === String(chatId)) || targetChat;
@@ -637,7 +673,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     // Manejar envío de plantilla oficial de Meta WhatsApp
     const handleSendTemplate = async (chatId, template, variables) => {
-        const targetChat = chats.find(c => c.id === chatId);
+        const targetChat = resolveTargetChat(chatId);
         if (!targetChat) return;
 
         try {
@@ -649,8 +685,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 currentUser
             });
 
+            if (targetChat.phone && newMsg) {
+                appendToMessageCache(normalizeArgentinePhone(targetChat.phone), newMsg);
+            }
+
             setChats(prev => {
-                const remaining = prev.filter(c => c.id !== chatId);
+                const remaining = prev.filter(c => c.id !== chatId && String(c.id) !== String(chatId));
                 return [updatedChat, ...remaining].sort((a, b) => {
                     const aKey = Math.max(Number(a.lastMessageTimestamp) || 0, Number(a.lastIncomingTimestamp) || 0);
                     const bKey = Math.max(Number(b.lastMessageTimestamp) || 0, Number(b.lastIncomingTimestamp) || 0);
@@ -678,7 +718,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
     // Asignar chat exclusivamente a una agente (bloqueo contra colisión o reasignación confirmada)
     const handleAssignChat = async (chatId, targetAgentId = activeAgent.id, options = {}) => {
-        const targetChat = chats.find(c => c.id === chatId || String(c.id) === String(chatId));
+        const targetChat = resolveTargetChat(chatId);
         if (!targetChat) return;
 
         // Fijar inmediatamente activeChatId para que ningún mensaje entrante de otra agente lo desplace
@@ -704,14 +744,20 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
             // 2. Persistir asignación en base de datos y actualizar estado local de forma INMEDIATA (optimista)
             const updated = assignChatExclusively(targetChat, targetAgent, currentUser, options);
-            setChats(prev => prev.map(c => {
-                if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
-                return {
-                    ...c,
-                    ...updated,
-                    messages: c.messages || targetChat.messages || []
-                };
-            }));
+            setChats(prev => {
+                const exists = prev.some(c => c.id === chatId || String(c.id) === String(chatId));
+                if (!exists) {
+                    return [{ ...targetChat, ...updated, messages: targetChat.messages || [] }, ...prev];
+                }
+                return prev.map(c => {
+                    if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
+                    return {
+                        ...c,
+                        ...updated,
+                        messages: c.messages || targetChat.messages || []
+                    };
+                });
+            });
 
             // 3. Registrar nota privada de auditoría directamente sobre el objeto 'updated' (no sobre targetChat obsoleto)
             try {
@@ -723,6 +769,9 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     currentUser
                 });
                 if (newMsg) {
+                    if (targetChat.phone) {
+                        appendToMessageCache(normalizeArgentinePhone(targetChat.phone), newMsg);
+                    }
                     setChats(prev => prev.map(c => {
                         if (c.id !== chatId && String(c.id) !== String(chatId)) return c;
                         return {
