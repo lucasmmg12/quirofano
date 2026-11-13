@@ -105,7 +105,8 @@ const ALLOWED_ORIGIN_PATTERNS = [
     /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/, // LAN / VPN interna
     /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i,                        // Dominios oficiales en Vercel
     /^https:\/\/([a-z0-9-]+\.)*onrender\.com$/i,                      // Servicios propios en Render
-    /^https:\/\/([a-z0-9-]+\.)*sanatorioargentino\.com\.ar$/i         // Dominios institucionales
+    /^https:\/\/([a-z0-9-]+\.)*sanatorioargentino\.com\.ar$/i,        // Dominios institucionales
+    /^https:\/\/([a-z0-9-]+\.)*sanatorioargentino\.app$/i             // Dominio principal sanatorioargentino.app
 ];
 
 function isAllowedOrigin(origin) {

@@ -285,7 +285,7 @@ export async function construirDocumentoPDFReceta(receta) {
         doc.addImage(wavesBgUrl, 'PNG', 0, 0, pageW, pageH);
     }
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://quirofano.vercel.app';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://sanatorioargentino.app';
     const validationUrl = `${origin}/prestacion?token=${receta.token || '98234cc9-fdd4-4e2c-97cf-8f140c098ac4'}`;
 
     const nroOrden = String(receta.nro_receta || '2630708731551').trim();

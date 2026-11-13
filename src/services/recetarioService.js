@@ -491,7 +491,7 @@ export function construirEsquemaJsonMinimo(receta) {
             cuir: receta.cuir,
             nroReceta: receta.nro_receta,
             tokenValidacion: receta.token,
-            urlValidacionPublica: `${typeof window !== 'undefined' ? window.location.origin : 'https://quirofano.vercel.app'}/prestacion?token=${receta.token}`,
+            urlValidacionPublica: `${typeof window !== 'undefined' ? window.location.origin : 'https://sanatorioargentino.app'}/prestacion?token=${receta.token}`,
             fechaEmision: receta.fecha_emision,
             fechaVencimiento: receta.fecha_vencimiento,
             estado: receta.estado || 'VIGENTE',
@@ -628,6 +628,16 @@ export async function obtenerRecetaPorTokenOCuir(tokenOrCuir) {
     if (!tokenOrCuir) return null;
     const clean = String(tokenOrCuir).trim();
 
+    // 1. Intentar primero mediante RPC pública segura por token exacto
+    try {
+        const { data: rpcData, error: rpcErr } = await supabase
+            .rpc('obtener_receta_publica_por_token', { p_token_or_cuir: clean });
+        if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+            return rpcData[0];
+        }
+    } catch (_) {}
+
+    // 2. Fallback directo a la tabla
     const { data, error } = await supabase
         .from(TABLE)
         .select('*')

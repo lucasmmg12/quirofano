@@ -377,6 +377,14 @@ export async function verifyActiveUserSession(userId, sessionToken = null) {
             return { active: true, status: 'ok' }; // No desconectar por falla transitoria de red
         }
 
+        if (data.status === 'invalid_session' || data.status === 'missing_token' || data.status === 'not_found' || data.status === 'account_disabled') {
+            return {
+                active: false,
+                status: data.status,
+                invalidSession: true,
+            };
+        }
+
         if (data.status === 'ok' && data.session_token && current && current.sessionToken !== data.session_token) {
             updateCurrentUserSession({ sessionToken: data.session_token });
         }

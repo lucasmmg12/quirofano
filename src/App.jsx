@@ -181,8 +181,8 @@ export default function AppRoot() {
             const status = await verifyActiveUserSession(currentUser.id, currentUser.sessionToken);
             if (cancelled) return;
 
-            if (status.active === false) {
-                await logAction('forced_logout_account_disabled', { usuario: currentUser.usuario });
+            if (status.active === false || status.invalidSession || status.status === 'invalid_session') {
+                await logAction('forced_logout_account_disabled', { usuario: currentUser.usuario, reason: status.status || 'invalid_session' });
                 await endSession();
                 authLogout();
                 setDisplacedConflict(null);
@@ -323,11 +323,8 @@ export default function AppRoot() {
                 </div>
             )}
             <Routes>
-            <Route path="/recepcion" element={<RecepcionView />} />
+            {/* Rutas públicas operativas acotadas (Tótem de Turnos, QR de Equipos, Validación de Recetas por Token y Laboratorios con su propio login) */}
             <Route path="/turno" element={<TurnoKiosco />} />
-            <Route path="/recepcion/garantias" element={<PublicRecepcionView />} />
-            <Route path="/recepcion/fichas" element={<PublicFichasAdmisionesView />} />
-            <Route path="/entrega-fichas-publico" element={<PublicFichasAdmisionesView />} />
             <Route path="/recepcion/equipo/:equipoId" element={<EquipoAuditoriaViewWrapper />} />
             <Route path="/prestacion" element={<PublicRecetaPrestacionView />} />
             <Route path="/prestacion/:token" element={<PublicRecetaPrestacionView />} />
@@ -338,6 +335,20 @@ export default function AppRoot() {
             <Route path="/simon-publico" element={<PublicSimonChat />} />
             <Route path="/public-simon" element={<PublicSimonChat />} />
             <Route path="/chat-simon" element={<PublicSimonChat />} />
+
+            {/* Portales de Recepción y Fichas: requieren sesión iniciada del Sanatorio */}
+            <Route path="/recepcion" element={
+                !currentUser ? <LoginScreen onLogin={handleLogin} /> : <RecepcionView />
+            } />
+            <Route path="/recepcion/garantias" element={
+                !currentUser ? <LoginScreen onLogin={handleLogin} /> : <PublicRecepcionView />
+            } />
+            <Route path="/recepcion/fichas" element={
+                !currentUser ? <LoginScreen onLogin={handleLogin} /> : <PublicFichasAdmisionesView />
+            } />
+            <Route path="/entrega-fichas-publico" element={
+                !currentUser ? <LoginScreen onLogin={handleLogin} /> : <PublicFichasAdmisionesView />
+            } />
             <Route path="/simon" element={
                 !currentUser ? (
                     <PublicSimonChat />
@@ -1168,7 +1179,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                                         border: '1px solid #334155',
                                     }}>
                                         <span style={{ color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            quirofano.vercel.app/...
+                                            sanatorioargentino.app/...
                                         </span>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                                             <span style={{

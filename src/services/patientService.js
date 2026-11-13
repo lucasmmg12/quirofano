@@ -172,7 +172,25 @@ export async function fetchPatientByDniLive(dni) {
         }
     }
 
-    // 2. Consulta en calidad_pacientes_diagnosticos (Supabase)
+    // 2. Consulta vía RPC segura de Kiosco/Tótem (funciona con o sin sesión activa sin exponer el padrón)
+    try {
+        const { data: rpcRows, error: rpcErr } = await supabase
+            .rpc('buscar_paciente_kiosco_por_dni', { p_dni: cleanDni });
+
+        if (!rpcErr && Array.isArray(rpcRows) && rpcRows.length > 0 && rpcRows[0]?.nombre) {
+            const row = rpcRows[0];
+            return {
+                found: true,
+                source: 'supabase_rpc_kiosco',
+                rawName: row.nombre,
+                displayName: formatPatientName(row.nombre),
+                dni: row.dni || cleanDni,
+                nhc: row.nhc,
+            };
+        }
+    } catch (_) {}
+
+    // 3. Consulta en calidad_pacientes_diagnosticos (Supabase)
     try {
         const { data: diag } = await supabase
             .from('calidad_pacientes_diagnosticos')
