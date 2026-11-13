@@ -84,6 +84,7 @@ export default function MetricsPanel({ addToast }) {
     const [slaFilter, setSlaFilter] = useState('all'); // 'all' | 'on_time' | 'late' | 'no_contact'
     const [slaSearch, setSlaSearch] = useState('');
     const [slaPage, setSlaPage] = useState(1);
+    const [showSlaTable, setShowSlaTable] = useState(false);
 
     const range = useMemo(() => {
         if (preset === 'custom' && customFrom && customTo) {
@@ -1223,68 +1224,99 @@ export default function MetricsPanel({ addToast }) {
                         SECCIÓN DESTACADA: CONTROL DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 12 HS ANTES)
                        ═══════════════════════════════════════════════════════════════════════════ */}
                     <div className="metrics-panel__row" style={{ marginBottom: '18px' }}>
-                        <div className="metrics-panel__card metrics-panel__card--wide" style={{ flex: '1 1 100%', border: '1px solid #D1FAE5', background: 'linear-gradient(180deg, #ECFDF5 0%, #FFFFFF 120px)' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
+                        <div className="metrics-panel__card metrics-panel__card--wide" style={{ flex: '1 1 100%', padding: '16px 20px', border: '1px solid #D1FAE5', background: 'linear-gradient(180deg, #ECFDF5 0%, #FFFFFF 95px)' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px' }}>
                                 <div>
-                                    <h3 className="metrics-panel__card-title" style={{ marginBottom: '4px', color: '#065F46', fontSize: '1rem' }}>
-                                        <Clock size={18} style={{ color: '#059669' }} />
+                                    <h3 className="metrics-panel__card-title" style={{ marginBottom: '2px', color: '#065F46', fontSize: '0.95rem' }}>
+                                        <Clock size={17} style={{ color: '#059669' }} />
                                         Auditoría de Contacto Pre-Quirúrgico (Ventana ≥ 12 Horas Previas)
                                     </h3>
-                                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
-                                        Verifica si cada paciente con cirugía programada en el período ({formatDateShort(range.from)} al {formatDateShort(new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000)))}) fue contactado al menos <strong>12 horas antes</strong> de su cirugía (corte 19:00 hs del día previo).
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#475569' }}>
+                                        Período {formatDateShort(range.from)} al {formatDateShort(new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000)))} · Corte: <strong>12 hs antes</strong> (19:00 hs del día previo).
                                     </p>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#DCFCE7', border: '1px solid #86EFAC', fontSize: '0.76rem', color: '#166534', fontWeight: 700 }}>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSlaFilter('on_time'); setSlaPage(1); setShowSlaTable(true); }}
+                                        title="Ver pacientes contactados ≥ 12hs antes"
+                                        style={{ padding: '5px 10px', borderRadius: '8px', background: '#DCFCE7', border: '1px solid #86EFAC', fontSize: '0.73rem', color: '#166534', fontWeight: 700, cursor: 'pointer' }}
+                                    >
                                         ✅ ≥ 12hs: {preSurgeryContactMetrics.onTimeCount} ({preSurgeryContactMetrics.onTimeRate}%)
-                                    </div>
-                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#FEF3C7', border: '1px solid #FDE68A', fontSize: '0.76rem', color: '#92400E', fontWeight: 700 }}>
-                                        ⚠️ &lt; 12hs (Tardío): {preSurgeryContactMetrics.lateCount}
-                                    </div>
-                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#FEE2E2', border: '1px solid #FECACA', fontSize: '0.76rem', color: '#991B1B', fontWeight: 700 }}>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSlaFilter('late'); setSlaPage(1); setShowSlaTable(true); }}
+                                        title="Ver pacientes con contacto tardío (< 12hs)"
+                                        style={{ padding: '5px 10px', borderRadius: '8px', background: '#FEF3C7', border: '1px solid #FDE68A', fontSize: '0.73rem', color: '#92400E', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                        ⚠️ &lt; 12hs: {preSurgeryContactMetrics.lateCount}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setSlaFilter('no_contact'); setSlaPage(1); setShowSlaTable(true); }}
+                                        title="Ver pacientes sin contacto registrado"
+                                        style={{ padding: '5px 10px', borderRadius: '8px', background: '#FEE2E2', border: '1px solid #FECACA', fontSize: '0.73rem', color: '#991B1B', fontWeight: 700, cursor: 'pointer' }}
+                                    >
                                         🔴 Sin contacto: {preSurgeryContactMetrics.noContactCount}
+                                    </button>
+                                    <div style={{ padding: '5px 10px', borderRadius: '8px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.73rem', color: '#1E40AF', fontWeight: 700 }}>
+                                        ⏱️ Promedio: {preSurgeryContactMetrics.avgLeadHours} hs
                                     </div>
-                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.76rem', color: '#1E40AF', fontWeight: 700 }}>
-                                        ⏱️ Anticipación media: {preSurgeryContactMetrics.avgLeadHours} hs
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSlaTable(prev => !prev)}
+                                        style={{
+                                            padding: '5px 11px',
+                                            borderRadius: '8px',
+                                            background: showSlaTable ? '#0F172A' : '#FFFFFF',
+                                            color: showSlaTable ? '#FFFFFF' : '#0F172A',
+                                            border: '1px solid #CBD5E1',
+                                            fontSize: '0.73rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {showSlaTable ? '▲ Ocultar detalle' : `▼ Ver detalle (${preSurgeryContactMetrics.total})`}
+                                    </button>
                                 </div>
                             </div>
 
-                            {/* Gráficos de cobertura diaria y distribución */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '18px' }}>
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                                        Evolución Diaria de Cirugías según Cumplimiento de Contacto (≥ 12hs)
+                            {/* Gráficos compactos de cobertura diaria y distribución */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 2fr) minmax(240px, 1fr)', gap: '14px', marginBottom: showSlaTable ? '14px' : '0px' }}>
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 12px' }}>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                        Evolución Diaria de Cirugías según Cumplimiento (≥ 12hs)
                                     </div>
-                                    <div style={{ width: '100%', height: 220 }}>
+                                    <div style={{ width: '100%', height: 165 }}>
                                         {preSurgeryContactMetrics.dailyChart.length === 0 ? (
-                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.82rem' }}>
+                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.8rem' }}>
                                                 No hay cirugías programadas en el período seleccionado
                                             </div>
                                         ) : (
                                             <ResponsiveContainer>
                                                 <BarChart data={preSurgeryContactMetrics.dailyChart}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                                                    <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="#94A3B8" />
-                                                    <YAxis tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                                    <XAxis dataKey="day" tick={{ fontSize: 10 }} stroke="#94A3B8" />
+                                                    <YAxis tick={{ fontSize: 10 }} stroke="#94A3B8" />
                                                     <Tooltip content={<CustomTooltip />} />
-                                                    <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
-                                                    <Bar dataKey="onTime" name="Contactado ≥ 12hs antes" stackId="sla" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={22} />
-                                                    <Bar dataKey="late" name="Contacto Tardío (< 12hs)" stackId="sla" fill="#F59E0B" radius={[0, 0, 0, 0]} barSize={22} />
-                                                    <Bar dataKey="noContact" name="Sin Contacto" stackId="sla" fill="#EF4444" radius={[4, 4, 0, 0]} barSize={22} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.7rem' }} />
+                                                    <Bar dataKey="onTime" name="Contactado ≥ 12hs antes" stackId="sla" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={20} />
+                                                    <Bar dataKey="late" name="Contacto Tardío (< 12hs)" stackId="sla" fill="#F59E0B" radius={[0, 0, 0, 0]} barSize={20} />
+                                                    <Bar dataKey="noContact" name="Sin Contacto" stackId="sla" fill="#EF4444" radius={[4, 4, 0, 0]} barSize={20} />
                                                 </BarChart>
                                             </ResponsiveContainer>
                                         )}
                                     </div>
                                 </div>
 
-                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                                        Distribución Global del Período ({preSurgeryContactMetrics.total} cirugías evaluadas)
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 12px' }}>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                                        Distribución del Período ({preSurgeryContactMetrics.total} cirugías)
                                     </div>
-                                    <div style={{ width: '100%', height: 220 }}>
+                                    <div style={{ width: '100%', height: 165 }}>
                                         {preSurgeryContactMetrics.pieData.length === 0 ? (
-                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.82rem' }}>
+                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.8rem' }}>
                                                 Sin datos en este rango
                                             </div>
                                         ) : (
@@ -1295,9 +1327,9 @@ export default function MetricsPanel({ addToast }) {
                                                         dataKey="value"
                                                         nameKey="name"
                                                         cx="50%"
-                                                        cy="50%"
-                                                        outerRadius={80}
-                                                        innerRadius={45}
+                                                        cy="48%"
+                                                        outerRadius={56}
+                                                        innerRadius={32}
                                                         paddingAngle={2}
                                                         strokeWidth={2}
                                                         stroke="#fff"
@@ -1307,7 +1339,7 @@ export default function MetricsPanel({ addToast }) {
                                                         ))}
                                                     </Pie>
                                                     <Tooltip content={<CustomTooltip />} />
-                                                    <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.68rem' }} />
                                                 </PieChart>
                                             </ResponsiveContainer>
                                         )}
@@ -1315,7 +1347,8 @@ export default function MetricsPanel({ addToast }) {
                                 </div>
                             </div>
 
-                            {/* Tabla de Auditoría Nominal por Paciente */}
+                            {/* Tabla de Auditoría Nominal por Paciente (colapsable para no ocupar toda la pantalla) */}
+                            {showSlaTable && (
                             <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px' }}>
                                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1465,6 +1498,7 @@ export default function MetricsPanel({ addToast }) {
                                     </div>
                                 )}
                             </div>
+                            )}
                         </div>
                     </div>
 
