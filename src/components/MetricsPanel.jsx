@@ -8,7 +8,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
     BarChart3, Calendar, ChevronDown, RefreshCw, FileSpreadsheet, FileText,
     Loader, TrendingUp, MessageSquare, Phone, Users, Stethoscope,
-    Activity, CheckCircle,
+    Activity, CheckCircle, ArrowUpRight, ArrowDownRight, Clock, AlertTriangle,
+    XCircle, ShieldCheck, Search,
 } from 'lucide-react';
 import { SkeletonChartGrid } from './SkeletonLoader';
 import {
@@ -70,12 +71,19 @@ export default function MetricsPanel({ addToast }) {
     // Raw data
     const [surgeries, setSurgeries] = useState([]);
     const [events, setEvents] = useState([]);
+    const [allSurgeryEvents, setAllSurgeryEvents] = useState([]);
     const [messages, setMessages] = useState([]);
+    const [lookbackOutgoingMsgs, setLookbackOutgoingMsgs] = useState([]);
     const [lines, setLines] = useState([]);
 
     // Period comparison
     const [prevMessages, setPrevMessages] = useState([]);
     const [prevSurgeries, setPrevSurgeries] = useState([]);
+
+    // 12h SLA Audit Filter & Search
+    const [slaFilter, setSlaFilter] = useState('all'); // 'all' | 'on_time' | 'late' | 'no_contact'
+    const [slaSearch, setSlaSearch] = useState('');
+    const [slaPage, setSlaPage] = useState(1);
 
     const range = useMemo(() => {
         if (preset === 'custom' && customFrom && customTo) {
@@ -99,6 +107,8 @@ export default function MetricsPanel({ addToast }) {
 
         while (keepGoing) {
             let query = supabase.from(table).select(columns);
+            if (filters.eq)  query = query.eq(filters.eq[0], filters.eq[1]);
+            if (filters.neq) query = query.neq(filters.neq[0], filters.neq[1]);
             if (filters.gte) query = query.gte(filters.gte[0], filters.gte[1]);
             if (filters.lte) query = query.lte(filters.lte[0], filters.lte[1]);
             if (filters.lt)  query = query.lt(filters.lt[0], filters.lt[1]);
@@ -121,36 +131,58 @@ export default function MetricsPanel({ addToast }) {
             const toISO = range.to.toISOString();
             const prevFromISO = prevRange.from.toISOString();
             const prevToISO = prevRange.to.toISOString();
+            // Lookback de 30 días adicionales previos al inicio del período para captar notificaciones enviadas con anticipación
+            const lookbackFromISO = new Date(prevRange.from.getTime() - 30 * 86400000).toISOString();
 
-            const [surgeriesData, eventsData, messagesData, linesRes, prevMsgData, prevSurgData] = await Promise.all([
-                // Surgeries — ALL (no date filter, includes full history)
-                fetchAll('surgeries', 'id, status, medico, obra_social, ausente, created_at, fecha_cirugia, modulo'),
+            const [surgeriesData, eventsData, allSurgEventsData, messagesData, lookbackOutData, linesRes, prevMsgData, prevSurgData] = await Promise.all([
+                // Surgeries — ALL non-excluded (includes full history & SLA fields)
+                fetchAll(
+                    'surgeries',
+                    'id, id_paciente, nombre, dni, telefono, status, medico, obra_social, ausente, excluido, created_at, updated_at, fecha_cirugia, modulo, grupo_agendas, descripcion, notificado_at, autorizado_at, confirmado_at, ultimo_mensaje_at',
+                    { eq: ['excluido', false] }
+                ),
                 // Events — current period
-                fetchAll('surgery_events', 'id, event_type, performed_by, created_at', {
+                fetchAll('surgery_events', 'id, surgery_id, id_paciente, event_type, from_status, to_status, performed_by, created_at', {
                     gte: ['created_at', fromISO], lte: ['created_at', toISO],
                 }),
-                // Messages — current period
+                // All Surgery Events in lookback window for 12h SLA calculation
+                fetchAll('surgery_events', 'id, surgery_id, id_paciente, event_type, from_status, to_status, performed_by, created_at', {
+                    gte: ['created_at', lookbackFromISO], lte: ['created_at', toISO],
+                }),
+                // Messages — current period (Surgery/Admisión lines only: exclude contact_center bulk traffic)
                 fetchAll('whatsapp_messages', 'id, phone, direction, line_id, created_at, media_type, is_read', {
+                    neq: ['line_id', 'contact_center'],
                     gte: ['created_at', fromISO], lte: ['created_at', toISO],
+                }),
+                // Outgoing messages in lookback window for 12h pre-surgery contact verification
+                fetchAll('whatsapp_messages', 'id, phone, direction, line_id, created_at', {
+                    eq: ['direction', 'outgoing'],
+                    neq: ['line_id', 'contact_center'],
+                    gte: ['created_at', lookbackFromISO], lte: ['created_at', toISO],
                 }),
                 // Lines (small table, no pagination needed)
                 supabase.from('whatsapp_lines').select('id, label, phone, color, is_active'),
-                // Messages — previous period
+                // Messages — previous period (Surgery/Admisión lines)
                 fetchAll('whatsapp_messages', 'id, phone, direction, line_id, created_at', {
+                    neq: ['line_id', 'contact_center'],
                     gte: ['created_at', prevFromISO], lt: ['created_at', prevToISO],
                 }),
                 // Surgeries — previous period
-                fetchAll('surgeries', 'id, status, ausente, created_at', {
+                fetchAll('surgeries', 'id, status, ausente, created_at, fecha_cirugia', {
+                    eq: ['excluido', false],
                     gte: ['created_at', prevFromISO], lt: ['created_at', prevToISO],
                 }),
             ]);
 
             setSurgeries(surgeriesData);
             setEvents(eventsData);
+            setAllSurgeryEvents(allSurgEventsData);
             setMessages(messagesData);
+            setLookbackOutgoingMsgs(lookbackOutData);
             setLines(linesRes.data || []);
             setPrevMessages(prevMsgData);
             setPrevSurgeries(prevSurgData);
+            setSlaPage(1);
         } catch (err) {
             console.error('MetricsPanel load error:', err);
             addToast?.('Error al cargar métricas', 'error');
@@ -448,6 +480,260 @@ export default function MetricsPanel({ addToast }) {
             });
     }, [surgeries]);
 
+    // ═════════════════════════════════════════════════════════════════════════
+    //  NUEVA MÉTRICA: COBERTURA DE CONTACTO PRE-QUIRÚRGICO (≥ 12 HS PREVIAS)
+    //  Evalúa sobre todas las cirugías del período seleccionado si el paciente
+    //  fue contactado con al menos 12 horas de anticipación a la cirugía.
+    // ═════════════════════════════════════════════════════════════════════════
+    const preSurgeryContactMetrics = useMemo(() => {
+        const norm10 = (p) => {
+            const d = String(p || '').replace(/\D/g, '');
+            return d.length >= 8 ? d.slice(-10) : '';
+        };
+
+        const isFertilidadNoMsg = (s) => {
+            const text = `${s.grupo_agendas || ''} ${s.descripcion || ''} ${s.modulo || ''}`.toUpperCase();
+            return (
+                s.status === 'fertilidad' ||
+                text.includes('REPRODUCCION ASISTIDA') ||
+                text.includes('FERTILIDAD') ||
+                text.includes('CEMERA') ||
+                text.includes('TRANSFERENCIA EMBRIONARIA')
+            );
+        };
+
+        // Índices rápidos de eventos y mensajes salientes
+        const eventsBySurgId = {};
+        const eventsByPacId = {};
+        allSurgeryEvents.forEach(ev => {
+            if (!ev.created_at) return;
+            const ts = new Date(ev.created_at).getTime();
+            if (isNaN(ts)) return;
+            if (ev.surgery_id) {
+                if (!eventsBySurgId[ev.surgery_id] || ts < eventsBySurgId[ev.surgery_id].ts) {
+                    eventsBySurgId[ev.surgery_id] = { ts, by: ev.performed_by || 'Sistema', type: ev.event_type };
+                }
+            }
+            if (ev.id_paciente) {
+                if (!eventsByPacId[ev.id_paciente]) eventsByPacId[ev.id_paciente] = [];
+                eventsByPacId[ev.id_paciente].push({ ts, by: ev.performed_by || 'Sistema', type: ev.event_type });
+            }
+        });
+
+        const msgsByPhone10 = {};
+        lookbackOutgoingMsgs.forEach(m => {
+            const p10 = norm10(m.phone);
+            if (!p10 || !m.created_at) return;
+            const ts = new Date(m.created_at).getTime();
+            if (isNaN(ts)) return;
+            if (!msgsByPhone10[p10]) msgsByPhone10[p10] = [];
+            msgsByPhone10[p10].push({ ts, lineId: m.line_id });
+        });
+
+        const evaluateSurgeryList = (fromDate, toDate) => {
+            const fromYMD = fromDate.toISOString().split('T')[0];
+            // range.to puede ser inicio del día siguiente (eod); restamos 1ms para obtener el día límite inclusivo
+            const toInclusive = new Date(Math.max(fromDate.getTime(), toDate.getTime() - 1000));
+            const toYMD = toInclusive.toISOString().split('T')[0];
+
+            const periodSurgeries = surgeries.filter(s => {
+                if (!s.fecha_cirugia || s.excluido) return false;
+                if (isFertilidadNoMsg(s)) return false;
+                return s.fecha_cirugia >= fromYMD && s.fecha_cirugia <= toYMD;
+            });
+
+            let onTimeCount = 0;      // >= 12 hs antes
+            let lateCount = 0;        // > 0 y < 12 hs antes (o el mismo día)
+            let noContactCount = 0;   // sin contacto registrado
+            let totalHoursLead = 0;
+            let contactedTotal = 0;
+            const byDayMap = {};
+            const rows = [];
+
+            periodSurgeries.forEach(cx => {
+                // Hora estándar de ingreso quirúrgico: 07:00 hs Argentina (-03:00)
+                // Por lo tanto, el límite de 12 hs previas equivale a las 19:00 hs del día anterior.
+                const surgeryRefMs = new Date(`${cx.fecha_cirugia}T07:00:00-03:00`).getTime();
+                const surgeryDayEndMs = new Date(`${cx.fecha_cirugia}T23:59:59-03:00`).getTime();
+                const windowStartMs = surgeryRefMs - (30 * 24 * 3600 * 1000);
+
+                const candidates = [];
+
+                // 1. Timestamps directos en surgeries
+                if (cx.notificado_at) {
+                    candidates.push({ ts: new Date(cx.notificado_at).getTime(), source: 'Notificación Bot/Panel' });
+                }
+                if (cx.autorizado_at) {
+                    candidates.push({ ts: new Date(cx.autorizado_at).getTime(), source: 'Autorización enviada' });
+                }
+                if (cx.confirmado_at) {
+                    candidates.push({ ts: new Date(cx.confirmado_at).getTime(), source: 'Confirmación enviada' });
+                }
+                if (cx.ultimo_mensaje_at) {
+                    candidates.push({ ts: new Date(cx.ultimo_mensaje_at).getTime(), source: 'Mensaje registrado' });
+                }
+
+                // 2. Eventos en surgery_events por surgery_id
+                if (eventsBySurgId[cx.id]) {
+                    candidates.push({
+                        ts: eventsBySurgId[cx.id].ts,
+                        source: `Gestión (${eventsBySurgId[cx.id].by})`,
+                    });
+                }
+
+                // 3. Eventos en surgery_events por id_paciente dentro de la ventana quirúrgica
+                if (cx.id_paciente && eventsByPacId[cx.id_paciente]) {
+                    eventsByPacId[cx.id_paciente].forEach(ev => {
+                        if (ev.ts >= windowStartMs && ev.ts <= surgeryDayEndMs) {
+                            candidates.push({ ts: ev.ts, source: `Gestión (${ev.by})` });
+                        }
+                    });
+                }
+
+                // 4. Mensajes salientes de WhatsApp al teléfono normalizado del paciente
+                const p10 = norm10(cx.telefono);
+                if (p10 && msgsByPhone10[p10]) {
+                    msgsByPhone10[p10].forEach(m => {
+                        if (m.ts >= windowStartMs && m.ts <= surgeryDayEndMs) {
+                            candidates.push({ ts: m.ts, source: 'WhatsApp saliente' });
+                        }
+                    });
+                }
+
+                // 5. Fallback: si el estado ya avanzó de 'lila' (Sin Mensaje) y tiene updated_at válido
+                if (candidates.length === 0 && cx.status && cx.status !== 'lila' && cx.updated_at) {
+                    const upTs = new Date(cx.updated_at).getTime();
+                    if (!isNaN(upTs) && upTs <= surgeryDayEndMs) {
+                        candidates.push({ ts: upTs, source: `Estado ${cx.status}` });
+                    }
+                }
+
+                const validCandidates = candidates.filter(c => !isNaN(c.ts) && c.ts > 0);
+                validCandidates.sort((a, b) => a.ts - b.ts);
+                const firstContact = validCandidates[0] || null;
+
+                let slaStatus = 'no_contact';
+                let hoursBefore = null;
+
+                if (firstContact) {
+                    contactedTotal++;
+                    hoursBefore = (surgeryRefMs - firstContact.ts) / (1000 * 3600);
+                    totalHoursLead += Math.max(0, hoursBefore);
+                    if (hoursBefore >= 12) {
+                        slaStatus = 'on_time';
+                        onTimeCount++;
+                    } else {
+                        slaStatus = 'late';
+                        lateCount++;
+                    }
+                } else {
+                    noContactCount++;
+                }
+
+                const dayLabel = formatDateShort(cx.fecha_cirugia + 'T12:00:00');
+                if (!byDayMap[cx.fecha_cirugia]) {
+                    byDayMap[cx.fecha_cirugia] = {
+                        dateISO: cx.fecha_cirugia,
+                        day: dayLabel,
+                        onTime: 0,
+                        late: 0,
+                        noContact: 0,
+                        total: 0,
+                    };
+                }
+                byDayMap[cx.fecha_cirugia].total++;
+                if (slaStatus === 'on_time') byDayMap[cx.fecha_cirugia].onTime++;
+                else if (slaStatus === 'late') byDayMap[cx.fecha_cirugia].late++;
+                else byDayMap[cx.fecha_cirugia].noContact++;
+
+                rows.push({
+                    id: cx.id,
+                    nombre: cx.nombre || 'Sin nombre',
+                    dni: cx.dni || '—',
+                    telefono: cx.telefono || 'Sin tel.',
+                    medico: cx.medico || '—',
+                    obraSocial: cx.obra_social || '—',
+                    modulo: cx.modulo || cx.descripcion || '—',
+                    fechaCirugia: cx.fecha_cirugia,
+                    status: cx.ausente === '0' ? 'realizada' : cx.ausente === '1' ? 'suspendida' : (cx.status || 'lila'),
+                    slaStatus,
+                    firstContactTs: firstContact?.ts || null,
+                    firstContactSource: firstContact?.source || '—',
+                    hoursBefore: hoursBefore !== null ? Number(hoursBefore.toFixed(1)) : null,
+                });
+            });
+
+            const total = periodSurgeries.length;
+            const onTimeRate = total > 0 ? ((onTimeCount / total) * 100).toFixed(1) : '0.0';
+            const totalContactedRate = total > 0 ? (((onTimeCount + lateCount) / total) * 100).toFixed(1) : '0.0';
+            const avgLeadHours = contactedTotal > 0 ? (totalHoursLead / contactedTotal).toFixed(1) : '0';
+
+            const dailyChart = Object.values(byDayMap)
+                .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+                .map(d => ({
+                    ...d,
+                    cumplimientoPct: d.total > 0 ? Number(((d.onTime / d.total) * 100).toFixed(1)) : 0,
+                }));
+
+            // Ordenar filas: primero sin contacto, luego contacto tardío (<12hs), luego en tiempo (>=12hs)
+            const orderWeight = { no_contact: 0, late: 1, on_time: 2 };
+            rows.sort((a, b) => {
+                if (orderWeight[a.slaStatus] !== orderWeight[b.slaStatus]) {
+                    return orderWeight[a.slaStatus] - orderWeight[b.slaStatus];
+                }
+                return (b.fechaCirugia || '').localeCompare(a.fechaCirugia || '');
+            });
+
+            return {
+                total,
+                onTimeCount,
+                lateCount,
+                noContactCount,
+                contactedTotal,
+                onTimeRate,
+                totalContactedRate,
+                avgLeadHours,
+                dailyChart,
+                rows,
+            };
+        };
+
+        const current = evaluateSurgeryList(range.from, range.to);
+        const previous = evaluateSurgeryList(prevRange.from, prevRange.to);
+        const deltaOnTime = (parseFloat(current.onTimeRate) - parseFloat(previous.onTimeRate)).toFixed(1);
+
+        const pieData = [
+            { name: 'Contactado ≥ 12hs antes', value: current.onTimeCount, color: '#22C55E' },
+            { name: 'Contacto tardío (< 12hs)', value: current.lateCount, color: '#F59E0B' },
+            { name: 'Sin contacto registrado', value: current.noContactCount, color: '#EF4444' },
+        ].filter(d => d.value > 0);
+
+        return {
+            ...current,
+            prevOnTimeRate: previous.onTimeRate,
+            deltaOnTime,
+            pieData,
+        };
+    }, [surgeries, allSurgeryEvents, lookbackOutgoingMsgs, range, prevRange]);
+
+    const filteredSlaRows = useMemo(() => {
+        let list = preSurgeryContactMetrics.rows;
+        if (slaFilter !== 'all') {
+            list = list.filter(r => r.slaStatus === slaFilter);
+        }
+        if (slaSearch.trim()) {
+            const q = slaSearch.toLowerCase().trim();
+            list = list.filter(r =>
+                r.nombre.toLowerCase().includes(q) ||
+                r.telefono.toLowerCase().includes(q) ||
+                r.medico.toLowerCase().includes(q) ||
+                r.obraSocial.toLowerCase().includes(q) ||
+                r.fechaCirugia.includes(q)
+            );
+        }
+        return list;
+    }, [preSurgeryContactMetrics.rows, slaFilter, slaSearch]);
+
     // ── Export Functions ──
     const exportToExcel = useCallback(async () => {
         try {
@@ -457,6 +743,11 @@ export default function MetricsPanel({ addToast }) {
             // KPIs sheet
             const kpis = [
                 ['Métrica', 'Valor', 'Período anterior', 'Variación'],
+                ['Contacto Pre-Quirúrgico (≥ 12hs antes)', preSurgeryContactMetrics.onTimeRate + '%', preSurgeryContactMetrics.prevOnTimeRate + '%', preSurgeryContactMetrics.deltaOnTime + '%'],
+                ['Cirugías Contactadas ≥ 12hs antes', preSurgeryContactMetrics.onTimeCount, '', ''],
+                ['Cirugías con Contacto Tardío (< 12hs)', preSurgeryContactMetrics.lateCount, '', ''],
+                ['Cirugías Sin Contacto Registrado', preSurgeryContactMetrics.noContactCount, '', ''],
+                ['Anticipación Promedio de Contacto (hs)', preSurgeryContactMetrics.avgLeadHours + ' hs', '', ''],
                 ['Tasa Confirmación', confirmacionRate + '%', prevConfRate.toFixed(1) + '%', confDelta + '%'],
                 ['Total Mensajes', totalMessages, prevTotalMsg, msgDelta + '%'],
                 ['Pacientes Contactados', uniquePhones, prevUniquePhones, phonesDelta + '%'],
@@ -466,6 +757,27 @@ export default function MetricsPanel({ addToast }) {
                 ['Cirugías Suspendidas', suspendidas, '', ''],
             ];
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpis), 'KPIs');
+
+            // 12h Pre-Surgery Contact Audit sheet
+            const slaSheet = [['Fecha Cirugía', 'Paciente', 'DNI', 'Teléfono', 'Médico', 'Obra Social', 'Estado', 'Cumplimiento 12hs', 'Fecha/Hora 1er Contacto', 'Anticipación (hs)', 'Fuente Evidencia']];
+            preSurgeryContactMetrics.rows.forEach(r => {
+                const slaLabel = r.slaStatus === 'on_time' ? 'CUMPLIÓ (≥ 12hs)' : r.slaStatus === 'late' ? 'TARDÍO (< 12hs)' : 'SIN CONTACTO';
+                const contactStr = r.firstContactTs ? new Date(r.firstContactTs).toLocaleString('es-AR') : '—';
+                slaSheet.push([
+                    r.fechaCirugia,
+                    r.nombre,
+                    r.dni,
+                    r.telefono,
+                    r.medico,
+                    r.obraSocial,
+                    r.status,
+                    slaLabel,
+                    contactStr,
+                    r.hoursBefore !== null ? `${r.hoursBefore} hs` : '—',
+                    r.firstContactSource,
+                ]);
+            });
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(slaSheet), 'Contacto 12hs Previas');
 
             // Daily messages
             const dailyData = [['Día', 'Enviados', 'Recibidos', 'Chats Iniciados']];
@@ -496,7 +808,7 @@ export default function MetricsPanel({ addToast }) {
             console.error('Export error:', err);
             addToast?.('Error al exportar', 'error');
         }
-    }, [confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta, uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta, responseRate, realizadas, suspendidas, dailyMessagesData, topMedicos, topOS, topModulos, moduloCompletionRate, addToast]);
+    }, [preSurgeryContactMetrics, confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta, uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta, responseRate, realizadas, suspendidas, dailyMessagesData, topMedicos, topOS, topModulos, moduloCompletionRate, addToast]);
 
     const exportToPDF = useCallback(async () => {
         try {
@@ -550,6 +862,11 @@ export default function MetricsPanel({ addToast }) {
                 startY: y,
                 head: [['Indicador', 'Valor actual', 'Período anterior', 'Variación %']],
                 body: [
+                    ['Contacto Pre-Quirúrgico (≥ 12hs antes)', preSurgeryContactMetrics.onTimeRate + '%', preSurgeryContactMetrics.prevOnTimeRate + '%', preSurgeryContactMetrics.deltaOnTime + '%'],
+                    ['Cirugías Contactadas en Tiempo (≥ 12hs)', `${preSurgeryContactMetrics.onTimeCount} de ${preSurgeryContactMetrics.total}`, '—', '—'],
+                    ['Cirugías con Contacto Tardío (< 12hs)', String(preSurgeryContactMetrics.lateCount), '—', '—'],
+                    ['Cirugías Sin Contacto Registrado', String(preSurgeryContactMetrics.noContactCount), '—', '—'],
+                    ['Anticipación Promedio de Contacto', `${preSurgeryContactMetrics.avgLeadHours} hs`, '—', '—'],
                     ['Tasa de Confirmación de Cirugías', confirmacionRate + '%', prevConfRate.toFixed(1) + '%', confDelta + '%'],
                     ['Total de Mensajes WhatsApp', String(totalMessages), String(prevTotalMsg), msgDelta + '%'],
                     ['Pacientes Contactados (únicos)', String(uniquePhones), String(prevUniquePhones), phonesDelta + '%'],
@@ -732,6 +1049,31 @@ export default function MetricsPanel({ addToast }) {
                 y = doc.lastAutoTable.finalY + 4;
             }
 
+            // ── 11. Auditoría de Contacto Pre-Quirúrgico (≥ 12hs antes) ──
+            if (preSurgeryContactMetrics.rows.length > 0) {
+                sectionTitle('11. AUDITORÍA DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 12 HS PREVIAS)', [16, 185, 129]);
+                autoTable(doc, {
+                    startY: y,
+                    head: [['Fecha Cx', 'Paciente', 'Teléfono', 'Médico', 'SLA 12hs', '1er Contacto', 'Anticipación', 'Evidencia']],
+                    body: preSurgeryContactMetrics.rows.slice(0, 150).map(r => [
+                        r.fechaCirugia,
+                        r.nombre.length > 24 ? r.nombre.slice(0, 24) + '…' : r.nombre,
+                        r.telefono,
+                        r.medico.length > 18 ? r.medico.slice(0, 18) + '…' : r.medico,
+                        r.slaStatus === 'on_time' ? 'CUMPLIÓ (≥12h)' : r.slaStatus === 'late' ? 'TARDÍO (<12h)' : 'SIN CONTACTO',
+                        r.firstContactTs ? new Date(r.firstContactTs).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—',
+                        r.hoursBefore !== null ? `${r.hoursBefore} hs` : '—',
+                        r.firstContactSource,
+                    ]),
+                    theme: 'grid',
+                    headStyles: { fillColor: [16, 185, 129], fontSize: 7, fontStyle: 'bold' },
+                    bodyStyles: { fontSize: 6.8 },
+                    alternateRowStyles: { fillColor: [240, 253, 244] },
+                    margin: { left: margin, right: margin },
+                });
+                y = doc.lastAutoTable.finalY + 4;
+            }
+
             // ── Footer on every page ──
             const totalPages = doc.internal.getNumberOfPages();
             for (let p = 1; p <= totalPages; p++) {
@@ -748,7 +1090,7 @@ export default function MetricsPanel({ addToast }) {
             console.error('PDF export error:', err);
             addToast?.('Error al exportar PDF', 'error');
         }
-    }, [range, prevRange, confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta,
+    }, [range, prevRange, preSurgeryContactMetrics, confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta,
         uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta,
         responseRate, realizadas, prevRealizadas, suspendidas, prevSuspendidas, totalSurgeries, events,
         dailyMessagesData, pipelineData, messagesByLine, topTransitions, topMedicos, topOS,
@@ -855,6 +1197,14 @@ export default function MetricsPanel({ addToast }) {
                 <>
                     {/* ═══ KPI Cards ═══ */}
                     <div className="metrics-panel__kpis">
+                        <KPICard
+                            icon={ShieldCheck}
+                            label="Contacto ≥ 12hs Previas"
+                            value={`${preSurgeryContactMetrics.onTimeRate}%`}
+                            delta={preSurgeryContactMetrics.deltaOnTime}
+                            color="#10B981"
+                            subtext={`${preSurgeryContactMetrics.onTimeCount}/${preSurgeryContactMetrics.total} a tiempo · ${preSurgeryContactMetrics.lateCount} <12h · ${preSurgeryContactMetrics.noContactCount} sin cont.`}
+                        />
                         <KPICard icon={CheckCircle} label="Tasa Confirmación" value={`${confirmacionRate}%`}
                             delta={confDelta} color="#22C55E" subtext={`${realizadas} realizadas / ${suspendidas} susp.`} />
                         <KPICard icon={MessageSquare} label="Total Mensajes" value={totalMessages}
@@ -864,9 +1214,258 @@ export default function MetricsPanel({ addToast }) {
                         <KPICard icon={Users} label="Pacientes Contactados" value={uniquePhones}
                             delta={phonesDelta} color="#3B82F6" subtext={`Tasa respuesta: ${responseRate}%`} />
                         <KPICard icon={Stethoscope} label="Total Cirugías" value={totalSurgeries}
-                            delta="" color="#A855F7" subtext="En el sistema completo" />
+                            delta="" color="#A855F7" subtext={`Anticipación prom.: ${preSurgeryContactMetrics.avgLeadHours} hs`} />
                         <KPICard icon={Activity} label="Eventos Pipeline" value={events.length}
                             delta="" color="#14B8A6" subtext="Transiciones de estado" />
+                    </div>
+
+                    {/* ═══════════════════════════════════════════════════════════════════════════
+                        SECCIÓN DESTACADA: CONTROL DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 12 HS ANTES)
+                       ═══════════════════════════════════════════════════════════════════════════ */}
+                    <div className="metrics-panel__row" style={{ marginBottom: '18px' }}>
+                        <div className="metrics-panel__card metrics-panel__card--wide" style={{ flex: '1 1 100%', border: '1px solid #D1FAE5', background: 'linear-gradient(180deg, #ECFDF5 0%, #FFFFFF 120px)' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
+                                <div>
+                                    <h3 className="metrics-panel__card-title" style={{ marginBottom: '4px', color: '#065F46', fontSize: '1rem' }}>
+                                        <Clock size={18} style={{ color: '#059669' }} />
+                                        Auditoría de Contacto Pre-Quirúrgico (Ventana ≥ 12 Horas Previas)
+                                    </h3>
+                                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
+                                        Verifica si cada paciente con cirugía programada en el período ({formatDateShort(range.from)} al {formatDateShort(new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000)))}) fue contactado al menos <strong>12 horas antes</strong> de su cirugía (corte 19:00 hs del día previo).
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#DCFCE7', border: '1px solid #86EFAC', fontSize: '0.76rem', color: '#166534', fontWeight: 700 }}>
+                                        ✅ ≥ 12hs: {preSurgeryContactMetrics.onTimeCount} ({preSurgeryContactMetrics.onTimeRate}%)
+                                    </div>
+                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#FEF3C7', border: '1px solid #FDE68A', fontSize: '0.76rem', color: '#92400E', fontWeight: 700 }}>
+                                        ⚠️ &lt; 12hs (Tardío): {preSurgeryContactMetrics.lateCount}
+                                    </div>
+                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#FEE2E2', border: '1px solid #FECACA', fontSize: '0.76rem', color: '#991B1B', fontWeight: 700 }}>
+                                        🔴 Sin contacto: {preSurgeryContactMetrics.noContactCount}
+                                    </div>
+                                    <div style={{ padding: '6px 12px', borderRadius: '8px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.76rem', color: '#1E40AF', fontWeight: 700 }}>
+                                        ⏱️ Anticipación media: {preSurgeryContactMetrics.avgLeadHours} hs
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Gráficos de cobertura diaria y distribución */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '18px' }}>
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                                        Evolución Diaria de Cirugías según Cumplimiento de Contacto (≥ 12hs)
+                                    </div>
+                                    <div style={{ width: '100%', height: 220 }}>
+                                        {preSurgeryContactMetrics.dailyChart.length === 0 ? (
+                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.82rem' }}>
+                                                No hay cirugías programadas en el período seleccionado
+                                            </div>
+                                        ) : (
+                                            <ResponsiveContainer>
+                                                <BarChart data={preSurgeryContactMetrics.dailyChart}>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                                                    <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                                    <YAxis tick={{ fontSize: 11 }} stroke="#94A3B8" />
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                                    <Bar dataKey="onTime" name="Contactado ≥ 12hs antes" stackId="sla" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={22} />
+                                                    <Bar dataKey="late" name="Contacto Tardío (< 12hs)" stackId="sla" fill="#F59E0B" radius={[0, 0, 0, 0]} barSize={22} />
+                                                    <Bar dataKey="noContact" name="Sin Contacto" stackId="sla" fill="#EF4444" radius={[4, 4, 0, 0]} barSize={22} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                                        Distribución Global del Período ({preSurgeryContactMetrics.total} cirugías evaluadas)
+                                    </div>
+                                    <div style={{ width: '100%', height: 220 }}>
+                                        {preSurgeryContactMetrics.pieData.length === 0 ? (
+                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: '0.82rem' }}>
+                                                Sin datos en este rango
+                                            </div>
+                                        ) : (
+                                            <ResponsiveContainer>
+                                                <PieChart>
+                                                    <Pie
+                                                        data={preSurgeryContactMetrics.pieData}
+                                                        dataKey="value"
+                                                        nameKey="name"
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        outerRadius={80}
+                                                        innerRadius={45}
+                                                        paddingAngle={2}
+                                                        strokeWidth={2}
+                                                        stroke="#fff"
+                                                    >
+                                                        {preSurgeryContactMetrics.pieData.map((entry, idx) => (
+                                                            <Cell key={idx} fill={entry.color} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                    <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Tabla de Auditoría Nominal por Paciente */}
+                            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px' }}>
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                        {[
+                                            { id: 'all', label: `Todas (${preSurgeryContactMetrics.total})` },
+                                            { id: 'no_contact', label: `🔴 Sin Contacto (${preSurgeryContactMetrics.noContactCount})` },
+                                            { id: 'late', label: `⚠️ Tardío < 12hs (${preSurgeryContactMetrics.lateCount})` },
+                                            { id: 'on_time', label: `✅ Cumplió ≥ 12hs (${preSurgeryContactMetrics.onTimeCount})` },
+                                        ].map(tab => (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => { setSlaFilter(tab.id); setSlaPage(1); }}
+                                                style={{
+                                                    padding: '5px 11px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.74rem',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    border: slaFilter === tab.id ? '1px solid #0284C7' : '1px solid #E2E8F0',
+                                                    background: slaFilter === tab.id ? '#E0F2FE' : '#F8FAFC',
+                                                    color: slaFilter === tab.id ? '#0369A1' : '#475569',
+                                                }}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div style={{ position: 'relative', minWidth: '220px' }}>
+                                        <Search size={14} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar paciente, médico, tel..."
+                                            value={slaSearch}
+                                            onChange={e => { setSlaSearch(e.target.value); setSlaPage(1); }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '6px 10px 6px 28px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #CBD5E1',
+                                                fontSize: '0.75rem',
+                                                outline: 'none',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ overflowX: 'auto', maxHeight: '340px', overflowY: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                                        <thead>
+                                            <tr style={{ background: '#F8FAFC', position: 'sticky', top: 0, zIndex: 1 }}>
+                                                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Fecha Cx</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Paciente</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Teléfono</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Médico / OS</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'center', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Cumplimiento 12hs</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>1er Contacto Registrado</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Anticipación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredSlaRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={7} style={{ padding: '24px', textAlign: 'center', color: '#94A3B8' }}>
+                                                        No hay registros para el filtro seleccionado.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                filteredSlaRows.slice((slaPage - 1) * 15, slaPage * 15).map(r => {
+                                                    const badgeStyle = r.slaStatus === 'on_time'
+                                                        ? { bg: '#DCFCE7', color: '#166534', text: '✅ Contactado ≥ 12hs' }
+                                                        : r.slaStatus === 'late'
+                                                            ? { bg: '#FEF3C7', color: '#92400E', text: '⚠️ Tardío (< 12hs)' }
+                                                            : { bg: '#FEE2E2', color: '#991B1B', text: '🔴 Sin Contacto' };
+                                                    return (
+                                                        <tr key={r.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                            <td style={{ padding: '7px 10px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                                                                {formatDateShort(r.fechaCirugia + 'T12:00:00')}
+                                                            </td>
+                                                            <td style={{ padding: '7px 10px', fontWeight: 600, color: '#0F172A' }}>
+                                                                {r.nombre}
+                                                            </td>
+                                                            <td style={{ padding: '7px 10px', color: '#475569', fontFamily: 'monospace', fontSize: '0.73rem' }}>
+                                                                {r.telefono}
+                                                            </td>
+                                                            <td style={{ padding: '7px 10px', color: '#475569' }}>
+                                                                <div style={{ fontWeight: 500, color: '#334155' }}>{r.medico}</div>
+                                                                <div style={{ fontSize: '0.68rem', color: '#64748B' }}>{r.obraSocial}</div>
+                                                            </td>
+                                                            <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                                                                <span style={{
+                                                                    display: 'inline-block',
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '999px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 700,
+                                                                    background: badgeStyle.bg,
+                                                                    color: badgeStyle.color,
+                                                                }}>
+                                                                    {badgeStyle.text}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '7px 10px', color: '#334155', fontSize: '0.72rem' }}>
+                                                                {r.firstContactTs ? (
+                                                                    <>
+                                                                        <div style={{ fontWeight: 600 }}>
+                                                                            {new Date(r.firstContactTs).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                                        </div>
+                                                                        <div style={{ fontSize: '0.67rem', color: '#64748B' }}>{r.firstContactSource}</div>
+                                                                    </>
+                                                                ) : (
+                                                                    <span style={{ color: '#94A3B8' }}>Sin registro</span>
+                                                                )}
+                                                            </td>
+                                                            <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: r.slaStatus === 'on_time' ? '#059669' : r.slaStatus === 'late' ? '#D97706' : '#DC2626' }}>
+                                                                {r.hoursBefore !== null ? `${r.hoursBefore} hs` : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {filteredSlaRows.length > 15 && (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.73rem', color: '#64748B' }}>
+                                        <span>
+                                            Mostrando {(slaPage - 1) * 15 + 1}–{Math.min(slaPage * 15, filteredSlaRows.length)} de {filteredSlaRows.length} cirugías
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                            <button
+                                                disabled={slaPage <= 1}
+                                                onClick={() => setSlaPage(p => Math.max(1, p - 1))}
+                                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', background: slaPage <= 1 ? '#F1F5F9' : '#FFF', cursor: slaPage <= 1 ? 'default' : 'pointer', fontSize: '0.72rem' }}
+                                            >
+                                                Anterior
+                                            </button>
+                                            <button
+                                                disabled={slaPage * 15 >= filteredSlaRows.length}
+                                                onClick={() => setSlaPage(p => p + 1)}
+                                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', background: slaPage * 15 >= filteredSlaRows.length ? '#F1F5F9' : '#FFF', cursor: slaPage * 15 >= filteredSlaRows.length ? 'default' : 'pointer', fontSize: '0.72rem' }}
+                                            >
+                                                Siguiente
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     {/* ═══ Row 1: Daily Messages + Pipeline ═══ */}
