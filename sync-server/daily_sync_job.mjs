@@ -27,6 +27,7 @@ import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
 import { syncGuardiaIndicadores } from './sync_guardia_indicadores.mjs';
 import { syncGuardiaFranjasYAdmisiones } from './sync_guardia_franjas_admisiones.mjs';
 import { syncCirugiasConversion } from './sync_guardia_cirugias_conversion.mjs';
+import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
@@ -535,12 +536,13 @@ export async function runDailySync({ skipDoctors = false } = {}) {
     // ──────────────────────────────────────────────────────────
     // PASO 10: Indicadores de Guardia Clínica, Franjas y Conversión QX
     // ──────────────────────────────────────────────────────────
-    log('PASO 10/11: Sincronizando Indicadores de Guardia Clínica, Franjas y Conversión QX...');
+    log('PASO 10/11: Sincronizando Indicadores de Guardia Clínica, Franjas, Internado & Piso y Conversión QX...');
     try {
         await syncGuardiaIndicadores({ fastSync: true });
         await syncGuardiaFranjasYAdmisiones({ fastSync: true });
         await syncCirugiasConversion(null, { fastSync: true });
-        log('Paso 10 completado: Indicadores de Guardia y Conversión QX actualizados.');
+        await syncGuardiaInternado();
+        log('Paso 10 completado: Indicadores de Guardia, Internado & Piso y Conversión QX actualizados.');
     } catch (eGuardia) {
         log(`⚠️ Error no bloqueante en Paso 10 (Guardia): ${eGuardia.message}`);
     }
