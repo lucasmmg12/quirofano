@@ -374,58 +374,168 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
         setTimeout(() => setCopiedFicha(false), 2500);
     };
 
-    // Exportar CSV
-    const exportCSV = (type) => {
-        let csvContent = "data:text/csv;charset=utf-8,";
-        if (type === 'admisiones_557') {
-            if (!filteredAdmisiones557.length) {
-                addToast?.('No hay admisiones clínicas para exportar', 'warning');
-                return;
-            }
-            csvContent += "ID Visita,Fecha,Hora,Paciente,NHC,DNI,Edad,Obra Social,Nro Admisión,Habitación,Servicio,Estado,Médico Carga (Prot 557),Médico Cabecera,Destino Form,Área Form,Reconsulta 72h,Reingreso 72h,Motivo de Consulta,Enfermedad Actual,Patologías,Medicación Habitual,TA,FC,FR,SAT,Temp,Diagnóstico,Plan Terapéutico\n";
-            filteredAdmisiones557.forEach(r => {
-                const clean = (val) => String(val || '').replace(/"/g, '""').replace(/\r?\n/g, ' ');
-                csvContent += `"${r.id_visita || ''}","${r.fecha_visita || ''}","${r.hora_visita || ''}","${clean(r.paciente)}","${clean(r.nhc)}","${clean(r.dni)}","${r.edad || ''}","${clean(r.obra_social)}","${clean(r.numero_admision)}","${clean(r.habitacion)}","${clean(r.servicio_admision)}","${clean(r.estado_internacion)}","${clean(r.medico_admision)}","${clean(r.medico_cabecera)}","${clean(r.destino_form)}","${clean(r.area_form)}","${clean(r.reconsulta_72h)}","${clean(r.reingreso_72h)}","${clean(r.motivo_consulta)}","${clean(r.enfermedad_actual)}","${clean(r.patologias)}","${clean(r.medicacion_habitual)}","${clean(r.ta)}","${clean(r.fc)}","${clean(r.fr)}","${clean(r.sat)}","${clean(r.temp)}","${clean(r.diagnostico)}","${clean(r.plan_terapeutico)}"\n`;
-            });
-        } else if (type === 'seguimiento') {
-            if (!seguimientoData.length) {
-                addToast?.('No hay datos de seguimiento para exportar', 'warning');
-                return;
-            }
-            csvContent += "Período,Censo Total,Pacientes Seguidos,Cobertura %,Clínico Únicos,Postquirúrgico Únicos,Traumatológico Únicos,% Plan Diario Documentado\n";
-            seguimientoData.forEach(r => {
-                csvContent += `"${r.periodo || ''}","${r.censo_total_internados || 0}","${r.pacientes_bajo_seguimiento_clinico || 0}","${r.cobertura_seguimiento_pct || 0}%","${r.unicos_clinico || 0}","${r.unicos_postquirurgico || 0}","${r.unicos_traumatologico || 0}","${r.evoluciones_plan_documentado_pct || 0}%"\n`;
-            });
-        } else if (type === 'traumatologia') {
-            const rows = filteredTrauma;
-            if (!rows.length) {
-                addToast?.('No hay registros para exportar', 'warning');
-                return;
-            }
-            csvContent += "Habitación,Paciente,DNI,NHC,Estado Internación,Cirugía,Cirujano Traumatólogo,Médico Cabecera / Clínico,Tiene Prot 557,Motivo Consulta 557,Fecha Ingreso,Fecha Cirugía,Obra Social\n";
-            rows.forEach(r => {
-                csvContent += `"${r.habitacion || ''}","${r.paciente || ''}","${r.dni || ''}","${r.nhc || ''}","${r.estado_internacion || ''}","${String(r.cirugia || '').replace(/"/g, '""')}","${r.cirujano_traumatologo || ''}","${r.medico_cabecera || ''}","${r.tiene_admision_557 ? 'SI' : 'NO'}","${String(r.motivo_consulta_557 || '').replace(/"/g, '""')}","${r.fecha_ingreso || ''}","${r.fecha_cirugia || ''}","${r.obra_social || ''}"\n`;
-            });
-        } else {
-            const rows = filteredInter;
-            if (!rows.length) {
-                addToast?.('No hay registros para exportar', 'warning');
-                return;
-            }
-            csvContent += "Fecha,Hora,Tipo Visita,Paciente,DNI,NHC,Habitación,Servicio,Médico Actuante,Especialidad,Es Médico Clínico,Tiene Prot 557,Obra Social\n";
-            rows.forEach(r => {
-                csvContent += `"${r.fecha_visita || ''}","${r.hora_creacion || ''}","${r.tipo_visita || ''}","${r.paciente || ''}","${r.dni || ''}","${r.nhc || ''}","${r.habitacion || ''}","${r.servicio_internacion || ''}","${r.medico_actuante || ''}","${r.especialidad_medico || ''}","${r.es_medico_clinico ? 'SI' : 'NO'}","${r.tiene_admision_557 ? 'SI' : 'NO'}","${r.obra_social || ''}"\n`;
-            });
-        }
+    // Exportar Excel (.xlsx) — Pestaña activa filtrada o Libro Completo (4 hojas)
+    const exportExcel = async (mode = 'current') => {
+        try {
+            const XLSX = await import('xlsx');
+            const wb = XLSX.utils.book_new();
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `guardia_internado_${type}_${new Date().toISOString().slice(0, 10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        addToast?.('Archivo CSV descargado con éxito', 'success');
+            const buildAdmisionesSheet = () => {
+                const headers = [
+                    'ID Visita', 'Fecha', 'Hora', 'Paciente', 'NHC', 'DNI', 'Edad', 'Obra Social',
+                    'Nro Admisión', 'Habitación', 'Servicio', 'Estado Internación',
+                    'Médico Carga (Prot 557)', 'Médico Cabecera', 'Destino Form', 'Área Form',
+                    'Reconsulta 72h', 'Reingreso 72h', 'Motivo de Consulta', 'Enfermedad Actual',
+                    'Patologías', 'Medicación Habitual', 'TA', 'FC', 'FR', 'SAT', 'Temp',
+                    'Diagnóstico', 'Plan Terapéutico'
+                ];
+                const rows = filteredAdmisiones557.map(r => [
+                    r.id_visita || '', r.fecha_visita || '', r.hora_visita || '',
+                    r.paciente || '', r.nhc || '', r.dni || '', r.edad || '', r.obra_social || '',
+                    r.numero_admision || '', r.habitacion || '', r.servicio_admision || '', r.estado_internacion || '',
+                    r.medico_admision || '', r.medico_cabecera || '', r.destino_form || '', r.area_form || '',
+                    r.reconsulta_72h || '', r.reingreso_72h || '', r.motivo_consulta || '', r.enfermedad_actual || '',
+                    r.patologias || '', r.medicacion_habitual || '', r.ta || '', r.fc || '', r.fr || '', r.sat || '', r.temp || '',
+                    r.diagnostico || '', r.plan_terapeutico || ''
+                ]);
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = [
+                    { wch: 11 }, { wch: 12 }, { wch: 8 }, { wch: 28 }, { wch: 10 }, { wch: 11 }, { wch: 6 }, { wch: 22 },
+                    { wch: 14 }, { wch: 11 }, { wch: 18 }, { wch: 16 }, { wch: 24 }, { wch: 24 }, { wch: 16 }, { wch: 14 },
+                    { wch: 12 }, { wch: 12 }, { wch: 30 }, { wch: 36 }, { wch: 28 }, { wch: 24 }, { wch: 8 }, { wch: 6 },
+                    { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 28 }, { wch: 34 }
+                ];
+                return ws;
+            };
+
+            const buildSeguimientoSheet = () => {
+                const headers = [
+                    'Período', 'Censo Total Internados', 'Pacientes Bajo Seguimiento',
+                    'Cobertura Seguimiento (%)', 'Clínico Únicos', 'Postquirúrgico Únicos',
+                    'Traumatológico Únicos', 'Evoluciones Plan Documentado (%)'
+                ];
+                const rows = seguimientoData.map(r => [
+                    r.periodo || '',
+                    r.censo_total_internados || 0,
+                    r.pacientes_bajo_seguimiento_clinico || 0,
+                    `${r.cobertura_seguimiento_pct || 0}%`,
+                    r.unicos_clinico || 0,
+                    r.unicos_postquirurgico || 0,
+                    r.unicos_traumatologico || 0,
+                    `${r.evoluciones_plan_documentado_pct || 0}%`
+                ]);
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = [
+                    { wch: 12 }, { wch: 22 }, { wch: 24 }, { wch: 24 },
+                    { wch: 16 }, { wch: 20 }, { wch: 20 }, { wch: 28 }
+                ];
+                return ws;
+            };
+
+            const buildTraumaSheet = () => {
+                const headers = [
+                    'Habitación', 'Paciente', 'DNI', 'NHC', 'Estado Internación',
+                    'Cirugía', 'Cirujano Traumatólogo', 'Médico Cabecera / Clínico',
+                    'Tiene Prot 557', 'Motivo Consulta 557', 'Fecha Ingreso', 'Fecha Cirugía', 'Obra Social'
+                ];
+                const rows = filteredTrauma.map(r => [
+                    r.habitacion || '', r.paciente || '', r.dni || '', r.nhc || '', r.estado_internacion || '',
+                    r.cirugia || '', r.cirujano_traumatologo || '', r.medico_cabecera || '',
+                    r.tiene_admision_557 ? 'SI' : 'NO', r.motivo_consulta_557 || '',
+                    r.fecha_ingreso || '', r.fecha_cirugia || '', r.obra_social || ''
+                ]);
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = [
+                    { wch: 12 }, { wch: 28 }, { wch: 11 }, { wch: 10 }, { wch: 16 },
+                    { wch: 32 }, { wch: 24 }, { wch: 24 }, { wch: 14 }, { wch: 28 },
+                    { wch: 13 }, { wch: 13 }, { wch: 22 }
+                ];
+                return ws;
+            };
+
+            const buildInterconsultasSheet = () => {
+                const headers = [
+                    'Fecha', 'Hora', 'Tipo Visita', 'Paciente', 'DNI', 'NHC',
+                    'Habitación', 'Servicio', 'Médico Actuante', 'Especialidad',
+                    'Es Médico Clínico', 'Tiene Prot 557', 'Obra Social'
+                ];
+                const rows = filteredInter.map(r => [
+                    r.fecha_visita || '', r.hora_creacion || '', r.tipo_visita || '',
+                    r.paciente || '', r.dni || '', r.nhc || '', r.habitacion || '',
+                    r.servicio_internacion || '', r.medico_actuante || '', r.especialidad_medico || '',
+                    r.es_medico_clinico ? 'SI' : 'NO', r.tiene_admision_557 ? 'SI' : 'NO', r.obra_social || ''
+                ]);
+                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                ws['!cols'] = [
+                    { wch: 12 }, { wch: 8 }, { wch: 22 }, { wch: 28 }, { wch: 11 }, { wch: 10 },
+                    { wch: 12 }, { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 22 }
+                ];
+                return ws;
+            };
+
+            const dateTag = new Date().toISOString().slice(0, 10);
+
+            if (mode === 'all') {
+                const resumenRows = [
+                    ['Indicador (Internado & Piso)', 'Valor'],
+                    ['Período Filtro', admPeriodoFilter === 'todos' ? 'Todos' : admPeriodoFilter],
+                    ['Total Admisiones Clínicas (filtradas)', filteredAdmisiones557.length],
+                    ['Activos en Piso (Admisiones)', periodStats.activos_piso_557],
+                    ['Área Shock Room', periodStats.area_shock_room],
+                    ['Área Internado Piso Clínico', periodStats.area_internado],
+                    ['Área UCI', periodStats.area_uci],
+                    ['Reconsultas / Reingresos 72h', `${periodStats.reconsultas_72h_557} / ${periodStats.reingresos_72h_557}`],
+                    ['Traumatología en Internado (filtrados)', filteredTrauma.length],
+                    ['Interconsultas (filtradas)', filteredInter.length],
+                    ['Periodos Seguimiento Clínico', seguimientoData.length],
+                ];
+                const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+                wsResumen['!cols'] = [{ wch: 36 }, { wch: 18 }];
+                XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen KPIs');
+                XLSX.utils.book_append_sheet(wb, buildAdmisionesSheet(), 'Admisiones');
+                XLSX.utils.book_append_sheet(wb, buildSeguimientoSheet(), 'Seguimiento Piso');
+                XLSX.utils.book_append_sheet(wb, buildTraumaSheet(), 'Traumatologia');
+                XLSX.utils.book_append_sheet(wb, buildInterconsultasSheet(), 'Interconsultas');
+                XLSX.writeFile(wb, `guardia_internado_piso_completo_${dateTag}.xlsx`);
+                addToast?.('Excel completo (4 hojas + Resumen) descargado con éxito', 'success');
+                return;
+            }
+
+            if (subTab === 'admisiones_557') {
+                if (!filteredAdmisiones557.length) {
+                    addToast?.('No hay admisiones clínicas para exportar', 'warning');
+                    return;
+                }
+                XLSX.utils.book_append_sheet(wb, buildAdmisionesSheet(), 'Admisiones');
+                XLSX.writeFile(wb, `internado_admisiones_${dateTag}.xlsx`);
+            } else if (subTab === 'seguimiento') {
+                if (!seguimientoData.length) {
+                    addToast?.('No hay datos de seguimiento para exportar', 'warning');
+                    return;
+                }
+                XLSX.utils.book_append_sheet(wb, buildSeguimientoSheet(), 'Seguimiento Piso');
+                XLSX.writeFile(wb, `internado_seguimiento_piso_${dateTag}.xlsx`);
+            } else if (subTab === 'traumatologia') {
+                if (!filteredTrauma.length) {
+                    addToast?.('No hay registros de traumatología para exportar', 'warning');
+                    return;
+                }
+                XLSX.utils.book_append_sheet(wb, buildTraumaSheet(), 'Traumatologia');
+                XLSX.writeFile(wb, `internado_traumatologia_${dateTag}.xlsx`);
+            } else {
+                if (!filteredInter.length) {
+                    addToast?.('No hay interconsultas para exportar', 'warning');
+                    return;
+                }
+                XLSX.utils.book_append_sheet(wb, buildInterconsultasSheet(), 'Interconsultas');
+                XLSX.writeFile(wb, `internado_interconsultas_${dateTag}.xlsx`);
+            }
+
+            addToast?.('Archivo Excel (.xlsx) descargado con éxito', 'success');
+        } catch (err) {
+            console.error('Error exportando Excel en GuardiaInternadoPanel:', err);
+            addToast?.('Error al generar archivo Excel', 'error');
+        }
     };
 
     return (
@@ -570,6 +680,55 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             </span>
                         </button>
                     </div>
+                </div>
+
+                {/* Acciones de Exportación Excel */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        onClick={() => exportExcel('current')}
+                        title="Exportar la vista actual (con filtros aplicados) a Excel (.xlsx)"
+                        style={{
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid #059669',
+                            background: '#059669',
+                            color: '#FFFFFF',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 1px 2px rgba(5, 150, 105, 0.2)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <FileSpreadsheet size={15} />
+                        Exportar Excel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => exportExcel('all')}
+                        title="Descargar libro Excel completo con Admisiones, Seguimiento en Piso, Traumatología e Interconsultas"
+                        style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid #BFDBFE',
+                            background: '#EFF6FF',
+                            color: '#1E40AF',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <Download size={14} />
+                        Excel Completo (4 hojas)
+                    </button>
                 </div>
             </div>
 
