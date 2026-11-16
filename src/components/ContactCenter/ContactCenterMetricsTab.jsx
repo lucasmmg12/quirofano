@@ -1478,6 +1478,8 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             const queueWaitUnder5mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder5m / allQueueWaitTimes.length) * 100) : 100;
             const queueUnder15m = allQueueWaitTimes.filter(t => t <= 15).length;
             const queueWaitUnder15mPct = allQueueWaitTimes.length > 0 ? Math.round((queueUnder15m / allQueueWaitTimes.length) * 100) : 100;
+            const queueUnder30m = allQueueWaitTimes.filter(t => t <= 30).length;
+            const queueWaitUnder30mPct = allQueueWaitTimes.length > 0 ? Number(((queueUnder30m / allQueueWaitTimes.length) * 100).toFixed(1)) : 0;
 
             const agentFRTAvg = allAgentFRTTimes.length > 0
                 ? Number((allAgentFRTTimes.reduce((a, b) => a + b, 0) / allAgentFRTTimes.length).toFixed(1))
@@ -1760,6 +1762,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const prevWaitAvg = prevWaitTimes.length > 0
                     ? Number((prevWaitTimes.reduce((a, b) => a + b, 0) / prevWaitTimes.length).toFixed(1))
                     : 0;
+                const prevRespondedUnder30m = prevWaitTimes.filter(t => t <= 30).length;
                 const prevNoRespPct = prevConvs.length > 0
                     ? Number(((prevNoRespCount / prevConvs.length) * 100).toFixed(1))
                     : 0;
@@ -1770,7 +1773,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     totalIncoming: prevTotalIn,
                     uniquePatientsCount: prevPhones.size > 0 ? prevPhones.size : prevUniqueFromDaily,
                     agentFirstResponseAvgMin: prevWaitAvg,
-                    under30m: prevUnder30m,
+                    under30m: prevRespondedUnder30m,
                     over24h: prevOver24h,
                     turnosChat: prevTurnosChat,
                     noRespondeCount: prevNoRespCount,
@@ -1825,8 +1828,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 patientQuality: {
                     queueWaitAvgMin: queueWaitAvg,
                     queueWaitMedianMin: queueWaitMedian,
+                    queueUnder5mCount: queueUnder5m,
+                    queueUnder15mCount: queueUnder15m,
+                    queueUnder30mCount: queueUnder30m,
                     queueWaitUnder5mPct,
                     queueWaitUnder15mPct,
+                    queueWaitUnder30mPct,
                     totalQueuedCases: allQueueWaitTimes.length,
                     agentFRTAvgMin: agentFRTAvg,
                     agentFRTMedianMin: agentFRTMedian,
@@ -2167,13 +2174,14 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
 
         // Casos resueltos en < 30 minutos desde el histograma SLA real del mes (< 5 min + 5-30 min)
         const hist = metrics.patientQuality?.resolutionHistogram || [];
-        const under5mCount = Number(hist.find(h => h.range === '< 5 min')?.casos || 0);
-        const de5a30mCount = Number(hist.find(h => h.range === '5-30 min')?.casos || 0);
-        const liveUnder30m = under5mCount + de5a30mCount;
-        const activeResolved = Math.max(1, Number(metrics.activeResolvedCount || 0));
-        const under30Pct = metrics.activeResolvedCount > 0
-            ? Number(((liveUnder30m / activeResolved) * 100).toFixed(1))
-            : 0;
+        // Casos respondidos dentro de los 30 minutos (Primera respuesta humana <= 30m en horario operativo)
+        const respondedUnder5m = Number(metrics.patientQuality?.queueUnder5mCount || 0);
+        const respondedUnder15m = Number(metrics.patientQuality?.queueUnder15mCount || 0);
+        const responded5a15m = Math.max(0, respondedUnder15m - respondedUnder5m);
+        const liveUnder30m = Number(metrics.patientQuality?.queueUnder30mCount || 0);
+        const responded15a30m = Math.max(0, liveUnder30m - respondedUnder15m);
+        const totalQueuedCases = Number(metrics.patientQuality?.totalQueuedCases || 0);
+        const under30Pct = Number(metrics.patientQuality?.queueWaitUnder30mPct || 0);
 
         // Casos con demora > 1 día (cerrados por inactividad / expiración > 24hs en el mes)
         const liveOver24h = Number(metrics.patientQuality?.archivedOver24hCount ?? metrics.archivedOver24hCount ?? 0);
@@ -2222,7 +2230,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             },
             {
                 id: 'ind_3',
-                indicador: 'Casos resueltos en menos de 30 minutos',
+                indicador: 'Casos respondidos dentro de los 30 minutos',
                 unidad: 'Cantidad',
                 meta: 'Tendencia creciente',
                 prevVal: hasPrevWa ? prevMonthMetrics.under30m : null,
@@ -2230,7 +2238,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 formatType: 'integer',
                 goalDirection: 'up_is_better',
                 fallbackTendencia: liveUnder30m > 0 ? 'Mejora' : 'Estable',
-                comentario: `${liveUnder30m.toLocaleString('es-AR')} casos resueltos en <= 30 min (< 5m: ${under5mCount.toLocaleString('es-AR')} · 5-30m: ${de5a30mCount.toLocaleString('es-AR')}) sobre ${(metrics.activeResolvedCount || 0).toLocaleString('es-AR')} casos activos cerrados (${under30Pct}%).`
+                comentario: `${liveUnder30m.toLocaleString('es-AR')} casos respondidos en <= 30 min (<= 5m: ${respondedUnder5m.toLocaleString('es-AR')} · 5-15m: ${responded5a15m.toLocaleString('es-AR')} · 15-30m: ${responded15a30m.toLocaleString('es-AR')}) sobre ${totalQueuedCases.toLocaleString('es-AR')} casos atendidos por asesoras (${under30Pct}%).`
             },
             {
                 id: 'ind_4',
