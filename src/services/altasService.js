@@ -157,7 +157,8 @@ export async function fetchAltas({ fromDate, toDate, search } = {}) {
             }
             if (row.fecha_ingreso && row.fecha_ingreso >= '2026-10-01') {
                 const ctrlSi = ['si', 'sí', 's', '1', 'true'].includes((row.control_adm_finalizado || '').trim().toLowerCase());
-                return row.ficha_estado === 'entregada' || (ctrlSi && row.ficha_estado !== 'devuelta_a_recepcion');
+                // Si ya fue entregada por Recepción O ya tiene Control Adm finalizado ('Si') en SALUS, mostrarla siempre
+                return row.ficha_estado === 'entregada' || ctrlSi;
             }
             return true;
         });
