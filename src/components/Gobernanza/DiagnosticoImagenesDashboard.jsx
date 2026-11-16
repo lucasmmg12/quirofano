@@ -873,6 +873,8 @@ export default function DiagnosticoImagenesDashboard({
         let mamoGrupoMamografia = 0; // Sede San Luis Sur (Grupo Agenda = MAMOGRAFIA)
         let mamoGrupoMixto = 0;      // Sede Santa Fe (Grupo Agenda = DENSITOMETRIA Y MAMOGRAFIA, práctica Mamografía)
         let densitoGrupoMixto = 0;   // Sede Santa Fe (Grupo Agenda = DENSITOMETRIA Y MAMOGRAFIA, práctica Densitometría)
+        let mamoVisitasFisicas = 0;
+        let mamoUnilateralesX2 = 0;
 
         scopedData.agendas.forEach(r => {
             if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
@@ -885,6 +887,8 @@ export default function DiagnosticoImagenesDashboard({
             const centro = (r.Centro || '').toUpperCase();
 
             if (r.Modalidad === 'MAMOGRAFIA') {
+                mamoVisitasFisicas += Number(r.VisitasFisicas ?? cant);
+                mamoUnilateralesX2 += Number(r.UnilateralesFacturadasX2 || 0);
                 if (grp === 'MAMOGRAFIA' || (!grp && centro.includes('SAN LUIS'))) {
                     mamoGrupoMamografia += cant;
                 } else {
@@ -904,6 +908,8 @@ export default function DiagnosticoImagenesDashboard({
             mamoGrupoMamografia,
             mamoGrupoMixto,
             densitoGrupoMixto,
+            mamoVisitasFisicas,
+            mamoUnilateralesX2,
             totalMamoPura,
             totalDensitoPura,
             totalGrupoMixtoSalus,
@@ -2262,6 +2268,9 @@ export default function DiagnosticoImagenesDashboard({
                             <div style={{ color: '#9D174D', fontWeight: 700 }}>Mamografía Pura ({mamoDensitoBreakdown.totalMamoPura.toLocaleString('es-AR')})</div>
                             <div style={{ color: '#64748B', fontSize: '0.68rem' }}>
                                 S. Fe: <strong>{mamoDensitoBreakdown.mamoGrupoMixto.toLocaleString('es-AR')}</strong> + S. Luis Sur: <strong>{mamoDensitoBreakdown.mamoGrupoMamografia.toLocaleString('es-AR')}</strong>
+                                {mamoDensitoBreakdown.mamoUnilateralesX2 > 0 && (
+                                    <span style={{ color: '#BE185D', fontWeight: 700 }}> · (incl. +{mamoDensitoBreakdown.mamoUnilateralesX2} por Mamografía Unilateral ×2 en OS no-Provincia)</span>
+                                )}
                             </div>
                         </div>
 

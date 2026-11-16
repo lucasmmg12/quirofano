@@ -125,7 +125,17 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                     ELSE 'Ambulatorio'
                 END AS Ambito,
                 ISNULL(i.EstaInformado, 0) AS EstaInformado,
-                CASE WHEN i.idVisita IS NULL THEN 0 ELSE 1 END AS TienePeticionLIS
+                CASE WHEN i.idVisita IS NULL THEN 0 ELSE 1 END AS TienePeticionLIS,
+                CASE
+                    WHEN v.[Grupo Agenda] IN ('MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA')
+                         AND UPPER(ISNULL(v.[Tipo Visita], '')) LIKE '%MAMOGRAFIA UNILATERAL%'
+                         AND LTRIM(ISNULL(v.Cliente, '')) LIKE '[0-9]%'
+                         AND LTRIM(ISNULL(v.Cliente, '')) NOT LIKE '042%'
+                         AND LTRIM(ISNULL(v.Cliente, '')) NOT LIKE '001%'
+                         AND UPPER(ISNULL(v.Cliente, '')) NOT LIKE '%PROVINCIA%'
+                    THEN 2
+                    ELSE 1
+                END AS FactorCantidad
             INTO #TempDxI
             FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
             LEFT JOIN #InformesVisitas i ON i.idVisita = v.idVisita
@@ -182,43 +192,46 @@ export async function getDxIAnalytics({ fechaDesde = '2022-01-01', fechaHasta, m
                 END;
 
             -- Set 0: Agendas con Totales, Ambito, Estado de Asistencia, TipoFinanciador e Informe (con PeriodoMes para filtrado en caché)
+            -- Incluye FactorCantidad (x2 para Mamografía Unilateral en Obras Sociales excepto Provincia y Particular)
             SELECT PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador,
-                   COUNT(*) AS Cantidad,
-                   SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 1 THEN 1 ELSE 0 END) AS Informados,
-                   SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 0 THEN 1 ELSE 0 END) AS PendientesInforme
+                   SUM(FactorCantidad) AS Cantidad,
+                   COUNT(*) AS VisitasFisicas,
+                   SUM(CASE WHEN FactorCantidad = 2 THEN 1 ELSE 0 END) AS UnilateralesFacturadasX2,
+                   SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 1 THEN FactorCantidad ELSE 0 END) AS Informados,
+                   SUM(CASE WHEN EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno') AND EstaInformado = 0 THEN FactorCantidad ELSE 0 END) AS PendientesInforme
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, GrupoAgenda, AgendaSalus, Agenda, Centro, Ambito, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador;
 
             -- Set 1: Prestadores que la Realizan (por PeriodoMes, Modalidad y TipoFinanciador)
-            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorRealiza, EstadoAsistencia, TipoFinanciador, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorRealiza, EstadoAsistencia, TipoFinanciador, SUM(FactorCantidad) AS Cantidad
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, Responsable, EstadoAsistencia, TipoFinanciador;
 
             -- Set 2: Prestadores que la Solicitan (por PeriodoMes, Modalidad y TipoFinanciador)
-            SELECT PeriodoMes, Modalidad, Solicitante AS PrestadorSolicita, EstadoAsistencia, TipoFinanciador, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, Solicitante AS PrestadorSolicita, EstadoAsistencia, TipoFinanciador, SUM(FactorCantidad) AS Cantidad
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, Solicitante, EstadoAsistencia, TipoFinanciador;
 
             -- Set 3: Prestadores que la Informan (solo estudios efectivamente realizados y firmados/informados)
-            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorInforma, TipoFinanciador, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, Responsable AS PrestadorInforma, TipoFinanciador, SUM(FactorCantidad) AS Cantidad
             FROM #TempDxI
             WHERE EstaInformado = 1
               AND EstadoAsistencia IN ('Presente', 'Internado', 'Urgencia', 'Sobreturno')
             GROUP BY PeriodoMes, Modalidad, Responsable, TipoFinanciador;
 
             -- Set 4: Obras Sociales (por PeriodoMes, Modalidad y TipoFinanciador)
-            SELECT PeriodoMes, Modalidad, ObraSocial, TipoFinanciador, EstadoAsistencia, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, ObraSocial, TipoFinanciador, EstadoAsistencia, SUM(FactorCantidad) AS Cantidad
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, ObraSocial, TipoFinanciador, EstadoAsistencia;
 
             -- Set 5: Evolución Temporal (Día, Mes, Modalidad, Ámbito, Asistencia, TipoFinanciador)
-            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, TipoFinanciador, COUNT(*) AS Cantidad
+            SELECT FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, TipoFinanciador, SUM(FactorCantidad) AS Cantidad
             FROM #TempDxI
             GROUP BY FechaDia, PeriodoMes, Modalidad, Ambito, EstadoAsistencia, TipoFinanciador
             ORDER BY FechaDia ASC;
 
             -- Set 6: Desglose Agregado por Estado de Asistencia (con PeriodoMes y TipoFinanciador)
-            SELECT PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador, COUNT(*) AS Cantidad
+            SELECT PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador, SUM(FactorCantidad) AS Cantidad
             FROM #TempDxI
             GROUP BY PeriodoMes, Modalidad, EstadoAsistencia, AsistenciaOriginal, TipoFinanciador
             ORDER BY Cantidad DESC;
@@ -442,6 +455,16 @@ export async function getDxICasosNominales({
                     ISNULL(i.EstaInformado, 0) AS informado,
                     i.FechaInformadoStr AS fecha_informado,
                     ISNULL(i.HabitacionLIS, '') AS habitacion,
+                    CASE
+                        WHEN v.[Grupo Agenda] IN ('MAMOGRAFIA', 'DENSITOMETRIA Y MAMOGRAFIA')
+                             AND UPPER(ISNULL(v.[Tipo Visita], '')) LIKE '%MAMOGRAFIA UNILATERAL%'
+                             AND LTRIM(ISNULL(v.Cliente, '')) LIKE '[0-9]%'
+                             AND LTRIM(ISNULL(v.Cliente, '')) NOT LIKE '042%'
+                             AND LTRIM(ISNULL(v.Cliente, '')) NOT LIKE '001%'
+                             AND UPPER(ISNULL(v.Cliente, '')) NOT LIKE '%PROVINCIA%'
+                        THEN 2
+                        ELSE 1
+                    END AS factor_facturacion,
                     v.[Fecha Visita] AS raw_fecha
                 FROM [SALUS].[dbo].[VLISE_Visitas] v WITH (NOLOCK)
                 LEFT JOIN #InformesCasos i ON i.idVisita = v.idVisita
