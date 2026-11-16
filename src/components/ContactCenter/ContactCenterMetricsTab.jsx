@@ -642,7 +642,23 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 pageResults.forEach(chunk => filteredConvs.push(...chunk));
             }
 
-            // Consolidación de pacientes únicos y sesiones
+            // Consolidación de sesiones reales y pacientes únicos desde mensajes entrantes (gap >= 4h = nuevo contacto)
+            let sessionStats = null;
+            try {
+                const rpcStart = filterStart ? filterStart.toISOString() : new Date('2026-03-01T00:00:00-03:00').toISOString();
+                const rpcEnd = filterEnd ? filterEnd.toISOString() : new Date().toISOString();
+                const { data: rpcData, error: rpcErr } = await supabase.rpc('get_contact_center_session_counts', {
+                    p_start: rpcStart,
+                    p_end: rpcEnd,
+                    p_gap_hours: 4
+                });
+                if (!rpcErr && Array.isArray(rpcData) && rpcData[0]) {
+                    sessionStats = rpcData[0];
+                }
+            } catch (sessErr) {
+                console.warn('[metrics] Fallback a contact_center_conversations en conteo de sesiones:', sessErr);
+            }
+
             const phoneConvCounts = {};
             const convPhones = new Set();
             filteredConvs.forEach(c => {
@@ -653,9 +669,15 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             });
 
-            const uniquePatientsCount = convPhones.size > 0 ? convPhones.size : uniquePatientsFromDaily;
-            const multiSessionPatientsCount = Object.values(phoneConvCounts).filter(cnt => cnt > 1).length;
-            totalConversationsCount = filteredConvs.length;
+            const uniquePatientsCount = Number(sessionStats?.unique_patients || 0) > 0
+                ? Number(sessionStats.unique_patients)
+                : (convPhones.size > 0 ? convPhones.size : uniquePatientsFromDaily);
+            const multiSessionPatientsCount = sessionStats
+                ? Number(sessionStats.multi_session_patients || 0)
+                : Object.values(phoneConvCounts).filter(cnt => cnt > 1).length;
+            totalConversationsCount = Number(sessionStats?.total_sessions || 0) > 0
+                ? Number(sessionStats.total_sessions)
+                : filteredConvs.length;
 
             const avgConversationsPerPatient = uniquePatientsCount > 0 
                 ? Number((totalConversationsCount / uniquePatientsCount).toFixed(2)) 
@@ -1767,11 +1789,28 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     ? Number(((prevNoRespCount / prevConvs.length) * 100).toFixed(1))
                     : 0;
 
+                let prevSessionStats = null;
+                try {
+                    const { data: prevRpc } = await supabase.rpc('get_contact_center_session_counts', {
+                        p_start: prevDateStart.toISOString(),
+                        p_end: prevDateEnd.toISOString(),
+                        p_gap_hours: 4
+                    });
+                    if (Array.isArray(prevRpc) && prevRpc[0]) prevSessionStats = prevRpc[0];
+                } catch (_) {}
+
+                const prevTotalSessions = Number(prevSessionStats?.total_sessions || 0) > 0
+                    ? Number(prevSessionStats.total_sessions)
+                    : prevConvs.length;
+                const prevUniquePatients = Number(prevSessionStats?.unique_patients || 0) > 0
+                    ? Number(prevSessionStats.unique_patients)
+                    : (prevPhones.size > 0 ? prevPhones.size : prevUniqueFromDaily);
+
                 setPrevMonthMetrics({
-                    hasData: prevConvs.length > 0 || prevTotalIn > 0,
-                    totalConversations: prevConvs.length,
+                    hasData: prevTotalSessions > 0 || prevConvs.length > 0 || prevTotalIn > 0,
+                    totalConversations: prevTotalSessions,
                     totalIncoming: prevTotalIn,
-                    uniquePatientsCount: prevPhones.size > 0 ? prevPhones.size : prevUniqueFromDaily,
+                    uniquePatientsCount: prevUniquePatients,
                     agentFirstResponseAvgMin: prevWaitAvg,
                     under30m: prevRespondedUnder30m,
                     over24h: prevOver24h,
@@ -2214,7 +2253,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 formatType: 'integer',
                 goalDirection: 'up_is_better',
                 fallbackTendencia: 'Estable',
-                comentario: `WhatsApp: ${totalConvs.toLocaleString('es-AR')} conversaciones (${(metrics.uniquePatientsCount || 0).toLocaleString('es-AR')} pacientes únicos · ${(metrics.totalIncoming || 0).toLocaleString('es-AR')} msgs entrantes). Autogestión Bot: ${metrics.botConversationAutomationPct || 0}% · Asesoras: ${metrics.humanConversationPct || 0}%.`
+                comentario: `WhatsApp: ${totalConvs.toLocaleString('es-AR')} contactos/sesiones (${(metrics.uniquePatientsCount || 0).toLocaleString('es-AR')} pacientes únicos · ${(metrics.multiSessionPatientsCount || 0).toLocaleString('es-AR')} recurrentes ≥2 veces · ${(metrics.totalIncoming || 0).toLocaleString('es-AR')} msgs entrantes). Autogestión Bot: ${metrics.botConversationAutomationPct || 0}% · Asesoras: ${metrics.humanConversationPct || 0}%.`
             },
             {
                 id: 'ind_2',
