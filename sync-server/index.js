@@ -3596,6 +3596,15 @@ async function performFullSync(fastSync = false) {
     try {
         const getDb = async () => await getPool();
 
+        // Prioridad 0: Turnos Activos (Chatbot Contact Center) y Altas Administrativas (tardan ~4s y son tiempo real)
+        try {
+            console.log('🔄 [Turnos Activos & Online] Sincronizando prioritariamente turnos próximos con Supabase...');
+            results.turnosActivos = await syncTurnosActivos(await getDb(), supabase);
+        } catch (err) {
+            console.error('❌ Error en sincronización prioritaria de turnos activos:', err.message);
+            results.turnosActivos = { error: err.message };
+        }
+
         try {
             results.cirugias = await syncCirugias(await getDb());
         } catch (err) {
@@ -4585,9 +4594,12 @@ app.listen(PORT, '0.0.0.0', () => {
     GET /api/salus/health                            â•‘
 â•šâ• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• â• 
     `);
-    getPool().then(p => {
-        console.log('✅ Conexión inicial lista. Configurando sincronizadores automáticos de Contact Center y SALUS...');
-        
+    getPool()
+        .then(() => console.log('✅ Conexión inicial a SALUS lista.'))
+        .catch(err => console.warn('⚠️ Conexión inicial a SALUS diferida (se reintentará en cada ciclo):', err.message));
+
+    console.log('⚙️ Configurando sincronizadores automáticos de Contact Center y SALUS...');
+    {
         // 1. TURNOS ONLINE (Cada 10 min)
         setTimeout(async () => {
             try {
@@ -4612,27 +4624,24 @@ app.listen(PORT, '0.0.0.0', () => {
             }
         }, 10 * 60 * 1000);
 
-        // 1b. TURNOS ACTIVOS Y PRÓXIMAS VISITAS (Cada 5 min)
-        setTimeout(async () => {
+        // 1b. TURNOS ACTIVOS Y PRÓXIMAS VISITAS (Cada 2 min, independiente de syncInProgress)
+        let turnosActivosAutoRunning = false;
+        const runTurnosActivosCycle = async (label) => {
+            if (turnosActivosAutoRunning) return;
+            turnosActivosAutoRunning = true;
             try {
-                console.log('⏰ [Turnos Activos Auto] Sincronización inicial de visitas próximas...');
+                console.log(`⏰ [Turnos Activos Auto] ${label}...`);
                 const poolInst = await getPool();
                 await syncTurnosActivos(poolInst, supabase);
             } catch (e) {
-                console.warn('⚠️ [Turnos Activos Auto] Error en sincronización inicial:', e.message);
+                console.warn('⚠️ [Turnos Activos Auto] Error en ciclo:', e.message);
+            } finally {
+                turnosActivosAutoRunning = false;
             }
-        }, 10000);
+        };
 
-        setInterval(async () => {
-            if (syncInProgress) return;
-            try {
-                console.log('⏰ [Turnos Activos Auto] Sincronización periódica (cada 5 min)...');
-                const poolInst = await getPool();
-                await syncTurnosActivos(poolInst, supabase);
-            } catch (e) {
-                console.warn('⚠️ [Turnos Activos Auto] Error en ciclo periódico:', e.message);
-            }
-        }, 5 * 60 * 1000);
+        setTimeout(() => runTurnosActivosCycle('Sincronización inicial de visitas próximas'), 10000);
+        setInterval(() => runTurnosActivosCycle('Sincronización periódica (cada 2 min)'), 2 * 60 * 1000);
 
         // 1b-2. ALTAS ADMINISTRATIVAS / FICHAS (Cada 20 min entre 06:00 y 22:00)
         // Garantiza que recepción encuentre las fichas cargadas al iniciar la jornada (7:00)
@@ -4913,7 +4922,7 @@ app.listen(PORT, '0.0.0.0', () => {
         }
         setTimeout(() => runGobernanzaAutoCycle('Sincronización inicial de Gobernanza'), 90000);
         setInterval(() => runGobernanzaAutoCycle('Sincronización periódica de Gobernanza (cada 45 min)'), 45 * 60 * 1000);
-    }).catch(err => console.warn('⚠️ Conexión inicial fallida:', err.message));
+    }
 });
 
 
