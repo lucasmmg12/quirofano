@@ -8,9 +8,20 @@ import {
     RefreshCw, CheckCircle2, AlertTriangle, Edit3, RotateCcw,
     Phone, Mail, Shield, Check, X, Loader2, ChevronDown, ChevronUp,
     MapPin, MapPinOff, Globe, Monitor, Activity, Clock, FileDown, Copy, Printer, ExternalLink,
-    Camera, Inbox, CheckCircle, XCircle, Database
+    Camera, Inbox, CheckCircle, XCircle, Database, Layers, Plus, Trash2
 } from 'lucide-react';
 import SalusSyncArchitectureTab from './SalusSyncArchitectureTab.jsx';
+import RoleModuleSelector from './RoleModuleSelector.jsx';
+import {
+    MODULE_TREE,
+    ALL_SUBMODULE_IDS,
+    PRESET_ROLES,
+    getPresetRoleMeta,
+    fetchCustomRolesCatalog,
+    saveCustomRolesCatalog,
+    fetchAllUserModulePreferences,
+    saveUserModulePermissions,
+} from '../config/rolesCatalog';
 import {
     adminListUsers,
     adminSaveUser,
@@ -29,19 +40,10 @@ import {
 import { logAction, fetchUserCybersecurityProfile } from '../services/auditService';
 import { requestAndRecordGeolocation, subscribeTelemetry } from '../lib/activityTracker';
 
-const ROLE_OPTIONS = [
-    { value: 'admin', label: 'Administrador Total', color: '#1E40AF', bg: '#DBEAFE' },
-    { value: 'operador', label: 'Operador / Admisión / Quirófano', color: '#334155', bg: '#F1F5F9' },
-    { value: 'contact_center', label: 'Agente Contact Center', color: '#047857', bg: '#D1FAE5' },
-    { value: 'gobernanza', label: 'Gobernanza de Datos', color: '#6D28D9', bg: '#EDE9FE' },
-    { value: 'gobernanza_dashboard', label: 'Gobernanza (Solo Dashboard)', color: '#7C3AED', bg: '#F3E8FF' },
-    { value: 'uci', label: 'Indicadores UCI', color: '#0369A1', bg: '#E0F2FE' },
-    { value: 'activos', label: 'Gestión de Activos', color: '#B45309', bg: '#FEF3C7' },
-    { value: 'laboratorio', label: 'Portal Externo Laboratorio', color: '#64748B', bg: '#F8FAFC' },
-];
+const ROLE_OPTIONS = PRESET_ROLES;
 
 function getRoleMeta(rol) {
-    return ROLE_OPTIONS.find(r => r.value === rol) || ROLE_OPTIONS[1];
+    return getPresetRoleMeta(rol);
 }
 
 function formatDurationMinutes(mins) {
@@ -142,6 +144,14 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
     const [uploadingEditAvatar, setUploadingEditAvatar] = useState(false);
     const editAvatarInputRef = useRef(null);
 
+    // Roles Personalizados y Permisos por Usuario
+    const [customRoles, setCustomRoles] = useState([]);
+    const [userModulePrefs, setUserModulePrefs] = useState({ byUserId: {}, byUsuario: {} });
+    const [editingCustomRole, setEditingCustomRole] = useState(null);
+    const [savingCustomRole, setSavingCustomRole] = useState(false);
+    const [inlineRoleName, setInlineRoleName] = useState('');
+    const [showSaveInlineRole, setShowSaveInlineRole] = useState(false);
+
     // Modal Aprobar Solicitud de Alta
     const [approvingReq, setApprovingReq] = useState(null);
     const [processingReqId, setProcessingReqId] = useState(null);
@@ -161,16 +171,20 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
     const loadUsers = useCallback(async () => {
         try {
             setLoading(true);
-            const [usersData, reqsData, exemptData] = await Promise.all([
+            const [usersData, reqsData, exemptData, customRolesData, modulePrefsData] = await Promise.all([
                 adminListUsers(),
                 adminListAccessRequests().catch(() => []),
                 getGeoExemptUsers().catch(() => DEFAULT_GEO_EXEMPT_USERS),
+                fetchCustomRolesCatalog().catch(() => []),
+                fetchAllUserModulePreferences().catch(() => ({ byUserId: {}, byUsuario: {} })),
             ]);
             setUsers(usersData);
             setAccessRequests(reqsData || []);
             if (Array.isArray(exemptData)) {
                 setGeoExemptUsers(exemptData);
             }
+            setCustomRoles(Array.isArray(customRolesData) ? customRolesData : []);
+            setUserModulePrefs(modulePrefsData || { byUserId: {}, byUsuario: {} });
         } catch (err) {
             console.error('[UserSecurityAdminPanel] Error cargando usuarios:', err);
             addToast?.('Error al cargar usuarios: ' + err.message, 'error');
@@ -281,6 +295,9 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
     }, [users, search, roleFilter, statusFilter, geoExemptUsers]);
 
     const handleOpenCreate = () => {
+        const defaultMods = getPresetRoleMeta('operador').defaultModules || [];
+        setShowSaveInlineRole(false);
+        setInlineRoleName('');
         setEditingUser({
             id: null,
             usuario: '',
@@ -289,6 +306,8 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
             email: '',
             telefono_whatsapp: '',
             rol: 'operador',
+            selected_custom_role_id: '',
+            selected_modules: [...defaultMods],
             password: '123456',
             activo: true,
             must_change_password: true,
@@ -302,6 +321,14 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
     };
 
     const handleOpenEdit = (u) => {
+        const baseRol = u.rol || 'operador';
+        const existingPrefs =
+            userModulePrefs.byUserId?.[u.id] ||
+            userModulePrefs.byUsuario?.[(u.usuario || '').toLowerCase().trim()] ||
+            getPresetRoleMeta(baseRol).defaultModules ||
+            [];
+        setShowSaveInlineRole(false);
+        setInlineRoleName('');
         setEditingUser({
             id: u.id,
             usuario: u.usuario || '',
@@ -309,7 +336,9 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
             iniciales: u.iniciales || '',
             email: u.email || `${u.usuario}@sanatorioargentino.com.ar`,
             telefono_whatsapp: normalizeLegacyPhoneTo10Digits(u.telefono_whatsapp || ''),
-            rol: u.rol || 'operador',
+            rol: baseRol,
+            selected_custom_role_id: '',
+            selected_modules: [...existingPrefs],
             password: '',
             activo: Boolean(u.activo),
             must_change_password: Boolean(u.must_change_password),
@@ -381,12 +410,23 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
         }
         try {
             setSavingUser(true);
-            await adminSaveUser({
+            const savedUserId = await adminSaveUser({
                 ...editingUser,
                 must_change_password: Boolean(editingUser.must_change_password),
                 mfa_enabled: Boolean(editingUser.mfa_enabled),
                 activo: Boolean(editingUser.activo),
             });
+
+            // Guardar los módulos y submódulos asignados para este usuario
+            const targetUserId = savedUserId || editingUser.id;
+            if (targetUserId && Array.isArray(editingUser.selected_modules)) {
+                await saveUserModulePermissions({
+                    userId: targetUserId,
+                    usuario: editingUser.usuario,
+                    modules: editingUser.selected_modules,
+                });
+            }
+
             if (isCurrentAdmin && editingUser.geo_exempt !== undefined) {
                 const updatedExempt = await setUserGeoExempt(
                     editingUser.usuario,
@@ -399,6 +439,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                 admin: currentUser?.usuario,
                 target_usuario: editingUser.usuario,
                 rol: editingUser.rol,
+                modulos_count: editingUser.selected_modules?.length || 0,
                 must_change_password: Boolean(editingUser.must_change_password),
                 mfa_enabled: Boolean(editingUser.mfa_enabled),
                 geo_exempt: Boolean(editingUser.geo_exempt),
@@ -419,11 +460,90 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
         }
     };
 
+    // Guardar un nuevo rol personalizado directo desde el modal de usuario
+    const handleSaveInlineCustomRole = async () => {
+        const name = inlineRoleName.trim();
+        if (!name) {
+            addToast?.('Ingresá un nombre para el rol personalizado', 'warning');
+            return;
+        }
+        try {
+            setSavingCustomRole(true);
+            const newRole = {
+                id: 'role_' + Date.now(),
+                name,
+                description: `Rol personalizado (${editingUser?.selected_modules?.length || 0} submódulos)`,
+                color: '#0F766E',
+                bg: '#CCFBF1',
+                modules: [...(editingUser?.selected_modules || [])],
+                createdAt: new Date().toISOString(),
+            };
+            const nextList = [...customRoles, newRole];
+            await saveCustomRolesCatalog(nextList);
+            setCustomRoles(nextList);
+            setEditingUser(prev => prev ? ({ ...prev, rol: 'personalizado', selected_custom_role_id: newRole.id }) : prev);
+            setShowSaveInlineRole(false);
+            setInlineRoleName('');
+            addToast?.(`✅ Rol personalizado "${name}" guardado para futuros usuarios`, 'success');
+        } catch (err) {
+            addToast?.('Error guardando rol personalizado: ' + err.message, 'error');
+        } finally {
+            setSavingCustomRole(false);
+        }
+    };
+
+    const handleSaveCustomRoleModal = async (e) => {
+        e.preventDefault();
+        if (!editingCustomRole?.name?.trim()) {
+            addToast?.('El nombre del rol es obligatorio', 'error');
+            return;
+        }
+        try {
+            setSavingCustomRole(true);
+            const cleanRole = {
+                id: editingCustomRole.id || ('role_' + Date.now()),
+                name: editingCustomRole.name.trim(),
+                description: (editingCustomRole.description || '').trim(),
+                color: editingCustomRole.color || '#0F766E',
+                bg: editingCustomRole.bg || '#CCFBF1',
+                modules: Array.from(new Set(editingCustomRole.modules || [])),
+                updatedAt: new Date().toISOString(),
+            };
+            const exists = customRoles.some(r => r.id === cleanRole.id);
+            const nextList = exists
+                ? customRoles.map(r => r.id === cleanRole.id ? cleanRole : r)
+                : [...customRoles, cleanRole];
+            await saveCustomRolesCatalog(nextList);
+            setCustomRoles(nextList);
+            setEditingCustomRole(null);
+            addToast?.(`✅ Rol "${cleanRole.name}" guardado correctamente`, 'success');
+        } catch (err) {
+            addToast?.('Error guardando rol: ' + err.message, 'error');
+        } finally {
+            setSavingCustomRole(false);
+        }
+    };
+
+    const handleDeleteCustomRole = async (roleObj) => {
+        if (!window.confirm(`¿Eliminar el rol personalizado "${roleObj.name}"? (Los usuarios ya creados conservarán sus módulos asignados)`)) return;
+        try {
+            const nextList = customRoles.filter(r => r.id !== roleObj.id);
+            await saveCustomRolesCatalog(nextList);
+            setCustomRoles(nextList);
+            addToast?.(`Rol "${roleObj.name}" eliminado`, 'info');
+        } catch (err) {
+            addToast?.('Error eliminando rol: ' + err.message, 'error');
+        }
+    };
+
     const handleOpenApproveModal = (reqItem) => {
+        const initRol = reqItem.rol_solicitado === 'admin' ? 'operador' : (reqItem.rol_solicitado || 'operador');
         setApprovingReq({
             ...reqItem,
             usuario: reqItem.usuario_sugerido || '',
-            rol: reqItem.rol_solicitado === 'admin' ? 'operador' : (reqItem.rol_solicitado || 'operador'),
+            rol: initRol,
+            selected_custom_role_id: '',
+            selected_modules: [...(getPresetRoleMeta(initRol).defaultModules || [])],
             password: '123456',
             must_change_password: true,
             mfa_enabled: true,
@@ -442,7 +562,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
         }
         try {
             setProcessingReqId(approvingReq.id);
-            await adminApproveAccessRequest(
+            const result = await adminApproveAccessRequest(
                 approvingReq.id,
                 {
                     usuario: approvingReq.usuario,
@@ -462,6 +582,13 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                 },
                 currentUser?.usuario || 'admin'
             );
+            if (result?.newUserId && Array.isArray(approvingReq.selected_modules)) {
+                await saveUserModulePermissions({
+                    userId: result.newUserId,
+                    usuario: approvingReq.usuario,
+                    modules: approvingReq.selected_modules,
+                });
+            }
             await logAction('admin_approve_user_request', {
                 admin: currentUser?.usuario,
                 target_usuario: approvingReq.usuario,
@@ -702,6 +829,28 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                 </button>
                 <button
                     type="button"
+                    onClick={() => setActiveTab('roles')}
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '8px',
+                        padding: '10px 18px', borderRadius: '10px 10px 0 0',
+                        border: 'none', cursor: 'pointer',
+                        background: activeTab === 'roles' ? '#1E4078' : 'transparent',
+                        color: activeTab === 'roles' ? '#FFFFFF' : '#475569',
+                        fontSize: '0.84rem', fontWeight: 700, transition: 'all 0.15s',
+                    }}
+                >
+                    <Layers size={16} />
+                    <span>Roles y Permisos</span>
+                    <span style={{
+                        padding: '2px 8px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 800,
+                        background: activeTab === 'roles' ? 'rgba(255,255,255,0.2)' : '#CCFBF1',
+                        color: activeTab === 'roles' ? '#FFFFFF' : '#0F766E',
+                    }}>
+                        {customRoles.length} pers.
+                    </span>
+                </button>
+                <button
+                    type="button"
                     onClick={() => setActiveTab('salus_sync')}
                     style={{
                         display: 'inline-flex', alignItems: 'center', gap: '8px',
@@ -721,8 +870,159 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                 <SalusSyncArchitectureTab addToast={addToast} currentUser={currentUser} />
             )}
 
+            {/* ================================================================= */}
+            {/* PESTAÑA: ROLES PREDETERMINADOS Y ROLES PERSONALIZADOS             */}
+            {/* ================================================================= */}
+            {activeTab === 'roles' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    {/* Roles Personalizados Creados */}
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
+                        padding: '18px 22px', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Roles Personalizados (A medida por Módulos y Submódulos)
+                                </h3>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                                    Creá perfiles reutilizables eligiendo exactamente qué módulos y submódulos pueden ver los usuarios asignados.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditingCustomRole({
+                                    id: null,
+                                    name: '',
+                                    description: '',
+                                    color: '#0F766E',
+                                    bg: '#CCFBF1',
+                                    modules: ['manual', 'config'],
+                                })}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '9px 16px', borderRadius: '9px', border: 'none',
+                                    background: '#0F766E', color: '#FFFFFF', fontSize: '0.8rem',
+                                    fontWeight: 700, cursor: 'pointer',
+                                }}
+                            >
+                                <Plus size={15} /> Crear Rol Personalizado
+                            </button>
+                        </div>
+
+                        {customRoles.length === 0 ? (
+                            <div style={{
+                                padding: '26px', textAlign: 'center', borderRadius: '10px',
+                                border: '1px dashed #CBD5E1', background: '#F8FAFC', color: '#64748B', fontSize: '0.82rem',
+                            }}>
+                                Todavía no creaste roles personalizados. Hacé clic en <strong>“Crear Rol Personalizado”</strong> para armar uno eligiendo módulos y submódulos.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '12px' }}>
+                                {customRoles.map(role => (
+                                    <div key={role.id} style={{
+                                        border: '1px solid #E2E8F0', borderRadius: '10px', padding: '14px',
+                                        background: '#FFFFFF', display: 'flex', flexDirection: 'column', gap: '8px',
+                                        borderLeft: `4px solid ${role.color || '#0F766E'}`,
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0F172A' }}>{role.name}</div>
+                                                <div style={{ fontSize: '0.73rem', color: '#64748B', marginTop: '2px' }}>
+                                                    {role.description || 'Perfil personalizado por módulos y submódulos'}
+                                                </div>
+                                            </div>
+                                            <span style={{
+                                                padding: '2px 8px', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 800,
+                                                background: role.bg || '#CCFBF1', color: role.color || '#0F766E', whiteSpace: 'nowrap',
+                                            }}>
+                                                {(role.modules || []).length} submód.
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                                            {MODULE_TREE.map(group => {
+                                                const count = group.items.filter(i => (role.modules || []).includes(i.id)).length;
+                                                if (count === 0) return null;
+                                                return (
+                                                    <span key={group.id} style={{
+                                                        fontSize: '0.67rem', fontWeight: 700, padding: '2px 7px',
+                                                        borderRadius: '6px', background: '#F1F5F9', color: '#334155',
+                                                    }}>
+                                                        {group.label}: {count}/{group.items.length}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingCustomRole({ ...role })}
+                                                style={{
+                                                    padding: '5px 10px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                    background: '#FFFFFF', color: '#1E4078', fontSize: '0.74rem', fontWeight: 700,
+                                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                }}
+                                            >
+                                                <Edit3 size={12} /> Editar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteCustomRole(role)}
+                                                style={{
+                                                    padding: '5px 10px', borderRadius: '6px', border: '1px solid #FECACA',
+                                                    background: '#FEF2F2', color: '#DC2626', fontSize: '0.74rem', fontWeight: 700,
+                                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                }}
+                                            >
+                                                <Trash2 size={12} /> Eliminar
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Roles Predeterminados del Sistema */}
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
+                        padding: '18px 22px', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+                    }}>
+                        <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                            Roles Predeterminados del Sistema
+                        </h3>
+                        <p style={{ margin: '0 0 14px', fontSize: '0.78rem', color: '#64748B' }}>
+                            Roles base con accesos predefinidos. Al asignarlos a un usuario podés usarlos tal cual o ajustar sus submódulos en el momento.
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                            {PRESET_ROLES.filter(r => r.value !== 'personalizado').map(role => (
+                                <div key={role.value} style={{
+                                    border: '1px solid #E2E8F0', borderRadius: '10px', padding: '14px',
+                                    background: '#F8FAFC', borderLeft: `4px solid ${role.color}`,
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                                        <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0F172A' }}>{role.label}</span>
+                                        <span style={{
+                                            padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 800,
+                                            background: role.bg, color: role.color,
+                                        }}>
+                                            {role.isFullAccess ? 'Acceso Total' : `${role.defaultModules.length} submód.`}
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: 0, fontSize: '0.74rem', color: '#475569', lineHeight: 1.4 }}>
+                                        {role.description}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* BARRA DE FILTROS Y BÚSQUEDA */}
-            {activeTab !== 'salus_sync' && (
+            {activeTab !== 'salus_sync' && activeTab !== 'roles' && (
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '12px',
@@ -1737,19 +2037,51 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.6fr', gap: '12px', marginBottom: '14px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.6fr', gap: '12px', marginBottom: '12px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#475569', marginBottom: '4px', textTransform: 'uppercase' }}>
-                                        Rol Asignado (Podés ajustarlo antes de aprobar)
+                                        Rol Asignado (Predeterminado o Personalizado)
                                     </label>
                                     <select
-                                        value={approvingReq.rol}
-                                        onChange={e => setApprovingReq(prev => ({ ...prev, rol: e.target.value }))}
+                                        value={approvingReq.selected_custom_role_id ? `custom:${approvingReq.selected_custom_role_id}` : approvingReq.rol}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val.startsWith('custom:')) {
+                                                const cid = val.replace('custom:', '');
+                                                const found = customRoles.find(r => r.id === cid);
+                                                setApprovingReq(prev => ({
+                                                    ...prev,
+                                                    rol: 'personalizado',
+                                                    selected_custom_role_id: cid,
+                                                    selected_modules: found ? [...(found.modules || [])] : [...(prev.selected_modules || [])],
+                                                }));
+                                            } else {
+                                                const preset = getPresetRoleMeta(val);
+                                                setApprovingReq(prev => ({
+                                                    ...prev,
+                                                    rol: val,
+                                                    selected_custom_role_id: '',
+                                                    selected_modules: val === 'personalizado' ? (prev.selected_modules || []) : [...(preset.defaultModules || [])],
+                                                }));
+                                            }
+                                        }}
                                         style={{ width: '100%', padding: '9px 11px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.84rem', background: '#FFFFFF', fontWeight: 600, boxSizing: 'border-box' }}
                                     >
-                                        {ROLE_OPTIONS.map(r => (
-                                            <option key={r.value} value={r.value}>{r.label}</option>
-                                        ))}
+                                        <optgroup label="Roles Predeterminados">
+                                            {ROLE_OPTIONS.filter(r => r.value !== 'personalizado').map(r => (
+                                                <option key={r.value} value={r.value}>{r.label}</option>
+                                            ))}
+                                        </optgroup>
+                                        {customRoles.length > 0 && (
+                                            <optgroup label="Roles Personalizados Guardados">
+                                                {customRoles.map(cr => (
+                                                    <option key={cr.id} value={`custom:${cr.id}`}>★ {cr.name} ({(cr.modules || []).length} submód.)</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                        <optgroup label="A medida">
+                                            <option value="personalizado">Rol Personalizado (Elegir módulos abajo)</option>
+                                        </optgroup>
                                     </select>
                                 </div>
                                 <div>
@@ -1764,6 +2096,21 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                     />
                                 </div>
                             </div>
+
+                            {approvingReq.rol !== 'admin' && (
+                                <div style={{ marginBottom: '12px' }}>
+                                    <RoleModuleSelector
+                                        compact
+                                        selectedModules={approvingReq.selected_modules || []}
+                                        onChange={(mods) => setApprovingReq(prev => ({
+                                            ...prev,
+                                            rol: 'personalizado',
+                                            selected_custom_role_id: '',
+                                            selected_modules: mods,
+                                        }))}
+                                    />
+                                </div>
+                            )}
 
                             <div style={{
                                 background: '#F8FAFC', border: '1px solid #E2E8F0',
@@ -1845,7 +2192,7 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                     onClick={e => { if (e.target === e.currentTarget) setEditingUser(null); }}
                 >
                     <div style={{
-                        background: '#FFFFFF', borderRadius: '16px', width: '100%', maxWidth: '540px',
+                        background: '#FFFFFF', borderRadius: '16px', width: '100%', maxWidth: '760px',
                         boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)', overflow: 'hidden', maxHeight: '92vh', overflowY: 'auto',
                     }}>
                         <div style={{
@@ -2021,20 +2368,59 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '14px', marginBottom: '12px' }}>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '5px', textTransform: 'uppercase' }}>
-                                        Rol y Nivel de Acceso
+                                        Rol y Nivel de Acceso (Predeterminado o Personalizado)
                                     </label>
                                     <select
-                                        value={editingUser.rol}
-                                        onChange={e => setEditingUser(prev => ({ ...prev, rol: e.target.value }))}
-                                        style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.85rem', background: '#FFFFFF', boxSizing: 'border-box' }}
+                                        value={editingUser.selected_custom_role_id ? `custom:${editingUser.selected_custom_role_id}` : editingUser.rol}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val.startsWith('custom:')) {
+                                                const cid = val.replace('custom:', '');
+                                                const found = customRoles.find(r => r.id === cid);
+                                                setEditingUser(prev => ({
+                                                    ...prev,
+                                                    rol: 'personalizado',
+                                                    selected_custom_role_id: cid,
+                                                    selected_modules: found ? [...(found.modules || [])] : [...(prev.selected_modules || [])],
+                                                }));
+                                            } else {
+                                                const preset = getPresetRoleMeta(val);
+                                                setEditingUser(prev => ({
+                                                    ...prev,
+                                                    rol: val,
+                                                    selected_custom_role_id: '',
+                                                    selected_modules: val === 'personalizado'
+                                                        ? (prev.selected_modules || [])
+                                                        : [...(preset.defaultModules || [])],
+                                                }));
+                                            }
+                                        }}
+                                        style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.85rem', background: '#FFFFFF', fontWeight: 600, boxSizing: 'border-box' }}
                                     >
-                                        {ROLE_OPTIONS.map(r => (
-                                            <option key={r.value} value={r.value}>{r.label}</option>
-                                        ))}
+                                        <optgroup label="Roles Predeterminados">
+                                            {ROLE_OPTIONS.filter(r => r.value !== 'personalizado').map(r => (
+                                                <option key={r.value} value={r.value}>{r.label}</option>
+                                            ))}
+                                        </optgroup>
+                                        {customRoles.length > 0 && (
+                                            <optgroup label="Roles Personalizados Guardados">
+                                                {customRoles.map(cr => (
+                                                    <option key={cr.id} value={`custom:${cr.id}`}>★ {cr.name} ({(cr.modules || []).length} submód.)</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                        <optgroup label="A medida">
+                                            <option value="personalizado">Rol Personalizado (Seleccionar módulos y submódulos)</option>
+                                        </optgroup>
                                     </select>
+                                    <div style={{ fontSize: '0.69rem', color: '#64748B', marginTop: '4px' }}>
+                                        {editingUser.selected_custom_role_id
+                                            ? 'Plantilla personalizada aplicada. Podés ajustar submódulos abajo si lo necesitás.'
+                                            : getPresetRoleMeta(editingUser.rol).description}
+                                    </div>
                                 </div>
                                 <div>
                                     <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '5px', textTransform: 'uppercase' }}>
@@ -2049,6 +2435,74 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                     />
                                 </div>
                             </div>
+
+                            {/* Selector granular de módulos y submódulos */}
+                            {editingUser.rol !== 'admin' ? (
+                                <div style={{ marginBottom: '14px' }}>
+                                    <RoleModuleSelector
+                                        selectedModules={editingUser.selected_modules || []}
+                                        onChange={(mods) => setEditingUser(prev => ({
+                                            ...prev,
+                                            rol: 'personalizado',
+                                            selected_custom_role_id: '',
+                                            selected_modules: mods,
+                                        }))}
+                                    />
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                            Al modificar submódulos manualmente el usuario pasa a <strong>Rol Personalizado</strong>.
+                                        </span>
+                                        {!showSaveInlineRole ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowSaveInlineRole(true)}
+                                                style={{
+                                                    padding: '4px 10px', borderRadius: '6px', border: '1px solid #99F6E4',
+                                                    background: '#F0FDFA', color: '#0F766E', fontSize: '0.72rem', fontWeight: 700,
+                                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                }}
+                                            >
+                                                <Plus size={12} /> Guardar como Rol Personalizado reutilizable
+                                            </button>
+                                        ) : (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Nombre del rol (ej: Facturación)"
+                                                    value={inlineRoleName}
+                                                    onChange={e => setInlineRoleName(e.target.value)}
+                                                    style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.73rem', width: '190px' }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    disabled={savingCustomRole}
+                                                    onClick={handleSaveInlineCustomRole}
+                                                    style={{
+                                                        padding: '4px 10px', borderRadius: '6px', border: 'none',
+                                                        background: '#0F766E', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    Guardar Rol
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setShowSaveInlineRole(false); setInlineRoleName(''); }}
+                                                    style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: '0.72rem' }}
+                                                >
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{
+                                    padding: '10px 14px', borderRadius: '8px', background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: '0.76rem', fontWeight: 600, marginBottom: '14px',
+                                }}>
+                                    El rol <strong>Administrador Total</strong> tiene acceso irrestricto a todos los módulos ({ALL_SUBMODULE_IDS.length} submódulos).
+                                </div>
+                            )}
 
                             <div style={{
                                 background: '#F8FAFC', border: '1px solid #E2E8F0',
@@ -2214,6 +2668,107 @@ export default function UserSecurityAdminPanel({ addToast, currentUser }) {
                                 Cerrar
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ================================================================= */}
+            {/* MODAL CREAR / EDITAR ROL PERSONALIZADO                            */}
+            {/* ================================================================= */}
+            {editingCustomRole && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 100001,
+                        background: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(3px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+                    }}
+                    onClick={e => { if (e.target === e.currentTarget) setEditingCustomRole(null); }}
+                >
+                    <div style={{
+                        background: '#FFFFFF', borderRadius: '16px', width: '100%', maxWidth: '760px',
+                        boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)', overflow: 'hidden', maxHeight: '92vh', overflowY: 'auto',
+                    }}>
+                        <div style={{
+                            padding: '16px 22px', borderBottom: '1px solid #E2E8F0',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: '#F0FDFA',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Layers size={19} color="#0F766E" />
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {editingCustomRole.id ? `Editar Rol: ${editingCustomRole.name}` : 'Nuevo Rol Personalizado'}
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditingCustomRole(null)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveCustomRoleModal} style={{ padding: '20px 22px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '12px', marginBottom: '14px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                        Nombre del Rol *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={editingCustomRole.name}
+                                        onChange={e => setEditingCustomRole(prev => ({ ...prev, name: e.target.value }))}
+                                        placeholder="Ej: Auditoría Médica y Altas"
+                                        style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.84rem', boxSizing: 'border-box' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '4px', textTransform: 'uppercase' }}>
+                                        Descripción (Opcional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editingCustomRole.description || ''}
+                                        onChange={e => setEditingCustomRole(prev => ({ ...prev, description: e.target.value }))}
+                                        placeholder="Ej: Acceso a Control de Altas, Auditoría H.C. y Facturación"
+                                        style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.84rem', boxSizing: 'border-box' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ marginBottom: '16px' }}>
+                                <RoleModuleSelector
+                                    selectedModules={editingCustomRole.modules || []}
+                                    onChange={(mods) => setEditingCustomRole(prev => ({ ...prev, modules: mods }))}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingCustomRole(null)}
+                                    style={{
+                                        padding: '9px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#475569', fontSize: '0.84rem', fontWeight: 600, cursor: 'pointer',
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingCustomRole}
+                                    style={{
+                                        padding: '9px 18px', borderRadius: '8px', border: 'none',
+                                        background: '#0F766E', color: '#FFFFFF', fontSize: '0.84rem', fontWeight: 700,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                    }}
+                                >
+                                    {savingCustomRole ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                                    Guardar Rol Personalizado
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

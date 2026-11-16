@@ -17,11 +17,21 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
     const isGobernanzaStrictOnly = ['franciscoromano89', 'franciscoromano89@gmail.com', 'fromano'].includes(username);
     const isGobernanzaOnly = isGobernanzaStrictOnly || ['gobernanza', 'gobernanza@sanatorioargentino.com.ar', 'mjpavia', 'mjpavia@sanatorioargentino.com.ar'].includes(username) || currentUser?.rol === 'gobernanza';
     const isLMarinero = ['lmarinero', 'lucas marinero'].includes(username) || MASTER_ADMINS.includes(username);
+    const isCustomRole = currentUser?.rol === 'personalizado' && Array.isArray(selectedModules);
 
     // Module visibility: null/empty = show all, array = only show listed + always-visible
     const ALWAYS_VISIBLE = ['inicio', 'config'];
+    const CC_CHILD_IDS = ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_config', 'contact_center_permisos'];
     const isModuleVisible = (id) => {
         if (id === 'inicio') return true;
+
+        // Rol Personalizado: control estricto por módulos y submódulos asignados por el Administrador
+        if (isCustomRole) {
+            if (id === 'contact_center') {
+                return selectedModules.includes('contact_center') || CC_CHILD_IDS.some(cid => selectedModules.includes(cid));
+            }
+            return selectedModules.includes(id);
+        }
 
         if (isGobernanzaDashboardOnly) {
             return id === 'gobernanza_indicadores';
@@ -167,8 +177,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 { id: 'turnos_online', label: 'Turnos', icon: CalendarCheck },
                 { id: 'contact_center_metricas', label: 'Métricas', icon: BarChart3 },
                 { id: 'contact_center_config', label: 'Configuración', icon: Settings },
-                ...(isLMarinero ? [{ id: 'contact_center_permisos', label: 'Permisos', icon: ShieldCheck }] : []),
-            ]
+                ...((isLMarinero || (isCustomRole && selectedModules.includes('contact_center_permisos'))) ? [{ id: 'contact_center_permisos', label: 'Permisos', icon: ShieldCheck }] : []),
+            ].filter(child => !isCustomRole || isModuleVisible(child.id))
         },
         { 
             id: 'contact_center_incentivos', 
@@ -502,7 +512,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 ) : (
                     <>
                 {/* ─── Gobernanza ─── */}
-                {isModuleVisible('gobernanza') && renderGroup({
+                {(isModuleVisible('gobernanza') || isModuleVisible('gobernanza_indicadores')) && renderGroup({
                     label: 'Gobernanza',
                     icon: ShieldCheck,
                     isOpen: gobernanzaOpen,
@@ -603,7 +613,7 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                 })}
 
                 {/* ─── Contact Center (grupo colapsable) ─── */}
-                {canUserAccessContactCenter(currentUser) && renderGroup({
+                {(canUserAccessContactCenter(currentUser) || (isCustomRole && contactCenterSubItems.length > 0)) && renderGroup({
                     label: 'Contact Center',
                     icon: Headphones,
                     isOpen: contactCenterOpen,
@@ -614,8 +624,8 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
                 {/* ─── Items finales ─── */}
                 {[
-                    ...(['soribarale', ...MASTER_ADMINS].includes(username) || currentUser?.rol === 'activos' || currentUser?.rol === 'admin' ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
-                    ...(MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin' ? [
+                    ...(['soribarale', ...MASTER_ADMINS].includes(username) || currentUser?.rol === 'activos' || currentUser?.rol === 'admin' || (isCustomRole && selectedModules.includes('activos')) ? [{ id: 'activos', label: 'Gestión de Activos', icon: Wrench }] : []),
+                    ...(MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin' || (isCustomRole && selectedModules.includes('usuarios_seguridad')) ? [
                         { id: 'usuarios_seguridad', label: 'Usuarios y Seguridad', icon: ShieldCheck },
                     ] : []),
                     { id: 'manual', label: 'Manual del Sistema', icon: BookMarked },

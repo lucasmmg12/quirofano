@@ -662,6 +662,12 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                 .eq('user_id', currentUser.id)
                 .maybeSingle()
                 .then(({ data }) => {
+                    if (currentUser?.rol === 'personalizado') {
+                        setSelectedModules(Array.isArray(data?.selected_modules) ? data.selected_modules : ['inicio']);
+                        setNeedsModuleOnboarding(false);
+                        setShowModuleOnboarding(false);
+                        return;
+                    }
                     if (data?.completed_onboarding) {
                         setSelectedModules(data.selected_modules || null);
                     } else {
@@ -740,6 +746,17 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
         // Master Admins have full access to all views
         if (MASTER_ADMINS.includes(username) || currentUser?.rol === 'admin') {
+            return;
+        }
+
+        // Rol Personalizado: acceso estricto a los módulos y submódulos asignados por el Administrador
+        if (currentUser?.rol === 'personalizado' && Array.isArray(selectedModules)) {
+            const CC_PARENT_ALLOWED = activeView === 'contact_center' && selectedModules.some(m => CC_ALL_VIEWS.includes(m));
+            const isAllowed = activeView === 'inicio' || selectedModules.includes(activeView) || CC_PARENT_ALLOWED;
+            if (!isAllowed) {
+                const firstAvailable = selectedModules[0] || 'inicio';
+                setActiveView(firstAvailable);
+            }
             return;
         }
 
