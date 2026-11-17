@@ -3085,12 +3085,14 @@
 }
 
 .metrics-panel__header {
+    position: relative;
+    z-index: 60;
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 18px;
     padding: 14px 18px;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(10px);
     border: 1px solid #E2E8F0;
     border-radius: var(--radius-lg);
@@ -3137,84 +3139,70 @@
     flex-wrap: wrap;
 }
 
-.metrics-panel__period-btn {
-    display: flex;
+.metrics-panel__period-pills {
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 14px;
-    border: 1px solid var(--neutral-200);
-    border-radius: var(--radius-md);
-    background: var(--neutral-0);
-    color: var(--neutral-700);
-    font-size: 0.8rem;
+    gap: 3px;
+    padding: 4px;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    flex-wrap: wrap;
+}
+
+.metrics-panel__period-pill {
+    padding: 6px 11px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: #475569;
+    font-size: 0.75rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
+    white-space: nowrap;
 }
 
-.metrics-panel__period-btn:hover {
-    border-color: var(--primary-300);
-    background: var(--primary-50);
+.metrics-panel__period-pill:hover {
+    color: #0F172A;
+    background: rgba(255, 255, 255, 0.65);
 }
 
-.metrics-panel__dropdown {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 4px;
-    background: var(--neutral-0);
-    border: 1px solid var(--neutral-200);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    z-index: 50;
-    min-width: 160px;
-    padding: 4px;
-}
-
-.metrics-panel__dropdown-item {
-    display: block;
-    width: 100%;
-    padding: 8px 14px;
-    border: none;
-    background: none;
-    text-align: left;
-    font-size: 0.8rem;
-    color: var(--neutral-700);
-    cursor: pointer;
-    border-radius: var(--radius-md);
-    transition: all 0.1s;
-}
-
-.metrics-panel__dropdown-item:hover {
-    background: var(--primary-50);
-    color: var(--primary-600);
-}
-
-.metrics-panel__dropdown-item--active {
-    background: var(--primary-50);
-    color: var(--primary-600);
+.metrics-panel__period-pill--active {
+    background: #2563EB !important;
+    color: #FFFFFF !important;
     font-weight: 700;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.28);
 }
 
-.metrics-panel__custom-dates {
-    display: flex;
+.metrics-panel__inline-dates {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 10px;
-    border-top: 1px solid var(--neutral-100);
+    padding: 4px 8px;
+    background: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 9px;
 }
 
-.metrics-panel__custom-dates input {
+.metrics-panel__inline-dates input {
     padding: 4px 8px;
-    border: 1px solid var(--neutral-200);
+    border: 1px solid #E2E8F0;
     border-radius: 6px;
     font-size: 0.75rem;
-    width: 110px;
+    color: #0F172A;
+    font-weight: 600;
+    outline: none;
 }
 
-.metrics-panel__custom-dates span {
-    font-size: 0.72rem;
-    color: var(--neutral-400);
+.metrics-panel__inline-dates input:focus {
+    border-color: #2563EB;
+}
+
+.metrics-panel__inline-dates span {
+    font-size: 0.73rem;
+    color: #64748B;
+    font-weight: 600;
 }
 
 .metrics-panel__export-btn {

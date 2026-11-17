@@ -37,15 +37,24 @@ function getDateRange(preset) {
         case 'semana': {
             const w = new Date(today);
             w.setDate(w.getDate() - 7);
-            return { from: w, to: eod, label: 'Última semana' };
+            return { from: w, to: eod, label: 'Últimos 7 días' };
+        }
+        case 'este_mes': {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            return { from: firstDay, to: eod, label: 'Este mes' };
+        }
+        case 'mes_anterior': {
+            const firstPrev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const firstCurr = new Date(now.getFullYear(), now.getMonth(), 1);
+            return { from: firstPrev, to: firstCurr, label: 'Mes anterior' };
         }
         case 'mes': {
             const m = new Date(today);
             m.setDate(m.getDate() - 30);
-            return { from: m, to: eod, label: 'Último mes' };
+            return { from: m, to: eod, label: 'Últimos 30 días' };
         }
         default:
-            return { from: new Date(today.getTime() - 30 * 86400000), to: eod, label: 'Último mes' };
+            return { from: new Date(today.getTime() - 30 * 86400000), to: eod, label: 'Últimos 30 días' };
     }
 }
 
@@ -235,10 +244,23 @@ export default function MetricsPanel({ addToast }) {
     //  COMPUTED METRICS
     // ═══════════════════════════
 
-    // KPI 1: Surgery status distribution
+    // Surgeries filtered to the active period (range.from .. range.to)
+    const surgeriesInPeriod = useMemo(() => {
+        const fromYMD = range.from.toISOString().split('T')[0];
+        const toInclusive = new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000));
+        const toYMD = toInclusive.toISOString().split('T')[0];
+
+        return surgeries.filter(s => {
+            const dStr = s.fecha_cirugia || (s.created_at ? s.created_at.slice(0, 10) : '');
+            if (!dStr) return false;
+            return dStr >= fromYMD && dStr <= toYMD;
+        });
+    }, [surgeries, range]);
+
+    // KPI 1: Surgery status distribution (in active period)
     const surgeryStats = useMemo(() => {
         const stats = {};
-        surgeries.forEach(s => {
+        surgeriesInPeriod.forEach(s => {
             let key;
             if (s.ausente === '1') key = 'suspendida';
             else if (s.ausente === '0') key = 'realizada';
@@ -246,12 +268,12 @@ export default function MetricsPanel({ addToast }) {
             stats[key] = (stats[key] || 0) + 1;
         });
         return stats;
-    }, [surgeries]);
+    }, [surgeriesInPeriod]);
 
-    const totalSurgeries = surgeries.length;
+    const totalSurgeries = surgeriesInPeriod.length;
     const realizadas = surgeryStats.realizada || 0;
     const suspendidas = surgeryStats.suspendida || 0;
-    const confirmacionRate = totalSurgeries > 0 ? ((realizadas / (realizadas + suspendidas)) * 100).toFixed(1) : '0';
+    const confirmacionRate = (realizadas + suspendidas) > 0 ? ((realizadas / (realizadas + suspendidas)) * 100).toFixed(1) : '0';
 
     // Previous period comparison
     const prevRealizadas = prevSurgeries.filter(s => s.ausente === '0').length;
@@ -362,10 +384,10 @@ export default function MetricsPanel({ addToast }) {
     // Prefijos que NO son médicos reales (se excluyen del ranking)
     const EXCLUDED_MEDICO_PREFIXES = ['QUIRÓFANOS', 'QUIROFANOS', 'MEDICO GUARDIA', 'BLOQUE'];
 
-    // Top médicos (filtrados: sin quirófanos ni guardia)
+    // Top médicos (filtrados: sin quirófanos ni guardia, dentro del período seleccionado)
     const topMedicos = useMemo(() => {
         const map = {};
-        surgeries.forEach(s => {
+        surgeriesInPeriod.forEach(s => {
             if (!s.medico) return;
             const upper = s.medico.trim().toUpperCase();
             // Excluir entradas que no son médicos
@@ -376,19 +398,19 @@ export default function MetricsPanel({ addToast }) {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 8)
             .map(([name, count]) => ({ name: name.length > 25 ? name.slice(0, 25) + '…' : name, fullName: name, count }));
-    }, [surgeries]);
+    }, [surgeriesInPeriod]);
 
-    // Top obras sociales
+    // Top obras sociales (en el período seleccionado)
     const topOS = useMemo(() => {
         const map = {};
-        surgeries.forEach(s => {
+        surgeriesInPeriod.forEach(s => {
             if (s.obra_social) map[s.obra_social] = (map[s.obra_social] || 0) + 1;
         });
         return Object.entries(map)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 8)
             .map(([name, count]) => ({ name: name.length > 25 ? name.slice(0, 25) + '…' : name, count }));
-    }, [surgeries]);
+    }, [surgeriesInPeriod]);
 
     // Events by type (top transitions)
     const topTransitions = useMemo(() => {
@@ -400,10 +422,10 @@ export default function MetricsPanel({ addToast }) {
             .map(([type, count]) => ({ name: type.replace(/_/g, ' → ').replace('to', ''), count }));
     }, [events]);
 
-    // ═══ NEW: Top Módulos (tipos de cirugía más realizados) ═══
+    // ═══ NEW: Top Módulos (tipos de cirugía más realizados en el período) ═══
     const topModulos = useMemo(() => {
         const map = {};
-        surgeries.forEach(s => {
+        surgeriesInPeriod.forEach(s => {
             const mod = (s.modulo || '').trim();
             if (mod && mod.length > 1) map[mod] = (map[mod] || 0) + 1;
         });
@@ -411,12 +433,12 @@ export default function MetricsPanel({ addToast }) {
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10)
             .map(([name, count]) => ({ name: name.length > 30 ? name.slice(0, 30) + '…' : name, fullName: name, count }));
-    }, [surgeries]);
+    }, [surgeriesInPeriod]);
 
     // ═══ NEW: Tasa de realización por módulo ═══
     const moduloCompletionRate = useMemo(() => {
         const map = {};
-        surgeries.forEach(s => {
+        surgeriesInPeriod.forEach(s => {
             const mod = (s.modulo || '').trim();
             if (!mod || mod.length <= 1) return;
             if (!map[mod]) map[mod] = { realizadas: 0, suspendidas: 0, pendientes: 0, total: 0 };
@@ -426,7 +448,7 @@ export default function MetricsPanel({ addToast }) {
             else map[mod].pendientes++;
         });
         return Object.entries(map)
-            .filter(([, v]) => v.total >= 3) // solo módulos con al menos 3 cirugías
+            .filter(([, v]) => v.total >= 2)
             .sort((a, b) => b[1].total - a[1].total)
             .slice(0, 8)
             .map(([name, data]) => ({
@@ -438,7 +460,7 @@ export default function MetricsPanel({ addToast }) {
                 total: data.total,
                 rate: data.total > 0 ? ((data.realizadas / data.total) * 100).toFixed(0) : 0,
             }));
-    }, [surgeries]);
+    }, [surgeriesInPeriod]);
 
     // ═══ NEW: Evolución mensual de cirugías (por módulo top 5) ═══
     const monthlyModuloTrend = useMemo(() => {
@@ -481,7 +503,7 @@ export default function MetricsPanel({ addToast }) {
         const matrix = top6Medicos.map(med => {
             const row = { medico: med.length > 20 ? med.slice(0, 20) + '…' : med };
             top6Modulos.forEach(mod => {
-                row[mod] = surgeries.filter(s => {
+                row[mod] = surgeriesInPeriod.filter(s => {
                     const sMed = (s.medico || '').trim();
                     const sMod = (s.modulo || '').trim();
                     return sMed === med && sMod === mod;
@@ -491,7 +513,7 @@ export default function MetricsPanel({ addToast }) {
         });
 
         return { medicos: top6Medicos, modulos: top6Modulos, matrix };
-    }, [surgeries, topMedicos, topModulos]);
+    }, [surgeriesInPeriod, topMedicos, topModulos]);
 
     // ═══ NEW: Volumen mensual total de cirugías ═══
     const monthlyVolume = useMemo(() => {
@@ -1227,8 +1249,10 @@ export default function MetricsPanel({ addToast }) {
     const presets = [
         { id: 'hoy', label: 'Hoy' },
         { id: 'ayer', label: 'Ayer' },
-        { id: 'semana', label: 'Semana' },
-        { id: 'mes', label: 'Mes' },
+        { id: 'semana', label: '7 Días' },
+        { id: 'este_mes', label: 'Este Mes' },
+        { id: 'mes_anterior', label: 'Mes Ant.' },
+        { id: 'mes', label: '30 Días' },
         { id: 'custom', label: 'Personalizado' },
     ];
 
@@ -1256,50 +1280,53 @@ export default function MetricsPanel({ addToast }) {
                             </span>
                         </div>
                         <p className="metrics-panel__subtitle">
-                            Business Intelligence — ADM-QUI · Ventana de Control Pre-Quirúrgico ≥ 24 Horas Previas
+                            Business Intelligence — ADM-QUI · Período: <strong>{formatDateShort(range.from)} al {formatDateShort(new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000)))}</strong>
                         </p>
                     </div>
                 </div>
 
                 <div className="metrics-panel__controls">
-                    {/* Period Selector */}
-                    <div className="metrics-panel__period-selector" style={{ position: 'relative' }}>
-                        <button
-                            className="metrics-panel__period-btn"
-                            onClick={() => setShowPresetDropdown(!showPresetDropdown)}
-                        >
-                            <Calendar size={14} />
-                            {presets.find(p => p.id === preset)?.label || 'Período'}
-                            <ChevronDown size={13} />
-                        </button>
-                        {showPresetDropdown && (
-                            <div className="metrics-panel__dropdown">
-                                {presets.map(p => (
-                                    <button
-                                        key={p.id}
-                                        className={`metrics-panel__dropdown-item ${preset === p.id ? 'metrics-panel__dropdown-item--active' : ''}`}
-                                        onClick={() => {
-                                            setPreset(p.id);
-                                            if (p.id !== 'custom') setShowPresetDropdown(false);
-                                        }}
-                                    >
-                                        {p.label}
-                                    </button>
-                                ))}
-                                {preset === 'custom' && (
-                                    <div className="metrics-panel__custom-dates">
-                                        <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
-                                        <span>a</span>
-                                        <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} />
-                                        <button onClick={() => { setShowPresetDropdown(false); loadData(); }}
-                                            style={{ padding: '4px 10px', background: '#6366F1', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
-                                            Aplicar
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                    {/* Direct 1-Click Segmented Period Selector */}
+                    <div className="metrics-panel__period-pills">
+                        <Calendar size={14} style={{ color: '#64748B', marginLeft: '6px', marginRight: '2px', flexShrink: 0 }} />
+                        {presets.map(p => (
+                            <button
+                                key={p.id}
+                                type="button"
+                                className={`metrics-panel__period-pill ${preset === p.id ? 'metrics-panel__period-pill--active' : ''}`}
+                                onClick={() => {
+                                    setPreset(p.id);
+                                    if (p.id === 'custom' && !customFrom && !customTo) {
+                                        const now = new Date();
+                                        const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                                        const todayStr = now.toISOString().split('T')[0];
+                                        setCustomFrom(first);
+                                        setCustomTo(todayStr);
+                                    }
+                                }}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
                     </div>
+
+                    {preset === 'custom' && (
+                        <div className="metrics-panel__inline-dates">
+                            <input
+                                type="date"
+                                value={customFrom}
+                                onChange={e => setCustomFrom(e.target.value)}
+                                title="Fecha desde"
+                            />
+                            <span>a</span>
+                            <input
+                                type="date"
+                                value={customTo}
+                                onChange={e => setCustomTo(e.target.value)}
+                                title="Fecha hasta"
+                            />
+                        </div>
+                    )}
 
                     {/* Export buttons */}
                     <button className="metrics-panel__export-btn" onClick={exportToExcel} title="Descargar Excel completo con todas las métricas y auditoría nominal">
