@@ -12,7 +12,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const [subTab, setSubTab] = useState(initialSubTab); // 'admisiones_557' | 'seguimiento' | 'traumatologia' | 'interconsultas'
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [data, setData] = useState({ admisiones_clinicas: [], traumatologia: [], interconsultas: [], stats: null });
+    const [data, setData] = useState({ admisiones_clinicas: [], interconsultas_en_557: [], traumatologia: [], interconsultas: [], stats: null });
     const [lastUpdated, setLastUpdated] = useState(null);
 
     // Estado para Seguimiento Clínico en Internado (Indicadores Calidad-QOAG) atado al período superior
@@ -27,6 +27,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const [admDoctorFilter, setAdmDoctorFilter] = useState('todos'); // 'todos' | 'paola_carga' | 'paola_cabecera' | nombre específico
     const [admSearch, setAdmSearch] = useState('');
     const [selectedFicha557, setSelectedFicha557] = useState(null);
+    const [selectedInterconsulta, setSelectedInterconsulta] = useState(null);
     const [copiedFicha, setCopiedFicha] = useState(false);
 
     // Filtros de Traumatología (atados al período Telar por defecto)
@@ -88,6 +89,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                     const parsed = typeof cfg.value === 'string' ? JSON.parse(cfg.value) : cfg.value;
                     setData({
                         admisiones_clinicas: parsed.admisiones_clinicas || [],
+                        interconsultas_en_557: parsed.interconsultas_en_557 || [],
                         traumatologia: parsed.traumatologia || [],
                         interconsultas: parsed.interconsultas || [],
                         stats: parsed.stats || null
@@ -152,18 +154,19 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
         return seguimientoData.find(d => d.periodo === selectedSegPeriodo) || seguimientoData[0];
     }, [seguimientoData, selectedSegPeriodo]);
 
-    // Mapa rápido de fichas 557 por id_visita, NHC y DNI para abrir desde cualquier pestaña
+    // Mapa rápido de fichas 557 por id_visita, NHC y DNI para abrir desde cualquier pestaña (incluyendo interconsultas reclasificadas)
     const ficha557Map = useMemo(() => {
         const byVisita = new Map();
         const byNhc = new Map();
         const byDni = new Map();
-        (data.admisiones_clinicas || []).forEach(a => {
+        const all557 = [...(data.admisiones_clinicas || []), ...(data.interconsultas_en_557 || [])];
+        all557.forEach(a => {
             if (a.id_visita) byVisita.set(a.id_visita, a);
             if (a.nhc && !byNhc.has(String(a.nhc))) byNhc.set(String(a.nhc), a);
             if (a.dni && !byDni.has(String(a.dni))) byDni.set(String(a.dni), a);
         });
         return { byVisita, byNhc, byDni };
-    }, [data.admisiones_clinicas]);
+    }, [data.admisiones_clinicas, data.interconsultas_en_557]);
 
     const openPatientFicha557 = (row) => {
         if (!row) return;
@@ -179,6 +182,20 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
         } else {
             addToast?.('Este paciente no registra formulario de Admisión Clínica en el período', 'info');
         }
+    };
+
+    // Clasificador unificado de sector real (evita confundir Shock Room con Internado de Piso cuando el servicio administrativo dice INTERNACION CLINICA)
+    const getItemSector = (item) => {
+        if (item?.sector_real) return item.sector_real;
+        const areaForm = String(item?.area_form || '').trim();
+        const servAdm = String(item?.servicio_admision || '').trim().toUpperCase();
+        const hab = String(item?.habitacion || '').trim().toUpperCase();
+        const destForm = String(item?.destino_form || '').trim();
+        if (areaForm === 'UCI' || servAdm.includes('UCI') || servAdm.includes('TERAPIA') || /^22[2-9]/.test(hab) || /^207/.test(hab)) return 'uci';
+        if (areaForm === 'Shock Room' || servAdm === 'SHOCK ROOM' || hab.startsWith('BOX') || destForm === 'Ambulatorio') return 'shock_room';
+        if (areaForm === 'Internado') return 'internado';
+        if (servAdm.includes('QUIROF') || servAdm.includes('CIRUGIA')) return 'quirofano';
+        return 'internado';
     };
 
     // Helper unificado de conexión con el filtro de fechas / período del Telar
@@ -199,6 +216,8 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const periodAdmisiones = useMemo(() => {
         if (!data.admisiones_clinicas) return [];
         return data.admisiones_clinicas.filter(item =>
+            item.tiene_ficha_557 !== 0 &&
+            item.es_interconsulta_557 !== 1 &&
             matchesTelarFilter(item.fecha_visita || item.fecha_ingreso, item.periodo)
         );
     }, [data.admisiones_clinicas, admPeriodoFilter, fechaDesde, fechaHasta]);
@@ -220,20 +239,22 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     // Estadísticas dinámicas conectadas al filtro del Telar
     const periodStats = useMemo(() => {
         const clinicasInter = periodInter.filter(i => i.es_medico_clinico === 1).length;
+        const conDatosInter = periodInter.filter(i => i.tiene_datos_interconsulta === 1 || !!i.evolucion_interconsulta).length;
         return {
             total_admisiones_557: periodAdmisiones.length,
             con_ficha_557: periodAdmisiones.filter(a => a.tiene_ficha_557 === 1).length,
             activos_piso_557: periodAdmisiones.filter(a => a.estado_internacion === 'Activo en Piso').length,
-            area_shock_room: periodAdmisiones.filter(item => item.area_form === 'Shock Room' || String(item.servicio_admision || '').toUpperCase().includes('SHOCK') || String(item.numero_admision || '').toUpperCase().startsWith('SR')).length,
-            area_internado: periodAdmisiones.filter(item => item.area_form === 'Internado' || String(item.servicio_admision || '').toUpperCase().includes('INTERN') || String(item.numero_admision || '').toUpperCase().startsWith('I')).length,
-            area_uci: periodAdmisiones.filter(item => item.area_form === 'UCI' || String(item.servicio_admision || '').toUpperCase().includes('UCI') || String(item.servicio_admision || '').toUpperCase().includes('TERAPIA') || String(item.numero_admision || '').toUpperCase().startsWith('UCI')).length,
+            area_shock_room: periodAdmisiones.filter(item => getItemSector(item) === 'shock_room').length,
+            area_internado: periodAdmisiones.filter(item => getItemSector(item) === 'internado').length,
+            area_uci: periodAdmisiones.filter(item => getItemSector(item) === 'uci').length,
             reconsultas_72h_557: periodAdmisiones.filter(a => a.reconsulta_72h === 'Si').length,
             reingresos_72h_557: periodAdmisiones.filter(a => a.reingreso_72h === 'Si').length,
             total_traumatologia: periodTrauma.length,
             activos_piso_trauma: periodTrauma.filter(t => t.estado_internacion === 'Activo en Piso').length,
             total_interconsultas: periodInter.length,
             interconsultas_clinicas: clinicasInter,
-            interconsultas_otras: periodInter.length - clinicasInter
+            interconsultas_otras: periodInter.length - clinicasInter,
+            interconsultas_con_datos: conDatosInter
         };
     }, [periodAdmisiones, periodTrauma, periodInter]);
 
@@ -241,20 +262,11 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const filteredAdmisiones557 = useMemo(() => {
         return periodAdmisiones.filter(item => {
             if (admAreaFilter === 'activos' && item.estado_internacion !== 'Activo en Piso') return false;
-            if (admAreaFilter === 'shock_room') {
-                const isSr = item.area_form === 'Shock Room' || String(item.servicio_admision || '').toUpperCase().includes('SHOCK') || String(item.numero_admision || '').toUpperCase().startsWith('SR');
-                if (!isSr) return false;
-            }
-            if (admAreaFilter === 'internado') {
-                const isInt = item.area_form === 'Internado' || String(item.servicio_admision || '').toUpperCase().includes('INTERN') || String(item.numero_admision || '').toUpperCase().startsWith('I');
-                if (!isInt) return false;
-            }
-            if (admAreaFilter === 'uci') {
-                const isUci = item.area_form === 'UCI' || String(item.servicio_admision || '').toUpperCase().includes('UCI') || String(item.servicio_admision || '').toUpperCase().includes('TERAPIA') || String(item.numero_admision || '').toUpperCase().startsWith('UCI');
-                if (!isUci) return false;
-            }
+            if (admAreaFilter === 'shock_room' && getItemSector(item) !== 'shock_room') return false;
+            if (admAreaFilter === 'internado' && getItemSector(item) !== 'internado') return false;
+            if (admAreaFilter === 'uci' && getItemSector(item) !== 'uci') return false;
             if (admAreaFilter === 'quirofano') {
-                const isQx = String(item.servicio_admision || '').toUpperCase().includes('QUIROF') || String(item.servicio_admision || '').toUpperCase().includes('CIRUGIA') || String(item.especialidad_admision || '').toUpperCase().includes('CIRUGIA') || String(item.especialidad_admision || '').toUpperCase().includes('TRAUMA');
+                const isQx = getItemSector(item) === 'quirofano' || String(item.servicio_admision || '').toUpperCase().includes('QUIROF') || String(item.servicio_admision || '').toUpperCase().includes('CIRUGIA');
                 if (!isQx) return false;
             }
             if (admAreaFilter === 'reingreso_72h') {
@@ -331,7 +343,8 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                 const matchDoc = String(item.medico_actuante || '').toLowerCase().includes(q);
                 const matchEsp = String(item.especialidad_medico || '').toLowerCase().includes(q);
                 const matchHab = String(item.habitacion || '').toLowerCase().includes(q);
-                if (!matchName && !matchDni && !matchDoc && !matchEsp && !matchHab) {
+                const matchEv = String(item.evolucion_interconsulta || '').toLowerCase().includes(q);
+                if (!matchName && !matchDni && !matchDoc && !matchEsp && !matchHab && !matchEv) {
                     return false;
                 }
             }
@@ -455,20 +468,25 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
 
             const buildInterconsultasSheet = () => {
                 const headers = [
-                    'Fecha', 'Hora', 'Tipo Visita', 'Paciente', 'DNI', 'NHC',
+                    'Fecha', 'Hora', 'Tipo Visita', 'Origen Registro', 'Paciente', 'DNI', 'NHC',
                     'Habitación', 'Servicio', 'Médico Actuante', 'Especialidad',
-                    'Es Médico Clínico', 'Tiene Prot 557', 'Obra Social'
+                    'Es Médico Clínico', 'Médico Cabecera / Solicitante', 'Evolución / Informe de Interconsulta',
+                    'Tiene Prot 557', 'Obra Social'
                 ];
                 const rows = filteredInter.map(r => [
                     r.fecha_visita || '', r.hora_creacion || '', r.tipo_visita || '',
+                    r.origen_evolucion || 'Orden sin texto en SALUS',
                     r.paciente || '', r.dni || '', r.nhc || '', r.habitacion || '',
                     r.servicio_internacion || '', r.medico_actuante || '', r.especialidad_medico || '',
-                    r.es_medico_clinico ? 'SI' : 'NO', r.tiene_admision_557 ? 'SI' : 'NO', r.obra_social || ''
+                    r.es_medico_clinico ? 'SI' : 'NO',
+                    r.medico_solicitante_6547 || r.medico_cabecera_557 || r.medico_cabecera_adm || '',
+                    r.evolucion_interconsulta || '',
+                    r.tiene_admision_557 ? 'SI' : 'NO', r.obra_social || ''
                 ]);
                 const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
                 ws['!cols'] = [
-                    { wch: 12 }, { wch: 8 }, { wch: 22 }, { wch: 28 }, { wch: 11 }, { wch: 10 },
-                    { wch: 12 }, { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 22 }
+                    { wch: 12 }, { wch: 8 }, { wch: 24 }, { wch: 24 }, { wch: 28 }, { wch: 11 }, { wch: 10 },
+                    { wch: 12 }, { wch: 20 }, { wch: 24 }, { wch: 24 }, { wch: 16 }, { wch: 24 }, { wch: 50 }, { wch: 14 }, { wch: 22 }
                 ];
                 return ws;
             };
@@ -2061,8 +2079,8 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                         overflow: 'hidden',
                         boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
                     }}>
-                        <div style={{ overflowX: 'auto', maxHeight: '550px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                        <div style={{ overflowX: 'auto', maxHeight: '580px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
                                 <thead style={{
                                     position: 'sticky',
                                     top: 0,
@@ -2071,19 +2089,18 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     zIndex: 2
                                 }}>
                                     <tr>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Perfil Profesional</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Médico Actuante</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Especialidad</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Paciente</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Ubicación / Cama</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Ficha Admisión</th>
-                                        <th style={{ padding: '10px 14px', color: '#475569', fontWeight: 700 }}>Fecha / Hora</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Perfil / Origen</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Médico Actuante & Especialidad</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Paciente & Cama</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Evolución / Informe de Interconsulta</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Detalle</th>
+                                        <th style={{ padding: '10px 12px', color: '#475569', fontWeight: 700 }}>Fecha / Hora</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading ? (
                                         <tr>
-                                            <td colSpan="7" style={{ padding: '36px', textAlign: 'center', color: '#64748B' }}>
+                                            <td colSpan="6" style={{ padding: '36px', textAlign: 'center', color: '#64748B' }}>
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                                                     <RefreshCw size={18} className="spin" /> Cargando interconsultas...
                                                 </div>
@@ -2091,29 +2108,33 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         </tr>
                                     ) : filteredInter.length === 0 ? (
                                         <tr>
-                                            <td colSpan="7" style={{ padding: '36px', textAlign: 'center', color: '#94A3B8' }}>
+                                            <td colSpan="6" style={{ padding: '36px', textAlign: 'center', color: '#94A3B8' }}>
                                                 No se encontraron interconsultas con los filtros seleccionados
                                             </td>
                                         </tr>
                                     ) : (
-                                        filteredInter.map((r, idx) => {
+                                        filteredInter.slice(0, 300).map((r, idx) => {
                                             const esClinico = r.es_medico_clinico === 1;
+                                            const tieneTexto = !!r.evolucion_interconsulta;
                                             return (
                                                 <tr 
                                                     key={`${r.id_visita}-${idx}`}
+                                                    onClick={() => setSelectedInterconsulta(r)}
                                                     style={{
                                                         borderBottom: '1px solid #F1F5F9',
-                                                        background: esClinico ? '#F0FDF4' : idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA'
+                                                        background: esClinico ? '#F0FDF4' : idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA',
+                                                        cursor: 'pointer',
+                                                        transition: 'background 0.12s ease'
                                                     }}
                                                 >
-                                                    <td style={{ padding: '10px 14px' }}>
+                                                    <td style={{ padding: '10px 12px' }}>
                                                         <span style={{
                                                             display: 'inline-flex',
                                                             alignItems: 'center',
                                                             gap: '5px',
                                                             padding: '3px 9px',
                                                             borderRadius: '12px',
-                                                            fontSize: '0.72rem',
+                                                            fontSize: '0.7rem',
                                                             fontWeight: 800,
                                                             background: esClinico ? '#DCFCE7' : '#F1F5F9',
                                                             color: esClinico ? '#15803D' : '#475569',
@@ -2121,67 +2142,126 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                                         }}>
                                                             {esClinico ? '🩺 Médico Clínico' : '👨‍⚕️ Especialista'}
                                                         </span>
+                                                        {r.origen_evolucion && (
+                                                            <div style={{ fontSize: '0.66rem', color: r.es_reclasificada_557 ? '#0369A1' : '#64748B', fontWeight: 600, marginTop: '4px' }}>
+                                                                {r.origen_evolucion}
+                                                            </div>
+                                                        )}
                                                     </td>
-                                                    <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0F172A' }}>
-                                                        {r.medico_actuante || 'Sin asignar'}
-                                                    </td>
-                                                    <td style={{ padding: '10px 14px' }}>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <div style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.78rem' }}>
+                                                            {r.medico_actuante || 'Sin asignar'}
+                                                        </div>
                                                         <span style={{
+                                                            display: 'inline-block',
+                                                            marginTop: '3px',
                                                             background: esClinico ? '#EFF6FF' : '#F8FAFC',
                                                             color: esClinico ? '#1E40AF' : '#475569',
-                                                            padding: '2px 8px',
+                                                            padding: '1px 7px',
                                                             borderRadius: '6px',
-                                                            fontSize: '0.74rem',
+                                                            fontSize: '0.7rem',
                                                             fontWeight: 600,
                                                             border: '1px solid #E2E8F0'
                                                         }}>
                                                             {r.especialidad_medico}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '10px 14px' }}>
+                                                    <td style={{ padding: '10px 12px' }}>
                                                         <div style={{ fontWeight: 700, color: '#1E293B' }}>{r.paciente}</div>
-                                                        <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                        <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: '3px' }}>
                                                             DNI: {r.dni || 'S/D'} {r.nhc ? `· NHC: ${r.nhc}` : ''}
                                                         </div>
-                                                    </td>
-                                                    <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0F172A' }}>
                                                         <span style={{
                                                             background: '#F1F5F9',
                                                             color: '#334155',
                                                             padding: '2px 7px',
                                                             borderRadius: '4px',
-                                                            fontSize: '0.78rem'
+                                                            fontSize: '0.72rem',
+                                                            fontWeight: 700
                                                         }}>
                                                             🛏️ {r.habitacion} ({r.servicio_internacion})
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '10px 14px' }}>
-                                                        {r.tiene_admision_557 ? (
+                                                    <td style={{ padding: '10px 12px', maxWidth: '370px' }}>
+                                                        {tieneTexto ? (
+                                                            <div style={{
+                                                                fontSize: '0.74rem',
+                                                                color: '#1E293B',
+                                                                display: '-webkit-box',
+                                                                WebkitLineClamp: 2,
+                                                                WebkitBoxOrient: 'vertical',
+                                                                overflow: 'hidden',
+                                                                lineHeight: '1.35'
+                                                            }}>
+                                                                {r.evolucion_interconsulta}
+                                                            </div>
+                                                        ) : (
+                                                            <span style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                fontSize: '0.7rem',
+                                                                color: '#B45309',
+                                                                background: '#FEF3C7',
+                                                                border: '1px solid #FDE68A',
+                                                                padding: '2px 8px',
+                                                                borderRadius: '6px',
+                                                                fontWeight: 600
+                                                            }}>
+                                                                ⚠️ Orden en SALUS sin texto de evolución cargado
+                                                            </span>
+                                                        )}
+                                                        {(r.medico_solicitante_6547 || r.medico_cabecera_557 || r.medico_cabecera_adm) && (
+                                                            <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '3px' }}>
+                                                                Cabecera/Solicitante: <strong>{r.medico_solicitante_6547 || r.medico_cabecera_557 || r.medico_cabecera_adm}</strong>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center' }}>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => openPatientFicha557(r)}
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedInterconsulta(r); }}
                                                                 style={{
-                                                                    padding: '4px 10px',
+                                                                    padding: '4px 9px',
                                                                     borderRadius: '6px',
-                                                                    border: '1px solid #BFDBFE',
-                                                                    background: '#EFF6FF',
-                                                                    color: '#1E40AF',
+                                                                    border: tieneTexto ? '1px solid #86EFAC' : '1px solid #CBD5E1',
+                                                                    background: tieneTexto ? '#DCFCE7' : '#F8FAFC',
+                                                                    color: tieneTexto ? '#166534' : '#475569',
                                                                     fontSize: '0.72rem',
                                                                     fontWeight: 700,
                                                                     cursor: 'pointer',
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
-                                                                    gap: '5px'
+                                                                    gap: '4px'
                                                                 }}
                                                             >
-                                                                <Eye size={13} /> Ver Ficha
+                                                                <Eye size={13} /> {tieneTexto ? 'Ver Informe' : 'Detalle'}
                                                             </button>
-                                                        ) : (
-                                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>Sin Ficha</span>
-                                                        )}
+                                                            {r.tiene_admision_557 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => { e.stopPropagation(); openPatientFicha557(r); }}
+                                                                    title="Abrir Ficha de Admisión Clínica (Protocolo 557)"
+                                                                    style={{
+                                                                        padding: '4px 8px',
+                                                                        borderRadius: '6px',
+                                                                        border: '1px solid #BFDBFE',
+                                                                        background: '#EFF6FF',
+                                                                        color: '#1E40AF',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 700,
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    📋 557
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
-                                                    <td style={{ padding: '10px 14px', color: '#64748B', whiteSpace: 'nowrap' }}>
-                                                        {r.fecha_visita} {r.hora_creacion ? r.hora_creacion.slice(0, 5) : ''}
+                                                    <td style={{ padding: '10px 12px', color: '#64748B', whiteSpace: 'nowrap', fontSize: '0.75rem' }}>
+                                                        <div style={{ fontWeight: 700, color: '#0F172A' }}>{r.fecha_visita}</div>
+                                                        <div>{r.hora_creacion ? r.hora_creacion.slice(0, 5) : ''} hs</div>
                                                     </td>
                                                 </tr>
                                             );
@@ -2189,6 +2269,207 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── MODAL DE DETALLE DE INTERCONSULTA (SALUS CAMPO 6548 / COGESTIÓN PISO) ─── */}
+            {selectedInterconsulta && (
+                <div
+                    onClick={() => setSelectedInterconsulta(null)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(15, 23, 42, 0.55)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 9998,
+                        padding: '20px',
+                        backdropFilter: 'blur(3px)'
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF',
+                            borderRadius: '14px',
+                            width: '100%',
+                            maxWidth: '720px',
+                            maxHeight: '88vh',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.28)',
+                            border: '1px solid #CBD5E1'
+                        }}
+                    >
+                        <div style={{
+                            padding: '16px 22px',
+                            background: selectedInterconsulta.es_medico_clinico === 1
+                                ? 'linear-gradient(135deg, #065F46 0%, #047857 100%)'
+                                : 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: '12px'
+                        }}>
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 800, background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '6px' }}>
+                                        {selectedInterconsulta.tipo_visita || '(INT) INTERCONSULTA'}
+                                    </span>
+                                    {selectedInterconsulta.origen_evolucion && (
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', padding: '2px 8px', borderRadius: '6px' }}>
+                                            {selectedInterconsulta.origen_evolucion}
+                                        </span>
+                                    )}
+                                    <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>
+                                        idVisita: #{selectedInterconsulta.id_visita}
+                                    </span>
+                                </div>
+                                <h3 style={{ margin: '6px 0 2px 0', fontSize: '1.15rem', fontWeight: 800 }}>
+                                    {selectedInterconsulta.paciente}
+                                </h3>
+                                <div style={{ fontSize: '0.78rem', opacity: 0.92, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                    <span>NHC: <strong>{selectedInterconsulta.nhc || 'S/D'}</strong></span>
+                                    <span>DNI: <strong>{selectedInterconsulta.dni || 'S/D'}</strong></span>
+                                    <span>Ubicación: <strong>🛏️ {selectedInterconsulta.habitacion} ({selectedInterconsulta.servicio_internacion})</strong></span>
+                                    <span>Financiador: <strong>{selectedInterconsulta.obra_social || 'Particular'}</strong></span>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedInterconsulta(null)}
+                                style={{
+                                    background: 'rgba(255,255,255,0.18)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '20px 22px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', background: '#F8FAFC' }}>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                                gap: '10px',
+                                background: '#FFFFFF',
+                                padding: '12px 16px',
+                                borderRadius: '10px',
+                                border: '1px solid #E2E8F0'
+                            }}>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Profesional Interconsultor</div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>
+                                        🩺 {selectedInterconsulta.medico_actuante || 'S/D'}
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 600 }}>{selectedInterconsulta.especialidad_medico}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Médico Cabecera / Solicitante</div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#1E40AF', marginTop: '2px' }}>
+                                        👨‍⚕️ {selectedInterconsulta.medico_solicitante_6547 || selectedInterconsulta.medico_cabecera_557 || selectedInterconsulta.medico_cabecera_adm || 'No especificado'}
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                        {selectedInterconsulta.especialidad_admision ? `Servicio base: ${selectedInterconsulta.especialidad_admision}` : 'Internación General'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Fecha & Hora de Registro</div>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>
+                                        📅 {selectedInterconsulta.fecha_visita} · {selectedInterconsulta.hora_creacion ? selectedInterconsulta.hora_creacion.slice(0, 5) : '-'} hs
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                        Estado visita: {selectedInterconsulta.asistencia || 'Registrada'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{
+                                background: '#FFFFFF',
+                                borderRadius: '10px',
+                                border: '1px solid #E2E8F0',
+                                padding: '16px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #F1F5F9', paddingBottom: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <FileText size={17} color="#047857" />
+                                        <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                                            Evolución / Informe Clínico de la Interconsulta
+                                        </h4>
+                                    </div>
+                                    {selectedInterconsulta.tiene_admision_557 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const row = selectedInterconsulta;
+                                                setSelectedInterconsulta(null);
+                                                openPatientFicha557(row);
+                                            }}
+                                            style={{
+                                                padding: '5px 12px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #BFDBFE',
+                                                background: '#EFF6FF',
+                                                color: '#1E40AF',
+                                                fontSize: '0.74rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px'
+                                            }}
+                                        >
+                                            <ClipboardList size={14} /> Abrir Ficha Completa Protocolo 557
+                                        </button>
+                                    )}
+                                </div>
+
+                                {selectedInterconsulta.evolucion_interconsulta ? (
+                                    <div style={{
+                                        fontSize: '0.86rem',
+                                        color: '#1E293B',
+                                        lineHeight: '1.55',
+                                        background: '#F8FAFC',
+                                        padding: '12px 14px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #E2E8F0',
+                                        whiteSpace: 'pre-wrap'
+                                    }}>
+                                        {selectedInterconsulta.evolucion_interconsulta}
+                                    </div>
+                                ) : (
+                                    <div style={{
+                                        background: '#FFFBEB',
+                                        border: '1px solid #FDE68A',
+                                        borderRadius: '8px',
+                                        padding: '14px',
+                                        color: '#92400E',
+                                        fontSize: '0.82rem',
+                                        lineHeight: '1.45'
+                                    }}>
+                                        <strong>⚠️ Sin texto de evolución en SALUS para esta visita (#{selectedInterconsulta.id_visita}):</strong>
+                                        <div style={{ marginTop: '4px' }}>
+                                            Esta orden de interconsulta fue abierta administrativamente en SALUS pero el profesional no completó el campo de evolución (Pregunta PR 6548) ni registró una evolución médica asociada en la misma fecha.
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

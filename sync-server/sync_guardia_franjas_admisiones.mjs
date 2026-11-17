@@ -234,74 +234,91 @@ export async function syncPeriodo(pool, periodo, desde, hasta, extremosAcumulado
         };
     }
 
-    // ── 2. ADMISIONES MÉDICAS CLÍNICAS (PROTOCOLO 557 - '(INT) ADMISION MEDICA CLINICA') ──
+    // ── 2. ADMISIONES MÉDICAS CLÍNICAS (PROTOCOLO 557 - '(INT) ADMISION MEDICA CLINICA' SIN VACÍAS NI INTERCONSULTAS DE PISO) ──
     const qAdmisiones = `
-        WITH AdmisionesClinicas557 AS (
+        WITH Base557 AS (
             SELECT 
                 v.idVisita,
                 v.NHC,
                 v.NIF,
                 v.Paciente,
                 v.IdHospitalizacion,
+                v.[Fecha Visita] AS FechaVisita,
                 adm.idAdmision,
                 adm.[Fecha ingreso] AS FechaIngreso,
                 adm.[Fecha alta] AS FechaAlta,
-                adm.Servicio,
-                adm.Especialidad,
-                adm.Habitación,
+                LTRIM(RTRIM(ISNULL(adm.Servicio, ''))) AS Servicio,
+                LTRIM(RTRIM(ISNULL(adm.Especialidad, ''))) AS Especialidad,
+                LTRIM(RTRIM(ISNULL(adm.Habitación, ''))) AS Habitacion,
                 adm.Procedencia,
                 p557.area_form,
                 p557.destino_form,
                 p557.reingreso_72h,
                 p557.reconsulta_72h,
-                CASE WHEN EXISTS (
-                    SELECT 1 FROM TABLEAU_Cirugias cir
-                    WHERE cir.[DNI] = v.NIF AND v.NIF <> ''
-                      AND cir.[Fecha programada] >= DATEADD(DAY, -1, CAST(v.[Fecha Visita] AS DATE))
-                      AND cir.[Fecha programada] <= ISNULL(CAST(adm.[Fecha alta] AS DATE), DATEADD(DAY, 10, CAST(v.[Fecha Visita] AS DATE)))
-                ) THEN 1 ELSE 0 END AS tuvo_cirugia_real,
-                CASE 
-                    WHEN p557.area_form = 'UCI' OR adm.Servicio = 'UCI' OR adm.Habitación LIKE '22[2-9]%' THEN 'uci'
-                    WHEN EXISTS (
-                        SELECT 1 FROM TABLEAU_Cirugias cir
-                        WHERE cir.[DNI] = v.NIF AND v.NIF <> ''
-                          AND cir.[Fecha programada] >= DATEADD(DAY, -1, CAST(v.[Fecha Visita] AS DATE))
-                          AND cir.[Fecha programada] <= ISNULL(CAST(adm.[Fecha alta] AS DATE), DATEADD(DAY, 10, CAST(v.[Fecha Visita] AS DATE)))
-                    ) OR adm.Servicio LIKE '%QUIROF%' OR adm.Servicio LIKE '%CIRUGIA%' THEN 'quirofano'
-                    WHEN p557.area_form IN ('Internado', 'Shock Room') OR adm.Servicio IN ('INTERNACION CLINICA', 'INTERNADO', 'SHOCK ROOM', 'CLINICA MEDICA') OR adm.Especialidad = 'CLINICO ' THEN 'internado'
-                    ELSE 'internado'
-                END AS destino_tipo,
-                CASE 
-                    WHEN p557.reingreso_72h = 'Si' OR (
-                        adm.Procedencia = 'Reingreso'
-                        AND EXISTS (
-                            SELECT 1 FROM TABLEAU_Admisiones prev
-                            WHERE prev.NHC = v.NHC 
-                              AND prev.idAdmision <> adm.idAdmision
-                              AND prev.[Fecha alta] IS NOT NULL
-                              AND CAST(adm.[Fecha ingreso] AS DATE) > CAST(prev.[Fecha ingreso] AS DATE)
-                              AND adm.[Fecha ingreso] >= prev.[Fecha alta]
-                              AND adm.[Fecha ingreso] <= DATEADD(HOUR, 72, prev.[Fecha alta])
-                        )
-                    ) THEN 1 ELSE 0
-                END AS es_reinternacion_72h
+                p557.tiene_ficha,
+                ROW_NUMBER() OVER (
+                    PARTITION BY CASE 
+                        WHEN v.IdHospitalizacion IS NOT NULL AND v.IdHospitalizacion > 0 THEN CAST(v.IdHospitalizacion AS VARCHAR(50))
+                        ELSE CAST(v.NIF AS VARCHAR(50)) + '_' + CONVERT(VARCHAR(7), v.[Fecha Visita], 120)
+                    END
+                    ORDER BY v.[Fecha Visita] ASC, v.idVisita ASC
+                ) AS rn_hosp
             FROM VLISE_Visitas v
             LEFT JOIN TABLEAU_Admisiones adm ON v.IdHospitalizacion = adm.idAdmision
-            LEFT JOIN (
+            INNER JOIN (
                 SELECT 
                     ir.idVisita,
                     MAX(CASE WHEN ir.idPreguntaPr = 13772 THEN resp.Descripcion END) AS reconsulta_72h,
                     MAX(CASE WHEN ir.idPreguntaPr = 13773 THEN resp.Descripcion END) AS reingreso_72h,
                     MAX(CASE WHEN ir.idPreguntaPr = 13775 THEN resp.Descripcion END) AS destino_form,
-                    MAX(CASE WHEN ir.idPreguntaPr = 13776 THEN resp.Descripcion END) AS area_form
+                    MAX(CASE WHEN ir.idPreguntaPr = 13776 THEN resp.Descripcion END) AS area_form,
+                    MAX(CASE WHEN ir.idPreguntaPr IN (12590, 12591, 12608, 12626, 12627) AND NULLIF(LTRIM(RTRIM(CAST(ir.valorM AS NVARCHAR(MAX)))), '') IS NOT NULL THEN 1
+                             WHEN ir.idPreguntaPr = 13775 AND ir.idPredRP IS NOT NULL THEN 1
+                             ELSE 0 END) AS tiene_ficha
                 FROM [PR InstRespVisitaPaciente] ir
                 LEFT JOIN [PR Respuestas] resp ON ir.idPredRP = resp.id
-                WHERE ir.idPreguntaPr IN (13772, 13773, 13775, 13776)
+                WHERE ir.idPreguntaPr IN (12590, 12591, 12608, 12626, 12627, 13772, 13773, 13775, 13776)
                 GROUP BY ir.idVisita
-            ) p557 ON v.idVisita = p557.idVisita
+            ) p557 ON v.idVisita = p557.idVisita AND p557.tiene_ficha = 1
             WHERE v.[Tipo Visita] = '(INT) ADMISION MEDICA CLINICA'
               AND v.[Fecha Visita] >= '${desde} 00:00:00'
               AND v.[Fecha Visita] <= '${hasta} 23:59:59'
+        ),
+        AdmisionesClinicas557 AS (
+            SELECT
+                b.*,
+                CASE 
+                    WHEN b.area_form = 'UCI' OR b.Servicio IN ('UCI', 'TERAPIA INTERMEDIA') OR b.Habitacion LIKE '22[2-9]%' OR b.Habitacion LIKE '207%' THEN 'uci'
+                    WHEN EXISTS (
+                        SELECT 1 FROM TABLEAU_Cirugias cir
+                        WHERE cir.[DNI] = b.NIF AND b.NIF <> ''
+                          AND cir.[Fecha programada] >= DATEADD(DAY, -1, CAST(b.FechaVisita AS DATE))
+                          AND cir.[Fecha programada] <= ISNULL(CAST(b.FechaAlta AS DATE), DATEADD(DAY, 10, CAST(b.FechaVisita AS DATE)))
+                    ) OR b.Servicio LIKE '%QUIROF%' OR b.Servicio LIKE '%CIRUGIA%' THEN 'quirofano'
+                    ELSE 'internado'
+                END AS destino_tipo,
+                CASE 
+                    WHEN b.reingreso_72h = 'Si' OR (
+                        b.Procedencia = 'Reingreso'
+                        AND EXISTS (
+                            SELECT 1 FROM TABLEAU_Admisiones prev
+                            WHERE prev.NHC = b.NHC 
+                              AND prev.idAdmision <> b.idAdmision
+                              AND prev.[Fecha alta] IS NOT NULL
+                              AND CAST(b.FechaIngreso AS DATE) > CAST(prev.[Fecha ingreso] AS DATE)
+                              AND b.FechaIngreso >= prev.[Fecha alta]
+                              AND b.FechaIngreso <= DATEADD(HOUR, 72, prev.[Fecha alta])
+                        )
+                    ) THEN 1 ELSE 0
+                END AS es_reinternacion_72h
+            FROM Base557 b
+            WHERE b.rn_hosp = 1
+              -- Excluir Interconsultas / Cogestión en Piso cargadas en Ficha 557 sobre pacientes de otras especialidades (Cirugía, Gastro, Urología, Trauma)
+              AND NOT (
+                  ISNULL(b.area_form, '') = 'Internado'
+                  AND b.Especialidad <> ''
+                  AND b.Especialidad NOT IN ('CLINICO', 'CLINICA MEDICA', 'MEDICINA INTERNA')
+              )
         )
         SELECT 
             COUNT(*) AS total_admisiones,
@@ -362,6 +379,7 @@ export async function syncPeriodo(pool, periodo, desde, hasta, extremosAcumulado
                   OR a.Especialidad = 'CLINICO '
                   OR EXISTS (
                       SELECT 1 FROM VLISE_Visitas v557 
+                      INNER JOIN [PR InstRespVisitaPaciente] ir557 ON v557.idVisita = ir557.idVisita AND (ir557.valorM IS NOT NULL OR ir557.idPredRP IS NOT NULL)
                       WHERE v557.IdHospitalizacion = a.idAdmision 
                         AND v557.[Tipo Visita] = '(INT) ADMISION MEDICA CLINICA'
                   )
@@ -389,7 +407,14 @@ export async function syncPeriodo(pool, periodo, desde, hasta, extremosAcumulado
                   '(INT) ADMISION MEDICA CLINICA',
                   '(INT) ALTA MEDICA',
                   '(INT) EPICRISIS',
+                  '(INT) INTERCONSULTA',
+                  '(INT) INTERCONSULTA OBRA SOCIAL PROVINCIA',
                   '(INT) INTERCONSULTA MEDICA'
+              )
+              AND EXISTS (
+                  SELECT 1 FROM [PR InstRespVisitaPaciente] ir
+                  WHERE ir.idVisita = v.idVisita
+                    AND (ir.valorM IS NOT NULL OR ir.idPredRP IS NOT NULL)
               )
               -- Excluir estrictamente UCI, Terapia Intermedia (Hab 227, 222-229, 207), Shock Room (BOX), Pediatría (201-203) y Chequeo
               AND ISNULL(adm.Servicio, '') NOT IN ('UCI', 'TERAPIA INTERMEDIA', 'TERAPIA PEDIÁTRICA', 'PEDIATRÍA', 'NEONATOLOGÍA', 'CHEQUEO', 'HOSPITAL DE DIA', 'SHOCK ROOM')

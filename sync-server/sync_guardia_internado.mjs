@@ -175,7 +175,16 @@ export async function syncGuardiaInternado() {
                 rp.plan_terapeutico,
                 rp.destino_form,
                 rp.area_form,
-                CASE WHEN rp.motivo_consulta IS NOT NULL OR rp.enfermedad_actual IS NOT NULL OR rp.destino_form IS NOT NULL THEN 1 ELSE 0 END AS tiene_ficha_557
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(ISNULL(rp.motivo_consulta, ''))), '') IS NOT NULL
+                      OR NULLIF(LTRIM(RTRIM(ISNULL(rp.enfermedad_actual, ''))), '') IS NOT NULL
+                      OR NULLIF(LTRIM(RTRIM(ISNULL(rp.diagnostico, ''))), '') IS NOT NULL
+                      OR NULLIF(LTRIM(RTRIM(ISNULL(rp.plan_terapeutico, ''))), '') IS NOT NULL
+                      OR NULLIF(LTRIM(RTRIM(ISNULL(rp.patologias, ''))), '') IS NOT NULL
+                      OR rp.destino_form IS NOT NULL
+                    THEN 1 
+                    ELSE 0 
+                END AS tiene_ficha_557
             FROM Visitas557 v
             LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] adm ON v.id_hospitalizacion = adm.idAdmision
             LEFT JOIN RespuestasPivot rp ON v.id_visita = rp.idVisita
@@ -265,31 +274,39 @@ export async function syncGuardiaInternado() {
                 adm.fecha_ingreso DESC;
         `;
 
-        // ── 3. INTERCONSULTAS EN INTERNADO Y UCI (DETECCIÓN DE MÉDICOS CLÍNICOS) ──
+        // ── 3. INTERCONSULTAS EN INTERNADO Y UCI (CON EXTRACCIÓN DE EVOLUCIÓN 6548 + FALLBACK MISMO DÍA) ──
         const qInterconsultas = `
-            SELECT
-                v.[idVisita] AS id_visita,
-                LTRIM(RTRIM(v.[Paciente])) AS paciente,
-                LTRIM(RTRIM(CAST(v.[NIF] AS VARCHAR(50)))) AS dni,
-                LTRIM(RTRIM(CAST(v.[NHC] AS VARCHAR(50)))) AS nhc,
-                v.IdHospitalizacion AS id_hospitalizacion,
-                CONVERT(VARCHAR(7), v.[Fecha Visita], 120) AS periodo,
-                CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS fecha_visita,
-                CONVERT(VARCHAR(8), v.[Fecha Hora Creacion], 108) AS hora_creacion,
-                v.[Tipo Visita] AS tipo_visita,
-                LTRIM(RTRIM(v.[Responsable])) AS medico_actuante,
-                COALESCE(doc_esp.especialidad, v.[Visita_Especialidad], 'NO ESPECIFICADA') AS especialidad_medico,
-                LTRIM(RTRIM(v.[Cliente])) AS obra_social,
-                v.[Asistencia] AS asistencia,
-                COALESCE(adm.[Habitación], 'SIN CAMA') AS habitacion,
-                COALESCE(adm.[Servicio], CASE WHEN v.[Tipo Visita] LIKE '%(UCI)%' THEN 'UCI' ELSE 'INTERNADO' END) AS servicio_internacion,
-                CASE 
-                    WHEN doc_esp.es_clinico = 1 OR v.[Visita_Especialidad] LIKE '%CLINIC%' OR v.[Tipo Visita] LIKE '%CLINIC%'
-                    THEN 1 
-                    ELSE 0 
-                END AS es_medico_clinico
-            FROM [SALUS].[dbo].[VLISE_Visitas] v
-            LEFT JOIN (
+            WITH VisitasInter AS (
+                SELECT
+                    v.[idVisita] AS id_visita,
+                    LTRIM(RTRIM(v.[Paciente])) AS paciente,
+                    LTRIM(RTRIM(CAST(v.[NIF] AS VARCHAR(50)))) AS dni,
+                    LTRIM(RTRIM(CAST(v.[NHC] AS VARCHAR(50)))) AS nhc,
+                    v.IdHospitalizacion AS id_hospitalizacion,
+                    CONVERT(VARCHAR(7), v.[Fecha Visita], 120) AS periodo,
+                    CONVERT(VARCHAR(10), v.[Fecha Visita], 120) AS fecha_visita,
+                    CONVERT(VARCHAR(8), v.[Fecha Hora Creacion], 108) AS hora_creacion,
+                    v.[Fecha Hora Creacion] AS fh_creacion_raw,
+                    v.[Tipo Visita] AS tipo_visita,
+                    LTRIM(RTRIM(v.[Responsable])) AS medico_actuante,
+                    v.[Visita_Especialidad] AS visita_especialidad,
+                    LTRIM(RTRIM(v.[Cliente])) AS obra_social,
+                    v.[Asistencia] AS asistencia
+                FROM [SALUS].[dbo].[VLISE_Visitas] v
+                WHERE v.[Tipo Visita] LIKE '%INTERCONSULTA%'
+                  AND v.[Fecha Visita] >= '2026-01-01'
+            ),
+            RespInter AS (
+                SELECT
+                    ir.idVisita,
+                    MAX(CASE WHEN ir.idPreguntaPr = 6548 THEN LTRIM(RTRIM(CAST(ir.valorM AS NVARCHAR(MAX)))) END) AS evolucion_6548,
+                    MAX(CASE WHEN ir.idPreguntaPr != 6548 AND ir.valorM IS NOT NULL THEN LTRIM(RTRIM(CAST(ir.valorM AS NVARCHAR(MAX)))) END) AS otro_texto_pr,
+                    MAX(CASE WHEN ir.idPreguntaPr = 6547 THEN ir.valorN END) AS id_prof_6547
+                FROM [SALUS].[dbo].[PR InstRespVisitaPaciente] ir
+                INNER JOIN VisitasInter vi ON ir.idVisita = vi.id_visita
+                GROUP BY ir.idVisita
+            ),
+            DocEsp AS (
                 SELECT 
                     p.[Nombre] AS doctor,
                     MAX(e.[Descripcion]) AS especialidad,
@@ -298,30 +315,164 @@ export async function syncGuardiaInternado() {
                 INNER JOIN [SALUS].[dbo].[PersonalEspecialidad] pe ON p.[id] = pe.[idPersonal]
                 INNER JOIN [SALUS].[dbo].[Especialidades] e ON pe.[idEspecialidad] = e.[id]
                 GROUP BY p.[Nombre]
-            ) doc_esp ON v.[Responsable] = doc_esp.doctor
+            ),
+            PacientesSinTexto AS (
+                SELECT DISTINCT vi.dni, vi.fecha_visita
+                FROM VisitasInter vi
+                LEFT JOIN RespInter ri ON vi.id_visita = ri.idVisita
+                WHERE NULLIF(ri.evolucion_6548, '') IS NULL
+                  AND NULLIF(ri.otro_texto_pr, '') IS NULL
+                  AND ISNULL(vi.dni, '') <> ''
+            ),
+            EvolucionesMismoDia AS (
+                SELECT
+                    LTRIM(RTRIM(CAST(v2.[NIF] AS VARCHAR(50)))) AS dni,
+                    CONVERT(VARCHAR(10), v2.[Fecha Visita], 120) AS fecha_visita,
+                    MAX(LTRIM(RTRIM(CAST(ir2.valorM AS NVARCHAR(MAX))))) AS texto_evolucion
+                FROM [SALUS].[dbo].[VLISE_Visitas] v2
+                INNER JOIN PacientesSinTexto pst
+                    ON v2.[NIF] = pst.dni
+                   AND CONVERT(VARCHAR(10), v2.[Fecha Visita], 120) = pst.fecha_visita
+                INNER JOIN [SALUS].[dbo].[PR InstRespVisitaPaciente] ir2
+                    ON v2.idVisita = ir2.idVisita AND ir2.valorM IS NOT NULL
+                WHERE v2.[Fecha Visita] >= '2026-01-01'
+                  AND v2.[Tipo Visita] IN ('(INT) EVOLUCION MEDICA DIARIA', '(REGMED) REGISTRO MEDICO')
+                  AND LTRIM(RTRIM(CAST(ir2.valorM AS NVARCHAR(MAX)))) <> ''
+                GROUP BY
+                    LTRIM(RTRIM(CAST(v2.[NIF] AS VARCHAR(50)))),
+                    CONVERT(VARCHAR(10), v2.[Fecha Visita], 120)
+            )
+            SELECT
+                vi.id_visita,
+                vi.paciente,
+                vi.dni,
+                vi.nhc,
+                COALESCE(vi.id_hospitalizacion, adm.idAdmision) AS id_hospitalizacion,
+                vi.periodo,
+                vi.fecha_visita,
+                vi.hora_creacion,
+                vi.tipo_visita,
+                vi.medico_actuante,
+                COALESCE(doc_esp.especialidad, vi.visita_especialidad, 'NO ESPECIFICADA') AS especialidad_medico,
+                vi.obra_social,
+                vi.asistencia,
+                COALESCE(LTRIM(RTRIM(adm.[Habitación])), 'SIN CAMA') AS habitacion,
+                COALESCE(LTRIM(RTRIM(adm.[Servicio])), CASE WHEN vi.tipo_visita LIKE '%(UCI)%' THEN 'UCI' ELSE 'INTERNADO' END) AS servicio_internacion,
+                LTRIM(RTRIM(adm.[Especialidad])) AS especialidad_admision,
+                LTRIM(RTRIM(adm.[Doctor])) AS medico_cabecera_adm,
+                CASE 
+                    WHEN doc_esp.es_clinico = 1 OR vi.visita_especialidad LIKE '%CLINIC%' OR vi.tipo_visita LIKE '%CLINIC%'
+                    THEN 1 
+                    ELSE 0 
+                END AS es_medico_clinico,
+                COALESCE(NULLIF(ri.evolucion_6548, ''), NULLIF(ri.otro_texto_pr, ''), NULLIF(ev_dia.texto_evolucion, '')) AS evolucion_interconsulta,
+                CASE
+                    WHEN NULLIF(ri.evolucion_6548, '') IS NOT NULL OR NULLIF(ri.otro_texto_pr, '') IS NOT NULL THEN 'Ficha Interconsulta (6548)'
+                    WHEN NULLIF(ev_dia.texto_evolucion, '') IS NOT NULL THEN 'Evolución Médica Mismo Día'
+                    ELSE NULL
+                END AS origen_evolucion,
+                LTRIM(RTRIM(p_sol.[Nombre])) AS medico_solicitante_6547
+            FROM VisitasInter vi
+            LEFT JOIN RespInter ri ON vi.id_visita = ri.idVisita
+            LEFT JOIN [SALUS].[dbo].[Personal] p_sol ON ri.id_prof_6547 = p_sol.id
+            LEFT JOIN DocEsp doc_esp ON vi.medico_actuante = doc_esp.doctor
+            LEFT JOIN EvolucionesMismoDia ev_dia
+                ON vi.dni = ev_dia.dni AND vi.fecha_visita = ev_dia.fecha_visita
             OUTER APPLY (
-                SELECT TOP 1 a.[Habitación], a.[Servicio]
+                SELECT TOP 1 a.idAdmision, a.[Habitación], a.[Servicio], a.[Especialidad], a.[Doctor]
                 FROM [SALUS].[dbo].[TABLEAU_Admisiones] a
-                WHERE a.[NIF] = v.[NIF] AND a.[NIF] != ''
-                  AND v.[Fecha Visita] >= CONVERT(VARCHAR(10), a.[Fecha ingreso], 120)
-                  AND (a.[Fecha alta] IS NULL OR v.[Fecha Visita] <= CONVERT(VARCHAR(10), a.[Fecha alta], 120))
+                WHERE a.[NIF] = vi.dni AND vi.dni <> ''
+                  AND vi.fecha_visita >= CONVERT(VARCHAR(10), a.[Fecha ingreso], 120)
+                  AND (a.[Fecha alta] IS NULL OR vi.fecha_visita <= CONVERT(VARCHAR(10), a.[Fecha alta], 120))
                 ORDER BY a.[Fecha ingreso] DESC
             ) adm
-            WHERE v.[Tipo Visita] LIKE '%INTERCONSULTA%'
-              AND v.[Fecha Visita] >= '2026-01-01'
-            ORDER BY v.[Fecha Visita] DESC, v.[Fecha Hora Creacion] DESC;
+            ORDER BY vi.fecha_visita DESC, vi.fh_creacion_raw DESC;
         `;
 
         console.log('[sync_guardia_internado] 1/3 Extrayendo Admisiones Clínicas Médicas (Protocolo 557)...');
         const resAdm557 = await pool.request().query(qAdmisiones557);
-        const admisiones_clinicas = resAdm557.recordset || [];
-        console.log(`[sync_guardia_internado] Protocolo 557: ${admisiones_clinicas.length} admisiones extraídas.`);
+        const raw557 = resAdm557.recordset || [];
 
-        // Crear mapas rápidos por id_hospitalizacion, NHC y DNI para enriquecer Traumatología e Interconsultas
+        // 1.A Descartar clics vacíos (tiene_ficha_557 === 0) donde se abrió (INT) ADMISION MEDICA CLINICA por error sin cargar ningún dato
+        const filled557 = raw557.filter(a => a.tiene_ficha_557 === 1);
+        const vaciasDescartadas = raw557.length - filled557.length;
+
+        // 1.B Ordenar cronológicamente para detectar la 1° admisión por hospitalización vs re-evaluaciones / interconsultas posteriores
+        const asc557 = [...filled557].sort((a, b) => {
+            const da = `${a.fecha_visita || ''} ${a.hora_visita || ''}`;
+            const db = `${b.fecha_visita || ''} ${b.hora_visita || ''}`;
+            return da.localeCompare(db) || ((a.id_visita || 0) - (b.id_visita || 0));
+        });
+
+        const seenHospCount = new Map();
+        const hospOrderMap = new Map();
+        for (const row of asc557) {
+            const hospKey = row.id_hospitalizacion ? `H_${row.id_hospitalizacion}` : `P_${row.dni || row.nhc}_${row.periodo}`;
+            const prev = seenHospCount.get(hospKey) || 0;
+            seenHospCount.set(hospKey, prev + 1);
+            hospOrderMap.set(row.id_visita, prev + 1);
+        }
+
+        const admisiones_clinicas = [];
+        const interconsultas_en_557 = [];
+
+        for (const a of filled557) {
+            const rnHosp = hospOrderMap.get(a.id_visita) || 1;
+            const espAdm = String(a.especialidad_admision || '').trim().toUpperCase();
+            const servAdm = String(a.servicio_admision || '').trim().toUpperCase();
+            const hab = String(a.habitacion || '').trim().toUpperCase();
+            const areaForm = String(a.area_form || '').trim();
+            const destForm = String(a.destino_form || '').trim();
+            const mcLower = String(a.motivo_consulta || '').toLowerCase();
+            const eaLower = String(a.enfermedad_actual || '').toLowerCase();
+
+            // Determinar el sector real de la evaluación (evitando que 'INTERNACION CLINICA' en Shock Room se cuente como Piso)
+            let sector_real = 'internado';
+            if (areaForm === 'UCI' || servAdm.includes('UCI') || servAdm.includes('TERAPIA') || /^22[2-9]/.test(hab) || /^207/.test(hab)) {
+                sector_real = 'uci';
+            } else if (areaForm === 'Shock Room' || servAdm === 'SHOCK ROOM' || hab.startsWith('BOX') || destForm === 'Ambulatorio') {
+                sector_real = 'shock_room';
+            } else if (areaForm === 'Internado') {
+                sector_real = 'internado';
+            } else if (servAdm.includes('QUIROF') || servAdm.includes('CIRUGIA')) {
+                sector_real = 'quirofano';
+            }
+
+            // Detectar si este formulario 557 en realidad fue una Interconsulta / Cogestión Clínica en Piso:
+            // - Paciente internado en Piso bajo otra especialidad (CIRUGIA, GASTROENTEROLOGIA, TRAUMATOLOGIA, UROLOGIA, GINECOLOGIA, etc.)
+            // - O segunda ficha 557 cargada días después en la misma internación (rnHosp > 1, ej. pase de terapia o revaloración)
+            // - O motivo de consulta que declara explícitamente interconsulta / valoración a pedido
+            const esOtraEspecialidadEnPiso = (sector_real === 'internado' || sector_real === 'quirofano') &&
+                espAdm !== '' &&
+                !['CLINICO', 'CLINICA MEDICA', 'MEDICINA INTERNA'].includes(espAdm);
+            const esTextoInterconsulta = mcLower.includes('interconsulta') || eaLower.includes('pedido de interconsulta') || mcLower.includes('pase de terapia');
+
+            const esInterconsulta557 = esOtraEspecialidadEnPiso || rnHosp > 1 || esTextoInterconsulta;
+
+            const enrichedRow = {
+                ...a,
+                sector_real,
+                rn_hospitalizacion: rnHosp,
+                es_interconsulta_557: esInterconsulta557 ? 1 : 0,
+                tipo_registro_557: esInterconsulta557
+                    ? (esOtraEspecialidadEnPiso ? `Cogestión / Interconsulta en ${espAdm}` : 'Revaloración / Pase en Piso')
+                    : 'Admisión Clínica'
+            };
+
+            if (esInterconsulta557) {
+                interconsultas_en_557.push(enrichedRow);
+            } else {
+                admisiones_clinicas.push(enrichedRow);
+            }
+        }
+
+        console.log(`[sync_guardia_internado] Protocolo 557: ${raw557.length} brutos -> ${vaciasDescartadas} vacíos descartados, ${admisiones_clinicas.length} Admisiones Clínicas puras, ${interconsultas_en_557.length} Interconsultas/Cogestión en Piso reclasificadas.`);
+
+        // Crear mapas rápidos por id_hospitalizacion, NHC y DNI (usando todas las fichas 557 con datos) para enriquecer Traumatología e Interconsultas
         const mapByHosp = new Map();
         const mapByNhc = new Map();
         const mapByDni = new Map();
-        for (const a of admisiones_clinicas) {
+        for (const a of filled557) {
             if (a.id_hospitalizacion && !mapByHosp.has(a.id_hospitalizacion)) {
                 mapByHosp.set(a.id_hospitalizacion, a);
             }
@@ -353,20 +504,102 @@ export async function syncGuardiaInternado() {
 
         console.log('[sync_guardia_internado] 3/3 Extrayendo Interconsultas...');
         const resInter = await pool.request().query(qInterconsultas);
-        const interconsultas = (resInter.recordset || []).map(i => {
+        const rawInter = resInter.recordset || [];
+
+        // Filtrar clics duplicados vacíos de interconsulta en el mismo día y paciente cuando ya existe otra interconsulta con evolución cargada
+        const filledInterKeys = new Set();
+        for (const r of rawInter) {
+            if (r.evolucion_interconsulta) {
+                filledInterKeys.add(`${r.dni || r.nhc}_${r.fecha_visita}`);
+            }
+        }
+        const dedupedInter = rawInter.filter(r => {
+            if (r.evolucion_interconsulta) return true;
+            const key = `${r.dni || r.nhc}_${r.fecha_visita}`;
+            // Si el mismo día el paciente ya tiene otra interconsulta con texto cargado, descartamos el clic en blanco duplicado
+            if (filledInterKeys.has(key)) return false;
+            return true;
+        });
+
+        const interconsultasNativas = dedupedInter.map(i => {
             const p557 = (i.id_hospitalizacion && mapByHosp.get(i.id_hospitalizacion)) || mapByNhc.get(String(i.nhc || '')) || mapByDni.get(String(i.dni || '')) || null;
+            const textoFinal = i.evolucion_interconsulta ||
+                (p557 && i.es_medico_clinico === 1
+                    ? [p557.motivo_consulta && `MC: ${p557.motivo_consulta}`, p557.enfermedad_actual, p557.plan_terapeutico && `Plan: ${p557.plan_terapeutico}`].filter(Boolean).join(' — ')
+                    : null);
+            const origenFinal = i.origen_evolucion || (textoFinal && p557 ? 'Ficha Clínica 557 Asociada' : null);
+
             return {
                 ...i,
+                evolucion_interconsulta: textoFinal || null,
+                origen_evolucion: origenFinal,
+                tiene_datos_interconsulta: textoFinal ? 1 : 0,
                 tiene_admision_557: !!p557,
                 id_visita_557: p557?.id_visita || null,
                 motivo_consulta_557: p557?.motivo_consulta || null,
                 enfermedad_actual_557: p557?.enfermedad_actual || null,
                 patologias_557: p557?.patologias || null,
-                medico_cabecera_557: p557?.medico_cabecera || null
+                plan_terapeutico_557: p557?.plan_terapeutico || null,
+                diagnostico_557: p557?.diagnostico || null,
+                medico_cabecera_557: p557?.medico_cabecera || i.medico_cabecera_adm || null
             };
         });
+
+        // Incorporar al listado de Interconsultas las valoraciones clínicas en Piso que fueron cargadas usando el formulario 557 sobre pacientes de otras especialidades (Cogestión)
+        const existingInterVisitaDay = new Set(interconsultasNativas.map(i => `${i.dni || i.nhc}_${i.fecha_visita}_${i.medico_actuante}`));
+        const interconsultasDesde557 = interconsultas_en_557
+            .filter(a => !existingInterVisitaDay.has(`${a.dni || a.nhc}_${a.fecha_visita}_${a.medico_admision}`))
+            .map(a => {
+                const resumenTexto = [
+                    a.motivo_consulta ? `Motivo: ${a.motivo_consulta}` : null,
+                    a.enfermedad_actual ? `Evolución/AEA: ${a.enfermedad_actual}` : null,
+                    a.diagnostico ? `Diag: ${a.diagnostico}` : null,
+                    a.plan_terapeutico ? `Plan: ${a.plan_terapeutico}` : null
+                ].filter(Boolean).join(' | ');
+
+                return {
+                    id_visita: a.id_visita,
+                    paciente: a.paciente,
+                    dni: a.dni,
+                    nhc: a.nhc,
+                    id_hospitalizacion: a.id_hospitalizacion,
+                    periodo: a.periodo,
+                    fecha_visita: a.fecha_visita,
+                    hora_creacion: a.hora_visita,
+                    tipo_visita: '(INT) INTERCONSULTA / COGESTIÓN (FICHA 557)',
+                    medico_actuante: a.medico_admision,
+                    especialidad_medico: `CLÍNICA MÉDICA (${a.tipo_registro_557})`,
+                    obra_social: a.obra_social,
+                    asistencia: 'Asistida',
+                    habitacion: a.habitacion || 'SIN CAMA',
+                    servicio_internacion: a.servicio_admision || 'INTERNADO',
+                    especialidad_admision: a.especialidad_admision || null,
+                    medico_cabecera_adm: a.medico_cabecera || null,
+                    es_medico_clinico: 1,
+                    es_reclasificada_557: 1,
+                    evolucion_interconsulta: resumenTexto || 'Ficha 557 completa disponible',
+                    origen_evolucion: 'Cargada en Prot. 557 (Cogestión Piso)',
+                    medico_solicitante_6547: a.medico_cabecera || null,
+                    tiene_datos_interconsulta: 1,
+                    tiene_admision_557: true,
+                    id_visita_557: a.id_visita,
+                    motivo_consulta_557: a.motivo_consulta || null,
+                    enfermedad_actual_557: a.enfermedad_actual || null,
+                    patologias_557: a.patologias || null,
+                    plan_terapeutico_557: a.plan_terapeutico || null,
+                    diagnostico_557: a.diagnostico || null,
+                    medico_cabecera_557: a.medico_cabecera || null
+                };
+            });
+
+        const interconsultas = [...interconsultasNativas, ...interconsultasDesde557].sort((a, b) => {
+            const da = `${a.fecha_visita || ''} ${a.hora_creacion || ''}`;
+            const db = `${b.fecha_visita || ''} ${b.hora_creacion || ''}`;
+            return db.localeCompare(da);
+        });
+
         const clinicas = interconsultas.filter(i => i.es_medico_clinico === 1);
-        console.log(`[sync_guardia_internado] Interconsultas: ${interconsultas.length} totales, ${clinicas.length} clínicas.`);
+        console.log(`[sync_guardia_internado] Interconsultas: ${interconsultas.length} totales (${interconsultasNativas.length} nativas + ${interconsultasDesde557.length} cogestión 557), ${clinicas.length} clínicas.`);
 
         const paolaCargadas = admisiones_clinicas.filter(a => 
             (a.medico_admision || '').toUpperCase().includes('GARCIA, PAOLA') ||
@@ -378,17 +611,20 @@ export async function syncGuardiaInternado() {
 
         const payload = {
             admisiones_clinicas,
+            interconsultas_en_557,
             traumatologia,
             interconsultas,
             stats: {
                 total_admisiones_557: admisiones_clinicas.length,
-                con_ficha_557: admisiones_clinicas.filter(a => a.tiene_ficha_557 === 1).length,
+                con_ficha_557: admisiones_clinicas.length,
+                vacias_descartadas_557: vaciasDescartadas,
+                interconsultas_reclasificadas_557: interconsultas_en_557.length,
                 activos_piso_557: admisiones_clinicas.filter(a => a.estado_internacion === 'Activo en Piso').length,
                 paola_garcia_cargadas: paolaCargadas,
                 paola_garcia_cabecera: paolaCabecera,
-                area_shock_room: admisiones_clinicas.filter(a => a.area_form === 'Shock Room' || (a.servicio_admision || '').includes('SHOCK')).length,
-                area_internado: admisiones_clinicas.filter(a => a.area_form === 'Internado' || (a.servicio_admision || '').includes('INTERN')).length,
-                area_uci: admisiones_clinicas.filter(a => a.area_form === 'UCI' || (a.servicio_admision || '').includes('UCI') || (a.servicio_admision || '').includes('TERAPIA')).length,
+                area_shock_room: admisiones_clinicas.filter(a => a.sector_real === 'shock_room').length,
+                area_internado: admisiones_clinicas.filter(a => a.sector_real === 'internado').length,
+                area_uci: admisiones_clinicas.filter(a => a.sector_real === 'uci').length,
                 reconsultas_72h_557: admisiones_clinicas.filter(a => a.reconsulta_72h === 'Si').length,
                 reingresos_72h_557: admisiones_clinicas.filter(a => a.reingreso_72h === 'Si').length,
                 total_traumatologia: traumatologia.length,
@@ -396,6 +632,7 @@ export async function syncGuardiaInternado() {
                 total_interconsultas: interconsultas.length,
                 interconsultas_clinicas: clinicas.length,
                 interconsultas_otras: interconsultas.length - clinicas.length,
+                interconsultas_con_datos: interconsultas.filter(i => i.tiene_datos_interconsulta === 1).length,
                 ultima_actualizacion: new Date().toISOString()
             }
         };
