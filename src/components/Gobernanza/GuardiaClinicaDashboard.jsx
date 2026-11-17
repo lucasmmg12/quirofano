@@ -418,14 +418,31 @@ export default function GuardiaClinicaDashboard({
     };
 
     
+    const fetchAllFromTable = async (tableName, orderCol) => {
+        const pageSize = 1000;
+        let all = [];
+        let from = 0;
+        while (true) {
+            let q = supabase.from(tableName).select('*').range(from, from + pageSize - 1);
+            if (orderCol) q = q.order(orderCol, { ascending: false });
+            const { data, error } = await q;
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            all = all.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+        }
+        return all;
+    };
+
     const fetchExtraNominalData = async () => {
         try {
-            const [cRes, tRes] = await Promise.all([
-                supabase.from('guardia_cirugias_conversion').select('*'),
-                supabase.from('guardia_triage_pacientes').select('*')
+            const [cData, tData] = await Promise.all([
+                fetchAllFromTable('guardia_cirugias_conversion', 'fecha_cirugia'),
+                fetchAllFromTable('guardia_triage_pacientes', 'fecha_visita')
             ]);
-            if (cRes.data) setCirugiasConversionAll(cRes.data);
-            if (tRes.data) setTriagePacientesAll(tRes.data);
+            setCirugiasConversionAll(cData || []);
+            setTriagePacientesAll(tData || []);
         } catch (e) {
             console.error('Error fetching nominal extra data:', e);
         }
