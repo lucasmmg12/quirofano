@@ -53,6 +53,39 @@ function formatDateShort(d) {
     return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
+/**
+ * Regla de Negocio Admisión Quirúrgica:
+ * Excluye de toda estadística Hemodinamia y Fertilidad (Reproducción Asistida),
+ * ya que no se controlan por el circuito administrativo pre-quirúrgico de Admisión.
+ */
+function isExcludedFromMetrics(s) {
+    if (!s || s.excluido) return true;
+    if (s.status === 'fertilidad') return true;
+    const grupo = String(s.grupo_agendas || '').toUpperCase();
+    if (grupo.includes('HEMODINAMIA') || grupo.includes('FERTILIDAD')) return true;
+
+    const text = `${s.grupo_agendas || ''} ${s.modulo || ''} ${s.descripcion || ''}`.toUpperCase();
+    return (
+        text.includes('HEMODINAMIA') ||
+        text.includes('FERTILIDAD') ||
+        text.includes('REPRODUCCION ASISTIDA') ||
+        text.includes('REPRODUCCIÓN ASISTIDA') ||
+        text.includes('CEMERA') ||
+        text.includes('EMBRION') ||
+        text.includes('EMBRIÓN') ||
+        text.includes('PUNCION FOLICULAR') ||
+        text.includes('PUNCIÓN FOLICULAR') ||
+        text.includes('INSEMINACION') ||
+        text.includes('INSEMINACIÓN') ||
+        text.includes('CRIOPRESERVACION') ||
+        text.includes('OVODONACION') ||
+        text.includes('CORONARIOGRAFIA') ||
+        text.includes('ANGIOPLASTIA') ||
+        text.includes('CATETERISMO CARDIACO') ||
+        text.includes('ELECTROFISIOLOG')
+    );
+}
+
 // ── Colors ──
 const COLORS = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#8B5CF6', '#14B8A6'];
 const STATUS_COLORS = {
@@ -169,20 +202,24 @@ export default function MetricsPanel({ addToast }) {
                     gte: ['created_at', prevFromISO], lt: ['created_at', prevToISO],
                 }),
                 // Surgeries — previous period
-                fetchAll('surgeries', 'id, status, ausente, created_at, fecha_cirugia', {
+                fetchAll('surgeries', 'id, status, ausente, created_at, fecha_cirugia, modulo, grupo_agendas, descripcion, medico', {
                     eq: ['excluido', false],
                     gte: ['created_at', prevFromISO], lt: ['created_at', prevToISO],
                 }),
             ]);
 
-            setSurgeries(surgeriesData);
+            // Excluir de toda estadística Hemodinamia y Fertilidad (no se controlan en Admisión Quirúrgica)
+            const filteredSurgeries = (surgeriesData || []).filter(s => !isExcludedFromMetrics(s));
+            const filteredPrevSurgeries = (prevSurgData || []).filter(s => !isExcludedFromMetrics(s));
+
+            setSurgeries(filteredSurgeries);
             setEvents(eventsData);
             setAllSurgeryEvents(allSurgEventsData);
             setMessages(messagesData);
             setLookbackOutgoingMsgs(lookbackOutData);
             setLines(linesRes.data || []);
             setPrevMessages(prevMsgData);
-            setPrevSurgeries(prevSurgData);
+            setPrevSurgeries(filteredPrevSurgeries);
             setSlaPage(1);
         } catch (err) {
             console.error('MetricsPanel load error:', err);
@@ -482,25 +519,15 @@ export default function MetricsPanel({ addToast }) {
     }, [surgeries]);
 
     // ═════════════════════════════════════════════════════════════════════════
-    //  NUEVA MÉTRICA: COBERTURA DE CONTACTO PRE-QUIRÚRGICO (≥ 12 HS PREVIAS)
-    //  Evalúa sobre todas las cirugías del período seleccionado si el paciente
-    //  fue contactado con al menos 12 horas de anticipación a la cirugía.
+    //  MÉTRICA: COBERTURA DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 24 HS PREVIAS)
+    //  - Excluye Hemodinamia y Fertilidad (no se controlan por Admisión).
+    //  - Excluye de la penalización los turnos agregados con < 24 hs de anticipación
+    //    (sobreturnos/urgencias cargados cuando ya no hay personal administrativo).
     // ═════════════════════════════════════════════════════════════════════════
     const preSurgeryContactMetrics = useMemo(() => {
         const norm10 = (p) => {
             const d = String(p || '').replace(/\D/g, '');
             return d.length >= 8 ? d.slice(-10) : '';
-        };
-
-        const isFertilidadNoMsg = (s) => {
-            const text = `${s.grupo_agendas || ''} ${s.descripcion || ''} ${s.modulo || ''}`.toUpperCase();
-            return (
-                s.status === 'fertilidad' ||
-                text.includes('REPRODUCCION ASISTIDA') ||
-                text.includes('FERTILIDAD') ||
-                text.includes('CEMERA') ||
-                text.includes('TRANSFERENCIA EMBRIONARIA')
-            );
         };
 
         // Índices rápidos de eventos y mensajes salientes
@@ -533,30 +560,34 @@ export default function MetricsPanel({ addToast }) {
 
         const evaluateSurgeryList = (fromDate, toDate) => {
             const fromYMD = fromDate.toISOString().split('T')[0];
-            // range.to puede ser inicio del día siguiente (eod); restamos 1ms para obtener el día límite inclusivo
             const toInclusive = new Date(Math.max(fromDate.getTime(), toDate.getTime() - 1000));
             const toYMD = toInclusive.toISOString().split('T')[0];
 
             const periodSurgeries = surgeries.filter(s => {
-                if (!s.fecha_cirugia || s.excluido) return false;
-                if (isFertilidadNoMsg(s)) return false;
+                if (!s.fecha_cirugia || isExcludedFromMetrics(s)) return false;
                 return s.fecha_cirugia >= fromYMD && s.fecha_cirugia <= toYMD;
             });
 
-            let onTimeCount = 0;      // >= 12 hs antes
-            let lateCount = 0;        // > 0 y < 12 hs antes (o el mismo día)
-            let noContactCount = 0;   // sin contacto registrado
+            let onTimeCount = 0;            // Contactado a tiempo (ventana ≥ 24hs previas / turno hábil previo)
+            let lateCount = 0;              // Contacto tardío sobre cirugía programada ≥ 24hs antes
+            let noContactCount = 0;         // Sin contacto sobre cirugía programada ≥ 24hs antes
+            let excludedLastMinuteCount = 0; // Turnos agregados < 24hs antes sin margen administrativo
             let totalHoursLead = 0;
             let contactedTotal = 0;
             const byDayMap = {};
             const rows = [];
+            const excludedLastMinuteRows = [];
 
             periodSurgeries.forEach(cx => {
                 // Hora estándar de ingreso quirúrgico: 07:00 hs Argentina (-03:00)
-                // Por lo tanto, el límite de 12 hs previas equivale a las 19:00 hs del día anterior.
                 const surgeryRefMs = new Date(`${cx.fecha_cirugia}T07:00:00-03:00`).getTime();
                 const surgeryDayEndMs = new Date(`${cx.fecha_cirugia}T23:59:59-03:00`).getTime();
                 const windowStartMs = surgeryRefMs - (30 * 24 * 3600 * 1000);
+
+                const createdMs = cx.created_at ? new Date(cx.created_at).getTime() : null;
+                const createdLeadHours = (createdMs && !isNaN(createdMs))
+                    ? (surgeryRefMs - createdMs) / (1000 * 3600)
+                    : 48;
 
                 const candidates = [];
 
@@ -612,13 +643,35 @@ export default function MetricsPanel({ addToast }) {
                 const validCandidates = candidates.filter(c => !isNaN(c.ts) && c.ts > 0);
                 validCandidates.sort((a, b) => a.ts - b.ts);
                 const firstContact = validCandidates[0] || null;
+                const hoursBefore = firstContact ? (surgeryRefMs - firstContact.ts) / (1000 * 3600) : null;
+
+                // Si el turno fue agregado con menos de 24 hs de anticipación y no llegó a ser contactado a tiempo,
+                // se clasifica como Sobreturno / Carga < 24hs (sin personal administrativo) y no penaliza el SLA.
+                const isAddedLastMinute = createdLeadHours < 24;
+                const wasContactedInAdvance = hoursBefore !== null && hoursBefore >= 12;
+
+                if (isAddedLastMinute && !wasContactedInAdvance) {
+                    excludedLastMinuteCount++;
+                    excludedLastMinuteRows.push({
+                        id: cx.id,
+                        nombre: cx.nombre || 'Sin nombre',
+                        dni: cx.dni || '—',
+                        telefono: cx.telefono || 'Sin tel.',
+                        medico: cx.medico || '—',
+                        obraSocial: cx.obra_social || '—',
+                        modulo: cx.modulo || cx.descripcion || '—',
+                        fechaCirugia: cx.fecha_cirugia,
+                        createdAt: cx.created_at,
+                        createdLeadHours: Number(createdLeadHours.toFixed(1)),
+                        status: cx.ausente === '0' ? 'realizada' : cx.ausente === '1' ? 'suspendida' : (cx.status || 'lila'),
+                    });
+                    return;
+                }
 
                 let slaStatus = 'no_contact';
-                let hoursBefore = null;
 
                 if (firstContact) {
                     contactedTotal++;
-                    hoursBefore = (surgeryRefMs - firstContact.ts) / (1000 * 3600);
                     totalHoursLead += Math.max(0, hoursBefore);
                     if (hoursBefore >= 12) {
                         slaStatus = 'on_time';
@@ -656,6 +709,8 @@ export default function MetricsPanel({ addToast }) {
                     obraSocial: cx.obra_social || '—',
                     modulo: cx.modulo || cx.descripcion || '—',
                     fechaCirugia: cx.fecha_cirugia,
+                    createdAt: cx.created_at || null,
+                    createdLeadHours: Number(createdLeadHours.toFixed(1)),
                     status: cx.ausente === '0' ? 'realizada' : cx.ausente === '1' ? 'suspendida' : (cx.status || 'lila'),
                     slaStatus,
                     firstContactTs: firstContact?.ts || null,
@@ -664,7 +719,7 @@ export default function MetricsPanel({ addToast }) {
                 });
             });
 
-            const total = periodSurgeries.length;
+            const total = rows.length;
             const onTimeRate = total > 0 ? ((onTimeCount / total) * 100).toFixed(1) : '0.0';
             const totalContactedRate = total > 0 ? (((onTimeCount + lateCount) / total) * 100).toFixed(1) : '0.0';
             const avgLeadHours = contactedTotal > 0 ? (totalHoursLead / contactedTotal).toFixed(1) : '0';
@@ -676,7 +731,7 @@ export default function MetricsPanel({ addToast }) {
                     cumplimientoPct: d.total > 0 ? Number(((d.onTime / d.total) * 100).toFixed(1)) : 0,
                 }));
 
-            // Ordenar filas: primero sin contacto, luego contacto tardío (<12hs), luego en tiempo (>=12hs)
+            // Ordenar filas: primero sin contacto, luego contacto tardío, luego en tiempo
             const orderWeight = { no_contact: 0, late: 1, on_time: 2 };
             rows.sort((a, b) => {
                 if (orderWeight[a.slaStatus] !== orderWeight[b.slaStatus]) {
@@ -690,6 +745,8 @@ export default function MetricsPanel({ addToast }) {
                 onTimeCount,
                 lateCount,
                 noContactCount,
+                excludedLastMinuteCount,
+                excludedLastMinuteRows,
                 contactedTotal,
                 onTimeRate,
                 totalContactedRate,
@@ -704,8 +761,8 @@ export default function MetricsPanel({ addToast }) {
         const deltaOnTime = (parseFloat(current.onTimeRate) - parseFloat(previous.onTimeRate)).toFixed(1);
 
         const pieData = [
-            { name: 'Contactado ≥ 12hs antes', value: current.onTimeCount, color: '#22C55E' },
-            { name: 'Contacto tardío (< 12hs)', value: current.lateCount, color: '#F59E0B' },
+            { name: 'Contactado ≥ 24hs previas', value: current.onTimeCount, color: '#22C55E' },
+            { name: 'Contacto tardío (< 24hs)', value: current.lateCount, color: '#F59E0B' },
             { name: 'Sin contacto registrado', value: current.noContactCount, color: '#EF4444' },
         ].filter(d => d.value > 0);
 
@@ -741,36 +798,60 @@ export default function MetricsPanel({ addToast }) {
             const XLSX = await import('xlsx');
             const wb = XLSX.utils.book_new();
 
-            // KPIs sheet
-            const kpis = [
-                ['Métrica', 'Valor', 'Período anterior', 'Variación'],
-                ['Contacto Pre-Quirúrgico (≥ 12hs antes)', preSurgeryContactMetrics.onTimeRate + '%', preSurgeryContactMetrics.prevOnTimeRate + '%', preSurgeryContactMetrics.deltaOnTime + '%'],
-                ['Cirugías Contactadas ≥ 12hs antes', preSurgeryContactMetrics.onTimeCount, '', ''],
-                ['Cirugías con Contacto Tardío (< 12hs)', preSurgeryContactMetrics.lateCount, '', ''],
-                ['Cirugías Sin Contacto Registrado', preSurgeryContactMetrics.noContactCount, '', ''],
-                ['Anticipación Promedio de Contacto (hs)', preSurgeryContactMetrics.avgLeadHours + ' hs', '', ''],
-                ['Tasa Confirmación', confirmacionRate + '%', prevConfRate.toFixed(1) + '%', confDelta + '%'],
-                ['Total Mensajes', totalMessages, prevTotalMsg, msgDelta + '%'],
-                ['Pacientes Contactados', uniquePhones, prevUniquePhones, phonesDelta + '%'],
-                ['Chats Iniciados', chatsInitiated, prevChatsInitiated, initDelta + '%'],
-                ['Tasa Respuesta', responseRate + '%', '', ''],
-                ['Cirugías Realizadas', realizadas, '', ''],
-                ['Cirugías Suspendidas', suspendidas, '', ''],
-            ];
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpis), 'KPIs');
+            const fitCols = (aoa) => {
+                if (!aoa || aoa.length === 0) return [];
+                const colCount = Math.max(...aoa.map(r => r.length));
+                return Array.from({ length: colCount }, (_, colIdx) => {
+                    const maxLen = aoa.reduce((acc, row) => {
+                        const cellVal = row[colIdx] != null ? String(row[colIdx]) : '';
+                        return Math.max(acc, cellVal.length);
+                    }, 10);
+                    return { wch: Math.min(Math.max(maxLen + 3, 12), 48) };
+                });
+            };
 
-            // 12h Pre-Surgery Contact Audit sheet
-            const slaSheet = [['Fecha Cirugía', 'Paciente', 'DNI', 'Teléfono', 'Médico', 'Obra Social', 'Estado', 'Cumplimiento 12hs', 'Fecha/Hora 1er Contacto', 'Anticipación (hs)', 'Fuente Evidencia']];
+            const appendStyledSheet = (name, aoa) => {
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                ws['!cols'] = fitCols(aoa);
+                XLSX.utils.book_append_sheet(wb, ws, name);
+            };
+
+            // 1. KPIs sheet
+            const kpis = [
+                ['Métrica (Excluye Hemodinamia y Fertilidad)', 'Valor Actual', 'Período Anterior', 'Variación / Detalle'],
+                ['Contacto Pre-Quirúrgico (Ventana ≥ 24hs Previas)', preSurgeryContactMetrics.onTimeRate + '%', preSurgeryContactMetrics.prevOnTimeRate + '%', preSurgeryContactMetrics.deltaOnTime + '%'],
+                ['Cirugías Auditadas (Programadas ≥ 24hs antes)', preSurgeryContactMetrics.total, '', 'Base controlable por Admisión'],
+                ['Cirugías Contactadas en Tiempo (≥ 24hs)', preSurgeryContactMetrics.onTimeCount, '', `${preSurgeryContactMetrics.onTimeRate}% del total controlable`],
+                ['Cirugías con Contacto Tardío', preSurgeryContactMetrics.lateCount, '', 'Contactadas el mismo día / fuera de ventana'],
+                ['Cirugías Sin Contacto Registrado', preSurgeryContactMetrics.noContactCount, '', 'Programadas ≥ 24hs sin registro de mensaje'],
+                ['Turnos Agregados < 24hs antes (Excluidos de penalización)', preSurgeryContactMetrics.excludedLastMinuteCount, '', 'Agregados sin margen / fuera de horario Adm.'],
+                ['Anticipación Promedio de Contacto (hs)', preSurgeryContactMetrics.avgLeadHours + ' hs', '', ''],
+                ['Tasa de Confirmación de Cirugías', confirmacionRate + '%', prevConfRate.toFixed(1) + '%', confDelta + '%'],
+                ['Total Mensajes WhatsApp', totalMessages, prevTotalMsg, msgDelta + '%'],
+                ['Pacientes Contactados (Únicos)', uniquePhones, prevUniquePhones, phonesDelta + '%'],
+                ['Chats Iniciados por Admisión', chatsInitiated, prevChatsInitiated, initDelta + '%'],
+                ['Tasa de Respuesta de Pacientes', responseRate + '%', '', ''],
+                ['Cirugías Realizadas', realizadas, prevRealizadas, ''],
+                ['Cirugías Suspendidas', suspendidas, prevSuspendidas, ''],
+            ];
+            appendStyledSheet('Resumen KPIs', kpis);
+
+            // 2. 24h Pre-Surgery Contact Audit sheet
+            const slaSheet = [['Fecha Cirugía', 'Fecha Alta Turno', 'Anticipación Carga (hs)', 'Paciente', 'DNI', 'Teléfono', 'Médico', 'Obra Social', 'Módulo / Cirugía', 'Estado Cirugía', 'Cumplimiento ≥ 24hs', 'Fecha/Hora 1er Contacto', 'Anticipación Contacto (hs)', 'Fuente Evidencia']];
             preSurgeryContactMetrics.rows.forEach(r => {
-                const slaLabel = r.slaStatus === 'on_time' ? 'CUMPLIÓ (≥ 12hs)' : r.slaStatus === 'late' ? 'TARDÍO (< 12hs)' : 'SIN CONTACTO';
+                const slaLabel = r.slaStatus === 'on_time' ? 'CUMPLIÓ (≥ 24hs)' : r.slaStatus === 'late' ? 'TARDÍO (< 24hs)' : 'SIN CONTACTO';
                 const contactStr = r.firstContactTs ? new Date(r.firstContactTs).toLocaleString('es-AR') : '—';
+                const createdStr = r.createdAt ? new Date(r.createdAt).toLocaleString('es-AR') : '—';
                 slaSheet.push([
                     r.fechaCirugia,
+                    createdStr,
+                    r.createdLeadHours != null ? `${r.createdLeadHours} hs` : '—',
                     r.nombre,
                     r.dni,
                     r.telefono,
                     r.medico,
                     r.obraSocial,
+                    r.modulo,
                     r.status,
                     slaLabel,
                     contactStr,
@@ -778,38 +859,64 @@ export default function MetricsPanel({ addToast }) {
                     r.firstContactSource,
                 ]);
             });
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(slaSheet), 'Contacto 12hs Previas');
+            appendStyledSheet('Auditoria Contacto 24hs', slaSheet);
 
-            // Daily messages
-            const dailyData = [['Día', 'Enviados', 'Recibidos', 'Chats Iniciados']];
-            dailyMessagesData.forEach(d => dailyData.push([d.day, d.outgoing, d.incoming, d.initiated]));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyData), 'Mensajes Diarios');
-
-            // Top médicos
-            const medData = [['Médico', 'Cirugías']];
-            topMedicos.forEach(m => medData.push([m.name, m.count]));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(medData), 'Top Médicos');
-
-            // Top OS
-            const osData = [['Obra Social', 'Cirugías']];
-            topOS.forEach(o => osData.push([o.name, o.count]));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(osData), 'Top Obras Sociales');
-
-            // Top Módulos
-            const modData = [['Módulo / Tipo de Cirugía', 'Cantidad', 'Realizadas', 'Suspendidas', 'Tasa Realización']];
-            topModulos.forEach(m => {
-                const comp = moduloCompletionRate.find(c => c.fullName === m.fullName);
-                modData.push([m.fullName, m.count, comp?.realizadas || 0, comp?.suspendidas || 0, (comp?.rate || 0) + '%']);
+            // 3. Turnos agregados < 24hs antes (Excluidos de penalización)
+            const lastMinSheet = [['Fecha Cirugía', 'Fecha/Hora Alta del Turno', 'Anticipación de Carga (hs)', 'Paciente', 'DNI', 'Teléfono', 'Médico', 'Obra Social', 'Módulo / Cirugía', 'Estado', 'Motivo Exclusión SLA']];
+            (preSurgeryContactMetrics.excludedLastMinuteRows || []).forEach(r => {
+                lastMinSheet.push([
+                    r.fechaCirugia,
+                    r.createdAt ? new Date(r.createdAt).toLocaleString('es-AR') : '—',
+                    `${r.createdLeadHours} hs`,
+                    r.nombre,
+                    r.dni,
+                    r.telefono,
+                    r.medico,
+                    r.obraSocial,
+                    r.modulo,
+                    r.status,
+                    'Turno agregado con < 24hs de anticipación (sin margen administrativo)',
+                ]);
             });
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(modData), 'Top Módulos');
+            appendStyledSheet('Turnos Agregados <24hs', lastMinSheet);
+
+            // 4. Daily messages
+            const dailyData = [['Día', 'Enviados', 'Recibidos', 'Total Mensajes', 'Chats Iniciados']];
+            dailyMessagesData.forEach(d => dailyData.push([d.day, d.outgoing, d.incoming, d.outgoing + d.incoming, d.initiated]));
+            appendStyledSheet('Mensajes Diarios', dailyData);
+
+            // 5. Top médicos
+            const medData = [['#', 'Médico', 'Cirugías']];
+            topMedicos.forEach((m, idx) => medData.push([idx + 1, m.fullName || m.name, m.count]));
+            appendStyledSheet('Top Medicos', medData);
+
+            // 6. Top OS
+            const osData = [['#', 'Obra Social', 'Cirugías']];
+            topOS.forEach((o, idx) => osData.push([idx + 1, o.name, o.count]));
+            appendStyledSheet('Top Obras Sociales', osData);
+
+            // 7. Top Módulos
+            const modData = [['#', 'Módulo / Tipo de Cirugía', 'Cantidad', 'Realizadas', 'Suspendidas', 'Tasa Realización']];
+            topModulos.forEach((m, idx) => {
+                const comp = moduloCompletionRate.find(c => c.fullName === m.fullName);
+                modData.push([idx + 1, m.fullName, m.count, comp?.realizadas || 0, comp?.suspendidas || 0, (comp?.rate || 0) + '%']);
+            });
+            appendStyledSheet('Top Modulos', modData);
+
+            // 8. Volumen Mensual
+            const volData = [['Mes', 'Total Cargadas', 'Realizadas', 'Suspendidas', '% Realización']];
+            monthlyVolume.forEach(v => {
+                volData.push([v.month, v.total, v.realizadas, v.suspendidas, v.total > 0 ? ((v.realizadas / v.total) * 100).toFixed(1) + '%' : '0%']);
+            });
+            appendStyledSheet('Volumen Mensual', volData);
 
             XLSX.writeFile(wb, `metricas_admqui_${new Date().toISOString().split('T')[0]}.xlsx`);
-            addToast?.('✅ Excel exportado correctamente', 'success');
+            addToast?.('✅ Excel de métricas descargado correctamente', 'success');
         } catch (err) {
             console.error('Export error:', err);
-            addToast?.('Error al exportar', 'error');
+            addToast?.('Error al exportar Excel', 'error');
         }
-    }, [preSurgeryContactMetrics, confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta, uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta, responseRate, realizadas, suspendidas, dailyMessagesData, topMedicos, topOS, topModulos, moduloCompletionRate, addToast]);
+    }, [preSurgeryContactMetrics, confirmacionRate, prevConfRate, confDelta, totalMessages, prevTotalMsg, msgDelta, uniquePhones, prevUniquePhones, phonesDelta, chatsInitiated, prevChatsInitiated, initDelta, responseRate, realizadas, prevRealizadas, suspendidas, prevSuspendidas, dailyMessagesData, topMedicos, topOS, topModulos, moduloCompletionRate, monthlyVolume, addToast]);
 
     const exportToPDF = useCallback(async () => {
         try {
@@ -858,15 +965,16 @@ export default function MetricsPanel({ addToast }) {
             y += 14;
 
             // ── 1. KPIs Principales ──
-            sectionTitle('1. INDICADORES CLAVE DE RENDIMIENTO (KPIs)');
+            sectionTitle('1. INDICADORES CLAVE DE RENDIMIENTO (KPIs - EXCLUYE HEMODINAMIA Y FERTILIDAD)');
             autoTable(doc, {
                 startY: y,
                 head: [['Indicador', 'Valor actual', 'Período anterior', 'Variación %']],
                 body: [
-                    ['Contacto Pre-Quirúrgico (≥ 12hs antes)', preSurgeryContactMetrics.onTimeRate + '%', preSurgeryContactMetrics.prevOnTimeRate + '%', preSurgeryContactMetrics.deltaOnTime + '%'],
-                    ['Cirugías Contactadas en Tiempo (≥ 12hs)', `${preSurgeryContactMetrics.onTimeCount} de ${preSurgeryContactMetrics.total}`, '—', '—'],
-                    ['Cirugías con Contacto Tardío (< 12hs)', String(preSurgeryContactMetrics.lateCount), '—', '—'],
+                    ['Contacto Pre-Quirúrgico (≥ 24hs antes)', preSurgeryContactMetrics.onTimeRate + '%', preSurgeryContactMetrics.prevOnTimeRate + '%', preSurgeryContactMetrics.deltaOnTime + '%'],
+                    ['Cirugías Contactadas en Tiempo (≥ 24hs)', `${preSurgeryContactMetrics.onTimeCount} de ${preSurgeryContactMetrics.total}`, '—', '—'],
+                    ['Cirugías con Contacto Tardío (< 24hs)', String(preSurgeryContactMetrics.lateCount), '—', '—'],
                     ['Cirugías Sin Contacto Registrado', String(preSurgeryContactMetrics.noContactCount), '—', '—'],
+                    ['Turnos Agregados < 24hs antes (Excluidos SLA)', String(preSurgeryContactMetrics.excludedLastMinuteCount), '—', '—'],
                     ['Anticipación Promedio de Contacto', `${preSurgeryContactMetrics.avgLeadHours} hs`, '—', '—'],
                     ['Tasa de Confirmación de Cirugías', confirmacionRate + '%', prevConfRate.toFixed(1) + '%', confDelta + '%'],
                     ['Total de Mensajes WhatsApp', String(totalMessages), String(prevTotalMsg), msgDelta + '%'],
@@ -875,7 +983,7 @@ export default function MetricsPanel({ addToast }) {
                     ['Tasa de Respuesta', responseRate + '%', '—', '—'],
                     ['Cirugías Realizadas', String(realizadas), String(prevRealizadas), '—'],
                     ['Cirugías Suspendidas', String(suspendidas), String(prevSuspendidas), '—'],
-                    ['Total Cirugías en Sistema', String(totalSurgeries), '', '—'],
+                    ['Total Cirugías Controlables en Sistema', String(totalSurgeries), '', '—'],
                     ['Eventos del Pipeline', String(events.length), '', '—'],
                 ],
                 theme: 'grid',
@@ -1050,18 +1158,18 @@ export default function MetricsPanel({ addToast }) {
                 y = doc.lastAutoTable.finalY + 4;
             }
 
-            // ── 11. Auditoría de Contacto Pre-Quirúrgico (≥ 12hs antes) ──
+            // ── 11. Auditoría de Contacto Pre-Quirúrgico (≥ 24hs antes) ──
             if (preSurgeryContactMetrics.rows.length > 0) {
-                sectionTitle('11. AUDITORÍA DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 12 HS PREVIAS)', [16, 185, 129]);
+                sectionTitle('11. AUDITORÍA DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 24 HS PREVIAS)', [16, 185, 129]);
                 autoTable(doc, {
                     startY: y,
-                    head: [['Fecha Cx', 'Paciente', 'Teléfono', 'Médico', 'SLA 12hs', '1er Contacto', 'Anticipación', 'Evidencia']],
+                    head: [['Fecha Cx', 'Paciente', 'Teléfono', 'Médico', 'SLA 24hs', '1er Contacto', 'Anticipación', 'Evidencia']],
                     body: preSurgeryContactMetrics.rows.slice(0, 150).map(r => [
                         r.fechaCirugia,
                         r.nombre.length > 24 ? r.nombre.slice(0, 24) + '…' : r.nombre,
                         r.telefono,
                         r.medico.length > 18 ? r.medico.slice(0, 18) + '…' : r.medico,
-                        r.slaStatus === 'on_time' ? 'CUMPLIÓ (≥12h)' : r.slaStatus === 'late' ? 'TARDÍO (<12h)' : 'SIN CONTACTO',
+                        r.slaStatus === 'on_time' ? 'CUMPLIÓ (≥24h)' : r.slaStatus === 'late' ? 'TARDÍO (<24h)' : 'SIN CONTACTO',
                         r.firstContactTs ? new Date(r.firstContactTs).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—',
                         r.hoursBefore !== null ? `${r.hoursBefore} hs` : '—',
                         r.firstContactSource,
@@ -1133,8 +1241,23 @@ export default function MetricsPanel({ addToast }) {
                         <BarChart3 size={20} />
                     </div>
                     <div>
-                        <h2 className="metrics-panel__title">Panel de Métricas</h2>
-                        <p className="metrics-panel__subtitle">Business Intelligence — ADM-QUI</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <h2 className="metrics-panel__title">Panel de Métricas Quirúrgicas</h2>
+                            <span style={{
+                                padding: '2px 10px',
+                                borderRadius: '999px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                background: '#EFF6FF',
+                                color: '#1D4ED8',
+                                border: '1px solid #BFDBFE',
+                            }}>
+                                Excluye Hemodinamia y Fertilidad
+                            </span>
+                        </div>
+                        <p className="metrics-panel__subtitle">
+                            Business Intelligence — ADM-QUI · Ventana de Control Pre-Quirúrgico ≥ 24 Horas Previas
+                        </p>
                     </div>
                 </div>
 
@@ -1179,90 +1302,115 @@ export default function MetricsPanel({ addToast }) {
                     </div>
 
                     {/* Export buttons */}
-                    <button className="metrics-panel__export-btn" onClick={exportToExcel} title="Exportar Excel">
-                        <FileSpreadsheet size={15} /> Excel
+                    <button className="metrics-panel__export-btn" onClick={exportToExcel} title="Descargar Excel completo con todas las métricas y auditoría nominal">
+                        <FileSpreadsheet size={15} /> Descargar Excel (.xlsx)
                     </button>
-                    <button className="metrics-panel__export-btn metrics-panel__export-btn--pdf" onClick={exportToPDF} title="Exportar PDF">
-                        <FileText size={15} /> PDF
+                    <button className="metrics-panel__export-btn metrics-panel__export-btn--pdf" onClick={exportToPDF} title="Exportar Reporte en PDF">
+                        <FileText size={15} /> Descargar PDF
                     </button>
 
-                    <button className="metrics-panel__btn-refresh" onClick={loadData} title="Actualizar">
+                    <button className="metrics-panel__btn-refresh" onClick={loadData} title="Actualizar métricas">
                         <RefreshCw size={15} className={loading ? 'metrics-spin' : ''} />
                     </button>
                 </div>
             </div>
 
             {loading ? (
-                <SkeletonChartGrid kpis={6} charts={4} />
+                <SkeletonChartGrid kpis={7} charts={4} />
             ) : (
                 <>
-                    {/* ═══ KPI Cards ═══ */}
+                    {/* ═══ KPI Cards con Efecto Shader 3D ═══ */}
                     <div className="metrics-panel__kpis">
                         <KPICard
                             icon={ShieldCheck}
-                            label="Contacto ≥ 12hs Previas"
+                            label="Contacto ≥ 24hs Previas"
                             value={`${preSurgeryContactMetrics.onTimeRate}%`}
                             delta={preSurgeryContactMetrics.deltaOnTime}
                             color="#10B981"
-                            subtext={`${preSurgeryContactMetrics.onTimeCount}/${preSurgeryContactMetrics.total} a tiempo · ${preSurgeryContactMetrics.lateCount} <12h · ${preSurgeryContactMetrics.noContactCount} sin cont.`}
+                            subtext={`${preSurgeryContactMetrics.onTimeCount}/${preSurgeryContactMetrics.total} a tiempo · ${preSurgeryContactMetrics.noContactCount} sin cont.${preSurgeryContactMetrics.excludedLastMinuteCount > 0 ? ` · ${preSurgeryContactMetrics.excludedLastMinuteCount} excl. (<24h)` : ''}`}
                         />
                         <KPICard icon={CheckCircle} label="Tasa Confirmación" value={`${confirmacionRate}%`}
-                            delta={confDelta} color="#22C55E" subtext={`${realizadas} realizadas / ${suspendidas} susp.`} />
+                            delta={confDelta} color="#22C55E" subtext={`${realizadas} realizadas · ${suspendidas} suspendidas`} />
                         <KPICard icon={MessageSquare} label="Total Mensajes" value={totalMessages}
                             delta={msgDelta} color="#6366F1" subtext={`${outgoing} enviados · ${incoming} recibidos`} />
                         <KPICard icon={Phone} label="Chats Iniciados" value={chatsInitiated}
-                            delta={initDelta} color="#F59E0B" subtext="Conversaciones iniciadas por SA" />
+                            delta={initDelta} color="#F59E0B" subtext="Conversaciones iniciadas por Admisión" />
                         <KPICard icon={Users} label="Pacientes Contactados" value={uniquePhones}
-                            delta={phonesDelta} color="#3B82F6" subtext={`Tasa respuesta: ${responseRate}%`} />
+                            delta={phonesDelta} color="#3B82F6" subtext={`Tasa de respuesta: ${responseRate}%`} />
                         <KPICard icon={Stethoscope} label="Total Cirugías" value={totalSurgeries}
                             delta="" color="#A855F7" subtext={`Anticipación prom.: ${preSurgeryContactMetrics.avgLeadHours} hs`} />
                         <KPICard icon={Activity} label="Eventos Pipeline" value={events.length}
-                            delta="" color="#14B8A6" subtext="Transiciones de estado" />
+                            delta="" color="#14B8A6" subtext="Transiciones auditadas en el período" />
                     </div>
 
                     {/* ═══════════════════════════════════════════════════════════════════════════
-                        SECCIÓN DESTACADA: CONTROL DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 12 HS ANTES)
+                        SECCIÓN DESTACADA: CONTROL DE CONTACTO PRE-QUIRÚRGICO (REGLA ≥ 24 HS ANTES)
                        ═══════════════════════════════════════════════════════════════════════════ */}
-                    <div className="metrics-panel__row" style={{ marginBottom: '18px' }}>
-                        <div className="metrics-panel__card metrics-panel__card--wide" style={{ flex: '1 1 100%', padding: '16px 20px', border: '1px solid #D1FAE5', background: 'linear-gradient(180deg, #ECFDF5 0%, #FFFFFF 95px)' }}>
+                    <div className="metrics-panel__row metrics-panel__row--full" style={{ marginBottom: '18px' }}>
+                        <ShaderCard
+                            className="metrics-panel__card metrics-panel__card--wide"
+                            accentColor="#10B981"
+                            tiltIntensity={2.2}
+                            style={{ flex: '1 1 100%', padding: '18px 22px', border: '1px solid #A7F3D0', background: 'linear-gradient(180deg, #ECFDF5 0%, #FFFFFF 110px)' }}
+                        >
                             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px' }}>
                                 <div>
-                                    <h3 className="metrics-panel__card-title" style={{ marginBottom: '2px', color: '#065F46', fontSize: '0.95rem' }}>
-                                        <Clock size={17} style={{ color: '#059669' }} />
-                                        Auditoría de Contacto Pre-Quirúrgico (Ventana ≥ 12 Horas Previas)
+                                    <h3 className="metrics-panel__card-title" style={{ marginBottom: '3px', color: '#065F46', fontSize: '0.98rem' }}>
+                                        <Clock size={18} style={{ color: '#059669' }} />
+                                        Auditoría de Contacto Pre-Quirúrgico (Ventana ≥ 24 Horas Previas)
                                     </h3>
                                     <p style={{ margin: 0, fontSize: '0.75rem', color: '#475569' }}>
-                                        Período {formatDateShort(range.from)} al {formatDateShort(new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000)))} · Corte: <strong>12 hs antes</strong> (19:00 hs del día previo).
+                                        Período {formatDateShort(range.from)} al {formatDateShort(new Date(Math.max(range.from.getTime(), range.to.getTime() - 1000)))} · Excluye <strong>Hemodinamia</strong>, <strong>Fertilidad</strong> y <strong>{preSurgeryContactMetrics.excludedLastMinuteCount} turnos agregados &lt; 24 hs antes</strong> (sin margen de personal Adm.).
                                     </p>
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                     <button
                                         type="button"
                                         onClick={() => { setSlaFilter('on_time'); setSlaPage(1); setShowSlaTable(true); }}
-                                        title="Ver pacientes contactados ≥ 12hs antes"
+                                        title="Ver pacientes contactados a tiempo (≥ 24hs antes)"
                                         style={{ padding: '5px 10px', borderRadius: '8px', background: '#DCFCE7', border: '1px solid #86EFAC', fontSize: '0.73rem', color: '#166534', fontWeight: 700, cursor: 'pointer' }}
                                     >
-                                        ✅ ≥ 12hs: {preSurgeryContactMetrics.onTimeCount} ({preSurgeryContactMetrics.onTimeRate}%)
+                                        ✅ Cumplió (≥ 24hs): {preSurgeryContactMetrics.onTimeCount} ({preSurgeryContactMetrics.onTimeRate}%)
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => { setSlaFilter('late'); setSlaPage(1); setShowSlaTable(true); }}
-                                        title="Ver pacientes con contacto tardío (< 12hs)"
+                                        title="Ver pacientes con contacto tardío"
                                         style={{ padding: '5px 10px', borderRadius: '8px', background: '#FEF3C7', border: '1px solid #FDE68A', fontSize: '0.73rem', color: '#92400E', fontWeight: 700, cursor: 'pointer' }}
                                     >
-                                        ⚠️ &lt; 12hs: {preSurgeryContactMetrics.lateCount}
+                                        ⚠️ Tardío: {preSurgeryContactMetrics.lateCount}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => { setSlaFilter('no_contact'); setSlaPage(1); setShowSlaTable(true); }}
-                                        title="Ver pacientes sin contacto registrado"
+                                        title="Ver pacientes programados ≥ 24hs sin contacto registrado"
                                         style={{ padding: '5px 10px', borderRadius: '8px', background: '#FEE2E2', border: '1px solid #FECACA', fontSize: '0.73rem', color: '#991B1B', fontWeight: 700, cursor: 'pointer' }}
                                     >
                                         🔴 Sin contacto: {preSurgeryContactMetrics.noContactCount}
                                     </button>
-                                    <div style={{ padding: '5px 10px', borderRadius: '8px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.73rem', color: '#1E40AF', fontWeight: 700 }}>
-                                        ⏱️ Promedio: {preSurgeryContactMetrics.avgLeadHours} hs
+                                    <div style={{ padding: '5px 10px', borderRadius: '8px', background: '#F1F5F9', border: '1px solid #CBD5E1', fontSize: '0.73rem', color: '#475569', fontWeight: 700 }}
+                                        title="Turnos agregados con menos de 24hs de anticipación que no penalizan la métrica">
+                                        🛡️ Excluidos (&lt;24hs): {preSurgeryContactMetrics.excludedLastMinuteCount}
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={exportToExcel}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            padding: '5px 11px',
+                                            borderRadius: '8px',
+                                            background: '#059669',
+                                            color: '#FFFFFF',
+                                            border: '1px solid #047857',
+                                            fontSize: '0.73rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        <FileSpreadsheet size={13} /> Excel SLA
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={() => setShowSlaTable(prev => !prev)}
@@ -1286,7 +1434,7 @@ export default function MetricsPanel({ addToast }) {
                             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 2fr) minmax(240px, 1fr)', gap: '14px', marginBottom: showSlaTable ? '14px' : '0px' }}>
                                 <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 12px' }}>
                                     <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                                        Evolución Diaria de Cirugías según Cumplimiento (≥ 12hs)
+                                        Evolución Diaria de Cirugías Programadas (Ventana ≥ 24hs)
                                     </div>
                                     <div style={{ width: '100%', height: 165 }}>
                                         {preSurgeryContactMetrics.dailyChart.length === 0 ? (
@@ -1301,8 +1449,8 @@ export default function MetricsPanel({ addToast }) {
                                                     <YAxis tick={{ fontSize: 10 }} stroke="#94A3B8" />
                                                     <Tooltip content={<CustomTooltip />} />
                                                     <Legend wrapperStyle={{ fontSize: '0.7rem' }} />
-                                                    <Bar dataKey="onTime" name="Contactado ≥ 12hs antes" stackId="sla" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={20} />
-                                                    <Bar dataKey="late" name="Contacto Tardío (< 12hs)" stackId="sla" fill="#F59E0B" radius={[0, 0, 0, 0]} barSize={20} />
+                                                    <Bar dataKey="onTime" name="Contactado ≥ 24hs previas" stackId="sla" fill="#22C55E" radius={[0, 0, 0, 0]} barSize={20} />
+                                                    <Bar dataKey="late" name="Contacto Tardío (< 24hs)" stackId="sla" fill="#F59E0B" radius={[0, 0, 0, 0]} barSize={20} />
                                                     <Bar dataKey="noContact" name="Sin Contacto" stackId="sla" fill="#EF4444" radius={[4, 4, 0, 0]} barSize={20} />
                                                 </BarChart>
                                             </ResponsiveContainer>
@@ -1312,7 +1460,7 @@ export default function MetricsPanel({ addToast }) {
 
                                 <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '10px 12px' }}>
                                     <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                                        Distribución del Período ({preSurgeryContactMetrics.total} cirugías)
+                                        Distribución Controlable ({preSurgeryContactMetrics.total} cirugías ≥ 24hs)
                                     </div>
                                     <div style={{ width: '100%', height: 165 }}>
                                         {preSurgeryContactMetrics.pieData.length === 0 ? (
@@ -1347,7 +1495,7 @@ export default function MetricsPanel({ addToast }) {
                                 </div>
                             </div>
 
-                            {/* Tabla de Auditoría Nominal por Paciente (colapsable para no ocupar toda la pantalla) */}
+                            {/* Tabla de Auditoría Nominal por Paciente (colapsable) */}
                             {showSlaTable && (
                             <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px' }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '12px' }}>
@@ -1355,8 +1503,8 @@ export default function MetricsPanel({ addToast }) {
                                         {[
                                             { id: 'all', label: `Todas (${preSurgeryContactMetrics.total})` },
                                             { id: 'no_contact', label: `🔴 Sin Contacto (${preSurgeryContactMetrics.noContactCount})` },
-                                            { id: 'late', label: `⚠️ Tardío < 12hs (${preSurgeryContactMetrics.lateCount})` },
-                                            { id: 'on_time', label: `✅ Cumplió ≥ 12hs (${preSurgeryContactMetrics.onTimeCount})` },
+                                            { id: 'late', label: `⚠️ Tardío (${preSurgeryContactMetrics.lateCount})` },
+                                            { id: 'on_time', label: `✅ Cumplió ≥ 24hs (${preSurgeryContactMetrics.onTimeCount})` },
                                         ].map(tab => (
                                             <button
                                                 key={tab.id}
@@ -1404,7 +1552,7 @@ export default function MetricsPanel({ addToast }) {
                                                 <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Paciente</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Teléfono</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Médico / OS</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'center', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Cumplimiento 12hs</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'center', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Cumplimiento ≥ 24hs</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>1er Contacto Registrado</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'right', borderBottom: '2px solid #E2E8F0', color: '#475569' }}>Anticipación</th>
                                             </tr>
@@ -1419,9 +1567,9 @@ export default function MetricsPanel({ addToast }) {
                                             ) : (
                                                 filteredSlaRows.slice((slaPage - 1) * 15, slaPage * 15).map(r => {
                                                     const badgeStyle = r.slaStatus === 'on_time'
-                                                        ? { bg: '#DCFCE7', color: '#166534', text: '✅ Contactado ≥ 12hs' }
+                                                        ? { bg: '#DCFCE7', color: '#166534', text: '✅ Cumplió ≥ 24hs' }
                                                         : r.slaStatus === 'late'
-                                                            ? { bg: '#FEF3C7', color: '#92400E', text: '⚠️ Tardío (< 12hs)' }
+                                                            ? { bg: '#FEF3C7', color: '#92400E', text: '⚠️ Tardío (< 24hs)' }
                                                             : { bg: '#FEE2E2', color: '#991B1B', text: '🔴 Sin Contacto' };
                                                     return (
                                                         <tr key={r.id} style={{ borderBottom: '1px solid #F1F5F9' }}>
@@ -1499,12 +1647,12 @@ export default function MetricsPanel({ addToast }) {
                                 )}
                             </div>
                             )}
-                        </div>
+                        </ShaderCard>
                     </div>
 
                     {/* ═══ Row 1: Daily Messages + Pipeline ═══ */}
                     <div className="metrics-panel__row">
-                        <div className="metrics-panel__card metrics-panel__card--wide">
+                        <ShaderCard className="metrics-panel__card metrics-panel__card--wide" accentColor="#6366F1" tiltIntensity={3.5}>
                             <h3 className="metrics-panel__card-title">
                                 <TrendingUp size={16} /> Mensajes Diarios & Chats Iniciados
                             </h3>
@@ -1532,9 +1680,9 @@ export default function MetricsPanel({ addToast }) {
                                     </AreaChart>
                                 </ResponsiveContainer>
                             </div>
-                        </div>
+                        </ShaderCard>
 
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#A855F7" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Activity size={16} /> Pipeline de Cirugías
                             </h3>
@@ -1554,12 +1702,12 @@ export default function MetricsPanel({ addToast }) {
                                     </PieChart>
                                 </ResponsiveContainer>
                             </div>
-                        </div>
+                        </ShaderCard>
                     </div>
 
                     {/* ═══ Row 2: Messages by Line + Top Transitions ═══ */}
                     <div className="metrics-panel__row">
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#3B82F6" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Phone size={16} /> Mensajes por Línea
                             </h3>
@@ -1575,9 +1723,9 @@ export default function MetricsPanel({ addToast }) {
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
-                        </div>
+                        </ShaderCard>
 
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#14B8A6" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <TrendingUp size={16} /> Top Transiciones
                             </h3>
@@ -1596,12 +1744,12 @@ export default function MetricsPanel({ addToast }) {
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
-                        </div>
+                        </ShaderCard>
                     </div>
 
                     {/* ═══ Row 3: Top Médicos + Top Obras Sociales ═══ */}
                     <div className="metrics-panel__row">
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#22C55E" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Stethoscope size={16} /> Top Médicos
                             </h3>
@@ -1618,9 +1766,9 @@ export default function MetricsPanel({ addToast }) {
                                     </div>
                                 ))}
                             </div>
-                        </div>
+                        </ShaderCard>
 
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#3B82F6" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Users size={16} /> Top Obras Sociales
                             </h3>
@@ -1637,12 +1785,12 @@ export default function MetricsPanel({ addToast }) {
                                     </div>
                                 ))}
                             </div>
-                        </div>
+                        </ShaderCard>
                     </div>
 
                     {/* ═══ Row 4: Top Módulos (Cirugías más realizadas) ═══ */}
                     <div className="metrics-panel__row">
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#EC4899" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Stethoscope size={16} /> Top Cirugías / Módulos
                             </h3>
@@ -1669,9 +1817,9 @@ export default function MetricsPanel({ addToast }) {
                                     ))}
                                 </div>
                             )}
-                        </div>
+                        </ShaderCard>
 
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#10B981" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <CheckCircle size={16} /> Tasa Realización por Módulo
                             </h3>
@@ -1695,13 +1843,13 @@ export default function MetricsPanel({ addToast }) {
                                     </ResponsiveContainer>
                                 </div>
                             )}
-                        </div>
+                        </ShaderCard>
                     </div>
 
                     {/* ═══ Row 5: Evolución mensual por módulo ═══ */}
                     {monthlyModuloTrend.length > 1 && (
-                        <div className="metrics-panel__row">
-                            <div className="metrics-panel__card metrics-panel__card--wide" style={{ flex: '1 1 100%' }}>
+                        <div className="metrics-panel__row metrics-panel__row--full">
+                            <ShaderCard className="metrics-panel__card metrics-panel__card--wide" accentColor="#6366F1" tiltIntensity={2.5} style={{ flex: '1 1 100%' }}>
                                 <h3 className="metrics-panel__card-title">
                                     <TrendingUp size={16} /> Evolución Mensual — Top 5 Cirugías
                                 </h3>
@@ -1736,13 +1884,13 @@ export default function MetricsPanel({ addToast }) {
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 </div>
-                            </div>
+                            </ShaderCard>
                         </div>
                     )}
 
                     {/* ═══ Row 6: Médico × Módulo + Volumen Mensual ═══ */}
                     <div className="metrics-panel__row">
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#8B5CF6" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Users size={16} /> Médico × Tipo de Cirugía
                             </h3>
@@ -1797,9 +1945,9 @@ export default function MetricsPanel({ addToast }) {
                                     </table>
                                 </div>
                             )}
-                        </div>
+                        </ShaderCard>
 
-                        <div className="metrics-panel__card">
+                        <ShaderCard className="metrics-panel__card" accentColor="#6366F1" tiltIntensity={4}>
                             <h3 className="metrics-panel__card-title">
                                 <Calendar size={16} /> Volumen Mensual de Cirugías
                             </h3>
@@ -1829,10 +1977,68 @@ export default function MetricsPanel({ addToast }) {
                                     </ResponsiveContainer>
                                 </div>
                             )}
-                        </div>
+                        </ShaderCard>
                     </div>
                 </>
             )}
+        </div>
+    );
+}
+
+// ── Interactive 3D & Holographic Shader Card Wrapper ──
+function ShaderCard({ children, className = '', style = {}, accentColor = '#6366F1', tiltIntensity = 8 }) {
+    const cardRef = useRef(null);
+
+    const handlePointerMove = useCallback((e) => {
+        const el = cardRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+        const px = Math.max(0, Math.min(1, x / rect.width));
+        const py = Math.max(0, Math.min(1, y / rect.height));
+
+        const rotateY = ((px - 0.5) * 2 * tiltIntensity).toFixed(2);
+        const rotateX = ((0.5 - py) * 2 * tiltIntensity).toFixed(2);
+
+        el.style.setProperty('--mx', `${x.toFixed(0)}px`);
+        el.style.setProperty('--my', `${y.toFixed(0)}px`);
+        el.style.setProperty('--px', `${(px * 100).toFixed(1)}%`);
+        el.style.setProperty('--py', `${(py * 100).toFixed(1)}%`);
+        el.style.setProperty('--rx', `${rotateX}deg`);
+        el.style.setProperty('--ry', `${rotateY}deg`);
+        el.style.setProperty('--shader-opacity', '1');
+    }, [tiltIntensity]);
+
+    const handlePointerLeave = useCallback(() => {
+        const el = cardRef.current;
+        if (!el) return;
+        el.style.setProperty('--rx', '0deg');
+        el.style.setProperty('--ry', '0deg');
+        el.style.setProperty('--shader-opacity', '0');
+    }, []);
+
+    return (
+        <div
+            ref={cardRef}
+            className={`shader-card ${className}`}
+            style={{
+                '--shader-accent': accentColor,
+                '--shader-glow': `${accentColor}26`,
+                ...style,
+            }}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
+            onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerLeave}
+        >
+            <div className="shader-card__glare" aria-hidden="true" />
+            <div className="shader-card__border-glow" aria-hidden="true" />
+            <div className="shader-card__content">
+                {children}
+            </div>
         </div>
     );
 }
@@ -1842,23 +2048,26 @@ function KPICard({ icon: Icon, label, value, delta, color, subtext }) {
     const isPositive = parseFloat(delta) >= 0;
     const hasDelta = delta !== '' && delta !== '0' && delta !== '0.0';
     return (
-        <div className="metrics-panel__kpi-card">
-            <div className="metrics-panel__kpi-icon" style={{ background: `${color}15`, color }}>
-                <Icon size={20} />
+        <ShaderCard className="metrics-panel__kpi-card" accentColor={color} tiltIntensity={9}>
+            <div className="metrics-panel__kpi-top">
+                <div className="metrics-panel__kpi-icon" style={{ background: `${color}18`, color, boxShadow: `0 4px 12px ${color}25` }}>
+                    <Icon size={19} />
+                </div>
+                {hasDelta && (
+                    <span className={`metrics-panel__kpi-delta ${isPositive ? 'metrics-panel__kpi-delta--up' : 'metrics-panel__kpi-delta--down'}`}>
+                        {isPositive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                        {Math.abs(parseFloat(delta))}%
+                    </span>
+                )}
             </div>
             <div className="metrics-panel__kpi-data">
                 <span className="metrics-panel__kpi-label">{label}</span>
                 <span className="metrics-panel__kpi-value">{value}</span>
+                <div className="metrics-panel__kpi-accent-bar" style={{ background: `linear-gradient(90deg, ${color}, ${color}30)` }} />
                 <div className="metrics-panel__kpi-footer">
-                    {hasDelta && (
-                        <span className={`metrics-panel__kpi-delta ${isPositive ? 'metrics-panel__kpi-delta--up' : 'metrics-panel__kpi-delta--down'}`}>
-                            {isPositive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                            {Math.abs(parseFloat(delta))}%
-                        </span>
-                    )}
-                    <span className="metrics-panel__kpi-subtext">{subtext}</span>
+                    <span className="metrics-panel__kpi-subtext" title={subtext}>{subtext}</span>
                 </div>
             </div>
-        </div>
+        </ShaderCard>
     );
 }
