@@ -4,7 +4,7 @@ import {
     AlertCircle, Download, UserCheck, ShieldCheck, Activity,
     ChevronDown, ChevronUp, Clock, FileSpreadsheet, Eye, Sparkles,
     Users, TrendingUp, Stethoscope, FileText, X, Copy, Check,
-    HeartPulse, Pill, ClipboardList, AlertTriangle
+    HeartPulse, Pill, ClipboardList, AlertTriangle, HelpCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -28,6 +28,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
     const [admSearch, setAdmSearch] = useState('');
     const [selectedFicha557, setSelectedFicha557] = useState(null);
     const [selectedInterconsulta, setSelectedInterconsulta] = useState(null);
+    const [showHelpModal, setShowHelpModal] = useState(false);
     const [copiedFicha, setCopiedFicha] = useState(false);
 
     // Filtros de Traumatología (atados al período Telar por defecto)
@@ -698,6 +699,29 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             </span>
                         </button>
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setShowHelpModal(true)}
+                        title="¿Qué significa cada pestaña y qué información contiene?"
+                        aria-label="Ayuda sobre las pestañas de Internado y Piso"
+                        style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            border: '1px solid #BFDBFE',
+                            background: '#EFF6FF',
+                            color: '#1E40AF',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 2px rgba(30, 64, 175, 0.1)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        <HelpCircle size={17} />
+                    </button>
                 </div>
 
                 {/* Acciones de Exportación Excel */}
@@ -772,7 +796,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             }}
                         >
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Total Internados
+                                Total Admisiones Clínicas
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1E40AF', marginTop: '4px' }}>
                                 {filteredAdmisiones557.length}
@@ -781,7 +805,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 </span>
                             </div>
                             <span style={{ fontSize: '0.72rem', color: '#059669', display: 'block', marginTop: '4px', fontWeight: 600 }}>
-                                {periodStats.con_ficha_557} con historia clínica completa
+                                {periodStats.con_ficha_557} con ficha de admisión (Prot. 557)
                             </span>
                         </div>
 
@@ -2801,6 +2825,165 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         )}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ─── MODAL DE AYUDA: GUÍA DE PESTAÑAS DE INTERNADO & PISO ─── */}
+            {showHelpModal && (
+                <div
+                    onClick={() => setShowHelpModal(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(15, 23, 42, 0.55)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 9999,
+                        padding: '20px',
+                        backdropFilter: 'blur(3px)'
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF',
+                            borderRadius: '14px',
+                            width: '100%',
+                            maxWidth: '780px',
+                            maxHeight: '88vh',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.28)',
+                            border: '1px solid #CBD5E1'
+                        }}
+                    >
+                        <div style={{
+                            padding: '16px 22px',
+                            background: 'linear-gradient(135deg, #1E3A8A 0%, #1E40AF 100%)',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <HelpCircle size={20} />
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800 }}>
+                                        Guía de Pestañas — Internado & Piso
+                                    </h3>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
+                                        Qué mide cada sección y qué información clínica podés auditar
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowHelpModal(false)}
+                                style={{
+                                    background: 'rgba(255,255,255,0.18)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '20px 22px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', background: '#F8FAFC' }}>
+                            {[
+                                {
+                                    icon: '📋',
+                                    title: '1. Admisiones',
+                                    color: '#1E40AF',
+                                    bg: '#EFF6FF',
+                                    border: '#BFDBFE',
+                                    meaning: 'Muestra los ingresos clínicos reales evaluados con el formulario SALUS (INT) ADMISION MEDICA CLINICA (Protocolo 557), contando 1 registro por internación (excluye clics en blanco e interconsultas de cogestión en piso).',
+                                    content: 'Tarjetas clicables por sector (Shock Room, Internado Piso Clínico, UCI / Terapia Intermedia y Reconsultas/Reingresos ≤ 72 hs), filtros por profesional y tabla nominal con acceso a la Ficha 557 completa (motivo de consulta, AEA, APP y signos vitales).'
+                                },
+                                {
+                                    icon: '🩺',
+                                    title: '2. Seguimiento Clínico en Piso',
+                                    color: '#047857',
+                                    bg: '#ECFDF5',
+                                    border: '#A7F3D0',
+                                    meaning: 'Mide el control diario en camas de Piso General realizado por el plantel de médicas clínicas. Excluye estrictamente Guardia, Shock Room, UCI, Terapia Intermedia (hab. 222–229 y 207), Pediatría y Hospital de Día.',
+                                    content: '% Cobertura de Seguimiento (meta ≥ 70%), % Evolución & Plan Diario cada 24 hs (meta ≥ 90%), discriminación por rama (Clínico Puro, Postquirúrgico y Traumatológico) y productividad por médica (clic para ver sus pacientes).'
+                                },
+                                {
+                                    icon: '🦴',
+                                    title: '3. Traumatología en Internado',
+                                    color: '#B45309',
+                                    bg: '#FFFBEB',
+                                    border: '#FDE68A',
+                                    meaning: 'Cruza las cirugías traumatológicas de SALUS (fracturas, osteosíntesis, artroscopias, prótesis de cadera/rodilla/ligamentos, excluyendo Dr. Chaparro) con las internaciones en camas de Piso.',
+                                    content: 'Pacientes traumatológicos activos en piso hoy y total del período, cirugía realizada, traumatólogo, médico de cabecera y botón "Ver Ficha" para revisar su Protocolo 557 (comorbilidades y medicación habitual).'
+                                },
+                                {
+                                    icon: '🩺',
+                                    title: '4. Interconsultas (Piso & UCI)',
+                                    color: '#4338CA',
+                                    bg: '#EEF2FF',
+                                    border: '#C7D2FE',
+                                    meaning: 'Reúne todas las interconsultas cargadas en internado y UCI ((INT) INTERCONSULTA, (UCI) INTERCONSULTA, OSP, etc.) más las valoraciones clínicas en Piso cargadas mediante Ficha 557 sobre pacientes de otras especialidades.',
+                                    content: 'Separación entre Médicos Clínicos vs. Otras Especialidades, vista previa de la Evolución / Informe de Interconsulta (campo 6548, cogestión 557 o evolución del mismo día) y modal con el informe clínico completo.'
+                                }
+                            ].map((sec) => (
+                                <div key={sec.title} style={{
+                                    background: '#FFFFFF',
+                                    borderRadius: '10px',
+                                    border: '1px solid #E2E8F0',
+                                    padding: '14px 16px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '6px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{
+                                            background: sec.bg,
+                                            color: sec.color,
+                                            border: `1px solid ${sec.border}`,
+                                            padding: '2px 9px',
+                                            borderRadius: '6px',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 800
+                                        }}>
+                                            {sec.icon} {sec.title}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: '#1E293B', lineHeight: '1.45' }}>
+                                        <strong>Qué significa:</strong> {sec.meaning}
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.45' }}>
+                                        <strong>Qué información encontrás:</strong> {sec.content}
+                                    </div>
+                                </div>
+                            ))}
+
+                            <div style={{
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                borderRadius: '8px',
+                                padding: '10px 14px',
+                                fontSize: '0.78rem',
+                                color: '#1E40AF'
+                            }}>
+                                💡 <strong>Exportación a Excel:</strong> Con <strong>"Exportar Excel"</strong> descargás la pestaña actual con los filtros aplicados; con <strong>"Excel Completo (4 hojas)"</strong> descargás el resumen de KPIs + las 4 pestañas en un solo archivo <code>.xlsx</code>.
                             </div>
                         </div>
                     </div>
