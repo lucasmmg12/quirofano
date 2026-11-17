@@ -326,6 +326,19 @@ export default function GuardiaClinicaDashboard({
     const [selectedFranjaExtremos, setSelectedFranjaExtremos] = useState('todos'); // 'todos' | '08 a 14' | '14 a 22' | '22 a 08'
     const [selectedDiaExtremos, setSelectedDiaExtremos] = useState('todos'); // 'todos' | 'Lunes' | etc.
     const [epicrisisTargetNhc, setEpicrisisTargetNhc] = useState(null);
+    const [visibleTimesSeries, setVisibleTimesSeries] = useState({
+        permanencia: true,
+        espera: true,
+        outliers: false,
+    });
+
+    const toggleTimesSeries = (key) => {
+        setVisibleTimesSeries(prev => {
+            const next = { ...prev, [key]: !prev[key] };
+            if (!next.permanencia && !next.espera && !next.outliers) return prev;
+            return next;
+        });
+    };
 
     // Cargar datos consolidados desde Supabase
     useEffect(() => {
@@ -1816,16 +1829,16 @@ export default function GuardiaClinicaDashboard({
                             width: '100%',
                             boxSizing: 'border-box'
                         }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E293B' }}>
                                     Curva de Tiempos de Oportunidad y Permanencia
                                 </h4>
                                 <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                    Espera al Médico (min) vs. Permanencia Total en Guardia
+                                    Espera al Médico (min) vs. Permanencia Total en Guardia · Seleccioná las líneas a visualizar
                                 </span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF', padding: '2px 7px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
                                     {formatPeriodoLabel(currentData.periodo)}: Espera {currentData.espera_medico_min_promedio}m · Perm {currentData.permanencia_guardia_min_promedio}m
                                 </span>
@@ -1847,6 +1860,50 @@ export default function GuardiaClinicaDashboard({
                                     <HelpCircle size={14} />
                                 </button>
                             </div>
+                        </div>
+
+                        {/* Selector interactivo de líneas visibles (oculta Outliers por defecto para no comprimir la escala) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B' }}>Líneas visibles:</span>
+                            {[
+                                { key: 'permanencia', label: 'Permanencia Total (min)', color: '#6366F1', bg: '#EEF2FF', border: '#C7D2FE' },
+                                { key: 'espera', label: 'Espera Promedio al Médico (min)', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+                                { key: 'outliers', label: 'Valor Extremo Máximo / Outliers (min)', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+                            ].map(s => {
+                                const active = visibleTimesSeries[s.key];
+                                return (
+                                    <button
+                                        key={s.key}
+                                        type="button"
+                                        onClick={() => toggleTimesSeries(s.key)}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 10px',
+                                            borderRadius: '9999px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: active ? 700 : 500,
+                                            cursor: 'pointer',
+                                            border: `1px solid ${active ? s.border : '#E2E8F0'}`,
+                                            background: active ? s.bg : '#F8FAFC',
+                                            color: active ? s.color : '#94A3B8',
+                                            opacity: active ? 1 : 0.78,
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                        title={active ? `Clic para ocultar ${s.label}` : `Clic para mostrar ${s.label}`}
+                                    >
+                                        <span style={{
+                                            width: '9px',
+                                            height: '9px',
+                                            borderRadius: '50%',
+                                            background: active ? s.color : '#CBD5E1',
+                                            display: 'inline-block'
+                                        }} />
+                                        {s.label}
+                                    </button>
+                                );
+                            })}
                         </div>
 
                         <div style={{ height: '260px', width: '100%' }}>
@@ -1905,33 +1962,39 @@ export default function GuardiaClinicaDashboard({
                                         strokeDasharray="3 3" 
                                         label={{ value: `Auditado: ${formatMesCorto(selectedPeriodo)}`, fill: '#1E40AF', fontSize: 10, position: 'top' }} 
                                     />
-                                    <Area 
-                                        type="monotone" 
-                                        dataKey="permanenciaMin" 
-                                        name="Permanencia Total (min)" 
-                                        stroke="#6366F1" 
-                                        strokeWidth={2} 
-                                        fill="url(#colorPermanencia)" 
-                                    />
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="esperaMin" 
-                                        name="Espera Promedio al Médico (min)" 
-                                        stroke="#F59E0B" 
-                                        strokeWidth={2.5} 
-                                        dot={{ r: 4, fill: '#F59E0B' }} 
-                                        activeDot={{ r: 6 }} 
-                                    />
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="esperaMaxExtremo" 
-                                        name="Valor Extremo Máximo (min)" 
-                                        stroke="#DC2626" 
-                                        strokeWidth={2} 
-                                        strokeDasharray="4 4"
-                                        dot={{ r: 4, fill: '#DC2626' }} 
-                                        activeDot={{ r: 7 }} 
-                                    />
+                                    {visibleTimesSeries.permanencia && (
+                                        <Area 
+                                            type="monotone" 
+                                            dataKey="permanenciaMin" 
+                                            name="Permanencia Total (min)" 
+                                            stroke="#6366F1" 
+                                            strokeWidth={2} 
+                                            fill="url(#colorPermanencia)" 
+                                        />
+                                    )}
+                                    {visibleTimesSeries.espera && (
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="esperaMin" 
+                                            name="Espera Promedio al Médico (min)" 
+                                            stroke="#F59E0B" 
+                                            strokeWidth={2.5} 
+                                            dot={{ r: 4, fill: '#F59E0B' }} 
+                                            activeDot={{ r: 6 }} 
+                                        />
+                                    )}
+                                    {visibleTimesSeries.outliers && (
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="esperaMaxExtremo" 
+                                            name="Valor Extremo Máximo (min)" 
+                                            stroke="#DC2626" 
+                                            strokeWidth={2} 
+                                            strokeDasharray="4 4"
+                                            dot={{ r: 4, fill: '#DC2626' }} 
+                                            activeDot={{ r: 7 }} 
+                                        />
+                                    )}
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
