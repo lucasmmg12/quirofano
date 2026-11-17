@@ -526,7 +526,7 @@ Deno.serve(async (req) => {
             }
 
             const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
-            const requestedTemplate = String(body.templateName || 'confirmacion_turno_online').trim();
+            const requestedTemplate = String(body.templateName || 'confirmacion_turno_online_automatizacion').trim();
             const requestedLang = String(body.languageCode || 'es_AR').trim();
 
             let usedTemplate = requestedTemplate;
@@ -660,7 +660,8 @@ Deno.serve(async (req) => {
             }
 
             // Fallback automático a 'ojonoscobran' si la plantilla primaria aún está en revisión en Meta
-            if ((!response.ok || data?.success === false || data?.error) && (usedTemplate === 'confirmacion_turno_online' || usedTemplate === 'confirmacion_turno_web')) {
+            const isCitaOnlineTpl = usedTemplate.startsWith('confirmacion_turno_');
+            if ((!response.ok || data?.success === false || data?.error) && isCitaOnlineTpl) {
                 console.warn(`[send-whatsapp] Plantilla ${usedTemplate} devolvió error (${rawText}). Usando fallback 'ojonoscobran'...`);
                 usedTemplate = 'ojonoscobran';
                 response = await fetch(url, {
@@ -679,7 +680,7 @@ Deno.serve(async (req) => {
                 }
             }
 
-            const isNewTemplate = usedTemplate === 'confirmacion_turno_online' || usedTemplate === 'confirmacion_turno_web';
+            const isNewTemplate = usedTemplate.startsWith('confirmacion_turno_');
             const resolvedDisplayMessage = isNewTemplate
                 ? `📋 [Plantilla Meta: ${usedTemplate} (${varCountTried} vars)] ¡Hola ${cleanFirstName}! 🏥 Confirmamos tu cita agendada en Sanatorio Argentino:\n📅 Fecha: ${fechaDisplayVar}\n🕒 Horario: ${horaDisplayVar}\n🔬 Estudio / Consulta: ${tipoVisitaCleanVar}\n🩺 Especialidad: ${espCleanForVar}\n👨‍⚕️ Profesional: ${profCleanForVar}\n🏢 Sede: ${sedeCleanVar}\n📋 Cobertura: ${obraSocialCleanVar}\n⚠️ IMPORTANTE: Tu turno ya quedó reservado. Por favor NO saques turnos adicionales en la web para esta misma consulta.`
                 : `📋 [Plantilla Meta CitaOnline: ${usedTemplate}] Hola ${cleanFirstName} soy ${param2Confirmacion} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;

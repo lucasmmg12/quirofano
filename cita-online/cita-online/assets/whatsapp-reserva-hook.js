@@ -304,7 +304,7 @@
             var bodyData = {
                 action: 'notify_cita_online_reservation',
                 lineId: 'contact_center',
-                templateName: 'confirmacion_turno_online',
+                templateName: 'confirmacion_turno_online_automatizacion',
                 languageCode: 'es_AR',
                 phone: cleanLocalPhone || rawInputPhone,
                 whatsappPhone: formattedWaPhone,
