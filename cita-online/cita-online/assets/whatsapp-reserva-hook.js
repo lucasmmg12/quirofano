@@ -2,20 +2,22 @@
  * Sanatorio Argentino — Hook de Confirmación por WhatsApp (Contact Center) para CitaOnline (PRODUCCIÓN)
  * Archivo: assets/whatsapp-reserva-hook.js
  *
- * Funcionamiento:
- * 1. Guía al paciente para ingresar su número con formato 2645438114 (sin 0 ni 15) y limpia
- *    automáticamente cualquier 0 inicial (ej. 02645438114 -> 2645438114) o 15 intermedio.
- * 2. Captura los datos del formulario de reserva (#phone, #name, #surname, #lastname, #nif, #email)
- *    y los datos del turno seleccionado (fecha/hora, profesional, especialidad) cuando el paciente
- *    presiona el botón "Reservar".
- * 3. Intercepta la respuesta exitosa de /api/citaonline/AddReservation para disparar la Plantilla Oficial
- *    de Meta WhatsApp desde la línea del Contact Center (5492645825637) a través de Supabase Edge Functions.
- * 4. No bloquea ni altera el flujo nativo de SALUS CitaOnline ante cualquier falla de red externa.
+ * Variables capturadas y enviadas a Supabase Edge Function (send-whatsapp):
+ * - phone: Teléfono local normalizado a 10 dígitos sin 0 ni 15 (ej: 2645438114)
+ * - whatsappPhone: Teléfono internacional WhatsApp 13 dígitos (ej: 5492645438114)
+ * - nombre, apellido, segundoApellido, dni, email, observaciones
+ * - fechaHora, fecha, hora
+ * - tipoVisita (Estudio / Tipo de Consulta seleccionada)
+ * - especialidad (Especialidad médica)
+ * - profesional (Profesional / Agenda seleccionada)
+ * - sede (Sede y dirección seleccionada en CitaOnline)
+ * - obraSocial (Cobertura / Financiador seleccionado)
+ * - visitId (ID de turno/visita en SALUS) y patientId (ID de paciente en SALUS)
  */
 (function () {
     'use strict';
 
-    // Proteger las variables CSS del diseño institucional Sanatorio Argentino 2026
+    // Proteger las variables CSS del diseño institucional Sanatorio Argentino
     // para que la respuesta de /api/citaonline/GetConfiguration de SALUS no las pise.
     try {
         var rootStyle = document.documentElement.style;
@@ -33,35 +35,32 @@
     var SUPABASE_FUNCTION_URL = 'https://hakysnqiryimxbwdslwe.supabase.co/functions/v1/send-whatsapp';
     var sentSignatures = {};
     var lastCapturedForm = null;
+    var cachedSessionPatient = {};
 
     /**
      * Normaliza el número ingresado por el paciente al formato local de 10 dígitos sin 0 ni 15
      * Ejemplo:
-     *   "02645438114"    -> "2645438114"
-     *   "0264 155438114" -> "2645438114"
-     *   "+54 9 264 543-8114" -> "2645438114"
-     *   "155438114"      -> "2645438114"
+     *   "02645438114"       -> "2645438114"
+     *   "0264 155438114"    -> "2645438114"
+     *   "+54 9 264 543-8114"-> "2645438114"
+     *   "155438114"         -> "2645438114"
      */
     function normalizeLocalPhoneDigits(raw) {
         var clean = String(raw || '').replace(/\D/g, '');
         if (!clean) return '';
 
-        // Si puso prefijo internacional 549 o 54 al principio
         if (clean.indexOf('549') === 0 && clean.length >= 13) {
             clean = clean.slice(3);
         } else if (clean.indexOf('54') === 0 && clean.length >= 12) {
             clean = clean.slice(2);
         }
 
-        // Eliminar siempre el primer cero (o ceros iniciales, ej: 02645438114 -> 2645438114)
         clean = clean.replace(/^0+/, '');
 
-        // Si ingresó solo "15xxxxxxx" (9 dígitos, sin característica de San Juan)
         if (clean.indexOf('15') === 0 && clean.length === 9) {
             clean = '264' + clean.slice(2);
         }
 
-        // Si ingresó característica + 15 + número (ej: 264155438114 -> 12 dígitos)
         if (clean.length === 12) {
             var idx15 = clean.indexOf('15');
             if (idx15 >= 2 && idx15 <= 4) {
@@ -89,6 +88,36 @@
     }
 
     /**
+     * Separa un string de fecha y hora en { fecha, hora, fechaHora }
+     */
+    function splitFechaHora(rawFechaHora, rawDateIso) {
+        var str = String(rawFechaHora || rawDateIso || '').replace(/\s+/g, ' ').trim();
+        var fecha = '';
+        var hora = '';
+
+        var timeMatch = str.match(/(\d{1,2}:\d{2})/);
+        if (timeMatch) {
+            hora = timeMatch[1] + ' hs';
+        }
+
+        var dmyMatch = str.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
+        var ymdMatch = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+        if (dmyMatch) {
+            fecha = dmyMatch[1].replace(/\-/g, '/');
+        } else if (ymdMatch) {
+            fecha = ymdMatch[3].padStart(2, '0') + '/' + ymdMatch[2].padStart(2, '0') + '/' + ymdMatch[1];
+        } else if (str) {
+            fecha = str.replace(/(\s*-\s*)?\d{1,2}:\d{2}(\s*hs)?/i, '').trim();
+        }
+
+        return {
+            fechaHora: str || [fecha, hora].filter(Boolean).join(' '),
+            fecha: fecha || str,
+            hora: hora || ''
+        };
+    }
+
+    /**
      * Inyecta la ayuda visual en el campo #phone de CitaOnline y formatea automáticamente el número
      * eliminando el 0 inicial si el paciente escribe ej. 02645438114.
      */
@@ -102,7 +131,6 @@
             phoneInput.setAttribute('inputmode', 'numeric');
             phoneInput.setAttribute('autocomplete', 'tel-national');
 
-            // Agregar leyenda clara debajo del input #phone
             var parent = phoneInput.parentElement;
             if (parent && !document.getElementById('__sa_phone_format_hint')) {
                 var hint = document.createElement('small');
@@ -112,7 +140,6 @@
                 parent.appendChild(hint);
             }
 
-            // Si ya tenía un valor precargado (ej. de paciente logueado con 0264...), limpiarlo de inmediato
             if (phoneInput.value) {
                 var initialClean = normalizeLocalPhoneDigits(phoneInput.value);
                 if (initialClean && initialClean !== phoneInput.value) {
@@ -121,12 +148,10 @@
                 }
             }
 
-            // En tiempo real: si empieza con 0 o tiene caracteres no numéricos, limpiarlo sin mover el cursor bruscamente
             phoneInput.addEventListener('input', function (ev) {
                 if (ev && ev.__saInternal) return;
                 var rawVal = phoneInput.value || '';
                 var digitsOnly = rawVal.replace(/\D/g, '');
-                // Eliminar ceros al inicio inmediatamente (ej: 02645438114 -> 2645438114)
                 if (/^0+/.test(digitsOnly)) {
                     digitsOnly = digitsOnly.replace(/^0+/, '');
                 }
@@ -138,7 +163,6 @@
                 }
             });
 
-            // Al salir del campo (blur / change): aplicar normalización completa a 10 dígitos (ej: 2645438114)
             var onBlurNormalize = function () {
                 var normalized = normalizeLocalPhoneDigits(phoneInput.value);
                 if (normalized && normalized !== phoneInput.value) {
@@ -153,7 +177,6 @@
         } catch (e) {}
     }
 
-    // Observar el DOM de Angular para detectar cuando se monta el paso de confirmación (<app-confirmation>)
     try {
         var domObserver = new MutationObserver(function () {
             enhancePhoneInput();
@@ -173,10 +196,21 @@
         return el && typeof el.value === 'string' ? el.value.trim() : '';
     }
 
+    /**
+     * Extrae todas las etiquetas visibles en la cabecera de confirmación de Angular:
+     * - Fecha y hora (.k-i-calendar)
+     * - Profesional (.k-i-user)
+     * - Tipo de visita y Especialidad (.k-i-information[0]) -> "CONSULTA CLINICA ( CLINICO )"
+     * - Cobertura / Obra Social (.k-i-information[1])
+     * - Sede y dirección (.k-i-marker-pin)
+     */
     function getHeaderInfo() {
         var fechaHora = '';
         var profesional = '';
+        var tipoVisita = '';
         var especialidad = '';
+        var obraSocial = '';
+        var sede = '';
 
         try {
             var calIcon = document.querySelector('.icons-confirmation .k-i-calendar');
@@ -189,30 +223,47 @@
             }
             var infoIcons = document.querySelectorAll('.icons-confirmation .k-i-information');
             if (infoIcons && infoIcons.length > 0 && infoIcons[0].parentElement) {
-                especialidad = (infoIcons[0].parentElement.textContent || '').trim();
+                var rawInfo0 = (infoIcons[0].parentElement.textContent || '').trim();
+                var parenMatch = rawInfo0.match(/^(.*?)\(\s*(.*?)\s*\)\s*$/);
+                if (parenMatch) {
+                    tipoVisita = parenMatch[1].trim();
+                    especialidad = parenMatch[2].trim();
+                } else {
+                    especialidad = rawInfo0;
+                }
+            }
+            if (infoIcons && infoIcons.length > 1 && infoIcons[1].parentElement) {
+                obraSocial = (infoIcons[1].parentElement.textContent || '').trim();
+            }
+            var pinIcon = document.querySelector('app-confirmation .k-i-marker-pin');
+            if (pinIcon && pinIcon.parentElement) {
+                sede = (pinIcon.parentElement.textContent || '').replace(/\s+/g, ' ').trim();
             }
         } catch (e) {}
 
         return {
             fechaHora: fechaHora,
             profesional: profesional,
-            especialidad: especialidad
+            tipoVisita: tipoVisita,
+            especialidad: especialidad,
+            obraSocial: obraSocial,
+            sede: sede
         };
     }
 
     function captureCurrentFormState() {
         enhancePhoneInput();
         var header = getHeaderInfo();
-        var rawPhone = getInputValue('phone');
+        var rawPhone = getInputValue('phone') || cachedSessionPatient.phone || '';
         var cleanPhone = normalizeLocalPhoneDigits(rawPhone) || rawPhone;
-        var name = getInputValue('name');
-        var surname = getInputValue('surname');
-        var lastname = getInputValue('lastname');
-        var nif = getInputValue('nif');
-        var email = getInputValue('email');
+        var name = getInputValue('name') || cachedSessionPatient.nombre || '';
+        var surname = getInputValue('surname') || cachedSessionPatient.apellido || '';
+        var lastname = getInputValue('lastname') || cachedSessionPatient.segundoApellido || '';
+        var nif = getInputValue('nif') || cachedSessionPatient.dni || '';
+        var email = getInputValue('email') || cachedSessionPatient.email || '';
         var reason = getInputValue('reason');
 
-        if (cleanPhone || name || nif) {
+        if (cleanPhone || name || nif || header.profesional) {
             lastCapturedForm = {
                 phone: cleanPhone,
                 nombre: name,
@@ -223,7 +274,10 @@
                 observaciones: reason,
                 fechaHora: header.fechaHora,
                 profesional: header.profesional,
-                especialidad: header.especialidad
+                tipoVisita: header.tipoVisita,
+                especialidad: header.especialidad,
+                obraSocial: header.obraSocial,
+                sede: header.sede
             };
         }
         return lastCapturedForm;
@@ -232,15 +286,18 @@
     function dispatchWhatsAppConfirmation(payload) {
         try {
             if (!payload) return;
-            var rawInputPhone = String(payload.phone || payload.PatientPhone || '');
+            var rawInputPhone = String(payload.phone || payload.PatientPhone || cachedSessionPatient.phone || '');
             var cleanLocalPhone = normalizeLocalPhoneDigits(rawInputPhone);
             var formattedWaPhone = formatPhoneForWhatsApp(rawInputPhone);
-            var dni = String(payload.dni || payload.NIF || '').replace(/\D/g, '');
-            if (!cleanLocalPhone && !dni) return;
+            var dni = String(payload.dni || payload.NIF || cachedSessionPatient.dni || '').replace(/\D/g, '');
+            var patientId = payload.patientId || payload.PatientId || cachedSessionPatient.patientId || null;
 
-            var signatureKey = (formattedWaPhone || dni) + '|' + (payload.fechaHora || payload.Date || '') + '|' + (payload.profesional || '');
+            if (!cleanLocalPhone && !dni && !patientId) return;
+
+            var fhParts = splitFechaHora(payload.fechaHora || payload.Date || payload.Hour || '', payload.fechaRaw || payload.Date || '');
+            var signatureKey = (formattedWaPhone || dni || patientId) + '|' + (fhParts.fechaHora || '') + '|' + (payload.profesional || '');
             if (sentSignatures[signatureKey]) {
-                return; // Evitar duplicados para la misma reserva
+                return;
             }
             sentSignatures[signatureKey] = true;
 
@@ -251,17 +308,22 @@
                 languageCode: 'es_AR',
                 phone: cleanLocalPhone || rawInputPhone,
                 whatsappPhone: formattedWaPhone,
-                nombre: payload.nombre || payload.PatientName || '',
-                apellido: payload.apellido || payload.PatientSurname || '',
-                segundoApellido: payload.segundoApellido || payload.PatientSecondSurname || '',
-                dni: payload.dni || payload.NIF || '',
-                email: payload.email || payload.PatientEMail || '',
-                observaciones: payload.observaciones || '',
-                fechaHora: payload.fechaHora || payload.Date || payload.Hour || '',
-                profesional: payload.profesional || '',
+                nombre: payload.nombre || payload.PatientName || cachedSessionPatient.nombre || '',
+                apellido: payload.apellido || payload.PatientSurname || cachedSessionPatient.apellido || '',
+                segundoApellido: payload.segundoApellido || payload.PatientSecondSurname || cachedSessionPatient.segundoApellido || '',
+                dni: dni,
+                email: payload.email || payload.PatientEMail || cachedSessionPatient.email || '',
+                observaciones: payload.observaciones || payload.Reason || '',
+                fechaHora: fhParts.fechaHora,
+                fecha: payload.fecha || fhParts.fecha || '',
+                hora: payload.hora || fhParts.hora || '',
+                tipoVisita: payload.tipoVisita || '',
                 especialidad: payload.especialidad || '',
+                profesional: payload.profesional || '',
+                sede: payload.sede || '',
                 obraSocial: payload.obraSocial || '',
-                visitId: payload.visitId || payload.VisitId || null
+                visitId: payload.visitId || payload.VisitId || null,
+                patientId: patientId
             };
 
             fetch(SUPABASE_FUNCTION_URL, {
@@ -279,7 +341,6 @@
         }
     }
 
-    // Exponer función global por si se invoca también desde main.js
     window.__sendCitaOnlineWhatsApp = dispatchWhatsAppConfirmation;
 
     // 1. Capturar datos y normalizar teléfono cuando el usuario hace clic en el botón "Reservar"
@@ -310,7 +371,7 @@
         } catch (e) {}
     }, true);
 
-    // 2. Interceptar XMLHttpRequest hacia /api/citaonline/AddReservation
+    // 2. Interceptar XMLHttpRequest hacia /api/citaonline/
     var origOpen = XMLHttpRequest.prototype.open;
     var origSend = XMLHttpRequest.prototype.send;
 
@@ -321,13 +382,47 @@
 
     XMLHttpRequest.prototype.send = function (body) {
         var xhr = this;
-        if (xhr.__citaUrl && xhr.__citaUrl.indexOf('/api/citaonline/AddReservation') !== -1) {
+        var urlStr = xhr.__citaUrl || '';
+
+        // Capturar información de sesión si el paciente inicia sesión en CitaOnline
+        if (urlStr.indexOf('/api/citaonline/GetUserInformation') !== -1 || urlStr.indexOf('/api/citaonline/Login') !== -1) {
+            try {
+                if (typeof body === 'string') {
+                    var reqLogin = JSON.parse(body);
+                    if (reqLogin && reqLogin.User && reqLogin.User.Name) {
+                        var possibleDni = String(reqLogin.User.Name).replace(/\D/g, '');
+                        if (possibleDni.length >= 7 && possibleDni.length <= 9) {
+                            cachedSessionPatient.dni = possibleDni;
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            xhr.addEventListener('load', function () {
+                try {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        var uResp = JSON.parse(xhr.responseText || '{}');
+                        if (uResp) {
+                            if (uResp.Id) cachedSessionPatient.patientId = uResp.Id;
+                            if (uResp.Nombre) cachedSessionPatient.nombre = uResp.Nombre;
+                            if (uResp.EMail) cachedSessionPatient.email = uResp.EMail;
+                            if (uResp.NIF) cachedSessionPatient.dni = String(uResp.NIF).replace(/\D/g, '') || cachedSessionPatient.dni;
+                            if (uResp.Telefono || uResp.Movil || uResp.Phone) {
+                                cachedSessionPatient.phone = normalizeLocalPhoneDigits(uResp.Telefono || uResp.Movil || uResp.Phone);
+                            }
+                        }
+                    }
+                } catch (e) {}
+            });
+        }
+
+        // Interceptar confirmación de reserva /api/citaonline/AddReservation
+        if (urlStr.indexOf('/api/citaonline/AddReservation') !== -1) {
             var formSnap = captureCurrentFormState() || {};
             var parsedReq = {};
             try {
                 if (typeof body === 'string') {
                     parsedReq = JSON.parse(body);
-                    // Asegurar que también a SALUS se envíe el teléfono limpio sin 0 inicial (ej: 2645438114)
                     if (parsedReq && parsedReq.PatientPhone) {
                         var cleanedForSalus = normalizeLocalPhoneDigits(parsedReq.PatientPhone);
                         if (cleanedForSalus) {
@@ -355,18 +450,32 @@
 
                         var isSuccess = resp && resp.VisitId != null && !resp.ErrorLimitPlannedVisits && !resp.ErrorLimitSpecialityVisits;
                         if (isSuccess) {
+                            var centerObj = statusObj.selectedcenter || {};
+                            var sedeStr = [centerObj.name, centerObj.direction].filter(Boolean).join(' - ') || formSnap.sede || '';
+                            var visitTypeObj = statusObj.selectedvisittype || {};
+                            var tipoVisitaStr = visitTypeObj.name || formSnap.tipoVisita || '';
+                            var specObj = statusObj.selectedSpeciality || {};
+                            var espStr = specObj.name || formSnap.especialidad || '';
+                            var vgObj = statusObj.selectedvirtualgroup || {};
+                            var profStr = vgObj.name || formSnap.profesional || '';
+
                             dispatchWhatsAppConfirmation({
-                                phone: parsedReq.PatientPhone || formSnap.phone || '',
-                                nombre: parsedReq.PatientName || formSnap.nombre || '',
+                                phone: parsedReq.PatientPhone || formSnap.phone || cachedSessionPatient.phone || '',
+                                nombre: parsedReq.PatientName || formSnap.nombre || cachedSessionPatient.nombre || '',
                                 apellido: parsedReq.PatientSurname || formSnap.apellido || '',
                                 segundoApellido: parsedReq.PatientSecondSurname || formSnap.segundoApellido || '',
-                                dni: parsedReq.NIF || formSnap.dni || '',
-                                email: parsedReq.PatientEMail || formSnap.email || '',
-                                fechaHora: formSnap.fechaHora || parsedReq.Date || parsedReq.Hour || '',
-                                profesional: (statusObj.selectedvirtualgroup && statusObj.selectedvirtualgroup.name) || formSnap.profesional || '',
-                                especialidad: (statusObj.selectedSpeciality && statusObj.selectedSpeciality.name) || formSnap.especialidad || '',
-                                obraSocial: statusObj.insurancepayer || '',
-                                visitId: resp.VisitId
+                                dni: parsedReq.NIF || formSnap.dni || cachedSessionPatient.dni || '',
+                                email: parsedReq.PatientEMail || formSnap.email || cachedSessionPatient.email || '',
+                                observaciones: parsedReq.Reason || formSnap.observaciones || '',
+                                fechaHora: formSnap.fechaHora || parsedReq.Date || parsedReq.Hour || statusObj.selecteddate || '',
+                                fechaRaw: parsedReq.Date || statusObj.selecteddate || '',
+                                tipoVisita: tipoVisitaStr,
+                                especialidad: espStr,
+                                profesional: profStr,
+                                sede: sedeStr,
+                                obraSocial: statusObj.insurancepayer || formSnap.obraSocial || '',
+                                visitId: resp.VisitId,
+                                patientId: parsedReq.PatientId || cachedSessionPatient.patientId || null
                             });
                         }
                     }

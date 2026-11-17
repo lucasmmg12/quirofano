@@ -350,19 +350,28 @@ Deno.serve(async (req) => {
             const segundoApellido = String(body.segundoApellido || body.PatientSecondSurname || '').trim();
             const email = String(body.email || body.PatientEMail || '').trim();
             const fechaHora = String(body.fechaHora || body.Date || body.Hour || '').trim();
+            const fechaExplicit = String(body.fecha || '').trim();
+            const horaExplicit = String(body.hora || '').trim();
+            const tipoVisita = String(body.tipoVisita || body.estudio || '').trim();
             const profesional = String(body.profesional || '').trim();
             const especialidad = String(body.especialidad || '').trim();
+            const sede = String(body.sede || body.centro || '').trim();
             const obraSocial = String(body.obraSocial || '').trim();
             const visitId = body.visitId || body.VisitId || null;
 
-            // Si el paciente reservó logueado y no vino teléfono en el form, buscar en padrón por DNI
+            // Si el paciente reservó logueado y no vino teléfono en el form, buscar en reservas previas o padrón por DNI
             if (!rawPhone && dni) {
-                const { data: patRow } = await supabaseAdmin
-                    .from('patients')
-                    .select('telefono')
+                const { data: prevRes } = await supabaseAdmin
+                    .from('cita_online_reservas')
+                    .select('telefono, whatsapp_phone')
                     .eq('dni', dni)
+                    .not('telefono', 'is', null)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
                     .maybeSingle();
-                if (patRow?.telefono) rawPhone = String(patRow.telefono).trim();
+                if (prevRes?.telefono || prevRes?.whatsapp_phone) {
+                    rawPhone = String(prevRes.telefono || prevRes.whatsapp_phone).trim();
+                }
             }
 
             const targetPhone = formatPhoneForWhatsApp(rawPhone);
@@ -378,26 +387,57 @@ Deno.serve(async (req) => {
                 .replace(/[\r\n\t]+/g, ' ')
                 .trim();
 
+            const sanitizeVar = (val: string, fallback: string) =>
+                (val || fallback).replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+            const profCleanForVar = sanitizeVar((profesional || '').replace(/\s*\([^)]*\)\s*/g, ''), 'Profesional asignado');
+            const espCleanForVar = sanitizeVar((especialidad || '').replace(/\s*\([^)]*\)\s*/g, ''), 'Consultorios Externos');
+            const tipoVisitaCleanVar = sanitizeVar(tipoVisita, espCleanForVar || 'Consulta Médica');
+            const sedeCleanVar = sanitizeVar(sede, 'Sanatorio Argentino (San Luis 432/433/463 Oeste)');
+            const obraSocialCleanVar = sanitizeVar(obraSocial, 'Particular / Obra Social declarada');
+            const fechaHoraVar = sanitizeVar(fechaHora, 'Fecha y hora seleccionadas');
+
+            // Extraer fecha y hora por separado para plantillas de 6 u 8 variables
+            const dmyMatch = fechaHoraVar.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+            const ymdMatch = fechaHoraVar.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+            const timeMatch = fechaHoraVar.match(/(\d{1,2}:\d{2})/);
+
+            let parsedFechaTurno: string | null = null;
+            let parsedHoraInicio: string | null = null;
+            if (ymdMatch) {
+                parsedFechaTurno = `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+            } else if (dmyMatch) {
+                parsedFechaTurno = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+            }
+            if (timeMatch) {
+                parsedHoraInicio = timeMatch[1];
+            }
+
+            const fechaDisplayVar = sanitizeVar(
+                fechaExplicit || (parsedFechaTurno ? parsedFechaTurno.split('-').reverse().join('/') : fechaHoraVar.replace(/(\s*-\s*)?\d{1,2}:\d{2}(\s*hs)?/i, '')),
+                fechaHoraVar
+            );
+            const horaDisplayVar = sanitizeVar(
+                horaExplicit || (parsedHoraInicio ? `${parsedHoraInicio} hs` : 'Horario seleccionado'),
+                'Horario asignado'
+            );
+
+            const profAndEspVar = espCleanForVar ? `${profCleanForVar} (${espCleanForVar})` : profCleanForVar;
+
             const turnoInfoParts: string[] = [];
-            if (fechaHora) turnoInfoParts.push(`el ${fechaHora}`);
-            if (profesional) {
-                const profClean = profesional.replace(/\s*\([^)]*\)\s*/g, '').trim();
-                turnoInfoParts.push(`con ${profClean}`);
-            }
-            if (especialidad) {
-                const espClean = especialidad.replace(/\s*\([^)]*\)\s*/g, '').trim();
-                if (espClean) turnoInfoParts.push(`(${espClean})`);
-            }
+            if (fechaHoraVar) turnoInfoParts.push(`el ${fechaHoraVar}`);
+            if (profCleanForVar) turnoInfoParts.push(`con ${profCleanForVar}`);
+            if (espCleanForVar) turnoInfoParts.push(`(${espCleanForVar})`);
+            if (sede) turnoInfoParts.push(`en ${sedeCleanVar}`);
             const turnoSummary = turnoInfoParts.length > 0
                 ? turnoInfoParts.join(' ')
                 : 'en nuestro portal de Turnos Online';
 
-            // Parámetro 2 para la plantilla oficial aprobada 'ojonoscobran' (es_AR) de la línea contact_center
-            // Meta no permite saltos de línea ni tabs dentro de los parámetros de variables
-            const param2Confirmacion = `el Contact Center — ✅ Confirmamos que tu turno ${turnoSummary} ya quedó reservado con éxito. IMPORTANTE: Si ya tenés tu turno asignado, por favor NO saques más turnos adicionales en la web para liberar agenda a otros pacientes`
-                .replace(/[\r\n\t]+/g, ' ')
-                .replace(/\s{2,}/g, ' ')
-                .trim();
+            // Parámetro 2 para fallback 'ojonoscobran' (es_AR)
+            const param2Confirmacion = sanitizeVar(
+                `el Contact Center — ✅ Confirmamos que tu turno ${turnoSummary} ya quedó reservado con éxito. IMPORTANTE: Si ya tenés tu turno asignado, por favor NO saques más turnos adicionales en la web para liberar agenda a otros pacientes`,
+                'el Contact Center'
+            );
 
             const targetLine = 'contact_center';
             const config = await getBuilderBotConfig(targetLine);
@@ -407,9 +447,16 @@ Deno.serve(async (req) => {
                 const directUrl = `https://app.builderbot.cloud/api/v2/${config.projectId}/messages`;
                 const directTextMessage =
                     `🏥 *Sanatorio Argentino — Confirmación de Turno Online*\n\n` +
-                    `¡Hola *${cleanFirstName}*! ✅ Te confirmamos que tu turno *${turnoSummary}* ya quedó reservado con éxito en nuestro sistema.\n\n` +
-                    `⚠️ *IMPORTANTE:* Si ya tenés tu turno asignado, por favor *NO saques más turnos adicionales* en la página web para el mismo profesional o especialidad, así evitamos turnos duplicados y liberamos agenda para otros pacientes.\n\n` +
-                    `📌 _Si necesitás consultar, reprogramar o cancelar tu turno, podés escribirnos directamente por este medio._`;
+                    `¡Hola *${cleanFirstName}*! ✅ Encontramos y confirmamos tu cita agendada en *Sanatorio Argentino*:\n\n` +
+                    `📅 *Fecha:* ${fechaDisplayVar}\n` +
+                    `🕒 *Horario:* ${horaDisplayVar}\n` +
+                    `🔬 *Estudio / Consulta:* ${tipoVisitaCleanVar}\n` +
+                    `🩺 *Especialidad:* ${espCleanForVar}\n` +
+                    `👨‍⚕️ *Profesional:* ${profCleanForVar}\n` +
+                    `🏢 *Sede:* ${sedeCleanVar}\n` +
+                    `📋 *Cobertura:* ${obraSocialCleanVar}\n\n` +
+                    `ℹ️ *Recomendación:* Recordá presentarte 15 minutos antes con el DNI físico y credencial de tu cobertura médica.\n` +
+                    `⚠️ *IMPORTANTE:* Tu turno ya quedó reservado. Por favor *NO saques turnos adicionales* en la web para esta misma consulta, así evitamos duplicaciones.`;
 
                 console.log(`[send-whatsapp] notify_cita_online_reservation (FREE TEXT 24h) → ${targetPhone} | Paciente: ${fullPatientName} | Turno: ${turnoSummary}`);
 
@@ -451,10 +498,14 @@ Deno.serve(async (req) => {
                             dni: dni || null,
                             paciente: fullPatientName,
                             email: email || null,
-                            fechaHora: fechaHora || null,
-                            profesional: profesional || null,
-                            especialidad: especialidad || null,
-                            obraSocial: obraSocial || null,
+                            fechaHora: fechaHoraVar,
+                            fecha: fechaDisplayVar,
+                            hora: horaDisplayVar,
+                            tipoVisita: tipoVisitaCleanVar,
+                            profesional: profCleanForVar,
+                            especialidad: espCleanForVar,
+                            sede: sedeCleanVar,
+                            obraSocial: obraSocialCleanVar,
                             builderbotResponse: directData
                         }
                     });
@@ -478,19 +529,30 @@ Deno.serve(async (req) => {
             const requestedTemplate = String(body.templateName || 'confirmacion_turno_online').trim();
             const requestedLang = String(body.languageCode || 'es_AR').trim();
 
-            const profCleanForVar = (profesional || 'Profesional asignado').replace(/\s*\([^)]*\)\s*/g, '').trim();
-            const espCleanForVar = (especialidad || '').replace(/\s*\([^)]*\)\s*/g, '').trim();
-            const profAndEspVar = espCleanForVar ? `${profCleanForVar} (${espCleanForVar})` : profCleanForVar;
-            const fechaHoraVar = (fechaHora || 'Fecha y hora seleccionadas').replace(/[\r\n\t]+/g, ' ').trim();
-
-            // Intentar primero con la plantilla oficial aprobada 'confirmacion_turno_online' (3 variables: {{1}} Paciente, {{2}} Profesional/Especialidad, {{3}} Fecha y Hora)
-            // Si fallara por cualquier motivo, hacer fallback automático e inmediato a 'ojonoscobran'
             let usedTemplate = requestedTemplate;
             let response: Response;
             let data: any;
 
-            const buildPayloadForTemplate = (tplName: string) => {
-                if (tplName === 'confirmacion_turno_online' || tplName === 'confirmacion_turno_web') {
+            const buildPayloadByVarCount = (tplName: string, varCount: number) => {
+                if (tplName === 'ojonoscobran') {
+                    return {
+                        to: targetPhone,
+                        templateName: 'ojonoscobran',
+                        languageCode: requestedLang,
+                        components: [
+                            {
+                                type: 'body',
+                                parameters: [
+                                    { type: 'text', text: cleanFirstName },
+                                    { type: 'text', text: param2Confirmacion }
+                                ]
+                            }
+                        ]
+                    };
+                }
+                if (varCount === 8) {
+                    // Plantilla completa de 8 variables:
+                    // {{1}} Paciente | {{2}} Fecha | {{3}} Horario | {{4}} Estudio/Consulta | {{5}} Especialidad | {{6}} Profesional | {{7}} Sede | {{8}} Cobertura
                     return {
                         to: targetPhone,
                         templateName: tplName,
@@ -500,13 +562,42 @@ Deno.serve(async (req) => {
                                 type: 'body',
                                 parameters: [
                                     { type: 'text', text: cleanFirstName },
-                                    { type: 'text', text: profAndEspVar },
-                                    { type: 'text', text: fechaHoraVar }
+                                    { type: 'text', text: fechaDisplayVar },
+                                    { type: 'text', text: horaDisplayVar },
+                                    { type: 'text', text: tipoVisitaCleanVar },
+                                    { type: 'text', text: espCleanForVar },
+                                    { type: 'text', text: profCleanForVar },
+                                    { type: 'text', text: sedeCleanVar },
+                                    { type: 'text', text: obraSocialCleanVar }
                                 ]
                             }
                         ]
                     };
                 }
+                if (varCount === 6) {
+                    // Plantilla de 6 variables:
+                    // {{1}} Paciente | {{2}} Fecha | {{3}} Horario | {{4}} Profesional (Especialidad) | {{5}} Sede | {{6}} Cobertura
+                    return {
+                        to: targetPhone,
+                        templateName: tplName,
+                        languageCode: requestedLang,
+                        components: [
+                            {
+                                type: 'body',
+                                parameters: [
+                                    { type: 'text', text: cleanFirstName },
+                                    { type: 'text', text: fechaDisplayVar },
+                                    { type: 'text', text: horaDisplayVar },
+                                    { type: 'text', text: profAndEspVar },
+                                    { type: 'text', text: sedeCleanVar },
+                                    { type: 'text', text: obraSocialCleanVar }
+                                ]
+                            }
+                        ]
+                    };
+                }
+                // Plantilla de 3 variables:
+                // {{1}} Paciente | {{2}} Profesional (Especialidad) | {{3}} Fecha y Hora
                 return {
                     to: targetPhone,
                     templateName: tplName,
@@ -516,7 +607,8 @@ Deno.serve(async (req) => {
                             type: 'body',
                             parameters: [
                                 { type: 'text', text: cleanFirstName },
-                                { type: 'text', text: param2Confirmacion }
+                                { type: 'text', text: profAndEspVar },
+                                { type: 'text', text: fechaHoraVar }
                             ]
                         }
                     ]
@@ -525,23 +617,49 @@ Deno.serve(async (req) => {
 
             console.log(`[send-whatsapp] notify_cita_online_reservation → ${targetPhone} | Paciente: ${fullPatientName} | Turno: ${turnoSummary} | Plantilla: ${usedTemplate}`);
 
+            // Intento 1: Plantilla de 8 variables (Completa con Fecha, Hora, Estudio, Especialidad, Profesional, Sede y Cobertura)
+            let varCountTried = 8;
             response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'x-api-builderbot': config.apiKey,
                 },
-                body: JSON.stringify(buildPayloadForTemplate(usedTemplate)),
+                body: JSON.stringify(buildPayloadByVarCount(usedTemplate, 8)),
             });
 
-            const rawText = await response.text();
+            let rawText = await response.text();
             try {
                 data = JSON.parse(rawText);
             } catch {
                 data = { rawResponse: rawText };
             }
 
-            // Fallback automático a 'ojonoscobran' si la plantilla primaria devuelve error
+            // Si la plantilla en Meta fue aprobada con 3 o 6 variables, reintentar automáticamente
+            if (!response.ok || data?.success === false || data?.error) {
+                for (const altCount of [3, 6]) {
+                    const rAlt = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-builderbot': config.apiKey,
+                        },
+                        body: JSON.stringify(buildPayloadByVarCount(usedTemplate, altCount)),
+                    });
+                    const tAlt = await rAlt.text();
+                    let dAlt: any;
+                    try { dAlt = JSON.parse(tAlt); } catch { dAlt = { rawResponse: tAlt }; }
+                    if (rAlt.ok && dAlt?.success !== false && !dAlt?.error) {
+                        response = rAlt;
+                        rawText = tAlt;
+                        data = dAlt;
+                        varCountTried = altCount;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback automático a 'ojonoscobran' si la plantilla primaria aún está en revisión en Meta
             if ((!response.ok || data?.success === false || data?.error) && (usedTemplate === 'confirmacion_turno_online' || usedTemplate === 'confirmacion_turno_web')) {
                 console.warn(`[send-whatsapp] Plantilla ${usedTemplate} devolvió error (${rawText}). Usando fallback 'ojonoscobran'...`);
                 usedTemplate = 'ojonoscobran';
@@ -551,7 +669,7 @@ Deno.serve(async (req) => {
                         'Content-Type': 'application/json',
                         'x-api-builderbot': config.apiKey,
                     },
-                    body: JSON.stringify(buildPayloadForTemplate('ojonoscobran')),
+                    body: JSON.stringify(buildPayloadByVarCount('ojonoscobran', 2)),
                 });
                 const rawFallback = await response.text();
                 try {
@@ -563,7 +681,7 @@ Deno.serve(async (req) => {
 
             const isNewTemplate = usedTemplate === 'confirmacion_turno_online' || usedTemplate === 'confirmacion_turno_web';
             const resolvedDisplayMessage = isNewTemplate
-                ? `📋 [Plantilla Meta: ${usedTemplate}] ¡Hola ${cleanFirstName}! ✅ Te confirmamos que tu turno en Sanatorio Argentino con ${profAndEspVar} para el día ${fechaHoraVar} ya quedó reservado con éxito. ⚠️ IMPORTANTE: Tu turno ya se encuentra confirmado en nuestro sistema. Por favor NO saques turnos adicionales en la web para esta misma consulta, así evitamos duplicaciones.`
+                ? `📋 [Plantilla Meta: ${usedTemplate} (${varCountTried} vars)] ¡Hola ${cleanFirstName}! 🏥 Confirmamos tu cita agendada en Sanatorio Argentino:\n📅 Fecha: ${fechaDisplayVar}\n🕒 Horario: ${horaDisplayVar}\n🔬 Estudio / Consulta: ${tipoVisitaCleanVar}\n🩺 Especialidad: ${espCleanForVar}\n👨‍⚕️ Profesional: ${profCleanForVar}\n🏢 Sede: ${sedeCleanVar}\n📋 Cobertura: ${obraSocialCleanVar}\n⚠️ IMPORTANTE: Tu turno ya quedó reservado. Por favor NO saques turnos adicionales en la web para esta misma consulta.`
                 : `📋 [Plantilla Meta CitaOnline: ${usedTemplate}] Hola ${cleanFirstName} soy ${param2Confirmacion} de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.`;
             const nowIso = new Date().toISOString();
             const isSentOk = Boolean(response.ok && data?.success !== false);
@@ -575,21 +693,6 @@ Deno.serve(async (req) => {
                     ? `visita_${numericVisitId}`
                     : `web_${dni || targetPhone}_${fechaHoraVar.replace(/\W+/g, '_')}`;
 
-                // Intentar extraer fecha YYYY-MM-DD si viene en formato DD/MM/YYYY o YYYY-MM-DD
-                let parsedFechaTurno: string | null = null;
-                let parsedHoraInicio: string | null = null;
-                const dmyMatch = fechaHoraVar.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-                const ymdMatch = fechaHoraVar.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-                const timeMatch = fechaHoraVar.match(/(\d{1,2}:\d{2})/);
-                if (ymdMatch) {
-                    parsedFechaTurno = `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
-                } else if (dmyMatch) {
-                    parsedFechaTurno = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
-                }
-                if (timeMatch) {
-                    parsedHoraInicio = timeMatch[1];
-                }
-
                 await supabaseAdmin.from('cita_online_reservas').upsert({
                     id: recordId,
                     id_visita: numericVisitId,
@@ -600,6 +703,8 @@ Deno.serve(async (req) => {
                     email: email || null,
                     profesional: profCleanForVar || null,
                     especialidad: espCleanForVar || null,
+                    tipo_visita: tipoVisita || null,
+                    centro: sede || null,
                     agenda: profesional || null,
                     obra_social: obraSocial || null,
                     motivo: String(body.observaciones || body.motivo || '').trim() || null,
@@ -666,16 +771,16 @@ Deno.serve(async (req) => {
         if (action === 'list_templates') {
             const config = await getBuilderBotConfig(lineId);
             const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template?limit=50`;
-            
+
             console.log(`[send-whatsapp] list_templates | Línea: ${lineId}`);
-            
+
             const response = await fetch(url, {
                 method: 'GET',
                 headers: { 'x-api-builderbot': config.apiKey },
             });
-            
+
             const data = await response.json();
-            
+
             // Check for API errors (BuilderBot returns {success: false, error: "..."} on config issues)
             if (!response.ok || data?.success === false) {
                 const errorMsg = data?.error || `HTTP ${response.status}`;
@@ -685,9 +790,9 @@ Deno.serve(async (req) => {
                     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
-            
+
             const templates = Array.isArray(data) ? data : data?.templates || data?.data || [];
-            
+
             return new Response(
                 JSON.stringify({ success: true, templates }),
                 { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -710,30 +815,30 @@ Deno.serve(async (req) => {
                     }
                 ]
             ) : undefined;
-            
+
             console.log(`[send-whatsapp] send_template parsed | to: "${to}" | template: "${templateName}" | lang: "${languageCode}"`);
-            
+
             if (!to || !templateName) {
                 return new Response(
                     JSON.stringify({ error: 'to and templateName are required' }),
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
-            
+
             const config = await getBuilderBotConfig(lineId);
             const url = `https://app.builderbot.cloud/api/v2/${config.projectId}/whatsapp-template`;
-            
+
             const templateBody: Record<string, unknown> = {
                 to,
                 templateName,
                 languageCode: languageCode || 'es',
             };
             if (components) templateBody.components = components;
-            
+
             console.log(`[send-whatsapp] send_template | Línea: ${lineId} | Template: ${templateName} | Lang: ${languageCode || 'es'} → ${to}`);
             console.log(`[send-whatsapp] Request URL: ${url}`);
             console.log(`[send-whatsapp] Request body:`, JSON.stringify(templateBody));
-            
+
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -742,18 +847,18 @@ Deno.serve(async (req) => {
                 },
                 body: JSON.stringify(templateBody),
             });
-            
+
             const rawText = await response.text();
             console.log(`[send-whatsapp] Response status: ${response.status}`);
             console.log(`[send-whatsapp] Response body: ${rawText}`);
-            
+
             let data;
             try {
                 data = JSON.parse(rawText);
             } catch {
                 data = { rawResponse: rawText };
             }
-            
+
             if (!response.ok) {
                 console.error('[send-whatsapp] Template send FAILED:', response.status, data);
                 const errStr = String(data?.message || data?.error || rawText || '');
@@ -833,8 +938,8 @@ Deno.serve(async (req) => {
                 }
 
                 return new Response(
-                    JSON.stringify({ 
-                        success: false, 
+                    JSON.stringify({
+                        success: false,
                         error: data?.message || data?.error || data?.rawResponse || `HTTP ${response.status}`,
                         details: data,
                         sentPayload: templateBody,
@@ -842,7 +947,7 @@ Deno.serve(async (req) => {
                     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
             }
-            
+
             return new Response(
                 JSON.stringify({ success: true, data }),
                 { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

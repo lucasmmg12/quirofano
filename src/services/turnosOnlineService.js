@@ -680,8 +680,14 @@ export async function sendConfirmacionTurnoOnlineIndividual(reserva) {
         throw new Error('El turno no posee número de teléfono registrado.');
     }
 
+    const fechaFormatted = reserva.fecha_turno
+        ? reserva.fecha_turno.split('-').reverse().join('/')
+        : (reserva.fecha_hora_texto || '');
+    const horaFormatted = reserva.hora_inicio
+        ? `${reserva.hora_inicio} hs`
+        : '';
     const fechaHoraFormatted = reserva.fecha_turno
-        ? `${reserva.fecha_turno.split('-').reverse().join('/')}${reserva.hora_inicio ? ` a las ${reserva.hora_inicio}` : ''}`
+        ? `${fechaFormatted}${reserva.hora_inicio ? ` a las ${reserva.hora_inicio}` : ''}`
         : (reserva.fecha_hora_texto || '');
 
     const { data, error } = await supabase.functions.invoke('send-whatsapp', {
@@ -695,9 +701,13 @@ export async function sendConfirmacionTurnoOnlineIndividual(reserva) {
             dni: reserva.dni || '',
             email: reserva.email || '',
             fechaHora: fechaHoraFormatted,
+            fecha: fechaFormatted,
+            hora: horaFormatted,
+            tipoVisita: reserva.tipo_visita || reserva.especialidad || 'CONSULTA MEDICA',
             profesional: reserva.profesional || reserva.agenda || '',
             especialidad: reserva.especialidad || reserva.tipo_visita || '',
-            obraSocial: reserva.obra_social || '',
+            sede: reserva.centro || 'Sanatorio Argentino (San Luis 432/433/463 Oeste)',
+            obraSocial: reserva.obra_social || 'Particular',
             visitId: reserva.id_visita || null
         }
     });
