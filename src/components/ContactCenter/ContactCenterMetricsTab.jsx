@@ -650,7 +650,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 const { data: rpcData, error: rpcErr } = await supabase.rpc('get_contact_center_session_counts', {
                     p_start: rpcStart,
                     p_end: rpcEnd,
-                    p_gap_hours: 4
+                    p_gap_hours: 1
                 });
                 if (!rpcErr && Array.isArray(rpcData) && rpcData[0]) {
                     sessionStats = rpcData[0];
@@ -1674,13 +1674,22 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 }
             });
 
-            const totalConvsEntered = filteredConvs.length > 0 ? filteredConvs.length : totalConversationsCount;
+            const rawThreadTotal = filteredConvs.length;
+            const totalConvsEntered = totalConversationsCount > 0
+                ? Math.max(totalConversationsCount, rawThreadTotal)
+                : rawThreadTotal;
+
+            if (rawThreadTotal > 0 && totalConvsEntered > rawThreadTotal) {
+                const sessionScale = totalConvsEntered / rawThreadTotal;
+                humanConversationsCount = Math.round(humanConversationsCount * sessionScale);
+                botOnlyConversationsCount = Math.max(0, totalConvsEntered - humanConversationsCount);
+            }
 
             const botConversationAutomationPct = totalConvsEntered > 0 
                 ? Math.round((botOnlyConversationsCount / totalConvsEntered) * 100) 
                 : 0;
             const humanConversationPct = totalConvsEntered > 0 
-                ? Math.round((humanConversationsCount / totalConvsEntered) * 100) 
+                ? Math.max(0, 100 - botConversationAutomationPct) 
                 : 0;
 
             choicesTally.solicitar_turno = inquiryTypesMap.turnos || 0;
@@ -1794,7 +1803,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     const { data: prevRpc } = await supabase.rpc('get_contact_center_session_counts', {
                         p_start: prevDateStart.toISOString(),
                         p_end: prevDateEnd.toISOString(),
-                        p_gap_hours: 4
+                        p_gap_hours: 1
                     });
                     if (Array.isArray(prevRpc) && prevRpc[0]) prevSessionStats = prevRpc[0];
                 } catch (_) {}
