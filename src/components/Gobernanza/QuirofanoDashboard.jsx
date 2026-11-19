@@ -344,7 +344,7 @@ const BLOQUES_CONFIG = [
     {
         id: 'pons_rodrigo',
         cirujano: 'Dr. Rodrigo Pons',
-        cirujanoMatch: 'PONS, RODRIGO',
+        cirujanoMatch: 'PONS BELMONTE',
         ambito: 'CENTRAL',
         quirofano: 'Qx 1',
         dia: 'Lunes',
@@ -354,7 +354,7 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 100.0,
         ocupacionSep: 100.0,
-        ocupacionOct: 75.0,
+        ocupacionOct: 50.0,
         ocupacionNov: 50.0,
         semanasAgo: [
             { sem: 1, label: 'Sem 1', fecha: 'Lun 03/08', fechaISO: '2026-08-03', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' },
@@ -369,10 +369,10 @@ const BLOQUES_CONFIG = [
             { sem: 4, label: 'Sem 4', fecha: 'Lun 28/09', fechaISO: '2026-09-28', hs: 5.0, usada: true, detalle: '5.0h operadas · Qx 1' }
         ],
         semanasOct: [
-            { sem: 1, label: 'Sem 1', fecha: 'Lun 05/10', fechaISO: '2026-10-05', hs: 5.0, usada: true, detalle: 'Operado Lun 05/10 (1 cx Qx 1 · 2.2h Foja+30m) + Mié/Jue' },
-            { sem: 2, label: 'Sem 2', fecha: 'Lun 12/10 (Feriado)', fechaISO: '2026-10-12', rangoInicio: '2026-10-12', rangoFin: '2026-10-16', hs: 5.0, usada: true, detalle: 'Feriado Lun 12/10 · Reprogramado Mié 14/10 y Vie 16/10 (6 cx · 13.7h)' },
-            { sem: 3, label: 'Sem 3', fecha: 'Lun 19/10', fechaISO: '2026-10-19', hs: 5.0, usada: true, detalle: 'Operado Lun 19/10 (2 cx · 2.4h Foja+30m)' },
-            { sem: 4, label: 'Sem 4', fecha: 'Lun 26/10', fechaISO: '2026-10-26', hs: 0.0, usada: false, detalle: 'Sin cirugías el Lun 26/10 (Operó Mié 28/10: 3 cx · 4.2h)' }
+            { sem: 1, label: 'Sem 1', fecha: 'Lun 05/10', fechaISO: '2026-10-05', hs: 5.0, usada: true, detalle: 'Operado Lun 05/10 (1 cx en Qx 1 · 2.2h Foja+30m)' },
+            { sem: 2, label: 'Sem 2', fecha: 'Lun 12/10 (Feriado)', fechaISO: '2026-10-12', hs: 0.0, usada: false, detalle: 'Feriado Lun 12/10 · Bloque lunes no utilizado (operó fuera de bloque Mié 14/10 y Vie 16/10)' },
+            { sem: 3, label: 'Sem 3', fecha: 'Lun 19/10', fechaISO: '2026-10-19', hs: 5.0, usada: true, detalle: 'Operado Lun 19/10 (2 cx en Qx 1 · 2.4h Foja+30m)' },
+            { sem: 4, label: 'Sem 4', fecha: 'Lun 26/10', fechaISO: '2026-10-26', hs: 0.0, usada: false, detalle: 'Ocioso en bloque lunes (0h) · Sin cirugías el Lun 26/10 (operó Mié 28/10 fuera de bloque)' }
         ],
         semanasNov: [
             { sem: 1, label: 'Sem 1', fecha: 'Lun 02/11', fechaISO: '2026-11-02', hs: 5.0, usada: true, detalle: 'Operado Lun 02/11 (2 cx Qx 1 · 2.4h Foja+30m)' },
@@ -603,8 +603,8 @@ const BLOQUES_CONFIG = [
         horasMes: 20.0,
         ocupacionAgo: 0.0,
         ocupacionSep: 0.0,
-        ocupacionOct: 50.0,
-        ocupacionNov: 50.0,
+        ocupacionOct: 0.0,
+        ocupacionNov: 0.0,
         semanasAgo: [
             { sem: 1, label: 'Bloque 1', fecha: 'Jue 06/08', fechaISO: '2026-08-06', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' },
             { sem: 2, label: 'Bloque 2', fecha: 'Jue 20/08', fechaISO: '2026-08-20', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
@@ -614,16 +614,16 @@ const BLOQUES_CONFIG = [
             { sem: 2, label: 'Bloque 2', fecha: 'Jue 17/09', fechaISO: '2026-09-17', hs: 0.0, usada: false, detalle: 'Ocioso (0h) · Sin actividad programada' }
         ],
         semanasOct: [
-            { sem: 1, label: 'Bloque 1', fecha: 'Oct Quincena 1', fechaISO: '2026-10-07', rangoInicio: '2026-10-01', rangoFin: '2026-10-16', hs: 10.0, usada: true, detalle: 'Operó Mié 07/10 y Vie 16/10 (2 cx cardiovasculares · 4.0h Foja+30m)' },
-            { sem: 2, label: 'Bloque 2', fecha: 'Oct Quincena 2', fechaISO: '2026-10-27', rangoInicio: '2026-10-17', rangoFin: '2026-10-31', hs: 0.0, usada: false, detalle: 'Sin uso en Jueves (1 cx menor Mar 27/10 · 1.5h)' }
+            { sem: 1, label: 'Bloque 1', fecha: 'Jue 08/10', fechaISO: '2026-10-08', hs: 0.0, usada: false, detalle: 'Ocioso en bloque Jueves (0h) · Las 2 cx CCV del mes se realizaron fuera de bloque (Mié 07/10 y Vie 16/10)' },
+            { sem: 2, label: 'Bloque 2', fecha: 'Jue 22/10', fechaISO: '2026-10-22', hs: 0.0, usada: false, detalle: 'Ocioso en bloque Jueves (0h) · Sin cirugías en jueves (1 cx menor Mar 27/10 fuera de bloque)' }
         ],
         semanasNov: [
-            { sem: 1, label: 'Bloque 1', fecha: 'Nov Quincena 1', fechaISO: '2026-11-02', rangoInicio: '2026-11-01', rangoFin: '2026-11-13', hs: 10.0, usada: true, detalle: 'Operó Lun 02/11 y Vie 06/11 (3 cx CCV en Qx 1/Qx 2 · 8.4h Foja+30m)' },
+            { sem: 1, label: 'Bloque 1', fecha: 'Jue 12/11', fechaISO: '2026-11-12', hs: 0.0, usada: false, detalle: 'Ocioso en bloque Jueves (0h) · Operó fuera de bloque Lun 02/11 y Vie 06/11' },
             { sem: 2, label: 'Bloque 2', fecha: 'Jue 26/11', fechaISO: '2026-11-26', hs: 0.0, usada: false, detalle: 'Reserva activa en SALUS: BLOQUE, CCV (Jue 26/11 07:00-16:00 en Qx 1)' }
         ],
         color: '#FCA5A5',
         textColor: '#991B1B',
-        nota: 'Actualizado: 2 jueves al mes (20h/mes · Reserva BLOQUE, CCV el 26/11)'
+        nota: 'Ocupación 0% en Jueves asignados (las 2 cx de Oct fueron Mié 07/10 y Vie 16/10 fuera de bloque)'
     },
     {
         id: 'gempel_diego',
@@ -1795,58 +1795,53 @@ export default function QuirofanoDashboard({
         setSelectedCrossFilter(null);
     };
 
-    // Filas supeditadas al filtro cruzado activo y al ámbito seleccionado (Quirófano Central vs HdD)
-    const scopedSurgeriesRows = useMemo(() => {
+    // Filas supeditadas únicamente al filtro cruzado (sin recortar ámbito para que compileQuirofanoMetrics calcule las píldoras de Todos/Centrales/HdD/Hemodinamia)
+    const crossFilteredSurgeriesRows = useMemo(() => {
         if (!allSurgeriesRows || allSurgeriesRows.length === 0) return [];
-        let baseRows = allSurgeriesRows;
-
-        if (ambitoFilter === 'TODOS') {
-            baseRows = baseRows.filter(s => {
-                const g = (s.grupo_agendas || '').toUpperCase();
-                return !g.includes('HEMODINAMIA');
-            });
-        } else if (ambitoFilter === 'CENTRALES') {
-            baseRows = baseRows.filter(s => {
-                const g = (s.grupo_agendas || '').toUpperCase();
-                return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
-            });
-        } else if (ambitoFilter === 'HDD') {
-            baseRows = baseRows.filter(s => {
-                const g = (s.grupo_agendas || '').toUpperCase();
-                return g.includes('HDD') || g.includes('HOSPITAL DE DIA');
-            });
-        } else if (ambitoFilter === 'HEMODINAMIA') {
-            baseRows = baseRows.filter(s => {
-                const g = (s.grupo_agendas || '').toUpperCase();
-                return g.includes('HEMODINAMIA');
-            });
-        }
-
-        if (!selectedCrossFilter) {
-            return baseRows;
-        }
+        if (!selectedCrossFilter) return allSurgeriesRows;
         const filterVal = selectedCrossFilter.value.trim().toUpperCase();
 
         if (selectedCrossFilter.type === 'OBRA_SOCIAL') {
-            return baseRows.filter(s => (s.obra_social || '').trim().toUpperCase() === filterVal);
+            return allSurgeriesRows.filter(s => (s.obra_social || '').trim().toUpperCase() === filterVal);
         }
         if (selectedCrossFilter.type === 'CIRUJANO') {
-            return baseRows.filter(s => (s.medico || '').trim().toUpperCase() === filterVal);
+            return allSurgeriesRows.filter(s => (s.medico || '').trim().toUpperCase() === filterVal);
         }
         if (selectedCrossFilter.type === 'ESPECIALIDAD') {
-            return baseRows.filter(s => {
-                const esp = getEspecialidadMedica(s.descripcion, s.modulo);
-                return esp === filterVal;
-            });
+            return allSurgeriesRows.filter(s => getEspecialidadMedica(s.descripcion, s.modulo) === filterVal);
         }
         if (selectedCrossFilter.type === 'PROCEDIMIENTO') {
-            return baseRows.filter(s => {
+            return allSurgeriesRows.filter(s => {
                 const rawProc = (s.descripcion || s.modulo || '').replace(/^\(CX\)\s*/i, '').trim().toUpperCase();
                 return rawProc.includes(filterVal) || filterVal.includes(rawProc);
             });
         }
-        return baseRows;
-    }, [allSurgeriesRows, selectedCrossFilter, ambitoFilter]);
+        return allSurgeriesRows;
+    }, [allSurgeriesRows, selectedCrossFilter]);
+
+    // Filas supeditadas al filtro cruzado activo y al ámbito seleccionado (Quirófano Central vs HdD vs Hemodinamia)
+    const scopedSurgeriesRows = useMemo(() => {
+        if (!crossFilteredSurgeriesRows || crossFilteredSurgeriesRows.length === 0) return [];
+        if (ambitoFilter === 'TODOS') {
+            return crossFilteredSurgeriesRows.filter(s => !(s.grupo_agendas || '').toUpperCase().includes('HEMODINAMIA'));
+        }
+        if (ambitoFilter === 'CENTRALES') {
+            return crossFilteredSurgeriesRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
+            });
+        }
+        if (ambitoFilter === 'HDD') {
+            return crossFilteredSurgeriesRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return g.includes('HDD') || g.includes('HOSPITAL DE DIA');
+            });
+        }
+        if (ambitoFilter === 'HEMODINAMIA') {
+            return crossFilteredSurgeriesRows.filter(s => (s.grupo_agendas || '').toUpperCase().includes('HEMODINAMIA'));
+        }
+        return crossFilteredSurgeriesRows;
+    }, [crossFilteredSurgeriesRows, ambitoFilter]);
 
     // Métricas globales sin filtros cruzados (para mantener opciones visibles en las tarjetas)
     const unfilteredCompiledData = useMemo(() => {
@@ -1856,9 +1851,9 @@ export default function QuirofanoDashboard({
 
     // Métricas supeditadas al filtro cruzado (recalcula KPIs, salas, procedimientos, suspensiones)
     const compiledData = useMemo(() => {
-        if (!scopedSurgeriesRows || scopedSurgeriesRows.length === 0) return null;
-        return compileQuirofanoMetrics(scopedSurgeriesRows, ambitoFilter);
-    }, [scopedSurgeriesRows, ambitoFilter]);
+        if (!crossFilteredSurgeriesRows || crossFilteredSurgeriesRows.length === 0) return null;
+        return compileQuirofanoMetrics(crossFilteredSurgeriesRows, ambitoFilter);
+    }, [crossFilteredSurgeriesRows, ambitoFilter]);
 
     const dynamicMetrics = compiledData ? compiledData.dynamicMetrics : null;
     const activeSalasData = dynamicMetrics ? dynamicMetrics.salasData : SALAS_DATA;

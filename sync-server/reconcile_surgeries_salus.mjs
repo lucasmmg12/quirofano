@@ -90,14 +90,15 @@ const salusRes = await pool.request().query(`
         v.Motivo_Ausencia
     FROM dbo.VLISE_Visitas v WITH (NOLOCK)
     OUTER APPLY (
-        SELECT TOP 1 Cirujano
+        SELECT TOP 1 Cirujano, Anestesista
         FROM dbo.TABLEAU_Cirugias c WITH (NOLOCK)
         WHERE c.idvisita = v.idVisita
-          AND c.Cirujano IS NOT NULL
-          AND LEN(LTRIM(RTRIM(c.Cirujano))) > 0
     ) tc
     WHERE CAST(v.[Fecha Visita] AS DATE) >= '2026-01-01'
-      AND v.[Grupo Agenda] IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD', N'HEMODINAMIA')
+      AND (
+          v.[Grupo Agenda] IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD')
+          OR (v.[Grupo Agenda] = N'HEMODINAMIA' AND tc.Anestesista IS NOT NULL AND LEN(LTRIM(RTRIM(tc.Anestesista))) > 0)
+      )
       AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%COLOCACION DE MEDICAM%'
       AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%HEMOTERAPIA%'
       AND ISNULL(v.[Tipo Visita], '') NOT LIKE '%HIERRO%'

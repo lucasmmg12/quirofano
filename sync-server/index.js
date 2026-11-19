@@ -1075,7 +1075,12 @@ async function syncCirugias(db) {
           AND (
             (A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD') AND CAST(A.Data AS DATE) >= DATEADD(DAY, -14, CAST(GETDATE() AS DATE)))
             OR
-            (A.GrupoAgendas = N'HEMODINAMIA' AND CAST(A.Data AS DATE) >= '2026-01-01')
+            (A.GrupoAgendas = N'HEMODINAMIA' AND CAST(A.Data AS DATE) >= '2026-01-01' AND EXISTS (
+                SELECT 1 FROM dbo.TABLEAU_Cirugias tc WITH (NOLOCK)
+                WHERE tc.idvisita = A.idVisita
+                  AND tc.Anestesista IS NOT NULL
+                  AND LEN(LTRIM(RTRIM(tc.Anestesista))) > 0
+            ))
           )
         ORDER BY A.Data DESC
     `);
