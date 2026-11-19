@@ -393,30 +393,65 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
             }
 
             const salusDataByAgent = {};
+            const salusRangeTurnosByAgent = {};
+            let hasSalusRangeSnapshots = false;
             const localAiSummariesMap = {};
             try {
+                const isFullMonthFilter = timeRange === 'this_month' || timeRange === 'last_month';
+                const rangeDayKeys = [];
+                if (!isFullMonthFilter && filterStart && filterEnd) {
+                    const cursor = new Date(filterStart.getFullYear(), filterStart.getMonth(), filterStart.getDate());
+                    const endCursor = new Date(filterEnd.getFullYear(), filterEnd.getMonth(), filterEnd.getDate());
+                    let safety = 0;
+                    while (cursor <= endCursor && safety < 95) {
+                        const dIso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+                        rangeDayKeys.push(dIso);
+                        cursor.setDate(cursor.getDate() + 1);
+                        safety++;
+                    }
+                }
+
+                const todayIsoLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                const configKeysToFetch = [
+                    `cc_incentivo_${targetMonthKey}`,
+                    'cc_incentivo_2026-08',
+                    'cc_incentivo_2026-09',
+                    'cc_incentivo_2026-10',
+                    'cc_incentivo_2026-11',
+                    `cc_ai_summary_${targetMonthKey}`,
+                    'cc_ai_summary_2026-10',
+                    'cc_ai_summary_2026-11',
+                    ...rangeDayKeys.map(d => `cc_turnos_contact_center_${d}`),
+                    ...(rangeDayKeys.includes(todayIsoLocal) ? ['cc_turnos_hoy'] : [])
+                ];
+
                 const { data: cfgRows } = await supabase
                     .from('app_config')
                     .select('key, value')
-                    .in('key', [
-                        `cc_incentivo_${targetMonthKey}`,
-                        'cc_incentivo_2026-08',
-                        'cc_incentivo_2026-09',
-                        'cc_incentivo_2026-10',
-                        'cc_incentivo_2026-11',
-                        `cc_ai_summary_${targetMonthKey}`,
-                        'cc_ai_summary_2026-10',
-                        'cc_ai_summary_2026-11'
-                    ]);
+                    .in('key', Array.from(new Set(configKeysToFetch)));
 
                 if (Array.isArray(cfgRows)) {
                     const nextServiciosMap = {};
+                    const dailySnapshotsByDate = {};
+                    let liveTodaySnapshot = null;
+
                     cfgRows.forEach(r => {
                         if (!r?.value) return;
                         const parsed = typeof r.value === 'string' ? JSON.parse(r.value) : r.value;
                         if (r.key.startsWith('cc_ai_summary_')) {
                             const aiKey = r.key.replace('cc_ai_summary_', '');
                             localAiSummariesMap[aiKey] = parsed;
+                            return;
+                        }
+                        if (r.key === 'cc_turnos_hoy') {
+                            if (parsed?.fecha === todayIsoLocal) {
+                                liveTodaySnapshot = parsed;
+                            }
+                            return;
+                        }
+                        if (r.key.startsWith('cc_turnos_contact_center_')) {
+                            const dKey = r.key.replace('cc_turnos_contact_center_', '');
+                            dailySnapshotsByDate[dKey] = parsed;
                             return;
                         }
                         const pKey = r.key.replace('cc_incentivo_', '');
@@ -435,6 +470,42 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             });
                         }
                     });
+
+                    // Si hoy está en el rango y cc_turnos_hoy tiene más o igual actualización, asegurar su uso
+                    if (liveTodaySnapshot && rangeDayKeys.includes(todayIsoLocal)) {
+                        const existingToday = dailySnapshotsByDate[todayIsoLocal];
+                        if (!existingToday || (Number(liveTodaySnapshot.totalTurnos || 0) >= Number(existingToday.totalTurnos || 0))) {
+                            dailySnapshotsByDate[todayIsoLocal] = liveTodaySnapshot;
+                        }
+                    }
+
+                    // Consolidar turnos SALUS por agente en el rango diario seleccionado (desduplicando idVisita cuando hay detalle nominal)
+                    if (!isFullMonthFilter && rangeDayKeys.length > 0) {
+                        const seenVisitasByAg = {};
+                        const fallbackCountByAg = {};
+                        rangeDayKeys.forEach(dKey => {
+                            const snap = dailySnapshotsByDate[dKey];
+                            if (!snap || !Array.isArray(snap.agentes)) return;
+                            hasSalusRangeSnapshots = true;
+                            snap.agentes.forEach(ag => {
+                                if (!ag?.id) return;
+                                if (!seenVisitasByAg[ag.id]) seenVisitasByAg[ag.id] = new Set();
+                                if (!fallbackCountByAg[ag.id]) fallbackCountByAg[ag.id] = 0;
+                                if (Array.isArray(ag.turnosDetalle) && ag.turnosDetalle.length > 0) {
+                                    ag.turnosDetalle.forEach(t => {
+                                        if (t?.idVisita) seenVisitasByAg[ag.id].add(t.idVisita);
+                                    });
+                                } else {
+                                    fallbackCountByAg[ag.id] += (Number(ag.turnos) || 0);
+                                }
+                            });
+                        });
+                        Object.keys(seenVisitasByAg).forEach(agId => {
+                            const setSize = seenVisitasByAg[agId].size;
+                            salusRangeTurnosByAgent[agId] = setSize > 0 ? setSize : (fallbackCountByAg[agId] || 0);
+                        });
+                    }
+
                     setSalusServiciosMap(nextServiciosMap);
                     setAiSummariesMap(localAiSummariesMap);
                     if (nextServiciosMap[targetMonthKey]) {
@@ -1599,17 +1670,19 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         .map(([motivo, cantidad]) => ({ motivo, cantidad }))
                         .sort((x, y) => y.cantidad - x.cantidad);
 
-                    // 4. Métricas oficiales de turnos en SALUS (en meses completos usa snapshot oficial; en rangos acotados como Hoy/Semana usa turnos del período)
+                    // 4. Métricas oficiales de turnos en SALUS (en meses completos usa snapshot mensual; en Hoy/Semana/Personalizado suma snapshots diarios desduplicados por idVisita)
                     const isFullMonthView = timeRange === 'this_month' || timeRange === 'last_month';
-                    const salusAg = isFullMonthView ? (salusDataByAgent[a.id] || {}) : {};
-                    const turnosSalus = (isFullMonthView && salusAg.turnos !== undefined) 
-                        ? salusAg.turnos 
-                        : (a.resolvedReasons?.['Turno Coordinado'] || 0);
-                    const citasTotalesSalus = salusAg.citasTotales || 0;
-                    const asistidasSalus = salusAg.asistidas || 0;
-                    const asistenciaPctSalus = salusAg.asistenciaPct || 0;
-                    const ausenciasSalus = salusAg.ausencias || 0;
-                    const justificadasSalus = salusAg.justificadas || 0;
+                    const salusAg = salusDataByAgent[a.id] || {};
+                    const turnosSalus = (isFullMonthView && salusAg.turnos !== undefined)
+                        ? salusAg.turnos
+                        : (hasSalusRangeSnapshots
+                            ? (salusRangeTurnosByAgent[a.id] || 0)
+                            : (a.resolvedReasons?.['Turno Otorgado con Éxito'] || 0));
+                    const citasTotalesSalus = isFullMonthView ? (salusAg.citasTotales || 0) : 0;
+                    const asistidasSalus = isFullMonthView ? (salusAg.asistidas || 0) : 0;
+                    const asistenciaPctSalus = isFullMonthView ? (salusAg.asistenciaPct || 0) : 0;
+                    const ausenciasSalus = isFullMonthView ? (salusAg.ausencias || 0) : 0;
+                    const justificadasSalus = isFullMonthView ? (salusAg.justificadas || 0) : 0;
 
                     return {
                         ...a,
@@ -2234,9 +2307,16 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
         // Casos con demora > 1 día (cerrados por inactividad / expiración > 24hs en el mes)
         const liveOver24h = Number(metrics.patientQuality?.archivedOver24hCount ?? metrics.archivedOver24hCount ?? 0);
 
-        // Cantidad de Turnos reales del mes (SALUS auditados o cerrados en chat si aún no hay corte SALUS)
+        // Cantidad de Turnos reales del período (suma exacta de turnos SALUS de las asesoras en el período seleccionado)
         const turnosChatCurr = Number(metrics.byResolutionReason?.['Turno Otorgado con Éxito'] || 0);
-        const liveTurnos = Number(srvCurr?.totalTurnosAnalizados || turnosChatCurr || 0);
+        const sumAgentTurnosSalus = (metrics.byAgentList || []).reduce((acc, a) => acc + (Number(a.turnosSalus) || 0), 0);
+        const isFullMonthRange = timeRange === 'this_month' || timeRange === 'last_month';
+        const liveTurnos = isFullMonthRange
+            ? Number(srvCurr?.totalTurnosAnalizados || sumAgentTurnosSalus || turnosChatCurr || 0)
+            : Number(sumAgentTurnosSalus || turnosChatCurr || 0);
+        const desgloseTurnosAgentesStr = (metrics.byAgentList || [])
+            .map(a => `${(a.name || '').split(' ')[0]}: ${(Number(a.turnosSalus) || 0).toLocaleString('es-AR')}`)
+            .join(' · ');
         const prevTurnosSalus = srvPrev?.totalTurnosAnalizados !== undefined
             ? Number(srvPrev.totalTurnosAnalizados)
             : (prevMonthMetrics.hasData ? Number(prevMonthMetrics.turnosChat || 0) : null);
@@ -2310,7 +2390,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 formatType: 'integer',
                 goalDirection: 'up_is_better',
                 fallbackTendencia: 'Estable',
-                comentario: `SALUS Contact Center: ${(srvCurr?.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos auditados · Chat WhatsApp: ${turnosChatCurr.toLocaleString('es-AR')} turnos confirmados · Hora pico: ${metrics.peakHourInfo?.hora || '10:00 hs'}.`
+                comentario: `SALUS Contact Center (${periodLabel}): ${liveTurnos.toLocaleString('es-AR')} turnos auditados (${desgloseTurnosAgentesStr || 'Sin desglose'}) · Chats cerrados como Turno Otorgado: ${turnosChatCurr.toLocaleString('es-AR')} · Hora pico: ${metrics.peakHourInfo?.hora || '10:00 hs'}.`
             },
             {
                 id: 'ind_6',
@@ -4053,6 +4133,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                     return (withEnCurso && pKey === currentMonthIso) ? `${base} (En Curso)` : base;
                 };
 
+                const fourthAgentKey = effectivePeriodo <= '2026-08' ? 'macosta' : 'eleal';
+                const fourthAgentShort = effectivePeriodo <= '2026-08' ? 'Antonella' : 'Érica';
+
                 const SERVICIOS_CARDS = [
                     {
                         key: 'diagnostico_imagenes',
@@ -4089,8 +4172,35 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                         bg: '#FFFBEB',
                         border: '#FDE68A',
                         data: srvData.kinesiologia || { total: 0, pctSobreTotal: 0, porAgente: {}, subcategorias: [] }
+                    },
+                    {
+                        key: 'otras_especialidades',
+                        title: 'Consultorios y Especialidades',
+                        subtitle: 'Ginecología, Pediatría, Cardiología, Clínica y resto de agendas',
+                        color: '#0F2942',
+                        bg: '#F8FAFC',
+                        border: '#CBD5E1',
+                        data: srvData.otras_especialidades || { total: 0, pctSobreTotal: 0, porAgente: {}, subcategorias: [] }
                     }
                 ];
+
+                // Conciliación 100% por asesora (Estratégicos + Consultorios = Total SALUS)
+                const activeAgentCols = [
+                    { id: 'solivier', label: 'Sofía Olivier', short: 'Sofía', color: '#8B5CF6' },
+                    { id: 'vjacques', label: 'Virginia Jacques', short: 'Virginia', color: '#059669' },
+                    { id: 'daguilera', label: 'Daniela Aguilera', short: 'Daniela', color: '#E11D48' },
+                    { id: fourthAgentKey, label: fourthAgentKey === 'macosta' ? 'Antonella Acosta' : 'Érica Leal', short: fourthAgentShort, color: '#D97706' }
+                ];
+
+                const agentReconciliation = activeAgentCols.map(ag => {
+                    const est = (srvData.diagnostico_imagenes?.porAgente?.[ag.id] || 0)
+                        + (srvData.chequeo?.porAgente?.[ag.id] || 0)
+                        + (srvData.prevenir?.porAgente?.[ag.id] || 0)
+                        + (srvData.kinesiologia?.porAgente?.[ag.id] || 0);
+                    const cons = (srvData.otras_especialidades?.porAgente?.[ag.id] || 0);
+                    const total = est + cons;
+                    return { ...ag, estrategicos: est, consultorios: cons, total };
+                });
 
                 const activeCard = SERVICIOS_CARDS.find(c => c.key === activeServicioTab) || SERVICIOS_CARDS[0];
                 const allPeriodoKeysDesc = Array.from(new Set([
@@ -4133,17 +4243,17 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                         <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F2942' }}>
-                                            Turnos Otorgados a Servicios Estratégicos (Auditoría SALUS)
+                                            Turnos Otorgados por Servicio y Asesora (Auditoría 100% SALUS)
                                         </h3>
                                         <span style={{
                                             fontSize: '0.68rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
                                             background: '#E0F2FE', color: '#0369A1', border: '1px solid #BAE6FD'
                                         }}>
-                                            {(srvData.totalEstrategicos || 0).toLocaleString('es-AR')} de {(srvData.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos ({srvData.pctEstrategicos || 0}%)
+                                            Total: {(srvData.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos · 4 Estratégicos: {(srvData.totalEstrategicos || 0).toLocaleString('es-AR')} ({srvData.pctEstrategicos || 0}%) + Consultorios: {(srvData.otras_especialidades?.total || 0).toLocaleString('es-AR')} ({srvData.otras_especialidades?.pctSobreTotal || 0}%)
                                         </span>
                                     </div>
                                     <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: '#64748B' }}>
-                                        Desglose exacto de turnos agendados por el Contact Center para <strong>Diagnóstico por Imágenes</strong>, <strong>Chequeo Preventivo</strong>, <strong>Programa Prevenir</strong> y <strong>Kinesiología</strong>.
+                                        Conciliación exacta del 100% de turnos agendados en SALUS por asesora: <strong>Diagnóstico por Imágenes</strong>, <strong>Chequeo Preventivo</strong>, <strong>Programa Prevenir</strong>, <strong>Kinesiología</strong> y <strong>Consultorios</strong>.
                                     </p>
                                 </div>
                             </div>
@@ -4173,10 +4283,64 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             </div>
                         </div>
 
-                        {/* 4 Tarjetas KPI de los Servicios Estratégicos */}
+                        {/* Barra de Conciliación Oficial por Asesora (100% Turnos SALUS = 4 Servicios Estratégicos + Consultorios) */}
+                        <div style={{
+                            background: '#F8FAFC',
+                            border: '1px solid #CBD5E1',
+                            borderRadius: '11px',
+                            padding: '10px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '10px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.75rem', fontWeight: 800, color: '#0F2942' }}>
+                                <CalendarCheck size={15} color="#0284C7" />
+                                <span>Conciliación por Asesora ({formatPeriodoLabel(effectivePeriodo, true)}):</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                {agentReconciliation.map(ag => (
+                                    <div
+                                        key={ag.id}
+                                        title={`${ag.label}: ${ag.estrategicos.toLocaleString('es-AR')} en 4 Servicios Estratégicos + ${ag.consultorios.toLocaleString('es-AR')} en Consultorios = ${ag.total.toLocaleString('es-AR')} turnos SALUS`}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            border: '1px solid #E2E8F0',
+                                            borderLeft: `3.5px solid ${ag.color}`,
+                                            borderRadius: '8px',
+                                            padding: '5px 10px',
+                                            fontSize: '0.72rem',
+                                            color: '#334155',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}
+                                    >
+                                        <strong style={{ color: '#0F2942' }}>{ag.short}:</strong>
+                                        <span style={{ fontWeight: 900, color: ag.color, fontSize: '0.82rem' }}>{ag.total.toLocaleString('es-AR')}</span>
+                                        <span style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                            ({ag.estrategicos.toLocaleString('es-AR')} est. + {ag.consultorios.toLocaleString('es-AR')} cons.)
+                                        </span>
+                                    </div>
+                                ))}
+                                <div style={{
+                                    background: '#0F2942',
+                                    color: '#FFFFFF',
+                                    borderRadius: '8px',
+                                    padding: '6px 11px',
+                                    fontSize: '0.73rem',
+                                    fontWeight: 800
+                                }}>
+                                    Total Equipo: {(srvData.totalTurnosAnalizados || 0).toLocaleString('es-AR')} turnos
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 5 Tarjetas KPI (4 Servicios Estratégicos + Consultorios = 100% de Turnos SALUS) */}
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))',
                             gap: '12px'
                         }}>
                             {SERVICIOS_CARDS.map(card => {
@@ -4238,7 +4402,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             <span>👩‍⚕️ <strong>Sofía:</strong> {(porAg.solivier || 0).toLocaleString('es-AR')}</span>
                                             <span>👩‍⚕️ <strong>Virginia:</strong> {(porAg.vjacques || 0).toLocaleString('es-AR')}</span>
                                             <span>👩‍⚕️ <strong>Daniela:</strong> {(porAg.daguilera || 0).toLocaleString('es-AR')}</span>
-                                            <span>👩‍⚕️ <strong>Érica:</strong> {(porAg.eleal || 0).toLocaleString('es-AR')}</span>
+                                            <span>👩‍⚕️ <strong>{fourthAgentShort}:</strong> {(porAg[fourthAgentKey] || 0).toLocaleString('es-AR')}</span>
                                         </div>
                                     </div>
                                 );
@@ -4279,9 +4443,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     </span>
                                 </div>
 
-                                <div style={{ overflowX: 'auto', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                                <div style={{ overflowX: 'auto', maxHeight: '360px', overflowY: 'auto', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', textAlign: 'left' }}>
-                                        <thead>
+                                        <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                                             <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800 }}>
                                                 <th style={{ padding: '8px 10px' }}>Práctica / Modalidad</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'right' }}>Turnos</th>
@@ -4289,7 +4453,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                 <th style={{ padding: '8px 10px', textAlign: 'right', color: '#8B5CF6' }}>Sofía</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>Virginia</th>
                                                 <th style={{ padding: '8px 10px', textAlign: 'right', color: '#E11D48' }}>Daniela</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#D97706' }}>Érica</th>
+                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#D97706' }}>{fourthAgentShort}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -4305,15 +4469,36 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.solivier || 0).toLocaleString('es-AR')}</td>
                                                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.vjacques || 0).toLocaleString('es-AR')}</td>
                                                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.daguilera || 0).toLocaleString('es-AR')}</td>
-                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub.eleal || 0).toLocaleString('es-AR')}</td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{(sub[fourthAgentKey] || 0).toLocaleString('es-AR')}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
+                                        <tfoot>
+                                            <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800, color: '#0F2942' }}>
+                                                <td style={{ padding: '8px 10px' }}>TOTAL {activeCard.title.toUpperCase()}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: activeCard.color }}>
+                                                    {(activeCard.data.total || 0).toLocaleString('es-AR')}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#64748B' }}>100%</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#8B5CF6' }}>
+                                                    {(activeCard.data.porAgente?.solivier || 0).toLocaleString('es-AR')}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>
+                                                    {(activeCard.data.porAgente?.vjacques || 0).toLocaleString('es-AR')}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#E11D48' }}>
+                                                    {(activeCard.data.porAgente?.daguilera || 0).toLocaleString('es-AR')}
+                                                </td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#D97706' }}>
+                                                    {(activeCard.data.porAgente?.[fourthAgentKey] || 0).toLocaleString('es-AR')}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </div>
                             </div>
 
-                            {/* Columna Derecha: Comparativa Histórica Mes a Mes (Agosto, Septiembre, Octubre) */}
+                            {/* Columna Derecha: Comparativa Histórica Mes a Mes (Agosto, Septiembre, Octubre, Noviembre) */}
                             <div style={{
                                 background: '#F8FAFC',
                                 borderRadius: '12px',
@@ -4326,24 +4511,25 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                             }}>
                                 <div>
                                     <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#0F2942' }}>
-                                        Evolución Mes a Mes por Servicio Estratégico
+                                        Evolución Mes a Mes por Servicio Estratégico y Consultorios
                                     </h4>
                                     <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: '#64748B' }}>
-                                        Comparativa de turnos brindados por el Contact Center en los 4 servicios clave vs. Consultorios
+                                        Conciliación mensual completa: 4 servicios estratégicos + Consultorios = Total Contact Center
                                     </p>
                                 </div>
 
                                 <div style={{ overflowX: 'auto', background: '#FFFFFF', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', textAlign: 'left' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem', textAlign: 'left' }}>
                                         <thead>
                                             <tr style={{ background: '#F1F5F9', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800 }}>
-                                                <th style={{ padding: '8px 10px' }}>Período</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#0284C7' }}>Dx. Imágenes</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>Chequeo</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#8B5CF6' }}>Prevenir</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#D97706' }}>Kinesio</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#0F2942' }}>Subtotal 4 Áreas</th>
-                                                <th style={{ padding: '8px 10px', textAlign: 'right', color: '#64748B' }}>Total CC</th>
+                                                <th style={{ padding: '8px 9px' }}>Período</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#0284C7' }}>Dx. Imágenes</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#059669' }}>Chequeo</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#8B5CF6' }}>Prevenir</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#D97706' }}>Kinesio</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#0F2942' }}>Subtotal 4 Áreas</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#334155' }}>Consultorios</th>
+                                                <th style={{ padding: '8px 9px', textAlign: 'right', color: '#0F2942' }}>Total CC</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -4362,25 +4548,28 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                             cursor: 'pointer'
                                                         }}
                                                     >
-                                                        <td style={{ padding: '9px 10px', fontWeight: 800, color: '#0F2942' }}>
+                                                        <td style={{ padding: '9px 9px', fontWeight: 800, color: '#0F2942' }}>
                                                             {labelMes}
                                                         </td>
-                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
-                                                            {(rowP.diagnostico_imagenes?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.diagnostico_imagenes?.pctSobreTotal || 0}%)</span>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 700, color: '#0284C7' }}>
+                                                            {(rowP.diagnostico_imagenes?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.64rem', color: '#64748B' }}>({rowP.diagnostico_imagenes?.pctSobreTotal || 0}%)</span>
                                                         </td>
-                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
-                                                            {(rowP.chequeo?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.chequeo?.pctSobreTotal || 0}%)</span>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                                                            {(rowP.chequeo?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.64rem', color: '#64748B' }}>({rowP.chequeo?.pctSobreTotal || 0}%)</span>
                                                         </td>
-                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#8B5CF6' }}>
-                                                            {(rowP.prevenir?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.prevenir?.pctSobreTotal || 0}%)</span>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 700, color: '#8B5CF6' }}>
+                                                            {(rowP.prevenir?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.64rem', color: '#64748B' }}>({rowP.prevenir?.pctSobreTotal || 0}%)</span>
                                                         </td>
-                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#D97706' }}>
-                                                            {(rowP.kinesiologia?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.65rem', color: '#64748B' }}>({rowP.kinesiologia?.pctSobreTotal || 0}%)</span>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 700, color: '#D97706' }}>
+                                                            {(rowP.kinesiologia?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.64rem', color: '#64748B' }}>({rowP.kinesiologia?.pctSobreTotal || 0}%)</span>
                                                         </td>
-                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#0F2942', background: '#F8FAFC' }}>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 800, color: '#0F2942', background: '#F8FAFC' }}>
                                                             {(rowP.totalEstrategicos || 0).toLocaleString('es-AR')} ({rowP.pctEstrategicos || 0}%)
                                                         </td>
-                                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 700, color: '#334155' }}>
+                                                            {(rowP.otras_especialidades?.total || 0).toLocaleString('es-AR')} <span style={{ fontSize: '0.64rem', color: '#64748B' }}>({rowP.otras_especialidades?.pctSobreTotal || 0}%)</span>
+                                                        </td>
+                                                        <td style={{ padding: '9px 9px', textAlign: 'right', fontWeight: 900, color: '#0F2942' }}>
                                                             {(rowP.totalTurnosAnalizados || 0).toLocaleString('es-AR')}
                                                         </td>
                                                     </tr>
@@ -4396,10 +4585,10 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px'
                                 }}>
                                     <span>
-                                        📌 <strong>Conclusión Operativa ({formatPeriodoLabel(effectivePeriodo, true)}):</strong> Aproximadamente <strong>1 de cada 3 turnos ({srvData.pctEstrategicos || 0}%)</strong> otorgados por el Contact Center corresponde a estos 4 servicios estratégicos.
+                                        📌 <strong>Conciliación Auditada ({formatPeriodoLabel(effectivePeriodo, true)}):</strong> La suma de las 5 tarjetas por cada asesora coincide exactamente con el <strong>100% de sus turnos otorgados en SALUS ({(srvData.totalTurnosAnalizados || 0).toLocaleString('es-AR')})</strong>.
                                     </span>
                                     <span style={{ fontWeight: 700, color: '#0369A1' }}>
-                                        Consultorios Restantes: {(srvData.otras_especialidades?.total || 0).toLocaleString('es-AR')} ({srvData.otras_especialidades?.pctSobreTotal || 0}%)
+                                        Estratégicos: {(srvData.totalEstrategicos || 0).toLocaleString('es-AR')} ({srvData.pctEstrategicos || 0}%) · Consultorios: {(srvData.otras_especialidades?.total || 0).toLocaleString('es-AR')} ({srvData.otras_especialidades?.pctSobreTotal || 0}%)
                                     </span>
                                 </div>
                             </div>
@@ -5795,7 +5984,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                 background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0',
                 padding: '22px', boxShadow: '0 1px 4px rgba(0,0,0,0.02)'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Users size={18} />
@@ -5805,14 +5994,31 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                 Rendimiento Desplegable por Asesora y Tiempos de Atención
                             </h3>
                             <p style={{ margin: '1px 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                Despliega cada asesora para auditar su volumen, velocidad de 1er contacto (FRT) y tiempo neto de resolución (AHT)
+                                Despliega cada asesora para auditar su volumen, turnos SALUS, velocidad de 1er contacto (FRT) y tiempo neto de resolución (AHT)
                             </p>
                         </div>
                     </div>
 
-                    <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
-                        {metrics.byAgentList.length} Asesoras Activas
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <span style={{
+                            padding: '5px 11px',
+                            borderRadius: '8px',
+                            background: '#F0FDF4',
+                            color: '#166534',
+                            border: '1px solid #BBF7D0',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}>
+                            <CalendarCheck size={14} color="#166534" />
+                            🏥 Total Turnos SALUS Equipo ({periodLabel}): {metrics.byAgentList.reduce((acc, a) => acc + (Number(a.turnosSalus) || 0), 0).toLocaleString('es-AR')} turnos
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
+                            {metrics.byAgentList.length} Asesoras Activas
+                        </span>
+                    </div>
                 </div>
 
                 {/* 💡 GUÍA DIDÁCTICA Y GLOSARIO CLÍNICO DE INDICADORES (FRT, AHT, SLA & SALUS) */}
@@ -5957,7 +6163,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             }}
                                         >
                                             <CalendarCheck size={12} color="#166534" />
-                                            🏥 {ag.turnosSalus ? `${ag.turnosSalus.toLocaleString('es-AR')} turnos SALUS` : `${ag.resolvedReasons?.['Turno Coordinado'] || 0} turnos`}
+                                            🏥 {(ag.turnosSalus !== undefined ? ag.turnosSalus : (ag.resolvedReasons?.['Turno Otorgado con Éxito'] || 0)).toLocaleString('es-AR')} turnos SALUS
                                         </div>
 
 
@@ -6019,12 +6225,12 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                     </span>
                                                 </div>
                                                 <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284C7', marginTop: '2px' }}>
-                                                    {ag.turnosSalus ? ag.turnosSalus.toLocaleString('es-AR') : (ag.resolvedReasons?.['Turno Coordinado'] || 0)}
+                                                    {(ag.turnosSalus !== undefined ? ag.turnosSalus : (ag.resolvedReasons?.['Turno Otorgado con Éxito'] || 0)).toLocaleString('es-AR')}
                                                     <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', marginLeft: '3px' }}>dados</span>
                                                 </div>
                                                 <div style={{ fontSize: '0.62rem', color: '#64748B', marginTop: '1px' }}>
                                                     {ag.asistenciaPctSalus 
-                                                        ? `${ag.asistidasSalus || 0} asistidas (${ag.asistenciaPctSalus}%)`
+                                                        ? `${(ag.asistidasSalus || 0).toLocaleString('es-AR')} asist. s/ ${(ag.citasTotalesSalus || 0).toLocaleString('es-AR')} citas (${ag.asistenciaPctSalus}%)`
                                                         : 'Agendados en agenda médica SALUS'}
                                                 </div>
                                             </div>
@@ -6301,13 +6507,17 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                                 Turnos Médicos Otorgados en SALUS
                                                             </div>
                                                             <div style={{ fontSize: '0.62rem', color: '#166534' }}>
-                                                                Citas creadas formalmente en agenda médica hospitalaria
+                                                                Citas creadas formalmente en agenda médica hospitalaria (1 chat puede agendar varios turnos)
                                                             </div>
                                                         </div>
                                                     </div>
                                                     <span style={{ fontSize: '1rem', fontWeight: 900, color: '#15803D' }}>
-                                                        {ag.turnosSalus ? ag.turnosSalus.toLocaleString('es-AR') : (ag.resolvedReasons?.['Turno Coordinado'] || 0)}
+                                                        {(ag.turnosSalus !== undefined ? ag.turnosSalus : (ag.resolvedReasons?.['Turno Otorgado con Éxito'] || 0)).toLocaleString('es-AR')}
                                                     </span>
+                                                </div>
+
+                                                <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.3px', marginTop: '2px' }}>
+                                                    Desglose de Chats Finalizados en WhatsApp ({ag.resolvedCount} chats):
                                                 </div>
 
                                                 {ag.reasonsChartData && ag.reasonsChartData.length > 0 ? (
@@ -6919,6 +7129,7 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Conversaciones</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Asignados</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Finalizados</th>
+                                            <th style={{ padding: '8px 10px', color: '#166534', textAlign: 'right' }}>Turnos SALUS</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Demora Prom.</th>
                                             <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>SLA (&le;15m)</th>
                                         </tr>
@@ -6936,6 +7147,9 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                                 </td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>{ag.assignedCount}</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{ag.resolvedCount}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', color: '#166534', fontWeight: 800 }}>
+                                                    {(ag.turnosSalus || 0).toLocaleString('es-AR')}
+                                                </td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>{ag.avgResponseTimeMin} min</td>
                                                 <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: ag.slaCumplimientoPct >= 80 ? '#059669' : '#D97706' }}>
                                                     {ag.slaCumplimientoPct}%
@@ -6943,6 +7157,32 @@ export default function ContactCenterMetricsTab({ addToast, onNavigateToIncentiv
                                             </tr>
                                         ))}
                                     </tbody>
+                                    <tfoot>
+                                        <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800, color: '#0F2942' }}>
+                                            <td style={{ padding: '8px 10px' }}>TOTAL EQUIPO</td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#0284C7' }}>
+                                                {metrics.byAgentList.reduce((acc, a) => acc + (a.count || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>
+                                                {metrics.byAgentList.reduce((acc, a) => acc + (a.conversationsCount || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>
+                                                {metrics.byAgentList.reduce((acc, a) => acc + (a.assignedCount || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>
+                                                {metrics.byAgentList.reduce((acc, a) => acc + (a.resolvedCount || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#166534' }}>
+                                                {metrics.byAgentList.reduce((acc, a) => acc + (a.turnosSalus || 0), 0).toLocaleString('es-AR')}
+                                            </td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>
+                                                {metrics.agentFirstResponseAvgMin || 0} min
+                                            </td>
+                                            <td style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>
+                                                {metrics.slaStats?.cumplimientoPct || 100}%
+                                            </td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
 

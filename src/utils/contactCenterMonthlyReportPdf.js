@@ -639,7 +639,10 @@ export async function generateContactCenterMonthlyReportPdf(reportPayload) {
         'Cruce oficial con agenda medica hospitalaria SALUS: Diagnostico por Imagenes, Chequeo, Prevenir y Kinesiologia'
     );
 
-    const salusPeriods = ['2026-08', '2026-09', '2026-10'].filter(k => Boolean(salusHistoryMap?.[k]));
+    const MESES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const salusPeriods = Array.from(new Set(['2026-08', '2026-09', '2026-10', '2026-11', ...Object.keys(salusHistoryMap || {})]))
+        .filter(k => Boolean(salusHistoryMap?.[k]))
+        .sort();
     if (salusPeriods.length > 0) {
         autoTable(doc, {
             startY: y,
@@ -656,7 +659,9 @@ export async function generateContactCenterMonthlyReportPdf(reportPayload) {
             ]],
             body: salusPeriods.map(pKey => {
                 const row = salusHistoryMap[pKey] || {};
-                const label = pKey === '2026-08' ? 'Agosto 2026' : pKey === '2026-09' ? 'Septiembre 2026' : 'Octubre 2026';
+                const [yStr, mStr] = String(pKey).split('-');
+                const mIdx = Math.max(0, Math.min(11, (parseInt(mStr, 10) || 1) - 1));
+                const label = `${MESES_ES[mIdx]} ${yStr}`;
                 return [
                     label,
                     `${Number(row.diagnostico_imagenes?.total || 0).toLocaleString('es-AR')} (${row.diagnostico_imagenes?.pctSobreTotal || 0}%)`,
@@ -707,16 +712,37 @@ export async function generateContactCenterMonthlyReportPdf(reportPayload) {
         `Desempeno del equipo operativo en ${periodLabel} · Bolsa 1 lograda: Escalon ${incentivoBolsa1?.escalon || 0}/10 ($${Number(incentivoBolsa1?.monto || 0).toLocaleString('es-AR')} ARS)`
     );
 
-    const agentRows = (metrics.byAgentList || []).map(ag => [
-        cleanText(ag.name),
-        Number(ag.count || 0).toLocaleString('es-AR'),
-        Number(ag.conversationsCount || 0).toLocaleString('es-AR'),
-        Number(ag.resolvedCount || 0).toLocaleString('es-AR'),
-        Number(ag.turnosSalus || 0).toLocaleString('es-AR'),
-        ag.asistenciaPctSalus ? `${Number(ag.asistenciaPctSalus).toFixed(1)}%` : '—',
-        `${ag.avgResponseTimeMin || 0} min`,
-        `${ag.slaCumplimientoPct || 100}%`
-    ]);
+    const agList = metrics.byAgentList || [];
+    const totMsgsAg = agList.reduce((acc, a) => acc + (Number(a.count) || 0), 0);
+    const totConvsAg = agList.reduce((acc, a) => acc + (Number(a.conversationsCount) || 0), 0);
+    const totResAg = agList.reduce((acc, a) => acc + (Number(a.resolvedCount) || 0), 0);
+    const totTurnosAg = agList.reduce((acc, a) => acc + (Number(a.turnosSalus) || 0), 0);
+    const totCitasAg = agList.reduce((acc, a) => acc + (Number(a.citasTotalesSalus) || 0), 0);
+    const totAsistAg = agList.reduce((acc, a) => acc + (Number(a.asistidasSalus) || 0), 0);
+    const avgAsistTeam = totCitasAg > 0 ? `${((totAsistAg / totCitasAg) * 100).toFixed(1)}%` : '—';
+
+    const agentRows = [
+        ...agList.map(ag => [
+            cleanText(ag.name),
+            Number(ag.count || 0).toLocaleString('es-AR'),
+            Number(ag.conversationsCount || 0).toLocaleString('es-AR'),
+            Number(ag.resolvedCount || 0).toLocaleString('es-AR'),
+            Number(ag.turnosSalus || 0).toLocaleString('es-AR'),
+            ag.asistenciaPctSalus ? `${Number(ag.asistenciaPctSalus).toFixed(1)}%` : '—',
+            `${ag.avgResponseTimeMin || 0} min`,
+            `${ag.slaCumplimientoPct || 100}%`
+        ]),
+        [
+            'TOTAL / PROMEDIO EQUIPO',
+            totMsgsAg.toLocaleString('es-AR'),
+            totConvsAg.toLocaleString('es-AR'),
+            totResAg.toLocaleString('es-AR'),
+            totTurnosAg.toLocaleString('es-AR'),
+            avgAsistTeam,
+            `${metrics.agentFirstResponseAvgMin || 0} min`,
+            `${metrics.slaStats?.cumplimientoPct || 100}%`
+        ]
+    ];
 
     autoTable(doc, {
         startY: y,
