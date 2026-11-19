@@ -1076,7 +1076,7 @@ export function isMedicoGenerico(medico) {
     );
 }
 
-// Helper institucional para excluir Pasajes de Hierro (Hemoterapia), Suturas Menores y Bloques Ficticios
+// Helper institucional para excluir Pasajes de Hierro (Hemoterapia) y Bloques Ficticios
 function isExcludedNonSurgicalRow(s) {
     if (!s) return true;
     const nom = (s.nombre || '').trim().toUpperCase();
@@ -1088,8 +1088,7 @@ function isExcludedNonSurgicalRow(s) {
         text.includes('COLOCACIÓN DE MEDICAM') ||
         text.includes('HIERRO') ||
         text.includes('FERROCARBOXIMALTOSA') ||
-        text.includes('SACARATO') ||
-        text.includes('SUTURA')
+        text.includes('SACARATO')
     );
 }
 
@@ -1099,40 +1098,60 @@ function compileQuirofanoMetrics(rawAllRows, ambitoFilter = 'TODOS') {
     const allRows = rawAllRows.filter(s => !isExcludedNonSurgicalRow(s));
     if (allRows.length === 0) return null;
 
-    const globalTotal = allRows.length;
-    let globalSuspendidas = 0;
-    let globalRealizadas = 0;
     let centrales = 0;
     let centralesRealizadas = 0;
+    let centralesRealizadasVisitas = 0;
     let centralesSuspendidas = 0;
     let hdd = 0;
     let hddRealizadas = 0;
+    let hddRealizadasVisitas = 0;
     let hddSuspendidas = 0;
     let hemodinamia = 0;
     let hemodinamiaRealizadas = 0;
     let hemodinamiaSuspendidas = 0;
 
-    for (let i = 0; i < globalTotal; i++) {
+    for (let i = 0; i < allRows.length; i++) {
         const s = allRows[i];
         const isSusp = s.ausente === '1' || s.status === 'rojo' || Boolean(s.motivo && s.motivo.trim());
-        if (isSusp) globalSuspendidas++; else globalRealizadas++;
+        const isOnlyFojaProgramada = Boolean((s.instrucciones || '').includes('[FOJA_SIN_RECEPCION_VISITA]'));
 
         const rawGrup = (s.grupo_agendas || '').toUpperCase();
         if (rawGrup.includes('HDD') || rawGrup.includes('HOSPITAL DE DIA')) {
             hdd++;
-            if (isSusp) hddSuspendidas++; else hddRealizadas++;
+            if (isSusp) {
+                hddSuspendidas++;
+            } else {
+                hddRealizadas++;
+                if (!isOnlyFojaProgramada) hddRealizadasVisitas++;
+            }
         } else if (rawGrup.includes('HEMODINAMIA')) {
             hemodinamia++;
             if (isSusp) hemodinamiaSuspendidas++; else hemodinamiaRealizadas++;
         } else {
             centrales++;
-            if (isSusp) centralesSuspendidas++; else centralesRealizadas++;
+            if (isSusp) {
+                centralesSuspendidas++;
+            } else {
+                centralesRealizadas++;
+                if (!isOnlyFojaProgramada) centralesRealizadasVisitas++;
+            }
         }
     }
 
+    // Total Quirófano Institucional = Quirófano Central + Hospital de Día (excluye Hemodinamia del total quirúrgico general)
+    const globalTotal = centrales + hdd;
+    const globalRealizadas = centralesRealizadas + hddRealizadas;
+    const globalRealizadasVisitas = centralesRealizadasVisitas + hddRealizadasVisitas;
+    const globalSuspendidas = centralesSuspendidas + hddSuspendidas;
+
     // Filtrar filas según el ámbito seleccionado
     let rows = allRows;
-    if (ambitoFilter === 'CENTRALES') {
+    if (ambitoFilter === 'TODOS') {
+        rows = allRows.filter(s => {
+            const g = (s.grupo_agendas || '').toUpperCase();
+            return !g.includes('HEMODINAMIA');
+        });
+    } else if (ambitoFilter === 'CENTRALES') {
         rows = allRows.filter(s => {
             const g = (s.grupo_agendas || '').toUpperCase();
             return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
@@ -1154,6 +1173,7 @@ function compileQuirofanoMetrics(rawAllRows, ambitoFilter = 'TODOS') {
     let suspendidas24h = 0;
     let suspendidasDia = 0;
     let realizadas = 0;
+    let realizadasVisitas = 0;
     let urgencias = 0;
 
     const medicosMap = {};
@@ -1207,6 +1227,9 @@ function compileQuirofanoMetrics(rawAllRows, ambitoFilter = 'TODOS') {
             }
         } else {
             realizadas++;
+            if (!(s.instrucciones || '').includes('[FOJA_SIN_RECEPCION_VISITA]')) {
+                realizadasVisitas++;
+            }
         }
 
         const rawMod = (s.modulo || '').toUpperCase();
@@ -1436,6 +1459,7 @@ function compileQuirofanoMetrics(rawAllRows, ambitoFilter = 'TODOS') {
             ambitoFilter,
             total,
             realizadas,
+            realizadasVisitas,
             suspendidas,
             suspendidas24h,
             suspendidasDia,
@@ -1448,15 +1472,18 @@ function compileQuirofanoMetrics(rawAllRows, ambitoFilter = 'TODOS') {
             impactoPuntosPct,
             centrales,
             centralesRealizadas,
+            centralesRealizadasVisitas,
             centralesSuspendidas,
             hdd,
             hddRealizadas,
+            hddRealizadasVisitas,
             hddSuspendidas,
             hemodinamia,
             hemodinamiaRealizadas,
             hemodinamiaSuspendidas,
             globalTotal,
             globalRealizadas,
+            globalRealizadasVisitas,
             globalSuspendidas,
             urgencias,
             cirujanos,
@@ -1710,7 +1737,6 @@ export default function QuirofanoDashboard({
                     const { data, error } = await supabase
                         .from('surgeries')
                         .select('id, nombre, dni, id_paciente, telefono, obra_social, fecha_cirugia, medico, modulo, descripcion, status, ausente, motivo, grupo_agendas, instrucciones, created_at')
-                        .eq('excluido', false)
                         .gte('fecha_cirugia', effectiveDesde)
                         .lte('fecha_cirugia', effectiveHasta)
                         .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -1774,7 +1800,12 @@ export default function QuirofanoDashboard({
         if (!allSurgeriesRows || allSurgeriesRows.length === 0) return [];
         let baseRows = allSurgeriesRows;
 
-        if (ambitoFilter === 'CENTRALES') {
+        if (ambitoFilter === 'TODOS') {
+            baseRows = baseRows.filter(s => {
+                const g = (s.grupo_agendas || '').toUpperCase();
+                return !g.includes('HEMODINAMIA');
+            });
+        } else if (ambitoFilter === 'CENTRALES') {
             baseRows = baseRows.filter(s => {
                 const g = (s.grupo_agendas || '').toUpperCase();
                 return !g.includes('HDD') && !g.includes('HOSPITAL DE DIA') && !g.includes('HEMODINAMIA');
@@ -3084,7 +3115,7 @@ export default function QuirofanoDashboard({
                                 }}
                                 title="Abrir explorador nominal de pacientes y cirugías"
                             >
-                                <Users size={15} /> Ver Pacientes ({selectedCrossFilter ? scopedSurgeriesRows.length : allSurgeriesRows.length})
+                                <Users size={15} /> Ver Pacientes ({scopedSurgeriesRows.length})
                             </button>
                         </div>
 
@@ -3188,8 +3219,12 @@ export default function QuirofanoDashboard({
                         <div style={{ fontSize: '1.85rem', fontWeight: 900 }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? dynamicMetrics.realizadas.toLocaleString('es-AR') : '0'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                            <TrendingUp size={13} /> {loadingSurgeries ? 'Cargando...' : dynamicMetrics ? `${dynamicMetrics.total.toLocaleString('es-AR')} programadas` : 'Sin registros'}
+                        <div style={{ fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
+                            <TrendingUp size={13} /> {loadingSurgeries ? 'Cargando...' : dynamicMetrics ? (
+                                dynamicMetrics.realizadasVisitas && dynamicMetrics.realizadasVisitas !== dynamicMetrics.realizadas
+                                    ? `${dynamicMetrics.realizadasVisitas.toLocaleString('es-AR')} por visita · ${dynamicMetrics.total.toLocaleString('es-AR')} programadas`
+                                    : `${dynamicMetrics.total.toLocaleString('es-AR')} programadas`
+                            ) : 'Sin registros'}
                         </div>
                     </div>
 
@@ -3257,9 +3292,9 @@ export default function QuirofanoDashboard({
                             {loadingSurgeries ? '...' : dynamicMetrics ? (
                                 ambitoFilter === 'TODOS' ? (
                                     <>
-                                        <div><strong>Realizadas:</strong> Central + Parto {dynamicMetrics.centralesRealizadas} · HdD {dynamicMetrics.hddRealizadas}{dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · Hemo ${dynamicMetrics.hemodinamiaRealizadas}` : ''}</div>
+                                        <div><strong>Realizadas (Qx):</strong> Central + Parto {dynamicMetrics.centralesRealizadas}{dynamicMetrics.centralesRealizadasVisitas && dynamicMetrics.centralesRealizadasVisitas !== dynamicMetrics.centralesRealizadas ? ` (${dynamicMetrics.centralesRealizadasVisitas} vis.)` : ''} · HdD {dynamicMetrics.hddRealizadas}</div>
                                         <div style={{ opacity: 0.8, fontSize: '0.68rem', marginTop: '2px' }}>
-                                            <strong>Programadas ({dynamicMetrics.globalTotal}):</strong> Central + Parto {dynamicMetrics.centrales} · HdD {dynamicMetrics.hdd}{dynamicMetrics.hemodinamia > 0 ? ` · Hemo ${dynamicMetrics.hemodinamia}` : ''}
+                                            <strong>Programadas ({dynamicMetrics.globalTotal}):</strong> Central + Parto {dynamicMetrics.centrales} · HdD {dynamicMetrics.hdd}{dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · (Hemo sep.: ${dynamicMetrics.hemodinamiaRealizadas})` : ''}
                                         </div>
                                     </>
                                 ) : (

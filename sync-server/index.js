@@ -1200,6 +1200,7 @@ async function syncCirugias(db) {
     // IMPORTANTE: Capturar estados ANTES de cualquier eliminación
     const FIELDS_TO_PRESERVE_QUERY = FIELDS_TO_PRESERVE.join(', ');
     const existingMap = new Map();
+    const existingByIdDateMap = new Map();
 
     if (patientIds.length > 0) {
         const FETCH_BATCH = 200;
@@ -1212,14 +1213,21 @@ async function syncCirugias(db) {
 
             if (existing) {
                 for (const row of existing) {
-                    // Guardar con la clave de la fecha CORRECTA (SALUS) para que el upsert la encuentre
                     const normalizedName = normalizeNameForUpsert(row.nombre);
                     const key = `${row.id_paciente}|${normalizedName}|${row.fecha_cirugia}`;
+                    const idDateKey = `${row.id_paciente}|${row.fecha_cirugia}`;
                     const preserved = {};
                     for (const f of FIELDS_TO_PRESERVE) {
                         if (row[f] != null) preserved[f] = row[f];
                     }
-                    if (Object.keys(preserved).length > 0) existingMap.set(key, preserved);
+                    if (Object.keys(preserved).length > 0) {
+                        existingMap.set(key, preserved);
+                        if (!existingByIdDateMap.has(idDateKey)) {
+                            existingByIdDateMap.set(idDateKey, preserved);
+                        } else {
+                            existingByIdDateMap.set(idDateKey, { ...existingByIdDateMap.get(idDateKey), ...preserved });
+                        }
+                    }
                 }
             }
         }
@@ -1285,6 +1293,35 @@ async function syncCirugias(db) {
     }
 
 
+    // Limpiar filas duplicadas del mismo id_paciente + fecha_cirugia cuyo nombre fue editado en SALUS
+    if (patientIds.length > 0) {
+        const salusNameByIdDate = new Map();
+        for (const row of deduped.values()) {
+            salusNameByIdDate.set(`${row.id_paciente}|${row.fecha_cirugia}`, row.nombre);
+        }
+        const FETCH_BATCH = 200;
+        let renamedCleaned = 0;
+        for (let i = 0; i < patientIds.length; i += FETCH_BATCH) {
+            const batch = patientIds.slice(i, i + FETCH_BATCH);
+            const { data: existing } = await supabase
+                .from('surgeries')
+                .select('id, id_paciente, nombre, fecha_cirugia')
+                .in('id_paciente', batch);
+            if (existing) {
+                for (const row of existing) {
+                    const normRowName = normalizeNameForUpsert(row.nombre);
+                    const idDateKey = `${row.id_paciente}|${row.fecha_cirugia}`;
+                    const canonicalName = salusNameByIdDate.get(idDateKey);
+                    if (canonicalName && normRowName !== canonicalName && !/\(\d+\)$/.test(row.nombre || '')) {
+                        const { error: delErr } = await supabase.from('surgeries').delete().eq('id', row.id);
+                        if (!delErr) renamedCleaned++;
+                    }
+                }
+            }
+        }
+        if (renamedCleaned > 0) console.log(`   🧹 ${renamedCleaned} duplicados por edición de nombre eliminados`);
+    }
+
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
     const uniqueRows = [...deduped.values()];
@@ -1293,7 +1330,8 @@ async function syncCirugias(db) {
     for (let i = 0; i < uniqueRows.length; i += BATCH) {
         const batch = uniqueRows.slice(i, i + BATCH).map(row => {
             const key = `${row.id_paciente}|${row.nombre}|${row.fecha_cirugia}`;
-            const preserved = existingMap.get(key);
+            const idDateKey = `${row.id_paciente}|${row.fecha_cirugia}`;
+            const preserved = existingMap.get(key) || existingByIdDateMap.get(idDateKey);
             return preserved ? { ...row, ...preserved } : row;
         });
 
